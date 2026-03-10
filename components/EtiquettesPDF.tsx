@@ -5,7 +5,7 @@ import { Document, Page, Text, View, StyleSheet, Image, Font } from '@react-pdf/
 Font.registerHyphenationCallback((word) => [word]);
 
 type EtiquetteType = {
-  id: number;
+  id: string | number;
   ean: string;
   quantity: number;
   name: string;
