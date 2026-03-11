@@ -16,7 +16,7 @@ const CATEGORIES = [
 export type ContenuType = {
   id: string | number;
   ean: string;
-  name: string;
+  nom: string;
   elements: string;
   quantity: number;
   isOpen: boolean; 
@@ -49,7 +49,7 @@ export default function ContenuPage() {
         dbContenus[couleur].push({
           id: item.ean || Date.now() + Math.random(),
           ean: item.ean || "",
-          name: item.name || "",
+          nom: item.nom || "",
           elements: item.contenu || "", 
           quantity: 0,
           isOpen: false 
@@ -59,30 +59,28 @@ export default function ContenuPage() {
     }
   };
 
-  // NOUVEAU : Sauvegarde individuelle en temps réel
   const sauvegarderJeuDansBDD = async (jeu: ContenuType, couleurId: string) => {
-    if (!jeu.ean || !jeu.name) return; 
+    if (!jeu.ean || !jeu.nom) return; 
     const { error } = await supabase.from('catalogue').upsert({
       ean: jeu.ean,
-      name: jeu.name,
+      nom: jeu.nom,
       contenu: jeu.elements,
       couleur: couleurId
     });
     if (error) console.error("Erreur auto-save:", error);
   };
 
-  // NOUVEAU : Formatage intelligent (respecte les sauts, les titres et les sous-listes)
   const formaterTexte = (texte: string) => {
     if (!texte || texte.trim() === "") return "- \n\n- 1 règle du jeu";
 
     let lignes = texte.split('\n');
 
     lignes = lignes.map(l => {
-      if (l.trim() === '') return ''; // Garde les lignes vides
-      if (l.trim().endsWith(':')) return l.trim(); // Garde les titres (finissent par :)
-      if (l.match(/^\s+[-*•]/)) return l; // Garde les sous-listes (commencent par espaces + tiret)
-      if (l.trim().match(/^[-*•]\s*/)) return '- ' + l.trim().replace(/^[-*•]\s*/, ''); // Harmonise les tirets
-      return '- ' + l.trim(); // Ajoute un tiret sinon
+      if (l.trim() === '') return ''; 
+      if (l.trim().endsWith(':')) return l.trim(); 
+      if (l.match(/^\s+[-*•]/)) return l; 
+      if (l.trim().match(/^[-*•]\s*/)) return '- ' + l.trim().replace(/^[-*•]\s*/, ''); 
+      return '- ' + l.trim(); 
     });
 
     const aRegle = lignes.some(l => l.toLowerCase().includes('règle du jeu'));
@@ -102,7 +100,7 @@ export default function ContenuPage() {
 
   const ajouterLigne = (couleurId: string) => {
     const nouveauContenu: ContenuType = {
-      id: Date.now(), ean: "", name: "", elements: "", quantity: 1, isOpen: true, 
+      id: Date.now(), ean: "", nom: "", elements: "", quantity: 1, isOpen: true, 
     };
     setContenus(prev => ({ ...prev, [couleurId]: [nouveauContenu, ...prev[couleurId]] }));
     if (!sectionsOuvertes[couleurId]) toggleSection(couleurId);
@@ -115,7 +113,6 @@ export default function ContenuPage() {
   const gererBlur = (couleurId: string, jeu: ContenuType) => {
     const texteFormate = formaterTexte(jeu.elements);
     mettreAJourLigne(couleurId, jeu.id, "elements", texteFormate);
-    // Sauvegarde auto
     sauvegarderJeuDansBDD({ ...jeu, elements: texteFormate }, couleurId);
   };
 
@@ -125,6 +122,43 @@ export default function ContenuPage() {
 
   const supprimerLigne = (couleurId: string, id: string | number) => {
     setContenus(prev => ({ ...prev, [couleurId]: prev[couleurId].filter(c => c.id !== id) }));
+  };
+
+  // NOUVEAU : Fonction de validation automatique de l'étape contenu
+  const genererPDF = async () => {
+    const eansCompletsAImprimer: string[] = [];
+
+    Object.values(contenus).forEach((liste) => {
+      liste.forEach(c => {
+        const estVide = !c.elements || c.elements.trim() === "";
+        // On valide si le jeu a un nom, un ean, un contenu rempli et qu'on l'imprime
+        if (!estVide && c.nom && c.ean && c.quantity > 0) {
+          eansCompletsAImprimer.push(c.ean);
+        }
+      });
+    });
+
+    if (eansCompletsAImprimer.length > 0) {
+      const { data: jeuxEnPrepa } = await supabase
+        .from('jeux')
+        .select('*')
+        .in('ean', eansCompletsAImprimer)
+        .eq('statut', 'En préparation');
+
+      if (jeuxEnPrepa && jeuxEnPrepa.length > 0) {
+        for (const jeu of jeuxEnPrepa) {
+          const isTermine = jeu.etape_plastifier && true && jeu.etape_etiquette && jeu.etape_equiper && jeu.etape_encoder && jeu.etape_notice && jeu.etape_nouveaute;
+          
+          await supabase
+            .from('jeux')
+            .update({ 
+              etape_contenu: true,
+              statut: isTermine ? 'En stock' : 'En préparation'
+            })
+            .eq('id', jeu.id);
+        }
+      }
+    }
   };
 
   const totalContenus = Object.values(contenus).flat().reduce((sum, c) => sum + c.quantity, 0);
@@ -172,7 +206,7 @@ export default function ContenuPage() {
 
                               <div className="flex-1 min-w-0 flex flex-col justify-center">
                                 <div className="flex items-center gap-2">
-                                  <span className="font-bold text-lg truncate">{c.name || "Nouveau jeu..."}</span>
+                                  <span className="font-bold text-lg truncate">{c.nom || "Nouveau jeu..."}</span>
                                   {estVide && <span className="bg-orange-200 text-orange-800 text-[10px] px-2 py-0.5 rounded-full font-bold">À REMPLIR</span>}
                                 </div>
                                 {!c.isOpen && (
@@ -192,7 +226,7 @@ export default function ContenuPage() {
                                 <div className="flex-1 flex flex-col gap-3 mt-4">
                                   <div className="flex gap-2">
                                     <input type="text" value={c.ean} onChange={(e) => mettreAJourLigne(cat.id, c.id, "ean", e.target.value)} onBlur={() => sauvegarderJeuDansBDD(c, cat.id)} placeholder="EAN..." className="w-1/3 bg-white p-2.5 rounded-lg outline-none text-sm border border-slate-200 focus:border-black shadow-sm" />
-                                    <input type="text" value={c.name} onChange={(e) => mettreAJourLigne(cat.id, c.id, "name", e.target.value)} onBlur={() => sauvegarderJeuDansBDD(c, cat.id)} placeholder="Nom du jeu..." className="w-2/3 bg-white p-2.5 rounded-lg outline-none font-bold border border-slate-200 focus:border-black shadow-sm text-lg" />
+                                    <input type="text" value={c.nom} onChange={(e) => mettreAJourLigne(cat.id, c.id, "nom", e.target.value)} onBlur={() => sauvegarderJeuDansBDD(c, cat.id)} placeholder="Nom du jeu..." className="w-2/3 bg-white p-2.5 rounded-lg outline-none font-bold border border-slate-200 focus:border-black shadow-sm text-lg" />
                                   </div>
                                   <textarea 
                                     value={c.elements} 
@@ -236,7 +270,7 @@ export default function ContenuPage() {
 
           <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
             {CATEGORIES.map(cat => {
-              const items = contenus[cat.id].filter(c => c.name.toLowerCase().includes(recherche.toLowerCase()));
+              const items = contenus[cat.id].filter(c => c.nom.toLowerCase().includes(recherche.toLowerCase()));
               if (items.length === 0) return null;
 
               return (
@@ -246,7 +280,7 @@ export default function ContenuPage() {
                   </div>
                   {items.map(c => (
                     <div key={`side-item-${c.id}`} className="flex items-center justify-between bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                      <span className="text-sm font-bold text-slate-700 truncate mr-2 flex-1">{c.name || "Sans nom"}</span>
+                      <span className="text-sm font-bold text-slate-700 truncate mr-2 flex-1">{c.nom || "Sans nom"}</span>
                       <div className="flex items-center bg-white rounded-lg border border-slate-200 shadow-sm shrink-0">
                         <button onClick={() => modifierQuantite(cat.id, c.id, -1)} className="px-2.5 py-1 text-slate-500 hover:text-black font-bold text-lg hover:bg-slate-50 rounded-l-lg">−</button>
                         <span className="w-8 text-center font-bold text-sm border-x border-slate-100">{c.quantity}</span>
@@ -264,7 +298,8 @@ export default function ContenuPage() {
             {isClient ? (
               <PDFDownloadLink document={<ContenuPDF contenus={contenus} />} fileName="contenu_ludo.pdf">
                 {({ loading }) => (
-                  <button disabled={totalContenus === 0 || loading} className="w-full bg-[#d63031] hover:bg-[#b02627] disabled:bg-slate-200 disabled:text-slate-400 text-white font-black py-4 rounded-xl transition-colors shadow-md">
+                  // NOUVEAU : Ajout de l'événement onClick={genererPDF}
+                  <button onClick={genererPDF} disabled={totalContenus === 0 || loading} className="w-full bg-[#d63031] hover:bg-[#b02627] disabled:bg-slate-200 disabled:text-slate-400 text-white font-black py-4 rounded-xl transition-colors shadow-md">
                     {loading ? 'PRÉPARATION PDF...' : 'GÉNÉRER LES FICHES'}
                   </button>
                 )}

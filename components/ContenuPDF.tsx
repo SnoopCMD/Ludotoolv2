@@ -124,7 +124,7 @@ export const ContenuPDF = ({ contenus }: { contenus: Record<string, any[]> }) =>
                         {/* 1. Le titre et les 3 premières lignes sont SOUDÉS (wrap={false}) */}
                         <View wrap={false}>
                           <View style={styles.headerBox}>
-                            <Text style={styles.title}>{c.name}</Text>
+                            <Text style={styles.title}>{c.nom}</Text>
                           </View>
                           {groupeTete.map((ligne: string, idx: number) => renderLigne(ligne, idx))}
                         </View>

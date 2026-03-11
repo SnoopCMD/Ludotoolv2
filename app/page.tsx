@@ -22,7 +22,8 @@ type JeuType = {
   etape_encoder: boolean;
   etape_notice: boolean;
   etape_nouveaute: boolean;
-  [key: string]: string | number | boolean; 
+  couleur?: string;
+  [key: string]: string | number | boolean | undefined; 
 };
 
 type JeuAttenteType = {
@@ -30,6 +31,7 @@ type JeuAttenteType = {
   nom: string;
   isNouveaute: boolean;
   etapes: Record<string, boolean>;
+  couleur: string;
 };
 
 const defaultEtapes = {
@@ -40,6 +42,14 @@ const defaultEtapes = {
   etape_encoder: false,
   etape_notice: false
 };
+
+const COULEURS = [
+  { id: 'vert', bg: 'bg-[#baff29]' },
+  { id: 'rose', bg: 'bg-[#f45be0]' },
+  { id: 'bleu', bg: 'bg-[#6ba4ff]' },
+  { id: 'rouge', bg: 'bg-[#ff4d79]' },
+  { id: 'jaune', bg: 'bg-[#ffa600]' }
+];
 
 export default function Home() {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -59,18 +69,34 @@ export default function Home() {
   const [comptesEtapes, setComptesEtapes] = useState<Record<string, number>>({});
 
   const fetchDashboardData = async () => {
-    const { data, error } = await supabase
+    // 1. Récupérer les jeux
+    const { data: jeuxData, error: jeuxError } = await supabase
       .from('jeux')
       .select('*')
       .eq('statut', 'En préparation')
       .order('id', { ascending: false });
 
-    if (error) {
-      console.error("Erreur Supabase:", error.message);
+    if (jeuxError) {
+      console.error("Erreur Supabase jeux:", jeuxError.message);
       return;
     }
 
-    const jeux = data as JeuType[];
+    const jeuxBruts = jeuxData as JeuType[];
+    const eans = [...new Set(jeuxBruts.map(j => j.ean))];
+    
+    // 2. Récupérer les couleurs correspondantes dans le catalogue
+    let colorMap: Record<string, string> = {};
+    if (eans.length > 0) {
+      const { data: catData } = await supabase.from('catalogue').select('ean, couleur').in('ean', eans);
+      if (catData) {
+        catData.forEach(item => {
+          if (item.couleur) colorMap[item.ean] = item.couleur;
+        });
+      }
+    }
+
+    // 3. Fusionner
+    const jeux = jeuxBruts.map(j => ({ ...j, couleur: colorMap[j.ean] || "" }));
     
     setJeuxEnPrepa(jeux);
     setTotalEnPrepa(jeux.length);
@@ -97,7 +123,7 @@ export default function Home() {
     { nom: "Équiper", id: "etape_equiper", color: "bg-[#f45be0] text-white" },         
     { nom: "Encoder", id: "etape_encoder", color: "bg-[#ff4d79] text-white" },         
     { nom: "Notice", id: "etape_notice", color: "bg-[#ff5e00] text-white" },           
-    { nom: "Nouveauté", id: "etape_nouveaute", color: "bg-[#ffa600] text-white" }      
+    { nom: "Nouveauté", id: "etape_nouveaute", color: "bg-[#ffa600] text-white" }       
   ];
 
   const formatNum = (num: number) => num < 10 ? `0${num}` : num;
@@ -106,9 +132,8 @@ export default function Home() {
     if (e.key === "Enter" && eanInput.trim() !== "") {
       const codeScan = eanInput.trim();
       setEanInput(""); 
-      setJeuxAttente(prev => [...prev, { ean: codeScan, nom: "⏳ Recherche en cours...", isNouveaute: true, etapes: { ...defaultEtapes } }]);
+      setJeuxAttente(prev => [...prev, { ean: codeScan, nom: "⏳ Recherche en cours...", isNouveaute: true, etapes: { ...defaultEtapes }, couleur: "" }]);
       try {
-        // Optionnel: on pourrait chercher dans 'catalogue' ici, mais on laisse votre route API pour l'instant
         const res = await fetch(`/api/recherche?ean=${codeScan}`);
         const data = await res.json();
         setJeuxAttente(prev => prev.map(jeu => jeu.ean === codeScan ? { ...jeu, nom: data.nom || "" } : jeu));
@@ -120,7 +145,7 @@ export default function Home() {
 
   const ajouterManuel = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" && manuelInput.trim() !== "") {
-      setJeuxAttente([...jeuxAttente, { ean: "Manuel", nom: manuelInput, isNouveaute: true, etapes: { ...defaultEtapes } }]);
+      setJeuxAttente([...jeuxAttente, { ean: "Manuel", nom: manuelInput, isNouveaute: true, etapes: { ...defaultEtapes }, couleur: "" }]);
       setManuelInput("");
     }
   };
@@ -128,14 +153,13 @@ export default function Home() {
   const toggleEtapeAttente = (index: number, etapeId: string) => {
     if (etapeId === 'etape_nouveaute') return; 
     setJeuxAttente(prev => prev.map((jeu, i) => {
-      if (i === index) {
-        return { ...jeu, etapes: { ...jeu.etapes, [etapeId]: !jeu.etapes[etapeId] } };
-      }
+      if (i === index) return { ...jeu, etapes: { ...jeu.etapes, [etapeId]: !jeu.etapes[etapeId] } };
       return jeu;
     }));
   };
 
   const validerEtEnvoyer = async () => {
+    // 1. Préparer les données pour la table 'jeux' (sans la couleur)
     const jeuxAInserer = jeuxAttente.map(jeu => {
       const isTermine = !jeu.isNouveaute && jeu.etapes.etape_plastifier && jeu.etapes.etape_contenu && 
                         jeu.etapes.etape_etiquette && jeu.etapes.etape_equiper && 
@@ -155,16 +179,29 @@ export default function Home() {
       };
     });
     
-    const { error } = await supabase.from('jeux').insert(jeuxAInserer);
+    const { error: jeuxError } = await supabase.from('jeux').insert(jeuxAInserer);
     
-    if (error) {
-      console.error(error);
-      alert("Erreur d'envoi : " + error.message); // On affiche enfin l'erreur !
-    } else {
-      setJeuxAttente([]); 
-      setIsModalOpen(false); 
-      fetchDashboardData(); 
+    if (jeuxError) {
+      console.error(jeuxError);
+      alert("Erreur d'envoi dans jeux : " + jeuxError.message); 
+      return;
+    } 
+
+    // 2. Mettre à jour la table 'catalogue' pour les couleurs
+    const catalogueUpdates = jeuxAttente.filter(j => j.couleur !== "").map(j => ({
+      ean: j.ean,
+      nom: j.nom,
+      couleur: j.couleur
+    }));
+
+    if (catalogueUpdates.length > 0) {
+      const { error: catError } = await supabase.from('catalogue').upsert(catalogueUpdates, { onConflict: 'ean' });
+      if (catError) console.error("Erreur mise à jour catalogue:", catError.message);
     }
+
+    setJeuxAttente([]); 
+    setIsModalOpen(false); 
+    fetchDashboardData(); 
   };
 
   const verifierSiTermine = (jeu: JeuType) => {
@@ -176,7 +213,6 @@ export default function Home() {
     const jeuActuel = jeuxEnPrepa.find(j => j.id === id);
     if (!jeuActuel) return;
 
-    // Si c'est l'étape nouveauté d'un jeu identifié comme double, on bloque le clic.
     if (colonne === 'etape_nouveaute' && jeuActuel.is_double) return;
 
     const updatedVal = !valeurActuelle;
@@ -223,6 +259,21 @@ export default function Home() {
 
   const etapeActiveInfo = etapesVisuelles.find(e => e.id === etapeActive);
   const jeuxPourEtapeActive = jeuxEnPrepa.filter(j => etapeActive && !j[etapeActive]);
+
+const changerCouleurJeu = async (idJeu: string | number, ean: string, nom: string, nouvelleCouleur: string) => {
+    // Mise à jour de l'affichage immédiatement (optimiste)
+    setJeuxEnPrepa(prev => prev.map(j => j.id === idJeu ? { ...j, couleur: nouvelleCouleur } : j));
+
+    // Sauvegarde dans la base de données (table catalogue)
+    const { error } = await supabase
+      .from('catalogue')
+      .upsert({ ean, nom, couleur: nouvelleCouleur }, { onConflict: 'ean' });
+      
+    if (error) {
+      console.error("Erreur màj couleur:", error);
+      alert("Erreur de sauvegarde de la couleur");
+    }
+  };
 
   return (
     <div className="min-h-screen flex flex-col bg-[#e5e5e5] font-sans p-4 sm:p-8 relative">
@@ -374,47 +425,66 @@ export default function Home() {
               {jeuxEnPrepa.length === 0 ? (
                 <p className="text-center text-slate-400 mt-10 font-medium">Aucun jeu en préparation.</p>
               ) : (
-                jeuxEnPrepa.map((jeu) => (
-                  <div key={jeu.id} className="bg-white p-5 rounded-xl shadow-sm mb-3 border border-slate-100 flex flex-col lg:flex-row justify-between lg:items-center gap-4 hover:border-slate-300 transition-colors">
-                    <div className="flex-1 min-w-[200px]">
-                      <span className="font-bold text-xl text-black block leading-tight mb-1">{jeu.nom}</span>
-                      <div className="flex items-center text-sm font-medium text-slate-400">
-                        <BarcodeIcon /> EAN: {jeu.ean}
+                jeuxEnPrepa.map((jeu) => {
+                  const couleurObj = COULEURS.find(c => c.id === jeu.couleur);
+                  return (
+                    <div key={jeu.id} className="bg-white p-5 rounded-xl shadow-sm mb-3 border border-slate-100 flex flex-col lg:flex-row justify-between lg:items-center gap-4 hover:border-slate-300 transition-colors">
+                      <div className="flex-1 min-w-[200px]">
+                        <div className="flex items-center gap-3 mb-1">
+                          <span className="font-bold text-xl text-black block leading-tight">{jeu.nom}</span>
+                          
+                          {/* NOUVEAU : Sélecteur de couleurs miniature */}
+                          <div className="flex gap-1 bg-slate-50 p-1 rounded-full border border-slate-200">
+                            {COULEURS.map(c => (
+                              <button
+                                key={c.id}
+                                type="button"
+                                onClick={() => changerCouleurJeu(jeu.id, jeu.ean, jeu.nom, jeu.couleur === c.id ? "" : c.id)}
+                                className={`w-4 h-4 rounded-full border transition-transform hover:scale-110 ${
+                                  jeu.couleur === c.id ? 'border-black scale-125 shadow-sm' : 'border-transparent opacity-60 hover:opacity-100'
+                                } ${c.bg}`}
+                                title={c.id}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                        <div className="flex items-center text-sm font-medium text-slate-400">
+                          <BarcodeIcon /> EAN: {jeu.ean}
+                        </div>
+                      </div>
+                      
+                      <div className="flex flex-wrap gap-2">
+                        {etapesVisuelles.map((etape) => {
+                          const estFait = jeu[etape.id] === true;
+                          const isEtapeNouveaute = etape.id === 'etape_nouveaute';
+                          
+                          let labelText = estFait ? `✓ ${etape.nom}` : etape.nom;
+                          let btnStyle = estFait 
+                            ? `${etape.color} border-transparent shadow-sm scale-95 opacity-50 hover:opacity-100` 
+                            : `bg-white border-slate-200 text-slate-500 hover:border-slate-400 hover:text-black`;
+                          let isClickable = true;
+
+                          if (isEtapeNouveaute && jeu.is_double) {
+                            labelText = "🔄 Double";
+                            btnStyle = "bg-slate-100 border-transparent text-slate-400 cursor-not-allowed";
+                            isClickable = false; 
+                          }
+
+                          return (
+                            <button
+                              key={etape.id}
+                              onClick={() => isClickable && toggleEtapeUnique(jeu.id, etape.id, estFait)}
+                              className={`px-4 py-2 rounded-xl text-sm font-bold transition-all border-2 ${btnStyle}`}
+                              disabled={!isClickable}
+                            >
+                              {labelText}
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
-                    
-                    <div className="flex flex-wrap gap-2">
-                      {etapesVisuelles.map((etape) => {
-                        const estFait = jeu[etape.id] === true;
-                        const isEtapeNouveaute = etape.id === 'etape_nouveaute';
-                        
-                        // LOGIQUE POUR LE BOUTON DOUBLE
-                        let labelText = estFait ? `✓ ${etape.nom}` : etape.nom;
-                        let btnStyle = estFait 
-                          ? `${etape.color} border-transparent shadow-sm scale-95 opacity-50 hover:opacity-100` 
-                          : `bg-white border-slate-200 text-slate-500 hover:border-slate-400 hover:text-black`;
-                        let isClickable = true;
-
-                        if (isEtapeNouveaute && jeu.is_double) {
-                          labelText = "🔄 Double";
-                          btnStyle = "bg-slate-100 border-transparent text-slate-400 cursor-not-allowed";
-                          isClickable = false; // Un double ne peut pas être décoché en nouveauté
-                        }
-
-                        return (
-                          <button
-                            key={etape.id}
-                            onClick={() => isClickable && toggleEtapeUnique(jeu.id, etape.id, estFait)}
-                            className={`px-4 py-2 rounded-xl text-sm font-bold transition-all border-2 ${btnStyle}`}
-                            disabled={!isClickable}
-                          >
-                            {labelText}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
@@ -449,13 +519,31 @@ export default function Home() {
                     
                     <div className="flex justify-between items-start mb-2.5">
                       <div className="flex-1 mr-12">
-                        {jeu.nom === "⏳ Recherche en cours..." ? (
-                          <span className="font-bold text-lg text-slate-400">{jeu.nom}</span>
-                        ) : editingIndex === index || jeu.nom === "" ? (
-                          <input type="text" value={jeu.nom} onChange={(e) => setJeuxAttente(prev => {const l = [...prev]; l[index].nom = e.target.value; return l;})} onBlur={() => setEditingIndex(null)} onKeyDown={(e) => e.key === "Enter" && setEditingIndex(null)} autoFocus className="font-bold text-lg w-full bg-transparent border-b border-black text-black outline-none pb-1" />
-                        ) : (
-                          <span className="font-bold text-lg text-black block leading-tight">{jeu.nom}</span>
-                        )}
+                        
+                        <div className="flex items-center gap-4">
+                          {jeu.nom === "⏳ Recherche en cours..." ? (
+                            <span className="font-bold text-lg text-slate-400">{jeu.nom}</span>
+                          ) : editingIndex === index || jeu.nom === "" ? (
+                            <input type="text" value={jeu.nom} onChange={(e) => setJeuxAttente(prev => {const l = [...prev]; l[index].nom = e.target.value; return l;})} onBlur={() => setEditingIndex(null)} onKeyDown={(e) => e.key === "Enter" && setEditingIndex(null)} autoFocus className="font-bold text-lg w-full max-w-[200px] bg-transparent border-b border-black text-black outline-none pb-1" />
+                          ) : (
+                            <span className="font-bold text-lg text-black block leading-tight">{jeu.nom}</span>
+                          )}
+
+                          <div className="flex gap-1.5 bg-slate-50 p-1.5 rounded-full border border-slate-200">
+                            {COULEURS.map(c => (
+                              <button
+                                key={c.id}
+                                type="button"
+                                onClick={() => setJeuxAttente(prev => prev.map((j, i) => i === index ? { ...j, couleur: j.couleur === c.id ? "" : c.id } : j))}
+                                className={`w-5 h-5 rounded-full border-2 transition-transform hover:scale-110 shadow-sm ${
+                                  jeu.couleur === c.id ? 'border-black scale-110' : 'border-transparent'
+                                } ${c.bg}`}
+                                title={c.id}
+                              />
+                            ))}
+                          </div>
+                        </div>
+
                         <div className="flex items-center text-sm font-medium text-black/80 mt-1">
                           <BarcodeIcon />
                           {editingEanIndex === index ? (

@@ -8,7 +8,7 @@ type EtiquetteType = {
   id: string | number;
   ean: string;
   quantity: number;
-  name: string;
+  nom: string;
   mecanique: string;
   nb_de_joueurs: string;
   coop_versus: string;
@@ -100,11 +100,11 @@ export const EtiquettesPDF = ({ etiquettesParCouleur }: { etiquettesParCouleur: 
   
   const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
 
-  const getTitleStyle = (name: string) => {
-    let size = 10; 
-    if (name.length > 30) size = 8;
-    else if (name.length > 20) size = 9;
-    
+  const getTitleStyle = (nom: string) => {
+    let size = 10;
+    const nomSecurise = nom || ""; // Empêche le plantage si le nom est vide
+    if (nomSecurise.length > 30) size = 8;
+    else if (nomSecurise.length > 20) size = 9;
     return { ...styles.titre, fontSize: size };
   };
 
@@ -146,7 +146,7 @@ export const EtiquettesPDF = ({ etiquettesParCouleur }: { etiquettesParCouleur: 
                   <View key={`${eti.id}-${i}`} style={styles.etiquette}>
                     
                     <View style={styles.titleContainer}>
-                      <Text style={getTitleStyle(eti.name)}>{eti.name}</Text>
+                      <Text style={getTitleStyle(eti.nom)}>{eti.nom}</Text>
                     </View>
                     
                     <View style={styles.bottomRow}>

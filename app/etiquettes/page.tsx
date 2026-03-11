@@ -29,12 +29,12 @@ type Etiquette = {
   id: string | number;
   ean: string;
   quantity: number;
-  name: string;
+  nom: string;
   mecanique: string;
   nb_de_joueurs: string;
-  coop_versus: "Coop" | "Versus" | "Solo";
+  coop_versus: "Coop" | "Versus" | "Solo" | ""; // NOUVEAU: Accepte vide
   temps_de_jeu: string;
-  etoiles: number;
+  etoiles: number | ""; // NOUVEAU: Accepte vide
 };
 
 export default function EtiquettesPage() {
@@ -55,7 +55,6 @@ export default function EtiquettesPage() {
     chargerCatalogue();
   }, []);
 
-  // NOUVEAU : Fonction qui charge les jeux au démarrage
   const chargerCatalogue = async () => {
     const { data, error } = await supabase.from('catalogue').select('*');
     
@@ -65,19 +64,18 @@ export default function EtiquettesPage() {
       };
 
       data.forEach(item => {
-        // On place dans la bonne couleur, ou "vert" par défaut
         const couleur = item.couleur && dbEtiquettes[item.couleur] ? item.couleur : "vert";
         
         dbEtiquettes[couleur].push({
           id: item.ean || Date.now() + Math.random(),
           ean: item.ean || "",
-          quantity: 0, // Par défaut à 0
-          name: item.name || "",
+          quantity: 0, 
+          nom: item.nom || "",
           mecanique: item.mecanique || "",
           nb_de_joueurs: item.nb_de_joueurs || "",
-          coop_versus: (item.coop_versus as "Coop" | "Versus" | "Solo") || "Coop",
+          coop_versus: (item.coop_versus as "Coop" | "Versus" | "Solo" | "") || "", // NOUVEAU: Vide par défaut si non rempli
           temps_de_jeu: item.temps_de_jeu || "",
-          etoiles: item.etoiles || 1
+          etoiles: item.etoiles || "" // NOUVEAU: Vide par défaut si non rempli
         });
       });
 
@@ -93,18 +91,18 @@ export default function EtiquettesPage() {
     const nouvelleEtiquette: Etiquette = {
       id: Date.now(),
       ean: "",
-      quantity: 1, // Une nouvelle ligne ajoutée manuellement a 1 par défaut
-      name: "",
+      quantity: 1, 
+      nom: "",
       mecanique: "",
       nb_de_joueurs: "",
-      coop_versus: "Coop",
+      coop_versus: "", // NOUVEAU: Vide par défaut
       temps_de_jeu: "",
-      etoiles: 1
+      etoiles: "" // NOUVEAU: Vide par défaut
     };
     
     setEtiquettes(prev => ({
       ...prev,
-      [couleurId]: [nouvelleEtiquette, ...prev[couleurId]] // Ajoute au début de la liste
+      [couleurId]: [nouvelleEtiquette, ...prev[couleurId]] 
     }));
     
     if (!sectionsOuvertes[couleurId]) toggleSection(couleurId);
@@ -147,7 +145,7 @@ export default function EtiquettesPage() {
     
     if (data) {
       dataCatalogue = data;
-      nomTrouve = data.name; 
+      nomTrouve = data.nom; 
     } else {
       const { data: dataJeux } = await supabase.from('jeux').select('nom').eq('ean', ean).limit(1).single();
       if (dataJeux) {
@@ -160,38 +158,45 @@ export default function EtiquettesPage() {
         ...prev,
         [couleurId]: prev[couleurId].map(eti => eti.id === id ? {
           ...eti,
-          name: nomTrouve || eti.name,
+          nom: nomTrouve || eti.nom,
           mecanique: dataCatalogue?.mecanique || eti.mecanique,
           nb_de_joueurs: dataCatalogue?.nb_de_joueurs || eti.nb_de_joueurs,
-          coop_versus: (dataCatalogue?.coop_versus as "Coop" | "Versus" | "Solo") || eti.coop_versus,
+          coop_versus: (dataCatalogue?.coop_versus as "Coop" | "Versus" | "Solo" | "") || eti.coop_versus || "",
           temps_de_jeu: dataCatalogue?.temps_de_jeu || eti.temps_de_jeu,
-          etoiles: dataCatalogue?.etoiles || eti.etoiles
+          etoiles: dataCatalogue?.etoiles || eti.etoiles || ""
         } : eti)
       }));
     }
   };
 
-  // NOUVEAU : Sauvegarde de la couleur dans le catalogue
   const genererPDF = async () => {
     const catalogueData: any[] = [];
+    const eansCompletsAImprimer: string[] = []; // NOUVEAU : Liste des EAN à valider
     
     Object.entries(etiquettes).forEach(([couleurId, liste]) => {
       liste.forEach(e => {
-        if (e.ean && e.name) {
+        if (e.ean && e.nom) {
           catalogueData.push({
             ean: e.ean,
-            name: e.name, 
+            nom: e.nom, 
             mecanique: e.mecanique,
             nb_de_joueurs: e.nb_de_joueurs,
-            coop_versus: e.coop_versus,
+            coop_versus: e.coop_versus === "" ? null : e.coop_versus,
             temps_de_jeu: e.temps_de_jeu,
-            etoiles: e.etoiles,
-            couleur: couleurId // Sauvegarde la catégorie du jeu !
+            etoiles: e.etoiles === "" ? null : e.etoiles,
+            couleur: couleurId 
           });
+
+          // NOUVEAU : Si c'est complet et qu'on l'imprime, on l'ajoute à la liste des succès
+          const isIncomplet = !e.nom || !e.mecanique || !e.nb_de_joueurs || !e.coop_versus || !e.temps_de_jeu || e.etoiles === "";
+          if (!isIncomplet && e.quantity > 0) {
+            eansCompletsAImprimer.push(e.ean);
+          }
         }
       });
     });
 
+    // 1. Sauvegarde dans le catalogue
     const uniqueCatalogue = Array.from(new Map(catalogueData.map(item => [item.ean, item])).values());
     
     if (uniqueCatalogue.length > 0) {
@@ -200,6 +205,30 @@ export default function EtiquettesPage() {
         alert("Erreur de sauvegarde dans le catalogue : " + error.message);
       } else {
         console.log("Catalogue mis à jour avec succès !");
+      }
+    }
+
+    // 2. NOUVEAU : Validation automatique de l'étape dans la table jeux
+    if (eansCompletsAImprimer.length > 0) {
+      const { data: jeuxEnPrepa } = await supabase
+        .from('jeux')
+        .select('*')
+        .in('ean', eansCompletsAImprimer)
+        .eq('statut', 'En préparation');
+
+      if (jeuxEnPrepa && jeuxEnPrepa.length > 0) {
+        for (const jeu of jeuxEnPrepa) {
+          // On vérifie si valider l'étiquette termine complètement la préparation du jeu
+          const isTermine = jeu.etape_plastifier && jeu.etape_contenu && true && jeu.etape_equiper && jeu.etape_encoder && jeu.etape_notice && jeu.etape_nouveaute;
+          
+          await supabase
+            .from('jeux')
+            .update({ 
+              etape_etiquette: true,
+              statut: isTermine ? 'En stock' : 'En préparation'
+            })
+            .eq('id', jeu.id);
+        }
       }
     }
   };
@@ -222,7 +251,13 @@ export default function EtiquettesPage() {
           <h1 className="text-4xl font-black text-black mb-4">Impression des étiquettes</h1>
 
           <div className="flex flex-col gap-4">
-            {CATEGORIES.map((cat) => (
+            {CATEGORIES.map((cat) => {
+              // 1. On calcule le nombre de jeux incomplets pour cette catégorie
+              const nbIncomplets = etiquettes[cat.id].filter(eti => 
+                !eti.nom || !eti.mecanique || !eti.nb_de_joueurs || !eti.coop_versus || !eti.temps_de_jeu || eti.etoiles === ""
+              ).length;
+
+              return (
               <div key={cat.id} className="border-2 border-slate-100 rounded-3xl overflow-hidden shadow-sm">
                 
                 <div 
@@ -234,6 +269,12 @@ export default function EtiquettesPage() {
                     <span className="bg-white/20 px-3 py-1 rounded-full text-sm">
                       {etiquettes[cat.id].length} jeu(x)
                     </span>
+                    {/* 2. On affiche le badge seulement s'il y a des jeux incomplets */}
+                    {nbIncomplets > 0 && (
+                      <span className="bg-red-500 text-white px-3 py-1 rounded-full text-sm font-bold shadow-sm border border-red-600">
+                         {nbIncomplets} incomplet(s)
+                      </span>
+                    )}
                   </h2>
                   <span className="font-bold text-xl">{sectionsOuvertes[cat.id] ? "−" : "+"}</span>
                 </div>
@@ -259,54 +300,66 @@ export default function EtiquettesPage() {
                             </tr>
                           </thead>
                           <tbody>
-                            {etiquettes[cat.id].map((eti) => (
-                              <tr key={eti.id} className={`border-b border-slate-200 bg-white hover:bg-slate-50 transition-colors ${eti.quantity > 0 ? 'border-l-4 border-l-black' : ''}`}>
-                                <td className="p-2">
-                                  <input type="number" min="0" value={eti.quantity} onChange={(e) => mettreAJourLigne(cat.id, eti.id, "quantity", parseInt(e.target.value) || 0)} className={`w-full p-2 rounded-lg outline-none font-bold text-center border focus:border-slate-300 ${eti.quantity > 0 ? 'bg-black text-white' : 'bg-slate-100 border-transparent text-black'}`} />
-                                </td>
-                                <td className="p-2">
-                                  <input type="text" value={eti.ean} onChange={(e) => mettreAJourLigne(cat.id, eti.id, "ean", e.target.value)} onBlur={(e) => chercherEan(cat.id, eti.id, e.target.value)} placeholder="Code-barres..." className="w-full bg-slate-100 p-2 rounded-lg outline-none border border-transparent focus:border-slate-300 text-xs" />
-                                </td>
-                                <td className="p-2">
-                                  <input type="text" value={eti.name} onChange={(e) => mettreAJourLigne(cat.id, eti.id, "name", e.target.value)} placeholder="Nom du jeu..." className="w-full bg-slate-100 p-2 rounded-lg outline-none font-bold border border-transparent focus:border-slate-300" />
-                                </td>
-                                <td className="p-2">
-                                  <select 
-                                    value={eti.mecanique} 
-                                    onChange={(e) => mettreAJourLigne(cat.id, eti.id, "mecanique", e.target.value)} 
-                                    className="w-full bg-slate-100 p-2 rounded-lg outline-none cursor-pointer border border-transparent focus:border-slate-300 text-sm"
-                                  >
-                                    <option value="">Sélectionner...</option>
-                                    {MECANIQUES.map(m => (
-                                      <option key={m} value={m}>{m}</option>
-                                    ))}
-                                  </select>
-                                </td>
-                                <td className="p-2">
-                                  <input type="text" value={eti.nb_de_joueurs} onChange={(e) => mettreAJourLigne(cat.id, eti.id, "nb_de_joueurs", e.target.value)} placeholder="Ex: 2-6" className="w-full bg-slate-100 p-2 rounded-lg outline-none text-center border border-transparent focus:border-slate-300" />
-                                </td>
-                                <td className="p-2">
-                                  <select value={eti.coop_versus} onChange={(e) => mettreAJourLigne(cat.id, eti.id, "coop_versus", e.target.value)} className="w-full bg-slate-100 p-2 rounded-lg outline-none font-bold cursor-pointer border border-transparent focus:border-slate-300">
-                                    <option value="Coop">🤝 Coop</option>
-                                    <option value="Versus">⚔️ Versus</option>
-                                    <option value="Solo">👍 Solo</option>
-                                  </select>
-                                </td>
-                                <td className="p-2">
-                                  <input type="text" value={eti.temps_de_jeu} onChange={(e) => mettreAJourLigne(cat.id, eti.id, "temps_de_jeu", e.target.value)} placeholder="Ex: 10-20" className="w-full bg-slate-100 p-2 rounded-lg outline-none text-center border border-transparent focus:border-slate-300" />
-                                </td>
-                                <td className="p-2">
-                                  <select value={eti.etoiles} onChange={(e) => mettreAJourLigne(cat.id, eti.id, "etoiles", Number(e.target.value))} className="w-full bg-slate-100 p-2 rounded-lg outline-none text-center font-bold text-lg cursor-pointer border border-transparent focus:border-slate-300 tracking-widest">
-                                    <option value={1}>★</option>
-                                    <option value={2}>★★</option>
-                                    {cat.maxStars === 3 && <option value={3}>★★★</option>}
-                                  </select>
-                                </td>
-                                <td className="p-2 text-center">
-                                  <button onClick={() => supprimerLigne(cat.id, eti.id)} className="text-red-500 hover:bg-red-50 p-2 rounded-lg transition-colors" title="Supprimer la ligne">🗑️</button>
-                                </td>
-                              </tr>
-                            ))}
+                            {etiquettes[cat.id].map((eti) => {
+                              // NOUVEAU: Vérification si l'étiquette est incomplète
+                              const isIncomplet = !eti.nom || !eti.mecanique || !eti.nb_de_joueurs || !eti.coop_versus || !eti.temps_de_jeu || eti.etoiles === "";
+                              
+                              // Ligne rouge si sélectionné pour impression MAIS incomplet
+                              const ligneClasses = eti.quantity > 0 
+                                ? (isIncomplet ? 'bg-red-50/40 border-l-4 border-l-red-500' : 'bg-emerald-50/30 border-l-4 border-l-black')
+                                : 'bg-white hover:bg-slate-50';
+
+                              return (
+                                <tr key={eti.id} className={`border-b border-slate-200 transition-colors ${ligneClasses}`}>
+                                  <td className="p-2">
+                                    <input type="number" min="0" value={eti.quantity} onChange={(e) => mettreAJourLigne(cat.id, eti.id, "quantity", parseInt(e.target.value) || 0)} className={`w-full p-2 rounded-lg outline-none font-bold text-center border focus:border-slate-300 ${eti.quantity > 0 ? 'bg-black text-white' : 'bg-slate-100 border-transparent text-black'}`} />
+                                  </td>
+                                  <td className="p-2">
+                                    <input type="text" value={eti.ean} onChange={(e) => mettreAJourLigne(cat.id, eti.id, "ean", e.target.value)} onBlur={(e) => chercherEan(cat.id, eti.id, e.target.value)} placeholder="Code-barres..." className="w-full bg-slate-100 p-2 rounded-lg outline-none border border-transparent focus:border-slate-300 text-xs" />
+                                  </td>
+                                  <td className="p-2">
+                                    <input type="text" value={eti.nom} onChange={(e) => mettreAJourLigne(cat.id, eti.id, "nom", e.target.value)} placeholder="Nom du jeu..." className={`w-full p-2 rounded-lg outline-none font-bold border focus:border-slate-300 ${!eti.nom ? 'bg-red-50 border-red-300 text-red-700' : 'bg-slate-100 border-transparent'}`} />
+                                  </td>
+                                  <td className="p-2">
+                                    <select 
+                                      value={eti.mecanique} 
+                                      onChange={(e) => mettreAJourLigne(cat.id, eti.id, "mecanique", e.target.value)} 
+                                      className={`w-full p-2 rounded-lg outline-none cursor-pointer border focus:border-slate-300 text-sm ${!eti.mecanique ? 'bg-red-50 border-red-300 text-red-500' : 'bg-slate-100 border-transparent'}`}
+                                    >
+                                      <option value="">Sélectionner...</option>
+                                      {MECANIQUES.map(m => (
+                                        <option key={m} value={m}>{m}</option>
+                                      ))}
+                                    </select>
+                                  </td>
+                                  <td className="p-2">
+                                    <input type="text" value={eti.nb_de_joueurs} onChange={(e) => mettreAJourLigne(cat.id, eti.id, "nb_de_joueurs", e.target.value)} placeholder="Ex: 2-6" className={`w-full p-2 rounded-lg outline-none text-center border focus:border-slate-300 ${!eti.nb_de_joueurs ? 'bg-red-50 border-red-300 text-red-700' : 'bg-slate-100 border-transparent'}`} />
+                                  </td>
+                                  <td className="p-2">
+                                    <select value={eti.coop_versus} onChange={(e) => mettreAJourLigne(cat.id, eti.id, "coop_versus", e.target.value)} className={`w-full p-2 rounded-lg outline-none font-bold cursor-pointer border focus:border-slate-300 ${!eti.coop_versus ? 'bg-red-50 border-red-300 text-red-500' : 'bg-slate-100 border-transparent'}`}>
+                                      <option value="">Sélect...</option>
+                                      <option value="Coop">🤝 Coop</option>
+                                      <option value="Versus">⚔️ Versus</option>
+                                      <option value="Solo">👍 Solo</option>
+                                    </select>
+                                  </td>
+                                  <td className="p-2">
+                                    <input type="text" value={eti.temps_de_jeu} onChange={(e) => mettreAJourLigne(cat.id, eti.id, "temps_de_jeu", e.target.value)} placeholder="Ex: 10-20" className={`w-full p-2 rounded-lg outline-none text-center border focus:border-slate-300 ${!eti.temps_de_jeu ? 'bg-red-50 border-red-300 text-red-700' : 'bg-slate-100 border-transparent'}`} />
+                                  </td>
+                                  <td className="p-2">
+                                    <select value={eti.etoiles} onChange={(e) => mettreAJourLigne(cat.id, eti.id, "etoiles", e.target.value === "" ? "" : Number(e.target.value))} className={`w-full p-2 rounded-lg outline-none text-center font-bold text-lg cursor-pointer border focus:border-slate-300 tracking-widest ${eti.etoiles === "" ? 'bg-red-50 border-red-300 text-red-500' : 'bg-slate-100 border-transparent'}`}>
+                                      <option value="">-</option>
+                                      <option value={1}>★</option>
+                                      <option value={2}>★★</option>
+                                      {cat.maxStars === 3 && <option value={3}>★★★</option>}
+                                    </select>
+                                  </td>
+                                  <td className="p-2 text-center">
+                                    <button onClick={() => supprimerLigne(cat.id, eti.id)} className="text-red-500 hover:bg-red-50 p-2 rounded-lg transition-colors" title="Supprimer la ligne">🗑️</button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
                           </tbody>
                         </table>
                       </div>
@@ -321,9 +374,10 @@ export default function EtiquettesPage() {
                   </div>
                 )}
               </div>
-            ))}
-          </div>
-        </main>
+            );
+          })}
+        </div>
+      </main>
 
         <aside className="w-[350px] bg-white rounded-[2rem] shadow-md flex flex-col h-[calc(100vh-8rem)] sticky top-8 shrink-0 overflow-hidden border-2 border-slate-100">
           <div className="p-6 border-b border-slate-100 bg-slate-50/50">
@@ -342,7 +396,7 @@ export default function EtiquettesPage() {
 
           <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
             {CATEGORIES.map(cat => {
-              const items = etiquettes[cat.id].filter(eti => eti.name.toLowerCase().includes(recherche.toLowerCase()));
+              const items = etiquettes[cat.id].filter(eti => eti.nom.toLowerCase().includes(recherche.toLowerCase()));
               if (items.length === 0) return null;
 
               return (
@@ -355,7 +409,7 @@ export default function EtiquettesPage() {
                   {items.map(eti => (
                     <div key={`side-item-${eti.id}`} className="flex items-center justify-between bg-slate-50 p-2.5 rounded-xl border border-slate-100 hover:border-slate-300 transition-colors">
                       <span className="text-sm font-bold text-slate-700 truncate mr-2 flex-1">
-                        {eti.name || <span className="italic text-slate-400">Sans nom</span>}
+                        {eti.nom || <span className="italic text-slate-400">Sans nom</span>}
                       </span>
                       <div className="flex items-center bg-white rounded-lg border border-slate-200 shadow-sm shrink-0">
                         <button onClick={() => modifierQuantite(cat.id, eti.id, -1)} className="px-2.5 py-1 text-slate-500 hover:text-black font-bold text-lg leading-none hover:bg-slate-50 rounded-l-lg">−</button>
