@@ -6,7 +6,7 @@ import { PDFDownloadLink } from "@react-pdf/renderer";
 import { ContenuPDF } from "../../components/ContenuPDF";
 
 const CATEGORIES = [
-  { id: "vert", nom: "Vert", color: "bg-[#baff29] text-black" },
+  { id: "vert", nom: "Vert", color: "bg-[#baff29] text-white" },
   { id: "rose", nom: "Rose", color: "bg-[#f45be0] text-white" },
   { id: "bleu", nom: "Bleu", color: "bg-[#6ba4ff] text-white" },
   { id: "rouge", nom: "Rouge", color: "bg-[#ff4d79] text-white" },
@@ -30,7 +30,7 @@ export default function ContenuPage() {
   });
 
   const [sectionsOuvertes, setSectionsOuvertes] = useState<Record<string, boolean>>({
-    vert: true, rose: false, bleu: false, rouge: false, jaune: false
+    vert: false, rose: false, bleu: false, rouge: false, jaune: false
   });
 
   const [recherche, setRecherche] = useState("");
@@ -54,6 +54,9 @@ export default function ContenuPage() {
           quantity: 0,
           isOpen: false 
         });
+      });
+      Object.keys(dbContenus).forEach(k => {
+        dbContenus[k].sort((a, b) => a.nom.localeCompare(b.nom));
       });
       setContenus(dbContenus);
     }
@@ -175,14 +178,25 @@ export default function ContenuPage() {
 
       <div className="flex gap-6 w-full max-w-screen-2xl mx-auto items-start">
         <main className="bg-white rounded-[3rem] p-8 lg:p-10 flex-1 shadow-md flex flex-col gap-6 overflow-hidden">
-          <h1 className="text-4xl font-black text-black mb-4">Fiches de contenu</h1>
+          <h1 className="text-4xl font-black text-black mb-4">Impression du contenu</h1>
 
           <div className="flex flex-col gap-4">
-            {CATEGORIES.map((cat) => (
+            {CATEGORIES.map((cat) => {
+              // Calcul des incomplets
+              const nbIncomplets = contenus[cat.id].filter(c => !c.elements || c.elements.trim() === "").length;
+
+              return (
               <div key={cat.id} className="border-2 border-slate-100 rounded-3xl overflow-hidden shadow-sm">
                 <div onClick={() => toggleSection(cat.id)} className={`${cat.color} p-5 flex justify-between items-center cursor-pointer select-none`}>
                   <h2 className="text-xl font-bold flex items-center gap-3">
-                    {cat.nom} <span className="bg-white/20 px-3 py-1 rounded-full text-sm">{contenus[cat.id].length} jeu(x)</span>
+                    {cat.nom} 
+                    <span className="bg-white/20 px-3 py-1 rounded-full text-sm">{contenus[cat.id].length} jeu(x)</span>
+                    {/* Badge rouge */}
+                    {nbIncomplets > 0 && (
+                      <span className="bg-red-500 text-white px-3 py-1 rounded-full text-sm font-bold shadow-sm border border-red-600">
+                         {nbIncomplets} incomplet(s)
+                      </span>
+                    )}
                   </h2>
                   <span className="font-bold text-xl">{sectionsOuvertes[cat.id] ? "−" : "+"}</span>
                 </div>
@@ -255,7 +269,8 @@ export default function ContenuPage() {
                   </div>
                 )}
               </div>
-            ))}
+            );
+          })}
           </div>
         </main>
 

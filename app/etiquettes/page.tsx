@@ -5,8 +5,9 @@ import { supabase } from "../../lib/supabase";
 import { PDFDownloadLink } from "@react-pdf/renderer";
 import { EtiquettesPDF } from "../../components/EtiquettesPDF";
 
+
 const CATEGORIES = [
-  { id: "vert", nom: "Vert", color: "bg-[#baff29] text-black", maxStars: 3 },
+  { id: "vert", nom: "Vert", color: "bg-[#baff29] text-white", maxStars: 3 },
   { id: "rose", nom: "Rose", color: "bg-[#f45be0] text-white", maxStars: 2 },
   { id: "bleu", nom: "Bleu", color: "bg-[#6ba4ff] text-white", maxStars: 2 },
   { id: "rouge", nom: "Rouge", color: "bg-[#ff4d79] text-white", maxStars: 2 },
@@ -77,6 +78,9 @@ export default function EtiquettesPage() {
           temps_de_jeu: item.temps_de_jeu || "",
           etoiles: item.etoiles || "" // NOUVEAU: Vide par défaut si non rempli
         });
+      });
+      Object.keys(dbEtiquettes).forEach(k => {
+        dbEtiquettes[k].sort((a, b) => a.nom.localeCompare(b.nom));
       });
 
       setEtiquettes(dbEtiquettes);

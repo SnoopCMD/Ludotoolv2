@@ -81,7 +81,7 @@ export default function Home() {
       return;
     }
 
-    const jeuxBruts = jeuxData as JeuType[];
+    const jeuxBruts = (jeuxData as JeuType[]).sort((a, b) => a.nom.localeCompare(b.nom));
     const eans = [...new Set(jeuxBruts.map(j => j.ean))];
     
     // 2. Récupérer les couleurs correspondantes dans le catalogue
@@ -117,7 +117,7 @@ export default function Home() {
   }, []);
 
   const etapesVisuelles = [
-    { nom: "Plastification", id: "etape_plastifier", color: "bg-[#baff29] text-black" }, 
+    { nom: "Plastification", id: "etape_plastifier", color: "bg-[#baff29] text-white" }, 
     { nom: "Contenu", id: "etape_contenu", color: "bg-[#6ba4ff] text-white" },       
     { nom: "Étiquette", id: "etape_etiquette", color: "bg-[#9b51e0] text-white" },     
     { nom: "Équiper", id: "etape_equiper", color: "bg-[#f45be0] text-white" },         
