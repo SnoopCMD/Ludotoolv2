@@ -13,7 +13,7 @@ type EtiquetteType = {
   nb_de_joueurs: string;
   coop_versus: string;
   temps_de_jeu: string;
-  etoiles: number;
+  etoiles: number | ""; // <-- On autorise le vide ici
 };
 
 const styles = StyleSheet.create({
@@ -115,14 +115,17 @@ export const EtiquettesPDF = ({ etiquettesParCouleur }: { etiquettesParCouleur: 
     return null;
   };
 
-  const renderEtoiles = (nb: number) => {
+  const renderEtoiles = (nb: number | "") => {
     if (nb === 3) {
       return <Image src={`${baseUrl}/etoiles3.png`} style={{ width: 135, height: 45, objectFit: 'contain' }} />;
     }
     if (nb === 2) {
       return <Image src={`${baseUrl}/etoiles2.png`} style={{ width: 90, height: 45, objectFit: 'contain' }} />;
     }
-    return <Image src={`${baseUrl}/etoile.png`} style={{ width: 25, height: 25, objectFit: 'contain' }} />;
+    if (nb === 1) {
+      return <Image src={`${baseUrl}/etoile.png`} style={{ width: 25, height: 25, objectFit: 'contain' }} />;
+    }
+    return null; // N'affiche rien si c'est vide
   };
 
   if (!etiquettesParCouleur) {
