@@ -56,6 +56,10 @@ export default function Home() {
   const [isListeOpen, setIsListeOpen] = useState(false);
   const [etapeActive, setEtapeActive] = useState<string | null>(null);
   
+  // Les compteurs sont bien à l'intérieur de la fonction maintenant
+  const [nbReparations, setNbReparations] = useState(0);
+  const [nbManquants, setNbManquants] = useState(0);
+
   const [jeuxAttente, setJeuxAttente] = useState<JeuAttenteType[]>([]);
   const [jeuxEnPrepa, setJeuxEnPrepa] = useState<JeuType[]>([]);
   const [jeuxSelectionnes, setJeuxSelectionnes] = useState<(string | number)[]>([]);
@@ -110,6 +114,20 @@ export default function Home() {
       etape_notice: jeux.filter(j => !j.etape_notice).length,
       etape_nouveaute: jeux.filter(j => !j.etape_nouveaute).length,
     });
+
+    // 4. Récupération des compteurs S.A.V
+    const { count: countRep } = await supabase
+      .from('reparations')
+      .select('*', { count: 'exact', head: true })
+      .eq('statut', 'À faire');
+
+    const { count: countManq } = await supabase
+      .from('pieces_manquantes')
+      .select('*', { count: 'exact', head: true })
+      .eq('statut', 'Manquant');
+
+    setNbReparations(countRep || 0);
+    setNbManquants(countManq || 0);
   };
 
   useEffect(() => {
@@ -159,7 +177,6 @@ export default function Home() {
   };
 
   const validerEtEnvoyer = async () => {
-    // 1. Préparer les données pour la table 'jeux' (sans la couleur)
     const jeuxAInserer = jeuxAttente.map(jeu => {
       const isTermine = !jeu.isNouveaute && jeu.etapes.etape_plastifier && jeu.etapes.etape_contenu && 
                         jeu.etapes.etape_etiquette && jeu.etapes.etape_equiper && 
@@ -187,7 +204,6 @@ export default function Home() {
       return;
     } 
 
-    // 2. Mettre à jour la table 'catalogue' pour les couleurs
     const catalogueUpdates = jeuxAttente.filter(j => j.couleur !== "").map(j => ({
       ean: j.ean,
       nom: j.nom,
@@ -260,11 +276,9 @@ export default function Home() {
   const etapeActiveInfo = etapesVisuelles.find(e => e.id === etapeActive);
   const jeuxPourEtapeActive = jeuxEnPrepa.filter(j => etapeActive && !j[etapeActive]);
 
-const changerCouleurJeu = async (idJeu: string | number, ean: string, nom: string, nouvelleCouleur: string) => {
-    // Mise à jour de l'affichage immédiatement (optimiste)
+  const changerCouleurJeu = async (idJeu: string | number, ean: string, nom: string, nouvelleCouleur: string) => {
     setJeuxEnPrepa(prev => prev.map(j => j.id === idJeu ? { ...j, couleur: nouvelleCouleur } : j));
 
-    // Sauvegarde dans la base de données (table catalogue)
     const { error } = await supabase
       .from('catalogue')
       .upsert({ ean, nom, couleur: nouvelleCouleur }, { onConflict: 'ean' });
@@ -330,9 +344,21 @@ const changerCouleurJeu = async (idJeu: string | number, ean: string, nom: strin
             </div>
           </div>
 
-          <div className="bg-gradient-to-br from-[#ffaa00] to-[#ff7b00] rounded-[2.5rem] p-10 flex flex-col items-start shadow-sm">
-            <h2 className="text-3xl font-bold text-black/90">Réparation</h2>
+          {/* NOUVEAU BLOC REPARATION */}
+          <div className="bg-gradient-to-br from-[#ffaa00] to-[#ff7b00] rounded-[2.5rem] p-8 flex flex-col shadow-sm">
+            <h2 className="text-3xl font-bold text-black/90 mb-6">Réparation</h2>
+            <div className="flex flex-col gap-3 w-full">
+              <Link href="/reparations" className="bg-black/10 hover:bg-black/20 transition-colors p-4 rounded-2xl flex justify-between items-center text-black">
+                <span className="font-bold text-lg">🛠️ À réparer</span>
+                <span className="bg-white text-[#ff7b00] px-3 py-1 rounded-full text-sm font-black shadow-sm">{nbReparations}</span>
+              </Link>
+              <Link href="/pieces" className="bg-black/10 hover:bg-black/20 transition-colors p-4 rounded-2xl flex justify-between items-center text-black">
+                <span className="font-bold text-lg">🧩 Pièces manquantes</span>
+                <span className="bg-white text-[#ff7b00] px-3 py-1 rounded-full text-sm font-black shadow-sm">{nbManquants}</span>
+              </Link>
+            </div>
           </div>
+
         </div>
 
         <div className="bg-[#4d4d4d] border-2 border-slate-100 rounded-[2.5rem] p-8 lg:p-10 shadow-sm w-full mt-4">
@@ -433,7 +459,6 @@ const changerCouleurJeu = async (idJeu: string | number, ean: string, nom: strin
                         <div className="flex items-center gap-3 mb-1">
                           <span className="font-bold text-xl text-black block leading-tight">{jeu.nom}</span>
                           
-                          {/* NOUVEAU : Sélecteur de couleurs miniature */}
                           <div className="flex gap-1 bg-slate-50 p-1 rounded-full border border-slate-200">
                             {COULEURS.map(c => (
                               <button
@@ -593,7 +618,7 @@ const changerCouleurJeu = async (idJeu: string | number, ean: string, nom: strin
             </div>
             
             <button onClick={validerEtEnvoyer} disabled={jeuxAttente.length === 0 || jeuxAttente.some(j => j.nom === "" || j.nom.includes("⏳"))} className="w-full bg-[#baff29] hover:bg-[#9de30b] disabled:bg-slate-200 text-black font-black py-4 rounded-xl transition-colors shadow-md">
-              💾 Valider et envoyer à l&apos;Atelier
+              💾 Valider et envoyer à l'Atelier
             </button>
           </div>
         </div>
