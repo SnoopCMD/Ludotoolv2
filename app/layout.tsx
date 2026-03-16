@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata = {
-  title: 'LudoTool - Atelier',
-  description: 'Générateur et gestion de boîte de jeux',
+  title: 'LudoTool',
+  description: '',
 };
 
 export default function RootLayout({

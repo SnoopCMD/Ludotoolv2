@@ -245,7 +245,7 @@ export default function EtiquettesPage() {
       <header className="flex justify-between items-center mb-6 w-full max-w-screen-2xl mx-auto shrink-0">
         <div className="w-10 h-10 bg-black rounded flex items-center justify-center text-white font-black text-xl italic cursor-pointer">+</div>
         <nav className="bg-[#2d2d2d] text-white p-1.5 rounded-full flex items-center text-sm font-bold shadow-lg gap-1">
-          <Link href="/" className="px-6 py-2.5 rounded-full hover:bg-white/10 transition">Retour Atelier</Link>
+          <Link href="/atelier" className="px-6 py-2.5 rounded-full hover:bg-white/10 transition">Retour Atelier</Link>
         </nav>
         <div className="w-10"></div>
       </header>
