@@ -309,27 +309,44 @@ export default function AgendaPage() {
 
   useEffect(() => {
     chargerEquipe(); chargerEvenements();
-    fetch(`https://calendrier.api.gouv.fr/jours-feries/metropole/${dateActuelle.getFullYear()}.json`).then(res => res.json()).then(data => setJoursFeries(data)).catch(console.error);
+    // Appel via le relais local
+    fetch(`/api/feries?year=${dateActuelle.getFullYear()}`)
+      .then(res => res.json())
+      .then(data => setJoursFeries(data))
+      .catch(console.error);
   }, [dateActuelle.getFullYear()]);
 
   useEffect(() => {
-    fetch('https://data.education.gouv.fr/api/explore/v2.1/catalog/datasets/fr-en-calendrier-scolaire/exports/json').then(res => res.json()).then(data => {
-      if (!Array.isArray(data)) return;
-      const mapVacances: Record<string, string[]> = {};
-      data.forEach((r: any) => {
-        if (r.population === "Enseignants" || !r.zones || !["Zone A", "Zone B", "Zone C"].includes(r.zones) || !r.start_date) return;
-        eachDayOfInterval({ start: new Date(r.start_date), end: subDays(new Date(r.end_date), 1) }).forEach(d => {
-          const dStr = format(d, 'yyyy-MM-dd');
-          if (!mapVacances[dStr]) mapVacances[dStr] = [];
-          if (!mapVacances[dStr].includes(r.zones)) mapVacances[dStr].push(r.zones);
+    // Appel via le relais local
+    fetch('/api/vacances')
+      .then(res => res.json())
+      .then(data => {
+        if (!Array.isArray(data)) return;
+        const mapVacances: Record<string, string[]> = {};
+        data.forEach((r: any) => {
+          if (r.population === "Enseignants" || !r.zones || !["Zone A", "Zone B", "Zone C"].includes(r.zones) || !r.start_date) return;
+          eachDayOfInterval({ start: new Date(r.start_date), end: subDays(new Date(r.end_date), 1) }).forEach(d => {
+            const dStr = format(d, 'yyyy-MM-dd');
+            if (!mapVacances[dStr]) mapVacances[dStr] = [];
+            if (!mapVacances[dStr].includes(r.zones)) mapVacances[dStr].push(r.zones);
+          });
         });
-      });
-      setVacances(mapVacances);
-    }).catch(console.error);
+        setVacances(mapVacances);
+      })
+      .catch(console.error);
   }, []);
 
-  const chargerEquipe = async () => { const { data } = await supabase.from('equipe').select('*').order('nom'); if (data) setEquipe(data); };
-  const chargerEvenements = async () => { const { data } = await supabase.from('evenements').select('*').order('date_debut'); if (data) setEvenements(data); };
+const chargerEquipe = async () => { 
+    const res = await fetch('/api/equipe');
+    const data = await res.json();
+    if (data && !data.error) setEquipe(data); 
+  };
+
+  const chargerEvenements = async () => { 
+    const res = await fetch('/api/evenements');
+    const data = await res.json();
+    if (data && !data.error) setEvenements(data); 
+  };
 
   const toggleDraftMode = () => {
     if (!isDraftMode) {
