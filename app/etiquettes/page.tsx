@@ -189,16 +189,16 @@ export default function EtiquettesPage() {
       ...prev,
       [couleurId]: prev[couleurId].map(eti => {
         if (eti.id === id) {
-          const updated = {
+          const updated: Etiquette = {
             ...eti,
             nom: nomTrouve || eti.nom,
             mecanique: dataCatalogue?.mecanique || eti.mecanique,
             nb_de_joueurs: dataCatalogue?.nb_de_joueurs || eti.nb_de_joueurs,
-            coop_versus: (dataCatalogue?.coop_versus as "Coop" | "Versus" | "Solo" | "") || eti.coop_versus || "",
+            coop_versus: (dataCatalogue?.coop_versus || eti.coop_versus || "") as "Coop" | "Versus" | "Solo" | "",
             temps_de_jeu: dataCatalogue?.temps_de_jeu || eti.temps_de_jeu,
             etoiles: dataCatalogue?.etoiles || eti.etoiles || ""
           };
-          sauvegarderLigneEnBase(updated, couleurId); // Auto-save après la recherche
+          sauvegarderLigneEnBase(updated, couleurId); 
           return updated;
         }
         return eti;
