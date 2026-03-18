@@ -29,7 +29,7 @@ type JeuType = {
 type JeuAttenteType = {
   ean: string;
   nom: string;
-  isNouveaute: boolean;
+  typeAjout: "nouveaute" | "double" | "existant"; // NOUVEAU: 3 états possibles
   etapes: Record<string, boolean>;
   couleur: string;
 };
@@ -56,7 +56,6 @@ export default function Home() {
   const [isListeOpen, setIsListeOpen] = useState(false);
   const [etapeActive, setEtapeActive] = useState<string | null>(null);
   
-  // Les compteurs sont bien à l'intérieur de la fonction maintenant
   const [nbReparations, setNbReparations] = useState(0);
   const [nbManquants, setNbManquants] = useState(0);
 
@@ -73,7 +72,6 @@ export default function Home() {
   const [comptesEtapes, setComptesEtapes] = useState<Record<string, number>>({});
 
   const fetchDashboardData = async () => {
-    // 1. Récupérer les jeux
     const { data: jeuxData, error: jeuxError } = await supabase
       .from('jeux')
       .select('*')
@@ -88,7 +86,6 @@ export default function Home() {
     const jeuxBruts = (jeuxData as JeuType[]).sort((a, b) => a.nom.localeCompare(b.nom));
     const eans = [...new Set(jeuxBruts.map(j => j.ean))];
     
-    // 2. Récupérer les couleurs correspondantes dans le catalogue
     let colorMap: Record<string, string> = {};
     if (eans.length > 0) {
       const { data: catData } = await supabase.from('catalogue').select('ean, couleur').in('ean', eans);
@@ -99,7 +96,6 @@ export default function Home() {
       }
     }
 
-    // 3. Fusionner
     const jeux = jeuxBruts.map(j => ({ ...j, couleur: colorMap[j.ean] || "" }));
     
     setJeuxEnPrepa(jeux);
@@ -115,16 +111,8 @@ export default function Home() {
       etape_nouveaute: jeux.filter(j => !j.etape_nouveaute).length,
     });
 
-    // 4. Récupération des compteurs S.A.V
-    const { count: countRep } = await supabase
-      .from('reparations')
-      .select('*', { count: 'exact', head: true })
-      .eq('statut', 'À faire');
-
-    const { count: countManq } = await supabase
-      .from('pieces_manquantes')
-      .select('*', { count: 'exact', head: true })
-      .eq('statut', 'Manquant');
+    const { count: countRep } = await supabase.from('reparations').select('*', { count: 'exact', head: true }).eq('statut', 'À faire');
+    const { count: countManq } = await supabase.from('pieces_manquantes').select('*', { count: 'exact', head: true }).eq('statut', 'Manquant');
 
     setNbReparations(countRep || 0);
     setNbManquants(countManq || 0);
@@ -150,7 +138,7 @@ export default function Home() {
     if (e.key === "Enter" && eanInput.trim() !== "") {
       const codeScan = eanInput.trim();
       setEanInput(""); 
-      setJeuxAttente(prev => [...prev, { ean: codeScan, nom: "⏳ Recherche en cours...", isNouveaute: true, etapes: { ...defaultEtapes }, couleur: "" }]);
+      setJeuxAttente(prev => [...prev, { ean: codeScan, nom: "⏳ Recherche en cours...", typeAjout: "nouveaute", etapes: { ...defaultEtapes }, couleur: "" }]);
       try {
         const res = await fetch(`/api/recherche?ean=${codeScan}`);
         const data = await res.json();
@@ -163,9 +151,28 @@ export default function Home() {
 
   const ajouterManuel = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" && manuelInput.trim() !== "") {
-      setJeuxAttente([...jeuxAttente, { ean: "Manuel", nom: manuelInput, isNouveaute: true, etapes: { ...defaultEtapes }, couleur: "" }]);
+      setJeuxAttente([...jeuxAttente, { ean: "Manuel", nom: manuelInput, typeAjout: "nouveaute", etapes: { ...defaultEtapes }, couleur: "" }]);
       setManuelInput("");
     }
+  };
+
+  // NOUVEAU: Gère le changement d'état entre Nouveauté, Double, et Existant
+  const changerTypeAjout = (index: number, nouveauType: "nouveaute" | "double" | "existant") => {
+    setJeuxAttente(prev => prev.map((jeu, i) => {
+      if (i === index) {
+        let nouvellesEtapes = { ...jeu.etapes };
+        if (nouveauType === "existant") {
+           nouvellesEtapes = {
+             etape_plastifier: true, etape_contenu: true, etape_etiquette: true,
+             etape_equiper: true, etape_encoder: true, etape_notice: true
+           };
+        } else if (jeu.typeAjout === "existant") {
+           nouvellesEtapes = { ...defaultEtapes };
+        }
+        return { ...jeu, typeAjout: nouveauType, etapes: nouvellesEtapes };
+      }
+      return jeu;
+    }));
   };
 
   const toggleEtapeAttente = (index: number, etapeId: string) => {
@@ -178,21 +185,23 @@ export default function Home() {
 
   const validerEtEnvoyer = async () => {
     const jeuxAInserer = jeuxAttente.map(jeu => {
-      const isTermine = !jeu.isNouveaute && jeu.etapes.etape_plastifier && jeu.etapes.etape_contenu && 
+      const isExistant = jeu.typeAjout === "existant";
+      const isTermine = isExistant || (jeu.typeAjout === "double" && 
+                        jeu.etapes.etape_plastifier && jeu.etapes.etape_contenu && 
                         jeu.etapes.etape_etiquette && jeu.etapes.etape_equiper && 
-                        jeu.etapes.etape_encoder && jeu.etapes.etape_notice;
+                        jeu.etapes.etape_encoder && jeu.etapes.etape_notice);
       return { 
         nom: jeu.nom, 
         ean: jeu.ean, 
         statut: isTermine ? "En stock" : "En préparation",
-        is_double: !jeu.isNouveaute,
-        etape_nouveaute: !jeu.isNouveaute,
-        etape_plastifier: jeu.etapes.etape_plastifier,
-        etape_contenu: jeu.etapes.etape_contenu,
-        etape_etiquette: jeu.etapes.etape_etiquette,
-        etape_equiper: jeu.etapes.etape_equiper,
-        etape_encoder: jeu.etapes.etape_encoder,
-        etape_notice: jeu.etapes.etape_notice
+        is_double: jeu.typeAjout !== "nouveaute",
+        etape_nouveaute: jeu.typeAjout !== "nouveaute",
+        etape_plastifier: isExistant ? true : jeu.etapes.etape_plastifier,
+        etape_contenu: isExistant ? true : jeu.etapes.etape_contenu,
+        etape_etiquette: isExistant ? true : jeu.etapes.etape_etiquette,
+        etape_equiper: isExistant ? true : jeu.etapes.etape_equiper,
+        etape_encoder: isExistant ? true : jeu.etapes.etape_encoder,
+        etape_notice: isExistant ? true : jeu.etapes.etape_notice
       };
     });
     
@@ -344,7 +353,6 @@ export default function Home() {
             </div>
           </div>
 
-          {/* NOUVEAU BLOC REPARATION */}
           <div className="bg-gradient-to-br from-[#ffaa00] to-[#ff7b00] rounded-[2.5rem] p-8 flex flex-col shadow-sm">
             <h2 className="text-3xl font-bold text-black/90 mb-6">Réparation</h2>
             <div className="flex flex-col gap-3 w-full">
@@ -381,7 +389,6 @@ export default function Home() {
         </div>
       </main>
 
-      {/* POP-UP : SÉLECTION MULTIPLE */}
       {etapeActive && etapeActiveInfo && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-[2rem] p-8 w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl">
@@ -438,7 +445,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* POP-UP : LISTE GLOBALE DES JEUX */}
       {isListeOpen && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-[2rem] p-8 w-full max-w-6xl max-h-[90vh] flex flex-col shadow-2xl">
@@ -516,7 +522,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* POP-UP : AJOUT */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-[2rem] p-8 w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl">
@@ -580,30 +585,65 @@ export default function Home() {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 mb-3">
+                    {/* NOUVEAU: Les 3 boutons d'état */}
+                    <div className="flex items-center gap-2 mb-3 bg-slate-50 p-1.5 rounded-xl w-max border border-slate-200">
                       <button 
-                        onClick={() => setJeuxAttente(prev => prev.map((j, i) => i === index ? { ...j, isNouveaute: !j.isNouveaute } : j))}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${jeu.isNouveaute ? 'bg-[#ffa600] text-white shadow-sm' : 'bg-slate-200 text-slate-500 hover:bg-slate-300'}`}
+                        onClick={() => changerTypeAjout(index, 'nouveaute')}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${jeu.typeAjout === 'nouveaute' ? 'bg-[#ffa600] text-white shadow-sm scale-105' : 'text-slate-500 hover:text-black hover:bg-slate-200'}`}
                       >
-                        {jeu.isNouveaute ? '🌟 Nouveauté' : '🔄 Double (Pas de pastille)'}
+                        🌟 Nouveauté
+                      </button>
+                      <button 
+                        onClick={() => changerTypeAjout(index, 'double')}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${jeu.typeAjout === 'double' ? 'bg-blue-500 text-white shadow-sm scale-105' : 'text-slate-500 hover:text-black hover:bg-slate-200'}`}
+                      >
+                        🔄 Double
+                      </button>
+                      <button 
+                        onClick={() => changerTypeAjout(index, 'existant')}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${jeu.typeAjout === 'existant' ? 'bg-emerald-500 text-white shadow-sm scale-105' : 'text-slate-500 hover:text-black hover:bg-slate-200'}`}
+                      >
+                        ✅ Existant
                       </button>
                     </div>
 
                     <div className="flex gap-x-5 gap-y-1.5 flex-wrap border-t border-slate-100 pt-3">
-                      {etapesVisuelles.map((etape) => (
-                        <label key={etape.id} className={`flex items-center gap-1.5 ${etape.id === 'etape_nouveaute' && !jeu.isNouveaute ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
-                          <input 
-                            type="checkbox" 
-                            className="custom-cb" 
-                            disabled={etape.id === 'etape_nouveaute'} 
-                            checked={etape.id === 'etape_nouveaute' ? !jeu.isNouveaute : jeu.etapes[etape.id]} 
-                            onChange={() => toggleEtapeAttente(index, etape.id)}
-                          />
-                          <span className="text-sm font-semibold leading-none text-black">
-                            {etape.id === 'etape_nouveaute' && !jeu.isNouveaute ? '🔄 Double' : etape.nom}
-                          </span>
-                        </label>
-                      ))}
+                      {etapesVisuelles.map((etape) => {
+                        const isExistant = jeu.typeAjout === 'existant';
+                        const isDouble = jeu.typeAjout === 'double';
+                        const isEtapeNouv = etape.id === 'etape_nouveaute';
+                        
+                        let disabled = isExistant || isEtapeNouv;
+                        let checked = jeu.etapes[etape.id];
+                        let label = etape.nom;
+
+                        if (isExistant) {
+                          checked = true;
+                          if (isEtapeNouv) label = "✅ Déjà en stock";
+                        } else if (isDouble) {
+                          if (isEtapeNouv) {
+                            checked = true;
+                            label = "🔄 Double";
+                          }
+                        } else {
+                          if (isEtapeNouv) checked = false;
+                        }
+
+                        return (
+                          <label key={etape.id} className={`flex items-center gap-1.5 ${disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
+                            <input 
+                              type="checkbox" 
+                              className="custom-cb" 
+                              disabled={disabled} 
+                              checked={checked} 
+                              onChange={() => toggleEtapeAttente(index, etape.id)}
+                            />
+                            <span className="text-sm font-semibold leading-none text-black">
+                              {label}
+                            </span>
+                          </label>
+                        );
+                      })}
                     </div>
 
                     <div className="absolute top-4 right-4 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity bg-white p-1 rounded-lg shadow-inner border border-slate-100">

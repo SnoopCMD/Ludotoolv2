@@ -16,7 +16,7 @@ type MembreEquipe = {
   solde_recup?: number;
   horaires: any; 
 };
-type Evenement = { id?: string; titre: string; type: string; date_debut: string; date_fin: string; heure_debut?: string; heure_fin?: string; membres: string[]; };
+type Evenement = { id?: string; parent_id?: string; titre: string; type: string; date_debut: string; date_fin: string; heure_debut?: string; heure_fin?: string; membres: string[]; };
 
 type SwapSession = {
   active: boolean;
@@ -29,11 +29,10 @@ type SwapSession = {
 const JOURS_SEMAINE = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'];
 const HEURES_GRILLE = [8, 10, 12, 14, 16, 18, 20, 22]; 
 const HEURE_DEBUT = 7;
-const HEURE_FIN = 24; // Jusqu'à minuit
+const HEURE_FIN = 24; 
 
 const ABSENCE_TYPES = ['Congé', 'Demi-Congé', 'RTT', 'Demi-RTT', 'Récupération', 'Demi-Récupération'];
 
-// 💡 CORRECTION MINUIT : Si c'est une heure de fin et qu'elle vaut 00:00, on la compte comme 24h
 const timeToMins = (t: string, isEnd: boolean = false) => {
   if (!t) return 0;
   let [h, m] = t.split(':').map(Number);
@@ -41,7 +40,6 @@ const timeToMins = (t: string, isEnd: boolean = false) => {
   return h * 60 + m;
 };
 
-// 💡 Fonction pour re-transformer les minutes en texte HH:MM (utilisé pour soustraire proprement)
 const minsToTimeStr = (mins: number) => {
   if (mins === 1440) return "00:00"; 
   const h = Math.floor(mins / 60);
@@ -49,7 +47,6 @@ const minsToTimeStr = (mins: number) => {
   return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
 };
 
-// 💡 CORRECTION MINUIT : Calcul basé sur les minutes et non plus sur du texte
 const soustraireHeures = (debutA: string, finA: string, debutB: string, finB: string) => {
   const startA = timeToMins(debutA);
   const endA = timeToMins(finA, true);
@@ -64,7 +61,6 @@ const soustraireHeures = (debutA: string, finA: string, debutB: string, finB: st
   return res;
 };
 
-// Fonction experte pour fusionner les intervalles de temps et éviter les doubles comptes
 const mergeIntervals = (intervals: {start: number, end: number}[]) => {
   const valid = intervals.filter(i => i.start < i.end);
   if (!valid.length) return [];
@@ -87,6 +83,7 @@ const getEventStyle = (type: string, isOverlay = false) => {
   if (type.includes('RTT')) return 'bg-emerald-100 text-emerald-900 border-emerald-400' + base;
   if (type.includes('Congé') || type.includes('Récupération')) return 'bg-rose-100 text-rose-900 border-rose-400' + base;
   if (type === 'Réunion') return 'bg-indigo-200 text-indigo-900 border-indigo-400' + base;
+  if (type === 'Animation') return 'bg-amber-200 text-amber-900 border-amber-400' + base; 
   if (type === 'Soirée Jeux') return 'bg-purple-200 text-purple-900 border-purple-400' + base;
   if (type === 'Heures Exceptionnelles') return 'bg-teal-200 text-teal-900 border-teal-400' + base;
   return 'bg-slate-200 text-slate-800 border-slate-300' + base;
@@ -96,6 +93,7 @@ const getEventDotColor = (type: string) => {
   if (type.includes('RTT')) return 'bg-emerald-500';
   if (type.includes('Congé') || type.includes('Récupération')) return 'bg-rose-500';
   if (type === 'Réunion') return 'bg-indigo-500';
+  if (type === 'Animation') return 'bg-amber-500'; 
   if (type === 'Soirée Jeux') return 'bg-purple-500';
   if (type === 'Heures Exceptionnelles') return 'bg-teal-500';
   return 'bg-slate-500';
@@ -106,6 +104,7 @@ const getEventIcon = (type: string) => {
   if (type.includes('RTT')) return '🌴';
   if (type.includes('Récupération')) return '🛋️';
   if (type === 'Réunion') return '💬';
+  if (type === 'Animation') return '🎪'; 
   if (type === 'Soirée Jeux') return '🌙';
   if (type === 'Heures Exceptionnelles') return '⭐';
   return '📌';
@@ -124,7 +123,6 @@ const getHoraireForDay = (membre: MembreEquipe, dateKey: string, nomJour: string
   return null;
 };
 
-// Moteur de calcul du temps (Heures supp, amplitude, gestion intelligente des absences et fusions)
 const getDailyMinutes = (membre: MembreEquipe, dateKey: string, nomJour: string, typeSemaine: string, evsDuJour: Evenement[], isFerie: boolean) => {
   let expected = 0;
   let actual = 0;
@@ -134,7 +132,6 @@ const getDailyMinutes = (membre: MembreEquipe, dateKey: string, nomJour: string,
   if (!isFerie) {
     const hBase = membre.horaires?.[typeSemaine]?.[nomJour];
     if (hBase && hBase.debut && hBase.fin) {
-      // 💡 CORRECTION MINUIT
       expected = (timeToMins(hBase.fin, true) - timeToMins(hBase.debut)) - (Number(hBase.pause ?? 1) * 60);
     }
   }
@@ -164,7 +161,6 @@ const getDailyMinutes = (membre: MembreEquipe, dateKey: string, nomJour: string,
            });
            
            segments.forEach(seg => {
-             // 💡 CORRECTION MINUIT
              intervals.push({ start: timeToMins(seg.debut), end: timeToMins(seg.fin, true) });
            });
        }
@@ -172,7 +168,6 @@ const getDailyMinutes = (membre: MembreEquipe, dateKey: string, nomJour: string,
   }
 
   evsExtra.forEach(ext => {
-     // 💡 CORRECTION MINUIT
      intervals.push({ start: timeToMins(ext.heure_debut!), end: timeToMins(ext.heure_fin!, true) });
   });
 
@@ -189,7 +184,6 @@ const getDailyMinutes = (membre: MembreEquipe, dateKey: string, nomJour: string,
       amplitude = Math.max(0, (maxEnd - minStart) - pauseDuJour);
   }
 
-  // Anti-perte d'heures lors des jours de congés complets
   if (evsAbsence.length > 0 && actual < expected) {
       actual = expected;
   }
@@ -251,19 +245,47 @@ export default function AgendaPage() {
 
   const [showEventModal, setShowEventModal] = useState(false);
   const [showEventsListPanel, setShowEventsListPanel] = useState(false);
+  const [listTab, setListTab] = useState<'ponctuels' | 'series'>('ponctuels');
+  const [groupesEtendus, setGroupesEtendus] = useState<Record<string, boolean>>({});
+
   const eventParDefaut: Evenement = { titre: '', type: 'Congé', date_debut: format(new Date(), 'yyyy-MM-dd'), date_fin: format(new Date(), 'yyyy-MM-dd'), heure_debut: '', heure_fin: '', membres: [] };
   const [nouvelEvent, setNouvelEvent] = useState<Evenement>(eventParDefaut);
+  const [editMode, setEditMode] = useState<'single' | 'series'>('single');
   
   const [horairesException, setHorairesException] = useState<Record<string, {debut: string, fin: string, pause: number}>>({
     A: {debut: '', fin: '', pause: 1}, B: {debut: '', fin: '', pause: 1}, Aucun: {debut: '', fin: '', pause: 1}
   });
 
+  // NOUVEAU: Modification de rep.interval et rep.period
+  const [rep, setRep] = useState({ active: false, interval: 1, period: 'weeks', date_limite: format(addMonths(new Date(), 1), 'yyyy-MM-dd'), rotation: false });
+
   const isAbsenceType = ABSENCE_TYPES.includes(nouvelEvent.type);
-  const mainTypeUI = isAbsenceType ? 'Absence' : (['Réunion', 'Soirée Jeux', 'Heures Exceptionnelles'].includes(nouvelEvent.type) ? nouvelEvent.type : 'Autre');
+  const mainTypeUI = isAbsenceType ? 'Absence' : (['Réunion', 'Animation', 'Soirée Jeux', 'Heures Exceptionnelles'].includes(nouvelEvent.type) ? nouvelEvent.type : 'Autre');
   const absTypeUI = nouvelEvent.type.includes('RTT') ? 'RTT' : nouvelEvent.type.includes('Récupération') ? 'Récupération' : 'Congé';
   const isDemiUI = nouvelEvent.type.startsWith('Demi-');
 
   const isTimeDisabled = mainTypeUI === 'Absence' && !isDemiUI && ['Congé', 'RTT'].includes(absTypeUI);
+
+  const membresEnConge = useMemo(() => {
+    if (!nouvelEvent.date_debut || !nouvelEvent.date_fin) return [];
+    const start = nouvelEvent.date_debut;
+    const end = nouvelEvent.date_fin;
+    const absents = new Set<string>();
+    
+    activeEvenements.forEach(ev => {
+      if (ev.id === nouvelEvent.id) return; 
+      if (ABSENCE_TYPES.includes(ev.type)) {
+        if (ev.date_debut <= end && ev.date_fin >= start) {
+          if (!ev.membres || ev.membres.length === 0) {
+            activeEquipe.forEach(m => absents.add(m.id)); 
+          } else {
+            ev.membres.forEach(mId => absents.add(mId));
+          }
+        }
+      }
+    });
+    return Array.from(absents);
+  }, [nouvelEvent.date_debut, nouvelEvent.date_fin, nouvelEvent.id, activeEvenements, activeEquipe]);
 
   const fillHorairesException = (dateStr: string) => {
     const dateObj = new Date(dateStr);
@@ -307,46 +329,50 @@ export default function AgendaPage() {
     setNouvelEvent({...nouvelEvent, date_debut: newDebut, date_fin: newFin});
   };
 
-  useEffect(() => {
-    chargerEquipe(); chargerEvenements();
-    // Appel via le relais local
-    fetch(`/api/feries?year=${dateActuelle.getFullYear()}`)
-      .then(res => res.json())
-      .then(data => setJoursFeries(data))
-      .catch(console.error);
-  }, [dateActuelle.getFullYear()]);
-
-  useEffect(() => {
-    // Appel via le relais local
-    fetch('/api/vacances')
-      .then(res => res.json())
-      .then(data => {
-        if (!Array.isArray(data)) return;
-        const mapVacances: Record<string, string[]> = {};
-        data.forEach((r: any) => {
-          if (r.population === "Enseignants" || !r.zones || !["Zone A", "Zone B", "Zone C"].includes(r.zones) || !r.start_date) return;
-          eachDayOfInterval({ start: new Date(r.start_date), end: subDays(new Date(r.end_date), 1) }).forEach(d => {
-            const dStr = format(d, 'yyyy-MM-dd');
-            if (!mapVacances[dStr]) mapVacances[dStr] = [];
-            if (!mapVacances[dStr].includes(r.zones)) mapVacances[dStr].push(r.zones);
-          });
-        });
-        setVacances(mapVacances);
-      })
-      .catch(console.error);
-  }, []);
-
-const chargerEquipe = async () => { 
-    const res = await fetch('/api/equipe');
-    const data = await res.json();
-    if (data && !data.error) setEquipe(data); 
+  const chargerEquipe = async () => { 
+    const { data, error } = await supabase.from('equipe').select('*').order('nom'); 
+    if (error) console.error("Erreur Equipe:", error.message);
+    if (data) setEquipe(data); 
   };
 
   const chargerEvenements = async () => { 
-    const res = await fetch('/api/evenements');
-    const data = await res.json();
-    if (data && !data.error) setEvenements(data); 
+    const { data, error } = await supabase.from('evenements').select('*').order('date_debut'); 
+    if (error) console.error("Erreur Événements:", error.message);
+    if (data) setEvenements(data); 
   };
+
+  useEffect(() => {
+    chargerEquipe(); 
+    chargerEvenements();
+    
+    fetch(`https://calendrier.api.gouv.fr/jours-feries/metropole/${dateActuelle.getFullYear()}.json`)
+      .then(res => res.json())
+      .then(data => setJoursFeries(data))
+      .catch(console.error);
+
+    const channel = supabase.channel('agenda_realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'equipe' }, () => { chargerEquipe(); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'evenements' }, () => { chargerEvenements(); })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [dateActuelle.getFullYear()]);
+
+  useEffect(() => {
+    fetch('https://data.education.gouv.fr/api/explore/v2.1/catalog/datasets/fr-en-calendrier-scolaire/exports/json').then(res => res.json()).then(data => {
+      if (!Array.isArray(data)) return;
+      const mapVacances: Record<string, string[]> = {};
+      data.forEach((r: any) => {
+        if (r.population === "Enseignants" || !r.zones || !["Zone A", "Zone B", "Zone C"].includes(r.zones) || !r.start_date) return;
+        eachDayOfInterval({ start: new Date(r.start_date), end: subDays(new Date(r.end_date), 1) }).forEach(d => {
+          const dStr = format(d, 'yyyy-MM-dd');
+          if (!mapVacances[dStr]) mapVacances[dStr] = [];
+          if (!mapVacances[dStr].includes(r.zones)) mapVacances[dStr].push(r.zones);
+        });
+      });
+      setVacances(mapVacances);
+    }).catch(console.error);
+  }, []);
 
   const toggleDraftMode = () => {
     if (!isDraftMode) {
@@ -371,7 +397,7 @@ const chargerEquipe = async () => {
           const { id, ...rest } = ev;
           await supabase.from('evenements').insert([rest]);
         } else if (ev.id) {
-          await supabase.from('evenements').update({ titre: ev.titre, type: ev.type, date_debut: ev.date_debut, date_fin: ev.date_fin, heure_debut: ev.heure_debut, heure_fin: ev.heure_fin, membres: ev.membres }).eq('id', ev.id);
+          await supabase.from('evenements').update({ titre: ev.titre, type: ev.type, date_debut: ev.date_debut, date_fin: ev.date_fin, heure_debut: ev.heure_debut, heure_fin: ev.heure_fin, membres: ev.membres, parent_id: ev.parent_id }).eq('id', ev.id);
         }
       }
       for (const delId of draftDeletedEvents) await supabase.from('evenements').delete().eq('id', delId);
@@ -397,19 +423,76 @@ const chargerEquipe = async () => {
 
   const sauvegarderEvenement = async () => {
     if (!nouvelEvent.titre || !nouvelEvent.date_debut) return alert("Veuillez remplir au moins le titre et la date de début.");
-    const payload = { titre: nouvelEvent.titre, type: nouvelEvent.type, date_debut: nouvelEvent.date_debut, date_fin: nouvelEvent.date_fin, heure_debut: nouvelEvent.heure_debut || null, heure_fin: nouvelEvent.heure_fin || null, membres: nouvelEvent.membres };
     
+    const occurrences: any[] = [];
+    const isActiveSeries = editMode === 'series' || (rep.active && !nouvelEvent.id);
+    const parentId = isActiveSeries ? (nouvelEvent.parent_id || `grp-${Date.now()}`) : (editMode === 'single' ? nouvelEvent.parent_id : undefined);
+
+    if (rep.active && (!nouvelEvent.id || editMode === 'series')) {
+      let currentDeb = new Date(nouvelEvent.date_debut);
+      let currentFin = new Date(nouvelEvent.date_fin);
+      
+      let strDeb = nouvelEvent.date_debut;
+      let strFin = nouvelEvent.date_fin;
+      let i = 0;
+
+      while (strDeb <= rep.date_limite && i < 156) {
+         let occMembres = nouvelEvent.membres;
+         if (rep.rotation && nouvelEvent.membres.length > 0) {
+            occMembres = [nouvelEvent.membres[i % nouvelEvent.membres.length]];
+         }
+         
+         occurrences.push({
+           id: (i === 0 && nouvelEvent.id) ? nouvelEvent.id : undefined,
+           parent_id: parentId,
+           titre: nouvelEvent.titre,
+           type: nouvelEvent.type,
+           date_debut: strDeb,
+           date_fin: strFin,
+           heure_debut: nouvelEvent.heure_debut || null,
+           heure_fin: nouvelEvent.heure_fin || null,
+           membres: occMembres
+         });
+         
+         if (rep.period === 'weeks') {
+            currentDeb = addWeeks(currentDeb, rep.interval);
+            currentFin = addWeeks(currentFin, rep.interval);
+         } else if (rep.period === 'months') {
+            currentDeb = addMonths(currentDeb, rep.interval);
+            currentFin = addMonths(currentFin, rep.interval);
+         }
+         strDeb = format(currentDeb, 'yyyy-MM-dd');
+         strFin = format(currentFin, 'yyyy-MM-dd');
+         i++;
+      }
+    } else {
+       occurrences.push({
+           id: nouvelEvent.id, 
+           parent_id: parentId,
+           titre: nouvelEvent.titre,
+           type: nouvelEvent.type,
+           date_debut: nouvelEvent.date_debut,
+           date_fin: nouvelEvent.date_fin,
+           heure_debut: nouvelEvent.heure_debut || null,
+           heure_fin: nouvelEvent.heure_fin || null,
+           membres: nouvelEvent.membres
+       });
+    }
+
     let newEquipeState = isDraftMode ? [...draftEquipe] : [...equipe];
     let hasEquipeChanges = false;
     const membresToUpdate: string[] = [];
 
     if (mainTypeUI === 'Soirée Jeux' || isDemiUI) {
-      const days = eachDayOfInterval({start: new Date(nouvelEvent.date_debut), end: new Date(nouvelEvent.date_fin)});
+      const allDays: Date[] = [];
+      occurrences.forEach(occ => {
+         allDays.push(...eachDayOfInterval({start: new Date(occ.date_debut), end: new Date(occ.date_fin)}));
+      });
       
       newEquipeState = newEquipeState.map(m => {
         const grp = m.groupe || 'Aucun';
         const h = horairesException[grp];
-        const isAffected = mainTypeUI === 'Soirée Jeux' ? true : nouvelEvent.membres.includes(m.id);
+        const isAffected = mainTypeUI === 'Soirée Jeux' ? true : occurrences.some(occ => occ.membres.includes(m.id));
 
         if (h && h.debut && h.fin && isAffected) {
           hasEquipeChanges = true;
@@ -417,9 +500,12 @@ const chargerEquipe = async () => {
           const newHoraires = JSON.parse(JSON.stringify(m.horaires || {}));
           if (!newHoraires.exceptions) newHoraires.exceptions = {};
           
-          days.forEach(d => {
+          allDays.forEach(d => {
              const dStr = format(d, 'yyyy-MM-dd');
-             newHoraires.exceptions[dStr] = { debut: h.debut, fin: h.fin, pause: h.pause !== undefined ? h.pause : 1, isSwap: false };
+             const isMemberInOcc = mainTypeUI === 'Soirée Jeux' || occurrences.some(occ => occ.membres.includes(m.id) && occ.date_debut <= dStr && occ.date_fin >= dStr);
+             if (isMemberInOcc) {
+               newHoraires.exceptions[dStr] = { debut: h.debut, fin: h.fin, pause: h.pause !== undefined ? h.pause : 1, isSwap: false };
+             }
           });
           return { ...m, horaires: newHoraires };
         }
@@ -427,24 +513,45 @@ const chargerEquipe = async () => {
       });
     }
 
-    let savedEvenementId = nouvelEvent.id;
-
     if (isDraftMode) {
-      if (nouvelEvent.id) {
-        const idx = draftEvenements.findIndex(e => e.id === nouvelEvent.id);
-        draftEvenements[idx] = nouvelEvent;
-      } else {
-        savedEvenementId = `draft-${Date.now()}`;
-        setDraftEvenements([...draftEvenements, { ...nouvelEvent, id: savedEvenementId }]);
+      const newDraftEvs = [...draftEvenements];
+      
+      if (editMode === 'series' && nouvelEvent.parent_id) {
+         const idsToDelete = newDraftEvs.filter(e => e.parent_id === nouvelEvent.parent_id && e.id !== nouvelEvent.id).map(e => e.id!);
+         setDraftDeletedEvents([...draftDeletedEvents, ...idsToDelete]);
+         for (const dId of idsToDelete) {
+           const idx = newDraftEvs.findIndex(e => e.id === dId);
+           if(idx >= 0) newDraftEvs.splice(idx, 1);
+         }
       }
+
+      occurrences.forEach(occ => {
+         if (occ.id) {
+           const idx = newDraftEvs.findIndex(e => e.id === occ.id);
+           if (idx >= 0) newDraftEvs[idx] = occ;
+         } else {
+           newDraftEvs.push({ ...occ, id: `draft-${Date.now()}-${Math.random()}` });
+         }
+      });
+      setDraftEvenements(newDraftEvs);
       if (hasEquipeChanges) setDraftEquipe(newEquipeState);
-      setShowEventModal(false); setNouvelEvent(eventParDefaut);
+      setShowEventModal(false); setNouvelEvent(eventParDefaut); setRep({...rep, active: false});
     } else {
-      if (nouvelEvent.id) {
-        await supabase.from('evenements').update(payload).eq('id', nouvelEvent.id);
-      } else {
-        const res = await supabase.from('evenements').insert([payload]).select('id');
-        if (res.data && res.data[0]) savedEvenementId = res.data[0].id;
+      
+      if (editMode === 'series' && nouvelEvent.parent_id) {
+         await supabase.from('evenements').delete().eq('parent_id', nouvelEvent.parent_id).neq('id', nouvelEvent.id || '0');
+      }
+
+      const toUpdate = occurrences.filter(o => o.id);
+      const toInsert = occurrences.filter(o => !o.id);
+      
+      if (toUpdate.length > 0) {
+         for (const upd of toUpdate) {
+           await supabase.from('evenements').update(upd).eq('id', upd.id);
+         }
+      }
+      if (toInsert.length > 0) {
+         await supabase.from('evenements').insert(toInsert);
       }
       
       if (hasEquipeChanges) {
@@ -453,27 +560,72 @@ const chargerEquipe = async () => {
         );
         chargerEquipe();
       }
-      setShowEventModal(false); setNouvelEvent(eventParDefaut); chargerEvenements();
+      setShowEventModal(false); setNouvelEvent(eventParDefaut); setRep({...rep, active: false}); chargerEvenements();
     }
   };
 
-  const supprimerEvenement = async (id: string) => {
-    if (!confirm("Voulez-vous vraiment supprimer cet événement ?")) return;
+  const supprimerEvenement = async (id: string, deleteSeries: boolean = false, parentId?: string) => {
+    const msg = deleteSeries ? "Voulez-vous vraiment supprimer TOUTE LA SÉRIE d'événements ?" : "Voulez-vous vraiment supprimer cet événement ?";
+    if (!confirm(msg)) return;
+    
     if (isDraftMode) {
-      setDraftEvenements(draftEvenements.filter(e => e.id !== id));
-      if (!id.startsWith('draft-')) setDraftDeletedEvents([...draftDeletedEvents, id]);
+      if (deleteSeries && parentId) {
+         const idsToDelete = draftEvenements.filter(e => e.parent_id === parentId).map(e => e.id!);
+         setDraftEvenements(draftEvenements.filter(e => e.parent_id !== parentId));
+         setDraftDeletedEvents([...draftDeletedEvents, ...idsToDelete.filter(i => !i.startsWith('draft-'))]);
+      } else {
+         setDraftEvenements(draftEvenements.filter(e => e.id !== id));
+         if (!id.startsWith('draft-')) setDraftDeletedEvents([...draftDeletedEvents, id]);
+      }
     } else {
-      await supabase.from('evenements').delete().eq('id', id);
+      if (deleteSeries && parentId) {
+         await supabase.from('evenements').delete().eq('parent_id', parentId);
+      } else {
+         await supabase.from('evenements').delete().eq('id', id);
+      }
       chargerEvenements();
     }
   };
 
-  const ouvrirEditionEvenement = (ev: Evenement) => { 
+  const ouvrirEditionEvenement = (ev: Evenement, mode: 'single' | 'series' = 'single') => { 
     setNouvelEvent(ev); 
+    setEditMode(mode);
+    if (mode === 'series' || (ev.parent_id && mode === 'single')) {
+        const seriesEvs = activeEvenements.filter(e => e.parent_id === ev.parent_id);
+        seriesEvs.sort((a,b) => a.date_debut.localeCompare(b.date_debut));
+        const lastEv = seriesEvs[seriesEvs.length - 1];
+
+        // Tentative de deviner l'intervalle si la série a au moins 2 dates
+        let calcInterval = 1;
+        let calcPeriod = 'weeks';
+        if (seriesEvs.length > 1) {
+            const d1 = new Date(seriesEvs[0].date_debut);
+            const d2 = new Date(seriesEvs[1].date_debut);
+            const diffDays = Math.round((d2.getTime() - d1.getTime()) / 86400000);
+            if (diffDays % 7 === 0 && diffDays < 28) {
+                calcInterval = diffDays / 7;
+                calcPeriod = 'weeks';
+            } else {
+                calcPeriod = 'months';
+                calcInterval = Math.round(diffDays / 30) || 1;
+            }
+        }
+
+        setRep({ active: true, interval: calcInterval, period: calcPeriod, date_limite: lastEv.date_debut, rotation: false });
+    } else {
+        setRep({ active: false, interval: 1, period: 'weeks', date_limite: format(addMonths(new Date(ev.date_debut), 1), 'yyyy-MM-dd'), rotation: false });
+    }
     if (ev.type === 'Soirée Jeux' || ev.type.startsWith('Demi-')) fillHorairesException(ev.date_debut);
     setShowEventsListPanel(false); 
     setShowEventModal(true); 
   };
+  
+  const dupliquerEvenement = () => {
+    const duplicated = { ...nouvelEvent, id: undefined, parent_id: undefined, titre: nouvelEvent.titre + ' (Copie)' };
+    setNouvelEvent(duplicated);
+    setEditMode('single');
+  };
+
   const toggleMembreEvent = (id: string) => setNouvelEvent(prev => ({ ...prev, membres: prev.membres.includes(id) ? prev.membres.filter(m => m !== id) : [...prev.membres, id] }));
   const updateHoraire = (jour: string, type: 'debut' | 'fin' | 'pause', valeur: string | number) => {
     if (!membreActif) return;
@@ -528,7 +680,6 @@ const chargerEquipe = async () => {
       eq1.horaires.exceptions[dateKey] = h2 ? { ...h2, isSwap: true } : { debut: '', fin: '', pause: 1, isSwap: true };
       eq2.horaires.exceptions[dateKey] = h1 ? { ...h1, isSwap: true } : { debut: '', fin: '', pause: 1, isSwap: true };
 
-      // Swap Events participation to keep Soirée Jeux updated
       newEvenements = newEvenements.map(ev => {
         if (ev.date_debut <= dateKey && ev.date_fin >= dateKey) {
           const hasM1 = ev.membres.includes(swapSession.m1Id);
@@ -572,22 +723,16 @@ const chargerEquipe = async () => {
   const genererBlocsHoraires = (membresDuJour: any[]) => {
     const points = new Set<string>();
     membresDuJour.forEach(m => { if(m.debut && m.fin) { points.add(m.debut); points.add(m.fin); } });
-    
-    // 💡 CORRECTION MINUIT : Tri des points temporels en considérant 00:00 comme 24:00
     const timepoints = Array.from(points).sort((a, b) => timeToMins(a, true) - timeToMins(b, true)); 
     
     const blocs = [];
     for (let i = 0; i < timepoints.length - 1; i++) {
       const start = timepoints[i];
       const end = timepoints[i+1];
-      
       const startMins = timeToMins(start, true);
       const endMins = timeToMins(end, true);
       
-      const presents = membresDuJour.filter(m => {
-          return timeToMins(m.debut) <= startMins && timeToMins(m.fin, true) >= endMins;
-      });
-      
+      const presents = membresDuJour.filter(m => timeToMins(m.debut) <= startMins && timeToMins(m.fin, true) >= endMins);
       if (presents.length > 0) blocs.push({ debut: start, fin: end, membresInfos: presents, noms: presents.map(p => p.nom).sort() });
     }
     return blocs;
@@ -615,7 +760,6 @@ const chargerEquipe = async () => {
     return totalMinutes / 60;
   };
 
-  // 💡 CORRECTION MINUIT : Positionnement visuel du bloc si fin = 00:00
   const calculerPositionTop = (heureString: string, isEnd = false) => {
     if (!heureString) return 0;
     let [h, m] = heureString.split(':').map(Number);
@@ -726,9 +870,21 @@ const chargerEquipe = async () => {
   }, [membreActif, dateActuelle, activeEvenements, joursFeries, ongletMembre]);
 
   const todayStr = format(new Date(), 'yyyy-MM-dd');
-  const eventsEnCours = activeEvenements.filter(e => e.date_debut <= todayStr && e.date_fin >= todayStr).sort((a,b) => a.date_debut.localeCompare(b.date_debut));
-  const eventsAVenir = activeEvenements.filter(e => e.date_debut > todayStr).sort((a,b) => a.date_debut.localeCompare(b.date_debut));
-  const eventsPasses = activeEvenements.filter(e => e.date_fin < todayStr).sort((a,b) => b.date_debut.localeCompare(a.date_debut));
+  const eventsEnCours = activeEvenements.filter(e => !e.parent_id && e.date_debut <= todayStr && e.date_fin >= todayStr).sort((a,b) => a.date_debut.localeCompare(b.date_debut));
+  const eventsAVenir = activeEvenements.filter(e => !e.parent_id && e.date_debut > todayStr).sort((a,b) => a.date_debut.localeCompare(b.date_debut));
+  const eventsPasses = activeEvenements.filter(e => !e.parent_id && e.date_fin < todayStr).sort((a,b) => b.date_debut.localeCompare(a.date_debut));
+
+  const groupesSeries = useMemo(() => {
+     const groupes: Record<string, Evenement[]> = {};
+     activeEvenements.forEach(ev => {
+        if (ev.parent_id) {
+           if (!groupes[ev.parent_id]) groupes[ev.parent_id] = [];
+           groupes[ev.parent_id].push(ev);
+        }
+     });
+     Object.values(groupes).forEach(arr => arr.sort((a,b) => a.date_debut.localeCompare(b.date_debut)));
+     return groupes;
+  }, [activeEvenements]);
 
   const heuresA = membreActif ? calculerHeuresSemaine(membreActif.horaires?.semaineA) : 0;
   const heuresB = membreActif ? calculerHeuresSemaine(membreActif.horaires?.semaineB) : 0;
@@ -738,7 +894,6 @@ const chargerEquipe = async () => {
   return (
     <div className={`min-h-screen p-4 sm:p-8 bg-[#e5e5e5] font-sans relative ${isDraftMode ? 'pt-32' : ''}`}>
       
-      {/* BANNIÈRE MODE PRÉVISION & ALERTES */}
       {isDraftMode && (
         <div className="fixed top-0 left-0 right-0 bg-orange-500 text-white z-[9999] px-6 py-3 flex flex-col shadow-xl animate-slide-in-down">
           <div className="flex justify-between items-center">
@@ -855,6 +1010,8 @@ const chargerEquipe = async () => {
             <button onClick={() => { 
               const dStr = format(dateActuelle, 'yyyy-MM-dd');
               setNouvelEvent({...eventParDefaut, date_debut: dStr, date_fin: dStr}); 
+              setEditMode('single');
+              setRep({ active: false, interval: 1, period: 'weeks', date_limite: format(addMonths(new Date(), 1), 'yyyy-MM-dd'), rotation: false });
               setShowEventModal(true); 
             }} className="bg-black hover:bg-gray-800 text-white px-5 py-3 rounded-2xl font-black transition-colors shadow-md">+ Ajouter</button>
           </div>
@@ -956,7 +1113,7 @@ const chargerEquipe = async () => {
                       })}
 
                       {evenementsDuJour.filter(e => ['Soirée Jeux', 'Heures Exceptionnelles'].includes(e.type)).map((ev, idx) => (
-                        <div key={`ev-m-${idx}`} className={`flex-1 border-l-4 rounded p-1.5 flex flex-col justify-center min-h-[30px] shadow-sm mt-1 ${getEventStyle(ev.type, false)}`}>
+                        <div key={`ev-m-${idx}`} onClick={(e) => { e.stopPropagation(); ouvrirEditionEvenement(ev, 'single'); }} className={`flex-1 border-l-4 rounded p-1.5 flex flex-col justify-center min-h-[30px] shadow-sm mt-1 cursor-pointer pointer-events-auto hover:scale-105 transition-transform ${getEventStyle(ev.type, false)}`}>
                           <span className="font-bold text-[10px] leading-tight line-clamp-1 flex items-center gap-1">
                             {getEventIcon(ev.type)} {ev.titre}
                           </span>
@@ -1084,7 +1241,6 @@ const chargerEquipe = async () => {
                         </span>
                       </div>
 
-                      {/* Blocs Horaires - Z-index absolu au survol et Height auto */}
                       {blocsHoraires.map((bloc: any, idx: number) => {
                         const top = calculerPositionTop(bloc.debut);
                         const bottom = calculerPositionTop(bloc.fin, true);
@@ -1103,7 +1259,6 @@ const chargerEquipe = async () => {
                             <div className="absolute inset-x-0 top-0 h-full min-h-full group-hover/wrapper:h-max overflow-hidden group-hover/wrapper:overflow-visible border-l-4 rounded-md p-2 flex flex-col shadow-sm transition-all text-black group-hover/wrapper:z-[999] group-hover/wrapper:shadow-2xl" style={{ backgroundColor: bgColor, borderColor: bgColor, opacity: isDayFullTeam ? 1 : 0.8 }}>
                               <span className="font-bold text-xs leading-tight break-words line-clamp-2 group-hover/wrapper:line-clamp-none">{bloc.noms.join(', ')}</span>
                               
-                              {/* Pastilles d'absences arrondies */}
                               {absencesDuBloc.length > 0 && (
                                 <div className="mt-1 flex flex-col gap-1 items-start">
                                   {absencesDuBloc.map((abs, aIdx) => (
@@ -1120,7 +1275,6 @@ const chargerEquipe = async () => {
                         );
                       })}
 
-                      {/* Fermeture Totale */}
                       {blocsHoraires.length === 0 && absencesDay.length > 0 && !nomFerie && (
                         <div className="absolute top-12 left-1.5 right-1.5 flex flex-col gap-1 z-20 pointer-events-none">
                           {absencesDay.map((abs, aIdx) => (
@@ -1131,14 +1285,13 @@ const chargerEquipe = async () => {
                         </div>
                       )}
 
-                      {/* Événements en superposition (Réunions, Soirées jeux, Exceptionnelles) */}
                       {eventsGrille.map((ev: any, idx: number) => {
                         const top = calculerPositionTop(ev.heure_debut);
                         const bottom = calculerPositionTop(ev.heure_fin, true);
                         const height = bottom - top;
                         return (
-                          <div key={`ev-h-${idx}`} className="absolute left-2 right-2 hover:z-[999] group/evwrapper" style={{ top: `${top}%`, height: `${height}%`, zIndex: 40 + idx }}>
-                            <div className={`absolute inset-x-0 top-0 h-full min-h-full group-hover/evwrapper:h-max overflow-hidden group-hover/evwrapper:overflow-visible border-l-4 rounded-md p-1.5 flex flex-col shadow-md hover:shadow-2xl transition-all cursor-pointer group-hover/evwrapper:z-[999] ${getEventStyle(ev.type, true)}`}>
+                          <div key={`ev-h-${idx}`} onClick={(e) => { e.stopPropagation(); ouvrirEditionEvenement(ev, 'single'); }} className="absolute left-2 right-2 hover:z-[999] group/evwrapper pointer-events-auto cursor-pointer" style={{ top: `${top}%`, height: `${height}%`, zIndex: 40 + idx }}>
+                            <div className={`absolute inset-x-0 top-0 h-full min-h-full group-hover/evwrapper:h-max overflow-hidden group-hover/evwrapper:overflow-visible border-l-4 rounded-md p-1.5 flex flex-col shadow-md hover:shadow-2xl transition-all group-hover/evwrapper:z-[999] ${getEventStyle(ev.type, true)}`}>
                               <span className="text-[10px] font-black opacity-90 truncate leading-tight mb-0.5 group-hover/evwrapper:line-clamp-none group-hover/evwrapper:whitespace-normal">{getNomsMembresEvent(ev.membres)}</span>
                               <span className="font-bold text-xs leading-tight break-words line-clamp-1 group-hover/evwrapper:line-clamp-none">{getEventIcon(ev.type)} {ev.titre}</span>
                               <span className="text-[10px] font-bold opacity-80 mt-auto shrink-0 pt-0.5">{ev.heure_debut} - {ev.heure_fin}</span>
@@ -1147,10 +1300,9 @@ const chargerEquipe = async () => {
                         );
                       })}
 
-                      {/* Bannières événements journée en BAS */}
                       <div className="absolute bottom-2 left-1 right-1 flex flex-col justify-end gap-1 z-50 pointer-events-auto">
                         {eventsBottom.map((ev, idx) => (
-                           <div key={`ev-b-${idx}`} onClick={() => ouvrirEditionEvenement(ev)} className={`text-[9px] font-bold px-1.5 py-1 rounded border shadow-sm flex flex-col leading-tight hover:scale-105 transition-transform cursor-pointer ${getEventStyle(ev.type)}`}>
+                           <div key={`ev-b-${idx}`} onClick={(e) => { e.stopPropagation(); ouvrirEditionEvenement(ev, 'single'); }} className={`text-[9px] font-bold px-1.5 py-1 rounded border shadow-sm flex flex-col leading-tight hover:scale-105 transition-transform cursor-pointer ${getEventStyle(ev.type)}`}>
                              <span className="text-[9px] font-black opacity-90 truncate">{getNomsMembresEvent(ev.membres)}</span>
                              <span className="truncate">{getEventIcon(ev.type)} {ev.titre}</span>
                            </div>
@@ -1166,7 +1318,6 @@ const chargerEquipe = async () => {
         </div>
       </main>
 
-      {/* MODALE D'ÉCHANGE D'HORAIRES */}
       {swapSession.active && swapSession.step === 2 && (
         <div className="fixed inset-0 bg-black/40 z-[9999] flex justify-center items-center backdrop-blur-sm p-4">
           <div className="bg-white w-full max-w-md rounded-[2rem] shadow-2xl p-6 sm:p-8 animate-fade-in max-h-[95vh] overflow-y-auto hide-scrollbar flex flex-col">
@@ -1204,199 +1355,6 @@ const chargerEquipe = async () => {
         </div>
       )}
 
-      {/* PANEL LISTE DES ÉVÉNEMENTS */}
-      {showEventsListPanel && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex justify-end backdrop-blur-sm">
-          <div className="bg-white w-full max-w-lg h-full shadow-2xl flex flex-col animate-slide-in-right">
-            <div className="p-6 border-b-2 border-slate-100 flex justify-between items-center bg-slate-50">
-              <h2 className="text-2xl font-black">📅 Événements</h2>
-              <button onClick={() => setShowEventsListPanel(false)} className="w-10 h-10 bg-slate-200 hover:bg-slate-300 rounded-full font-black text-slate-600 transition-colors">✕</button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-6">
-              <button onClick={() => { 
-                const dStr = format(dateActuelle, 'yyyy-MM-dd');
-                setNouvelEvent({...eventParDefaut, date_debut: dStr, date_fin: dStr}); 
-                setShowEventsListPanel(false); 
-                setShowEventModal(true); 
-              }} className="w-full text-black font-black py-4 rounded-2xl mb-8 transition-colors shadow-sm hover:brightness-95" style={{ backgroundColor: couleurs.accent }}>
-                + Nouvel événement
-              </button>
-
-              <h3 className="font-black text-lg text-slate-800 mb-4">En cours</h3>
-              <div className="space-y-3 mb-8">
-                {eventsEnCours.length === 0 && <p className="text-sm text-slate-400 italic">Rien de prévu en ce moment.</p>}
-                {eventsEnCours.map(ev => (
-                  <div key={ev.id} className={`p-4 border-2 border-slate-100 rounded-2xl flex justify-between items-center group shadow-sm ${getEventStyle(ev.type)}`}>
-                    <div className="flex-1 cursor-pointer" onClick={() => ouvrirEditionEvenement(ev)}>
-                      <p className="font-bold text-md flex items-center gap-2">{getEventIcon(ev.type)} {ev.titre}</p>
-                      <p className="text-xs font-medium mt-1 opacity-80">
-                        {format(new Date(ev.date_debut), 'dd MMM yyyy', {locale: fr})} 
-                        {ev.date_debut !== ev.date_fin && ` ➔ ${format(new Date(ev.date_fin), 'dd MMM yyyy', {locale: fr})}`}
-                        {ev.heure_debut ? ` • ${ev.heure_debut}-${ev.heure_fin}` : (['Soirée Jeux', 'Heures Exceptionnelles'].includes(ev.type) ? ' • Horaires modifiés' : ' • Journée entière')}
-                      </p>
-                      <p className="text-[10px] font-black mt-1 uppercase tracking-wide opacity-90">{getNomsMembresEvent(ev.membres)}</p>
-                    </div>
-                    <button onClick={() => supprimerEvenement(ev.id!)} className="w-8 h-8 rounded-full bg-white/50 hover:bg-rose-500 hover:text-white transition-colors flex justify-center items-center font-bold" title="Supprimer">✕</button>
-                  </div>
-                ))}
-              </div>
-
-              <h3 className="font-black text-lg text-slate-800 mb-4">À venir</h3>
-              <div className="space-y-3 mb-8">
-                {eventsAVenir.length === 0 && <p className="text-sm text-slate-400 italic">Aucun événement à venir.</p>}
-                {eventsAVenir.map(ev => (
-                  <div key={ev.id} className="p-4 border-2 border-slate-100 rounded-2xl flex justify-between items-center group bg-white shadow-sm">
-                    <div className="flex-1 cursor-pointer" onClick={() => ouvrirEditionEvenement(ev)}>
-                      <p className="font-bold text-md flex items-center gap-2">{getEventIcon(ev.type)} {ev.titre}</p>
-                      <p className="text-xs text-slate-500 font-medium mt-1">
-                        {format(new Date(ev.date_debut), 'dd MMM yyyy', {locale: fr})} 
-                        {ev.date_debut !== ev.date_fin && ` ➔ ${format(new Date(ev.date_fin), 'dd MMM yyyy', {locale: fr})}`}
-                        {ev.heure_debut ? ` • ${ev.heure_debut}-${ev.heure_fin}` : (['Soirée Jeux', 'Heures Exceptionnelles'].includes(ev.type) ? ' • Horaires modifiés' : ' • Journée entière')}
-                      </p>
-                      <p className="text-[10px] text-slate-400 font-bold mt-1 uppercase tracking-wide">{getNomsMembresEvent(ev.membres)}</p>
-                    </div>
-                    <button onClick={() => supprimerEvenement(ev.id!)} className="w-8 h-8 rounded-full bg-rose-50 text-rose-500 hover:bg-rose-500 hover:text-white transition-colors flex justify-center items-center font-bold" title="Supprimer">✕</button>
-                  </div>
-                ))}
-              </div>
-
-              <h3 className="font-black text-lg text-slate-800 mb-4">Passés</h3>
-              <div className="space-y-3 opacity-60">
-                {eventsPasses.length === 0 && <p className="text-sm text-slate-400 italic">Aucun événement passé.</p>}
-                {eventsPasses.map(ev => (
-                  <div key={ev.id} className="p-4 border-2 border-slate-100 rounded-2xl flex justify-between items-center bg-slate-50">
-                    <div className="flex-1 cursor-pointer" onClick={() => ouvrirEditionEvenement(ev)}>
-                      <p className="font-bold text-md flex items-center gap-2">{getEventIcon(ev.type)} {ev.titre}</p>
-                      <p className="text-xs text-slate-500 font-medium mt-1">{format(new Date(ev.date_debut), 'dd MMM yyyy', {locale: fr})}</p>
-                    </div>
-                    <button onClick={() => supprimerEvenement(ev.id!)} className="w-8 h-8 rounded-full bg-slate-200 text-slate-500 hover:bg-rose-500 hover:text-white transition-colors flex justify-center items-center font-bold">✕</button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODALE D'AJOUT/ÉDITION D'ÉVÉNEMENT */}
-      {showEventModal && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex justify-center items-center backdrop-blur-sm p-4">
-          <div className="bg-white w-full max-w-md rounded-[2rem] shadow-2xl p-6 sm:p-8 animate-fade-in max-h-[95vh] overflow-y-auto hide-scrollbar flex flex-col">
-            <div className="flex justify-between items-center mb-6 shrink-0">
-              <h2 className="text-2xl font-black text-black">{nouvelEvent.id ? 'Modifier l\'événement' : 'Nouvel Événement'}</h2>
-              <button onClick={() => setShowEventModal(false)} className="w-10 h-10 bg-slate-100 hover:bg-slate-200 rounded-full font-black text-slate-600 transition-colors">✕</button>
-            </div>
-
-            <div className="space-y-4 flex-1">
-              <div>
-                <label className="text-xs font-black text-slate-500 uppercase">Titre</label>
-                <input type="text" value={nouvelEvent.titre} onChange={e => setNouvelEvent({...nouvelEvent, titre: e.target.value})} className="w-full mt-1 p-3 rounded-xl border-2 border-slate-200 font-bold outline-none focus:border-black" placeholder="Ex: Congés Bernard, Réunion CA..." />
-              </div>
-
-              {/* SÉLECTEUR DE TYPE */}
-              <div className="bg-slate-50 p-2 rounded-xl border border-slate-200">
-                <div className="flex gap-1 mb-2 bg-white p-1 rounded-lg shadow-sm">
-                  <button type="button" onClick={() => setMainType('Absence')} className={`flex-1 py-2 rounded-md font-bold text-xs transition-colors ${mainTypeUI === 'Absence' ? 'bg-rose-50 text-rose-600' : 'text-slate-500 hover:bg-slate-50'}`}>Absence</button>
-                  <button type="button" onClick={() => setMainType('Réunion')} className={`flex-1 py-2 rounded-md font-bold text-xs transition-colors ${mainTypeUI === 'Réunion' ? 'bg-indigo-50 text-indigo-600' : 'text-slate-500 hover:bg-slate-50'}`}>Réunion</button>
-                  <button type="button" onClick={() => setMainType('Soirée Jeux')} className={`flex-1 py-2 rounded-md font-bold text-xs transition-colors ${mainTypeUI === 'Soirée Jeux' ? 'bg-purple-50 text-purple-600' : 'text-slate-500 hover:bg-slate-50'}`}>Soirée Jeux</button>
-                  <button type="button" onClick={() => setMainType('Heures Exceptionnelles')} className={`flex-1 py-2 rounded-md font-bold text-xs transition-colors ${mainTypeUI === 'Heures Exceptionnelles' ? 'bg-teal-50 text-teal-600' : 'text-slate-500 hover:bg-slate-50'}`}>Heures Excep.</button>
-                </div>
-
-                {mainTypeUI === 'Absence' && (
-                  <div className="space-y-3 px-2 pb-2">
-                    <div className="flex gap-2 justify-center">
-                      <button type="button" onClick={() => setAbsType('Congé')} className={`flex-1 py-1.5 rounded-full font-bold text-[10px] uppercase border transition-colors ${absTypeUI === 'Congé' ? 'border-rose-500 bg-rose-500 text-white shadow-sm' : 'border-slate-300 text-slate-500 hover:bg-white'}`}>Congé</button>
-                      <button type="button" onClick={() => setAbsType('RTT')} className={`flex-1 py-1.5 rounded-full font-bold text-[10px] uppercase border transition-colors ${absTypeUI === 'RTT' ? 'border-emerald-500 bg-emerald-500 text-white shadow-sm' : 'border-slate-300 text-slate-500 hover:bg-white'}`}>RTT</button>
-                      <button type="button" onClick={() => setAbsType('Récupération')} className={`flex-1 py-1.5 rounded-full font-bold text-[10px] uppercase border transition-colors ${absTypeUI === 'Récupération' ? 'border-rose-500 bg-rose-500 text-white shadow-sm' : 'border-slate-300 text-slate-500 hover:bg-white'}`}>Récupération</button>
-                    </div>
-                    <div className="flex gap-2">
-                      <button type="button" onClick={() => setIsDemi(false)} className={`flex-1 py-2 rounded-lg font-bold text-xs border-2 transition-colors ${!isDemiUI ? 'border-black bg-white text-black shadow-sm' : 'border-transparent text-slate-500 hover:bg-white'}`}>Journée entière</button>
-                      <button type="button" onClick={() => setIsDemi(true)} className={`flex-1 py-2 rounded-lg font-bold text-xs border-2 transition-colors ${isDemiUI ? 'border-black bg-white text-black shadow-sm' : 'border-transparent text-slate-500 hover:bg-white'}`}>Demi-journée</button>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="flex gap-4">
-                <div className="flex-1">
-                  <label className="text-xs font-black text-slate-500 uppercase">Du</label>
-                  <input type="date" value={nouvelEvent.date_debut} onChange={e => handleDateDebutChange(e.target.value)} className="w-full mt-1 p-3 rounded-xl border-2 border-slate-200 font-bold outline-none focus:border-black text-sm" />
-                </div>
-                <div className="flex-1">
-                  <label className="text-xs font-black text-slate-500 uppercase">Au</label>
-                  <input type="date" value={nouvelEvent.date_fin} min={nouvelEvent.date_debut} onChange={e => setNouvelEvent({...nouvelEvent, date_fin: e.target.value})} className="w-full mt-1 p-3 rounded-xl border-2 border-slate-200 font-bold outline-none focus:border-black text-sm" />
-                </div>
-              </div>
-
-              {/* HEURES DE L'ÉVÉNEMENT (Grisées UNIQUEMENT si c'est un vrai jour complet de Congé/RTT) */}
-              <div className={`flex gap-4 transition-opacity ${isTimeDisabled ? 'opacity-30 pointer-events-none' : ''}`}>
-                <div className="flex-1">
-                  <label className="text-xs font-black text-slate-500 uppercase">De (Optionnel)</label>
-                  <input type="time" value={nouvelEvent.heure_debut || ''} onChange={e => setNouvelEvent({...nouvelEvent, heure_debut: e.target.value})} className="w-full mt-1 p-3 rounded-xl border-2 border-slate-200 font-bold outline-none focus:border-black text-sm bg-white" />
-                </div>
-                <div className="flex-1">
-                  <label className="text-xs font-black text-slate-500 uppercase">À (Optionnel)</label>
-                  <input type="time" value={nouvelEvent.heure_fin || ''} onChange={e => setNouvelEvent({...nouvelEvent, heure_fin: e.target.value})} className="w-full mt-1 p-3 rounded-xl border-2 border-slate-200 font-bold outline-none focus:border-black text-sm bg-white" />
-                </div>
-              </div>
-
-              <div>
-                <label className="text-xs font-black text-slate-500 uppercase block mb-2">Personnes concernées</label>
-                <div className="flex flex-wrap gap-2 mb-3">
-                  <button type="button" onClick={() => setNouvelEvent({...nouvelEvent, membres: activeEquipe.map(m => m.id)})} className="text-[10px] font-bold px-3 py-1.5 bg-slate-200 hover:bg-slate-300 rounded-full transition-colors text-slate-700">Toute l'équipe</button>
-                  <button type="button" onClick={() => setNouvelEvent({...nouvelEvent, membres: activeEquipe.filter(m => m.groupe === 'A').map(m => m.id)})} className="text-[10px] font-bold px-3 py-1.5 bg-rose-100 hover:bg-rose-200 text-rose-700 rounded-full transition-colors">Équipe A</button>
-                  <button type="button" onClick={() => setNouvelEvent({...nouvelEvent, membres: activeEquipe.filter(m => m.groupe === 'B').map(m => m.id)})} className="text-[10px] font-bold px-3 py-1.5 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-full transition-colors">Équipe B</button>
-                  <button type="button" onClick={() => setNouvelEvent({...nouvelEvent, membres: []})} className="text-[10px] font-bold px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-full transition-colors">Vider</button>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  {activeEquipe.map(m => (
-                    <label key={m.id} className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer border-2 transition-colors ${nouvelEvent.membres.includes(m.id) ? 'border-black bg-slate-50 shadow-sm' : 'border-transparent hover:bg-slate-50'}`}>
-                      <input type="checkbox" checked={nouvelEvent.membres.includes(m.id)} onChange={() => toggleMembreEvent(m.id)} className="w-4 h-4 accent-black" />
-                      <span className="font-bold text-sm truncate">{m.nom}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-
-              {/* HORAIRES EXCEPTIONNELS SOIRÉE JEUX OU DEMI ABSENCE */}
-              {((mainTypeUI === 'Soirée Jeux' || isDemiUI) && nouvelEvent.membres.length > 0) && (
-                <div className="bg-slate-50 p-4 rounded-2xl border-2 border-slate-200 mt-4 animate-fade-in">
-                  <h4 className="text-xs font-black text-slate-800 uppercase mb-3">Horaires de travail pour cette journée</h4>
-                  <p className="text-[10px] text-slate-500 mb-3 leading-tight">Définissez l'horaire de présence pour chaque équipe. Cela remplacera le planning de base des membres sélectionnés pour éviter les fausses alertes RH.</p>
-                  
-                  {['A', 'B', 'Aucun'].filter(grp => 
-                    mainTypeUI === 'Soirée Jeux' 
-                      ? activeEquipe.some(m => (m.groupe || 'Aucun') === grp) 
-                      : activeEquipe.some(m => nouvelEvent.membres.includes(m.id) && (m.groupe || 'Aucun') === grp)
-                  ).map(grp => (
-                    <div key={grp} className="flex flex-col sm:flex-row sm:items-center justify-between bg-white p-3 rounded-xl mb-2 shadow-sm gap-2">
-                      <span className="text-xs font-bold text-slate-700">
-                        {grp === 'Aucun' ? 'Sans équipe' : `Équipe ${grp}`}
-                      </span>
-                      <div className="flex items-center gap-1 sm:gap-2">
-                        <input type="time" value={horairesException[grp]?.debut || ''} onChange={e => setHorairesException({...horairesException, [grp]: {...horairesException[grp], debut: e.target.value}})} className="p-1.5 rounded-lg border-2 border-slate-100 text-xs font-bold outline-none focus:border-slate-300" />
-                        <span className="text-slate-400 font-bold text-xs">à</span>
-                        <input type="time" value={horairesException[grp]?.fin || ''} onChange={e => setHorairesException({...horairesException, [grp]: {...horairesException[grp], fin: e.target.value}})} className="p-1.5 rounded-lg border-2 border-slate-100 text-xs font-bold outline-none focus:border-slate-300" />
-                        <div className="flex items-center bg-slate-50 border-2 border-slate-100 rounded-lg ml-1 px-1">
-                          <span className="text-[10px] font-bold text-slate-400 mr-1">Repas(h)</span>
-                          <input type="number" step="0.5" min="0" value={horairesException[grp]?.pause !== undefined ? horairesException[grp].pause : 1} onChange={e => setHorairesException({...horairesException, [grp]: {...horairesException[grp], pause: parseFloat(e.target.value) || 0}})} className="w-10 p-1 bg-transparent text-xs font-bold outline-none text-center" />
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <button onClick={sauvegarderEvenement} className="w-full mt-6 text-black font-black py-4 rounded-2xl transition-colors shadow-sm hover:brightness-95 shrink-0" style={{ backgroundColor: couleurs.accent }}>
-              {nouvelEvent.id ? 'Mettre à jour' : 'Enregistrer'}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* PANNEAU LATÉRAL ÉQUIPE (Fiches Persos) */}
       {showEquipePanel && (
         <div className="fixed inset-0 bg-black/40 z-50 flex justify-end backdrop-blur-sm">
           <div className="bg-white w-full max-w-lg h-full shadow-2xl flex flex-col animate-slide-in-right">
@@ -1524,7 +1482,6 @@ const chargerEquipe = async () => {
                     </div>
                   ) : (
                     <div className="space-y-6 animate-fade-in">
-                      {/* ONGLET SUIVI RH */}
                       {statsPerso && (
                         <>
                           <div className="bg-slate-50 p-5 rounded-2xl border-2 border-slate-100">
@@ -1599,6 +1556,289 @@ const chargerEquipe = async () => {
                 <button onClick={sauvegarderMembre} disabled={!membreActif.nom} className="w-full bg-black hover:bg-gray-800 disabled:bg-slate-300 text-white font-black py-4 rounded-2xl transition-colors shadow-md">Enregistrer les infos</button>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {showEventsListPanel && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex justify-end backdrop-blur-sm">
+          <div className="bg-white w-full max-w-lg h-full shadow-2xl flex flex-col animate-slide-in-right">
+            <div className="p-6 border-b-2 border-slate-100 flex justify-between items-center bg-slate-50">
+              <h2 className="text-2xl font-black">📅 Événements</h2>
+              <button onClick={() => setShowEventsListPanel(false)} className="w-10 h-10 bg-slate-200 hover:bg-slate-300 rounded-full font-black text-slate-600 transition-colors">✕</button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-6">
+              
+              <button onClick={() => { 
+                const dStr = format(dateActuelle, 'yyyy-MM-dd');
+                setNouvelEvent({...eventParDefaut, date_debut: dStr, date_fin: dStr}); 
+                setEditMode('single');
+                setRep({ active: false, interval: 1, period: 'weeks', date_limite: format(addMonths(new Date(), 1), 'yyyy-MM-dd'), rotation: false });
+                setShowEventsListPanel(false); 
+                setShowEventModal(true); 
+              }} className="w-full text-black font-black py-4 rounded-2xl mb-6 transition-colors shadow-sm hover:brightness-95" style={{ backgroundColor: couleurs.accent }}>
+                + Nouvel événement
+              </button>
+
+              <div className="flex bg-slate-100 p-1 rounded-2xl mb-6 font-bold text-sm">
+                <button onClick={() => setListTab('ponctuels')} className={`flex-1 py-2.5 rounded-xl transition-all ${listTab === 'ponctuels' ? 'bg-white shadow-sm text-black' : 'text-slate-500 hover:text-black'}`}>Ponctuels</button>
+                <button onClick={() => setListTab('series')} className={`flex-1 py-2.5 rounded-xl transition-all ${listTab === 'series' ? 'bg-white shadow-sm text-black' : 'text-slate-500 hover:text-black'}`}>Séries Récurrentes</button>
+              </div>
+
+              {listTab === 'ponctuels' && (
+                <>
+                  <h3 className="font-black text-lg text-slate-800 mb-4">En cours</h3>
+                  <div className="space-y-3 mb-8">
+                    {eventsEnCours.length === 0 && <p className="text-sm text-slate-400 italic">Rien de prévu en ce moment.</p>}
+                    {eventsEnCours.map(ev => (
+                      <div key={ev.id} className={`p-4 border-2 border-slate-100 rounded-2xl flex justify-between items-center group shadow-sm ${getEventStyle(ev.type)}`}>
+                        <div className="flex-1 cursor-pointer" onClick={() => ouvrirEditionEvenement(ev, 'single')}>
+                          <p className="font-bold text-md flex items-center gap-2">{getEventIcon(ev.type)} {ev.titre}</p>
+                          <p className="text-xs font-medium mt-1 opacity-80">
+                            {format(new Date(ev.date_debut), 'dd MMM yyyy', {locale: fr})} 
+                            {ev.date_debut !== ev.date_fin && ` ➔ ${format(new Date(ev.date_fin), 'dd MMM yyyy', {locale: fr})}`}
+                            {ev.heure_debut ? ` • ${ev.heure_debut}-${ev.heure_fin}` : ' • Journée entière'}
+                          </p>
+                          <p className="text-[10px] font-black mt-1 uppercase tracking-wide opacity-90">{getNomsMembresEvent(ev.membres)}</p>
+                        </div>
+                        <button onClick={() => supprimerEvenement(ev.id!)} className="w-8 h-8 rounded-full bg-white/50 hover:bg-rose-500 hover:text-white transition-colors flex justify-center items-center font-bold">✕</button>
+                      </div>
+                    ))}
+                  </div>
+
+                  <h3 className="font-black text-lg text-slate-800 mb-4">À venir</h3>
+                  <div className="space-y-3 mb-8">
+                    {eventsAVenir.length === 0 && <p className="text-sm text-slate-400 italic">Aucun événement à venir.</p>}
+                    {eventsAVenir.map(ev => (
+                      <div key={ev.id} className="p-4 border-2 border-slate-100 rounded-2xl flex justify-between items-center group bg-white shadow-sm">
+                        <div className="flex-1 cursor-pointer" onClick={() => ouvrirEditionEvenement(ev, 'single')}>
+                          <p className="font-bold text-md flex items-center gap-2">{getEventIcon(ev.type)} {ev.titre}</p>
+                          <p className="text-xs text-slate-500 font-medium mt-1">
+                            {format(new Date(ev.date_debut), 'dd MMM yyyy', {locale: fr})} 
+                            {ev.date_debut !== ev.date_fin && ` ➔ ${format(new Date(ev.date_fin), 'dd MMM yyyy', {locale: fr})}`}
+                            {ev.heure_debut ? ` • ${ev.heure_debut}-${ev.heure_fin}` : ' • Journée entière'}
+                          </p>
+                          <p className="text-[10px] text-slate-400 font-bold mt-1 uppercase tracking-wide">{getNomsMembresEvent(ev.membres)}</p>
+                        </div>
+                        <button onClick={() => supprimerEvenement(ev.id!)} className="w-8 h-8 rounded-full bg-rose-50 text-rose-500 hover:bg-rose-500 hover:text-white transition-colors flex justify-center items-center font-bold">✕</button>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {listTab === 'series' && (
+                <div className="space-y-4">
+                  {Object.keys(groupesSeries).length === 0 && <p className="text-sm text-slate-400 italic">Aucune série répétée.</p>}
+                  {Object.entries(groupesSeries).map(([pid, evs]) => {
+                    const firstEv = evs[0];
+                    const isExpanded = groupesEtendus[pid];
+                    return (
+                      <div key={pid} className="border-2 border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+                        <div className="p-4 bg-slate-50 flex justify-between items-center cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => setGroupesEtendus(p => ({...p, [pid]: !p[pid]}))}>
+                          <div>
+                            <p className="font-black text-md flex items-center gap-2">{getEventIcon(firstEv.type)} {firstEv.titre}</p>
+                            <p className="text-xs text-slate-500 font-medium mt-1">Série de {evs.length} événement(s)</p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button onClick={(e) => { e.stopPropagation(); ouvrirEditionEvenement(firstEv, 'series'); }} className="px-3 py-1.5 bg-white border border-slate-200 hover:border-black rounded-lg text-xs font-bold transition-colors shadow-sm">
+                              ✏️ Série
+                            </button>
+                            <button onClick={(e) => { e.stopPropagation(); supprimerEvenement(firstEv.id!, true, pid); }} className="w-8 h-8 rounded-full bg-white border border-slate-200 text-rose-500 hover:bg-rose-500 hover:text-white transition-colors flex justify-center items-center font-bold">
+                              ✕
+                            </button>
+                          </div>
+                        </div>
+                        {isExpanded && (
+                          <div className="p-3 bg-white space-y-2 border-t border-slate-100 max-h-[300px] overflow-y-auto">
+                            {evs.map(occ => (
+                              <div key={occ.id} className={`p-3 rounded-xl border flex justify-between items-center group cursor-pointer transition-colors ${occ.date_debut < todayStr ? 'opacity-50 grayscale' : ''} ${getEventStyle(occ.type)}`} onClick={() => ouvrirEditionEvenement(occ, 'single')}>
+                                <div>
+                                  <p className="font-bold text-sm">{format(new Date(occ.date_debut), 'dd MMM yyyy', {locale: fr})}</p>
+                                  <p className="text-[10px] font-medium opacity-80 mt-0.5">{occ.heure_debut ? `${occ.heure_debut}-${occ.heure_fin}` : 'Journée entière'} • {getNomsMembresEvent(occ.membres)}</p>
+                                </div>
+                                <button onClick={(e) => { e.stopPropagation(); supprimerEvenement(occ.id!); }} className="w-6 h-6 rounded-full bg-white/50 hover:bg-rose-500 hover:text-white transition-colors flex justify-center items-center font-bold text-xs opacity-0 group-hover:opacity-100">✕</button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showEventModal && (
+        <div className="fixed inset-0 bg-black/40 z-[9999] flex justify-center items-center backdrop-blur-sm p-4">
+          <div className="bg-white w-full max-w-md rounded-[2rem] shadow-2xl p-6 sm:p-8 animate-fade-in max-h-[95vh] overflow-y-auto hide-scrollbar flex flex-col">
+            <div className="flex justify-between items-center mb-6 shrink-0">
+              <div className="flex items-center">
+                 <h2 className="text-2xl font-black text-black">{nouvelEvent.id ? 'Modifier' : 'Nouvel Événement'}</h2>
+                 {nouvelEvent.id && (
+                    <button onClick={dupliquerEvenement} className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold px-3 py-1.5 rounded-lg ml-3 transition-colors flex items-center gap-1 shadow-sm">
+                       📄 Dupliquer
+                    </button>
+                 )}
+              </div>
+              <button onClick={() => setShowEventModal(false)} className="w-10 h-10 bg-slate-100 hover:bg-slate-200 rounded-full font-black text-slate-600 transition-colors">✕</button>
+            </div>
+
+            <div className="space-y-4 flex-1">
+              
+              {nouvelEvent.parent_id && (
+                <div className="flex bg-slate-100 p-1 rounded-xl font-bold text-xs mb-2">
+                  <button onClick={() => setEditMode('single')} className={`flex-1 py-2 rounded-lg transition-all ${editMode === 'single' ? 'bg-white shadow-sm text-black' : 'text-slate-500 hover:text-black'}`}>Cet événement uniquement</button>
+                  <button onClick={() => setEditMode('series')} className={`flex-1 py-2 rounded-lg transition-all ${editMode === 'series' ? 'bg-white shadow-sm text-black' : 'text-slate-500 hover:text-black'}`}>Toute la série</button>
+                </div>
+              )}
+
+              <div>
+                <label className="text-xs font-black text-slate-500 uppercase">Titre</label>
+                <input type="text" value={nouvelEvent.titre} onChange={e => setNouvelEvent({...nouvelEvent, titre: e.target.value})} className="w-full mt-1 p-3 rounded-xl border-2 border-slate-200 font-bold outline-none focus:border-black" placeholder="Ex: Congés Bernard, Animation Cité..." />
+              </div>
+
+              <div className="bg-slate-50 p-2 rounded-xl border border-slate-200">
+                <div className="flex flex-wrap gap-1 mb-2 bg-white p-1 rounded-lg shadow-sm">
+                  <button type="button" onClick={() => setMainType('Absence')} className={`flex-1 py-2 px-1 rounded-md font-bold text-[11px] transition-colors ${mainTypeUI === 'Absence' ? 'bg-rose-50 text-rose-600' : 'text-slate-500 hover:bg-slate-50'}`}>Absence</button>
+                  <button type="button" onClick={() => setMainType('Réunion')} className={`flex-1 py-2 px-1 rounded-md font-bold text-[11px] transition-colors ${mainTypeUI === 'Réunion' ? 'bg-indigo-50 text-indigo-600' : 'text-slate-500 hover:bg-slate-50'}`}>Réunion</button>
+                  <button type="button" onClick={() => setMainType('Animation')} className={`flex-1 py-2 px-1 rounded-md font-bold text-[11px] transition-colors ${mainTypeUI === 'Animation' ? 'bg-amber-50 text-amber-600' : 'text-slate-500 hover:bg-slate-50'}`}>Animation</button>
+                  <button type="button" onClick={() => setMainType('Soirée Jeux')} className={`flex-1 py-2 px-1 rounded-md font-bold text-[11px] transition-colors ${mainTypeUI === 'Soirée Jeux' ? 'bg-purple-50 text-purple-600' : 'text-slate-500 hover:bg-slate-50'}`}>Soirée Jeux</button>
+                  <button type="button" onClick={() => setMainType('Heures Exceptionnelles')} className={`flex-1 py-2 px-1 rounded-md font-bold text-[11px] transition-colors ${mainTypeUI === 'Heures Exceptionnelles' ? 'bg-teal-50 text-teal-600' : 'text-slate-500 hover:bg-slate-50'}`}>H. Excep.</button>
+                </div>
+
+                {mainTypeUI === 'Absence' && (
+                  <div className="space-y-3 px-2 pb-2">
+                    <div className="flex gap-2 justify-center">
+                      <button type="button" onClick={() => setAbsType('Congé')} className={`flex-1 py-1.5 rounded-full font-bold text-[10px] uppercase border transition-colors ${absTypeUI === 'Congé' ? 'border-rose-500 bg-rose-500 text-white shadow-sm' : 'border-slate-300 text-slate-500 hover:bg-white'}`}>Congé</button>
+                      <button type="button" onClick={() => setAbsType('RTT')} className={`flex-1 py-1.5 rounded-full font-bold text-[10px] uppercase border transition-colors ${absTypeUI === 'RTT' ? 'border-emerald-500 bg-emerald-500 text-white shadow-sm' : 'border-slate-300 text-slate-500 hover:bg-white'}`}>RTT</button>
+                      <button type="button" onClick={() => setAbsType('Récupération')} className={`flex-1 py-1.5 rounded-full font-bold text-[10px] uppercase border transition-colors ${absTypeUI === 'Récupération' ? 'border-rose-500 bg-rose-500 text-white shadow-sm' : 'border-slate-300 text-slate-500 hover:bg-white'}`}>Récupération</button>
+                    </div>
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => setIsDemi(false)} className={`flex-1 py-2 rounded-lg font-bold text-xs border-2 transition-colors ${!isDemiUI ? 'border-black bg-white text-black shadow-sm' : 'border-transparent text-slate-500 hover:bg-white'}`}>Journée entière</button>
+                      <button type="button" onClick={() => setIsDemi(true)} className={`flex-1 py-2 rounded-lg font-bold text-xs border-2 transition-colors ${isDemiUI ? 'border-black bg-white text-black shadow-sm' : 'border-transparent text-slate-500 hover:bg-white'}`}>Demi-journée</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex gap-4">
+                <div className="flex-1">
+                  <label className="text-xs font-black text-slate-500 uppercase">Le (Début)</label>
+                  <input type="date" value={nouvelEvent.date_debut} onChange={e => handleDateDebutChange(e.target.value)} className="w-full mt-1 p-3 rounded-xl border-2 border-slate-200 font-bold outline-none focus:border-black text-sm" />
+                </div>
+                {(!rep.active && editMode === 'single') && (
+                  <div className="flex-1">
+                    <label className="text-xs font-black text-slate-500 uppercase">Au (Fin)</label>
+                    <input type="date" value={nouvelEvent.date_fin} min={nouvelEvent.date_debut} onChange={e => setNouvelEvent({...nouvelEvent, date_fin: e.target.value})} className="w-full mt-1 p-3 rounded-xl border-2 border-slate-200 font-bold outline-none focus:border-black text-sm" />
+                  </div>
+                )}
+              </div>
+
+              <div className={`flex gap-4 transition-opacity ${isTimeDisabled ? 'opacity-30 pointer-events-none' : ''}`}>
+                <div className="flex-1">
+                  <label className="text-xs font-black text-slate-500 uppercase">De (Optionnel)</label>
+                  <input type="time" value={nouvelEvent.heure_debut || ''} onChange={e => setNouvelEvent({...nouvelEvent, heure_debut: e.target.value})} className="w-full mt-1 p-3 rounded-xl border-2 border-slate-200 font-bold outline-none focus:border-black text-sm bg-white" />
+                </div>
+                <div className="flex-1">
+                  <label className="text-xs font-black text-slate-500 uppercase">À (Optionnel)</label>
+                  <input type="time" value={nouvelEvent.heure_fin || ''} onChange={e => setNouvelEvent({...nouvelEvent, heure_fin: e.target.value})} className="w-full mt-1 p-3 rounded-xl border-2 border-slate-200 font-bold outline-none focus:border-black text-sm bg-white" />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-black text-slate-500 uppercase block mb-2">Personnes concernées</label>
+                <div className="flex flex-wrap gap-2 mb-3">
+                  <button type="button" onClick={() => setNouvelEvent({...nouvelEvent, membres: activeEquipe.map(m => m.id)})} className="text-[10px] font-bold px-3 py-1.5 bg-slate-200 hover:bg-slate-300 rounded-full transition-colors text-slate-700">Toute l'équipe</button>
+                  <button type="button" onClick={() => setNouvelEvent({...nouvelEvent, membres: activeEquipe.filter(m => m.groupe === 'A').map(m => m.id)})} className="text-[10px] font-bold px-3 py-1.5 bg-rose-100 hover:bg-rose-200 text-rose-700 rounded-full transition-colors">Équipe A</button>
+                  <button type="button" onClick={() => setNouvelEvent({...nouvelEvent, membres: activeEquipe.filter(m => m.groupe === 'B').map(m => m.id)})} className="text-[10px] font-bold px-3 py-1.5 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-full transition-colors">Équipe B</button>
+                  <button type="button" onClick={() => setNouvelEvent({...nouvelEvent, membres: []})} className="text-[10px] font-bold px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-full transition-colors">Vider</button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  {activeEquipe.map(m => {
+                    const isAbsent = membresEnConge.includes(m.id);
+                    return (
+                      <label key={m.id} className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer border-2 transition-colors ${nouvelEvent.membres.includes(m.id) ? 'border-black bg-slate-50 shadow-sm' : 'border-transparent hover:bg-slate-50'} ${isAbsent ? 'opacity-50 bg-slate-100 grayscale' : ''}`}>
+                        <input type="checkbox" checked={nouvelEvent.membres.includes(m.id)} onChange={() => toggleMembreEvent(m.id)} className="w-4 h-4 accent-black shrink-0" />
+                        <div className="flex flex-col overflow-hidden">
+                          <span className="font-bold text-sm truncate">{m.nom}</span>
+                          {isAbsent && <span className="text-[9px] text-rose-500 font-bold leading-none mt-0.5">🏖️ En congé</span>}
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {((mainTypeUI === 'Soirée Jeux' || isDemiUI) && nouvelEvent.membres.length > 0) && (
+                <div className="bg-slate-50 p-4 rounded-2xl border-2 border-slate-200 mt-4 animate-fade-in">
+                  <h4 className="text-xs font-black text-slate-800 uppercase mb-3">Horaires de travail exceptionnels</h4>
+                  
+                  {['A', 'B', 'Aucun'].filter(grp => 
+                    mainTypeUI === 'Soirée Jeux' 
+                      ? activeEquipe.some(m => (m.groupe || 'Aucun') === grp) 
+                      : activeEquipe.some(m => nouvelEvent.membres.includes(m.id) && (m.groupe || 'Aucun') === grp)
+                  ).map(grp => (
+                    <div key={grp} className="flex flex-col sm:flex-row sm:items-center justify-between bg-white p-3 rounded-xl mb-2 shadow-sm gap-2 border border-slate-100">
+                      <span className="text-xs font-bold text-slate-700">
+                        {grp === 'Aucun' ? 'Sans équipe' : `Équipe ${grp}`}
+                      </span>
+                      <div className="flex items-center gap-1 sm:gap-2">
+                        <input type="time" value={horairesException[grp]?.debut || ''} onChange={e => setHorairesException({...horairesException, [grp]: {...horairesException[grp], debut: e.target.value}})} className="p-1.5 rounded-lg border-2 border-slate-100 text-xs font-bold outline-none focus:border-slate-300" />
+                        <span className="text-slate-400 font-bold text-xs">à</span>
+                        <input type="time" value={horairesException[grp]?.fin || ''} onChange={e => setHorairesException({...horairesException, [grp]: {...horairesException[grp], fin: e.target.value}})} className="p-1.5 rounded-lg border-2 border-slate-100 text-xs font-bold outline-none focus:border-slate-300" />
+                        <div className="flex items-center bg-slate-50 border border-slate-200 rounded-lg ml-1 px-1">
+                          <span className="text-[9px] font-bold text-slate-400 mr-1">Repas</span>
+                          <input type="number" step="0.5" min="0" value={horairesException[grp]?.pause !== undefined ? horairesException[grp].pause : 1} onChange={e => setHorairesException({...horairesException, [grp]: {...horairesException[grp], pause: parseFloat(e.target.value) || 0}})} className="w-10 p-1 bg-transparent text-xs font-bold outline-none text-center" />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              
+              {(!nouvelEvent.id || editMode === 'series') && (
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 mt-2">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" checked={rep.active} onChange={e => setRep({...rep, active: e.target.checked})} className="w-4 h-4 accent-black" />
+                    <span className="font-bold text-sm text-slate-700">Répéter cet événement (Série)</span>
+                  </label>
+                  {rep.active && (
+                    <div className="grid grid-cols-2 gap-3 mt-3 animate-fade-in border-t border-slate-200 pt-3">
+                       <div className="col-span-2 sm:col-span-1">
+                         <label className="text-[10px] font-black text-slate-500 uppercase">Répéter tous les...</label>
+                         <div className="flex gap-2 mt-1">
+                           <input type="number" min="1" value={rep.interval} onChange={e => setRep({...rep, interval: parseInt(e.target.value) || 1})} className="w-16 p-2 rounded-lg border border-slate-200 text-xs font-bold outline-none focus:border-black text-center" />
+                           <select value={rep.period} onChange={e => setRep({...rep, period: e.target.value})} className="flex-1 p-2 rounded-lg border border-slate-200 text-xs font-bold outline-none cursor-pointer focus:border-black">
+                             <option value="weeks">Semaine(s)</option>
+                             <option value="months">Mois</option>
+                           </select>
+                         </div>
+                       </div>
+                       <div className="col-span-2 sm:col-span-1">
+                         <label className="text-[10px] font-black text-slate-500 uppercase">Jusqu'au</label>
+                         <input type="date" min={nouvelEvent.date_debut} value={rep.date_limite} onChange={e => setRep({...rep, date_limite: e.target.value})} className="w-full p-2 mt-1 rounded-lg border border-slate-200 text-xs font-bold outline-none focus:border-black" />
+                       </div>
+                       <div className="col-span-2">
+                         <label className="text-[10px] font-black text-slate-500 uppercase">Participants</label>
+                         <select value={rep.rotation ? 'true' : 'false'} onChange={e => setRep({...rep, rotation: e.target.value === 'true'})} className="w-full p-2 mt-1 rounded-lg border border-slate-200 text-xs font-bold outline-none cursor-pointer focus:border-black">
+                           <option value="false">Fixes (Tous les sélectionnés participeront)</option>
+                           <option value="true">Chacun son tour (Rotation parmi les sélectionnés)</option>
+                         </select>
+                       </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <button onClick={sauvegarderEvenement} className="w-full mt-6 text-black font-black py-4 rounded-2xl transition-colors shadow-sm hover:brightness-95 shrink-0" style={{ backgroundColor: couleurs.accent }}>
+              {nouvelEvent.id ? 'Mettre à jour' : 'Enregistrer'}
+            </button>
           </div>
         </div>
       )}

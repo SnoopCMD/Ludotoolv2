@@ -5,7 +5,6 @@ import { supabase } from "../../lib/supabase";
 import { PDFDownloadLink } from "@react-pdf/renderer";
 import { EtiquettesPDF } from "../../components/EtiquettesPDF";
 
-
 const CATEGORIES = [
   { id: "vert", nom: "Vert", color: "bg-[#baff29] text-white", maxStars: 3 },
   { id: "rose", nom: "Rose", color: "bg-[#f45be0] text-white", maxStars: 2 },
@@ -33,9 +32,9 @@ type Etiquette = {
   nom: string;
   mecanique: string;
   nb_de_joueurs: string;
-  coop_versus: "Coop" | "Versus" | "Solo" | ""; // NOUVEAU: Accepte vide
+  coop_versus: "Coop" | "Versus" | "Solo" | ""; 
   temps_de_jeu: string;
-  etoiles: number | ""; // NOUVEAU: Accepte vide
+  etoiles: number | ""; 
 };
 
 export default function EtiquettesPage() {
@@ -74,9 +73,9 @@ export default function EtiquettesPage() {
           nom: item.nom || "",
           mecanique: item.mecanique || "",
           nb_de_joueurs: item.nb_de_joueurs || "",
-          coop_versus: (item.coop_versus as "Coop" | "Versus" | "Solo" | "") || "", // NOUVEAU: Vide par défaut si non rempli
+          coop_versus: (item.coop_versus as "Coop" | "Versus" | "Solo" | "") || "", 
           temps_de_jeu: item.temps_de_jeu || "",
-          etoiles: item.etoiles || "" // NOUVEAU: Vide par défaut si non rempli
+          etoiles: item.etoiles || "" 
         });
       });
       Object.keys(dbEtiquettes).forEach(k => {
@@ -99,9 +98,9 @@ export default function EtiquettesPage() {
       nom: "",
       mecanique: "",
       nb_de_joueurs: "",
-      coop_versus: "", // NOUVEAU: Vide par défaut
+      coop_versus: "", 
       temps_de_jeu: "",
-      etoiles: "" // NOUVEAU: Vide par défaut
+      etoiles: "" 
     };
     
     setEtiquettes(prev => ({
@@ -112,10 +111,39 @@ export default function EtiquettesPage() {
     if (!sectionsOuvertes[couleurId]) toggleSection(couleurId);
   };
 
+  // NOUVEAU : Fonction de sauvegarde individuelle en BDD
+  const sauvegarderLigneEnBase = async (eti: Etiquette, couleurId: string) => {
+    if (!eti.ean || !eti.nom) return; // Requiert EAN et Nom au minimum
+    
+    const dataToSave = {
+      ean: eti.ean,
+      nom: eti.nom, 
+      mecanique: eti.mecanique,
+      nb_de_joueurs: eti.nb_de_joueurs,
+      coop_versus: eti.coop_versus === "" ? null : eti.coop_versus,
+      temps_de_jeu: eti.temps_de_jeu,
+      etoiles: eti.etoiles === "" ? null : eti.etoiles,
+      couleur: couleurId 
+    };
+
+    const { error } = await supabase.from('catalogue').upsert(dataToSave);
+    if (error) console.error("Erreur de sauvegarde auto:", error.message);
+  };
+
   const mettreAJourLigne = (couleurId: string, id: string | number, champ: keyof Etiquette, valeur: string | number) => {
     setEtiquettes(prev => ({
       ...prev,
-      [couleurId]: prev[couleurId].map(eti => eti.id === id ? { ...eti, [champ]: valeur } : eti)
+      [couleurId]: prev[couleurId].map(eti => {
+        if (eti.id === id) {
+          const updated = { ...eti, [champ]: valeur };
+          // Auto-save immédiate pour les champs select
+          if (['mecanique', 'coop_versus', 'etoiles'].includes(champ as string)) {
+            sauvegarderLigneEnBase(updated, couleurId);
+          }
+          return updated;
+        }
+        return eti;
+      })
     }));
   };
 
@@ -157,25 +185,30 @@ export default function EtiquettesPage() {
       }
     }
 
-    if (nomTrouve || dataCatalogue) {
-      setEtiquettes(prev => ({
-        ...prev,
-        [couleurId]: prev[couleurId].map(eti => eti.id === id ? {
-          ...eti,
-          nom: nomTrouve || eti.nom,
-          mecanique: dataCatalogue?.mecanique || eti.mecanique,
-          nb_de_joueurs: dataCatalogue?.nb_de_joueurs || eti.nb_de_joueurs,
-          coop_versus: (dataCatalogue?.coop_versus as "Coop" | "Versus" | "Solo" | "") || eti.coop_versus || "",
-          temps_de_jeu: dataCatalogue?.temps_de_jeu || eti.temps_de_jeu,
-          etoiles: dataCatalogue?.etoiles || eti.etoiles || ""
-        } : eti)
-      }));
-    }
+    setEtiquettes(prev => ({
+      ...prev,
+      [couleurId]: prev[couleurId].map(eti => {
+        if (eti.id === id) {
+          const updated = {
+            ...eti,
+            nom: nomTrouve || eti.nom,
+            mecanique: dataCatalogue?.mecanique || eti.mecanique,
+            nb_de_joueurs: dataCatalogue?.nb_de_joueurs || eti.nb_de_joueurs,
+            coop_versus: (dataCatalogue?.coop_versus as "Coop" | "Versus" | "Solo" | "") || eti.coop_versus || "",
+            temps_de_jeu: dataCatalogue?.temps_de_jeu || eti.temps_de_jeu,
+            etoiles: dataCatalogue?.etoiles || eti.etoiles || ""
+          };
+          sauvegarderLigneEnBase(updated, couleurId); // Auto-save après la recherche
+          return updated;
+        }
+        return eti;
+      })
+    }));
   };
 
   const genererPDF = async () => {
     const catalogueData: any[] = [];
-    const eansCompletsAImprimer: string[] = []; // NOUVEAU : Liste des EAN à valider
+    const eansCompletsAImprimer: string[] = []; 
     
     Object.entries(etiquettes).forEach(([couleurId, liste]) => {
       liste.forEach(e => {
@@ -191,7 +224,6 @@ export default function EtiquettesPage() {
             couleur: couleurId 
           });
 
-          // NOUVEAU : Si c'est complet et qu'on l'imprime, on l'ajoute à la liste des succès
           const isIncomplet = !e.nom || !e.mecanique || !e.nb_de_joueurs || !e.coop_versus || !e.temps_de_jeu || e.etoiles === "";
           if (!isIncomplet && e.quantity > 0) {
             eansCompletsAImprimer.push(e.ean);
@@ -200,7 +232,6 @@ export default function EtiquettesPage() {
       });
     });
 
-    // 1. Sauvegarde dans le catalogue
     const uniqueCatalogue = Array.from(new Map(catalogueData.map(item => [item.ean, item])).values());
     
     if (uniqueCatalogue.length > 0) {
@@ -212,7 +243,6 @@ export default function EtiquettesPage() {
       }
     }
 
-    // 2. NOUVEAU : Validation automatique de l'étape dans la table jeux
     if (eansCompletsAImprimer.length > 0) {
       const { data: jeuxEnPrepa } = await supabase
         .from('jeux')
@@ -222,7 +252,6 @@ export default function EtiquettesPage() {
 
       if (jeuxEnPrepa && jeuxEnPrepa.length > 0) {
         for (const jeu of jeuxEnPrepa) {
-          // On vérifie si valider l'étiquette termine complètement la préparation du jeu
           const isTermine = jeu.etape_plastifier && jeu.etape_contenu && true && jeu.etape_equiper && jeu.etape_encoder && jeu.etape_notice && jeu.etape_nouveaute;
           
           await supabase
@@ -256,7 +285,6 @@ export default function EtiquettesPage() {
 
           <div className="flex flex-col gap-4">
             {CATEGORIES.map((cat) => {
-              // 1. On calcule le nombre de jeux incomplets pour cette catégorie
               const nbIncomplets = etiquettes[cat.id].filter(eti => 
                 !eti.nom || !eti.mecanique || !eti.nb_de_joueurs || !eti.coop_versus || !eti.temps_de_jeu || eti.etoiles === ""
               ).length;
@@ -273,7 +301,6 @@ export default function EtiquettesPage() {
                     <span className="bg-white/20 px-3 py-1 rounded-full text-sm">
                       {etiquettes[cat.id].length} jeu(x)
                     </span>
-                    {/* 2. On affiche le badge seulement s'il y a des jeux incomplets */}
                     {nbIncomplets > 0 && (
                       <span className="bg-red-500 text-white px-3 py-1 rounded-full text-sm font-bold shadow-sm border border-red-600">
                          {nbIncomplets} incomplet(s)
@@ -305,10 +332,7 @@ export default function EtiquettesPage() {
                           </thead>
                           <tbody>
                             {etiquettes[cat.id].map((eti) => {
-                              // NOUVEAU: Vérification si l'étiquette est incomplète
                               const isIncomplet = !eti.nom || !eti.mecanique || !eti.nb_de_joueurs || !eti.coop_versus || !eti.temps_de_jeu || eti.etoiles === "";
-                              
-                              // Ligne rouge si sélectionné pour impression MAIS incomplet
                               const ligneClasses = eti.quantity > 0 
                                 ? (isIncomplet ? 'bg-red-50/40 border-l-4 border-l-red-500' : 'bg-emerald-50/30 border-l-4 border-l-black')
                                 : 'bg-white hover:bg-slate-50';
@@ -322,7 +346,7 @@ export default function EtiquettesPage() {
                                     <input type="text" value={eti.ean} onChange={(e) => mettreAJourLigne(cat.id, eti.id, "ean", e.target.value)} onBlur={(e) => chercherEan(cat.id, eti.id, e.target.value)} placeholder="Code-barres..." className="w-full bg-slate-100 p-2 rounded-lg outline-none border border-transparent focus:border-slate-300 text-xs" />
                                   </td>
                                   <td className="p-2">
-                                    <input type="text" value={eti.nom} onChange={(e) => mettreAJourLigne(cat.id, eti.id, "nom", e.target.value)} placeholder="Nom du jeu..." className={`w-full p-2 rounded-lg outline-none font-bold border focus:border-slate-300 ${!eti.nom ? 'bg-red-50 border-red-300 text-red-700' : 'bg-slate-100 border-transparent'}`} />
+                                    <input type="text" value={eti.nom} onChange={(e) => mettreAJourLigne(cat.id, eti.id, "nom", e.target.value)} onBlur={() => sauvegarderLigneEnBase(eti, cat.id)} placeholder="Nom du jeu..." className={`w-full p-2 rounded-lg outline-none font-bold border focus:border-slate-300 ${!eti.nom ? 'bg-red-50 border-red-300 text-red-700' : 'bg-slate-100 border-transparent'}`} />
                                   </td>
                                   <td className="p-2">
                                     <select 
@@ -337,7 +361,7 @@ export default function EtiquettesPage() {
                                     </select>
                                   </td>
                                   <td className="p-2">
-                                    <input type="text" value={eti.nb_de_joueurs} onChange={(e) => mettreAJourLigne(cat.id, eti.id, "nb_de_joueurs", e.target.value)} placeholder="Ex: 2-6" className={`w-full p-2 rounded-lg outline-none text-center border focus:border-slate-300 ${!eti.nb_de_joueurs ? 'bg-red-50 border-red-300 text-red-700' : 'bg-slate-100 border-transparent'}`} />
+                                    <input type="text" value={eti.nb_de_joueurs} onChange={(e) => mettreAJourLigne(cat.id, eti.id, "nb_de_joueurs", e.target.value)} onBlur={() => sauvegarderLigneEnBase(eti, cat.id)} placeholder="Ex: 2-6" className={`w-full p-2 rounded-lg outline-none text-center border focus:border-slate-300 ${!eti.nb_de_joueurs ? 'bg-red-50 border-red-300 text-red-700' : 'bg-slate-100 border-transparent'}`} />
                                   </td>
                                   <td className="p-2">
                                     <select value={eti.coop_versus} onChange={(e) => mettreAJourLigne(cat.id, eti.id, "coop_versus", e.target.value)} className={`w-full p-2 rounded-lg outline-none font-bold cursor-pointer border focus:border-slate-300 ${!eti.coop_versus ? 'bg-red-50 border-red-300 text-red-500' : 'bg-slate-100 border-transparent'}`}>
@@ -348,7 +372,7 @@ export default function EtiquettesPage() {
                                     </select>
                                   </td>
                                   <td className="p-2">
-                                    <input type="text" value={eti.temps_de_jeu} onChange={(e) => mettreAJourLigne(cat.id, eti.id, "temps_de_jeu", e.target.value)} placeholder="Ex: 10-20" className={`w-full p-2 rounded-lg outline-none text-center border focus:border-slate-300 ${!eti.temps_de_jeu ? 'bg-red-50 border-red-300 text-red-700' : 'bg-slate-100 border-transparent'}`} />
+                                    <input type="text" value={eti.temps_de_jeu} onChange={(e) => mettreAJourLigne(cat.id, eti.id, "temps_de_jeu", e.target.value)} onBlur={() => sauvegarderLigneEnBase(eti, cat.id)} placeholder="Ex: 10-20" className={`w-full p-2 rounded-lg outline-none text-center border focus:border-slate-300 ${!eti.temps_de_jeu ? 'bg-red-50 border-red-300 text-red-700' : 'bg-slate-100 border-transparent'}`} />
                                   </td>
                                   <td className="p-2">
                                     <select value={eti.etoiles} onChange={(e) => mettreAJourLigne(cat.id, eti.id, "etoiles", e.target.value === "" ? "" : Number(e.target.value))} className={`w-full p-2 rounded-lg outline-none text-center font-bold text-lg cursor-pointer border focus:border-slate-300 tracking-widest ${eti.etoiles === "" ? 'bg-red-50 border-red-300 text-red-500' : 'bg-slate-100 border-transparent'}`}>
