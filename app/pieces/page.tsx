@@ -10,11 +10,22 @@ const normaliser = (str: string) => {
   return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/s$/, "").trim();
 };
 
+const TYPES_PIECES = [
+  { id: "carte", label: "🃏 Cartes", keywords: ["carte", "cartes"] },
+  { id: "pion", label: "♟️ Pions", keywords: ["pion", "pions", "meeple", "figurine", "personnage", "jeton personnage"] },
+  { id: "jeton", label: "🪙 Jetons", keywords: ["jeton", "jetons", "pièce", "piece", "ressource", "marqueur"] },
+  { id: "de", label: "🎲 Dés", keywords: ["dé", "dés", "de", "des"] },
+  { id: "plateau", label: "🗺️ Plateaux", keywords: ["plateau", "plateaux", "support", "tuile", "tuiles", "planche"] },
+  { id: "regle", label: "📖 Règles", keywords: ["règle", "regle", "livret", "notice"] },
+  { id: "cube", label: "🧊 Cubes", keywords: ["cube", "cubes", "bloc"] },
+  { id: "bille", label: "🔮 Billes", keywords: ["bille", "billes", "boule"] },
+];
+
 export default function PiecesPage() {
   const [manquantes, setManquantes] = useState<PieceManquante[]>([]);
   const [trouvees, setTrouvees] = useState<PieceTrouvee[]>([]);
+  const [filtreType, setFiltreType] = useState<string | null>(null);
 
-  // Formulaire Manquant
   const [codeManq, setCodeManq] = useState("");
   const [nomManq, setNomManq] = useState("");
   const [contenuJeu, setContenuJeu] = useState<string[]>([]);
@@ -23,7 +34,6 @@ export default function PiecesPage() {
   const [elemManqManuel, setElemManqManuel] = useState("");
   const [saisieManuelle, setSaisieManuelle] = useState(false);
 
-  // Formulaire Trouvé
   const [descTrouvee, setDescTrouvee] = useState("");
   const [nomSuppo, setNomSuppo] = useState("");
 
@@ -34,14 +44,12 @@ export default function PiecesPage() {
   useEffect(() => { chargerDonnees(); }, []);
 
   const chargerDonnees = async () => {
-    // On charge les "Manquant" ET les "Commandé"
     const { data: d1 } = await supabase.from('pieces_manquantes').select('*').in('statut', ['Manquant', 'Commandé']).order('id', { ascending: false });
     const { data: d2 } = await supabase.from('pieces_trouvees').select('*').eq('statut', 'En attente').order('id', { ascending: false });
     if (d1) setManquantes(d1);
     if (d2) setTrouvees(d2);
   };
 
-  // --- LOGIQUE DE MATCHING ---
   const verifierMatch = (m: PieceManquante, t: PieceTrouvee) => {
     const matchNom = t.nom_suppose && normaliser(m.nom).includes(normaliser(t.nom_suppose));
     const mNum = parseInt(m.element_manquant) || 0;
@@ -53,7 +61,7 @@ export default function PiecesPage() {
   };
 
   const manquantesTriees = useMemo(() => {
-    let liste = manquantes.map(m => {
+    let listeFinale = manquantes.map(m => {
       const aUnMatchGeneral = trouvees.some(t => verifierMatch(m, t));
       let isSuggestion = false;
       if (selectedTrouvees.length > 0) {
@@ -65,23 +73,33 @@ export default function PiecesPage() {
       return { ...m, hasMatch: aUnMatchGeneral, isSuggestion };
     });
 
-    liste.sort((a, b) => {
-      // 1. Les pièces commandées vont toujours tout en bas
+    listeFinale.sort((a, b) => {
       if (a.statut === 'Commandé' && b.statut !== 'Commandé') return 1;
       if (a.statut !== 'Commandé' && b.statut === 'Commandé') return -1;
-      
-      // 2. Les suggestions remontent en haut (parmi celles non commandées)
       if (selectedTrouvees.length > 0) {
         return Number(b.isSuggestion) - Number(a.isSuggestion);
       }
       return 0;
     });
 
-    return liste;
+    return listeFinale;
   }, [manquantes, trouvees, selectedTrouvees]);
 
   const trouveesTriees = useMemo(() => {
-    let liste = trouvees.map(t => {
+    let liste = [...trouvees];
+
+    // Filtre intelligent sur les pièces trouvées
+    if (filtreType) {
+      const cat = TYPES_PIECES.find(t => t.id === filtreType);
+      if (cat) {
+        liste = liste.filter(t => {
+          const txt = normaliser(t.description);
+          return cat.keywords.some(kw => txt.includes(kw));
+        });
+      }
+    }
+
+    let listeFinale = liste.map(t => {
       let isSuggestion = false;
       if (selectedManquant) {
         const m = manquantes.find(ma => ma.id === selectedManquant);
@@ -91,11 +109,10 @@ export default function PiecesPage() {
     });
 
     if (selectedManquant) {
-      liste.sort((a, b) => Number(b.isSuggestion) - Number(a.isSuggestion));
+      listeFinale.sort((a, b) => Number(b.isSuggestion) - Number(a.isSuggestion));
     }
-    return liste;
-  }, [trouvees, manquantes, selectedManquant]);
-  // ---------------------------------------
+    return listeFinale;
+  }, [trouvees, manquantes, selectedManquant, filtreType]);
 
   const fetchContenuJeu = async (eanTrouve: string) => {
     if (!eanTrouve) { setContenuJeu([]); return; }
@@ -156,7 +173,6 @@ export default function PiecesPage() {
     chargerDonnees();
   };
 
-  // NOUVEAU : Fonction pour passer en commande
   const commanderPiece = async (id: number) => {
     await supabase.from('pieces_manquantes').update({ statut: 'Commandé' }).eq('id', id);
     if (selectedManquant === id) setSelectedManquant(null);
@@ -184,6 +200,13 @@ export default function PiecesPage() {
 
   return (
     <div className="min-h-screen p-4 sm:p-8 bg-[#e5e5e5] font-sans relative">
+      <style>{`
+        .custom-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scroll::-webkit-scrollbar-track { background: transparent; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        .custom-scroll::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+      `}</style>
+      
       <header className="flex justify-between items-center mb-6 w-full max-w-screen-2xl mx-auto">
         <div className="w-10 h-10 bg-black rounded flex items-center justify-center text-white font-black text-xl italic">+</div>
         <nav className="bg-[#2d2d2d] text-white p-1.5 rounded-full flex items-center text-sm font-bold shadow-lg">
@@ -195,10 +218,10 @@ export default function PiecesPage() {
       <main className="w-full max-w-screen-2xl mx-auto flex flex-col lg:flex-row gap-6 pb-24">
         
         {/* COLONNE GAUCHE : JEUX INCOMPLETS */}
-        <div className="bg-white rounded-[3rem] p-8 lg:p-10 flex-1 shadow-md border-t-8 border-[#ff4d79]">
+        <div className="bg-white rounded-[3rem] p-8 lg:p-10 flex-1 shadow-md border-t-8 border-[#ff4d79] overflow-hidden flex flex-col">
           <h1 className="text-3xl font-black text-black mb-6">Jeux incomplets</h1>
           
-          <div className="bg-slate-50 border-2 border-slate-100 p-5 rounded-3xl mb-6 flex flex-col gap-3">
+          <div className="bg-slate-50 border-2 border-slate-100 p-5 rounded-3xl mb-4 flex flex-col gap-3 shrink-0">
             <div className="flex gap-3 relative">
               <input type="text" placeholder="Code Syracuse..." value={codeManq} onChange={e => setCodeManq(e.target.value)} onBlur={() => chercherNom(codeManq)} className="w-1/3 border-2 border-slate-200 p-3 rounded-xl outline-none focus:border-black" />
               <div className="relative w-2/3">
@@ -234,7 +257,7 @@ export default function PiecesPage() {
             </div>
           </div>
 
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-3 overflow-y-auto custom-scroll pr-2 flex-1 min-h-[300px] max-h-[600px]">
             {manquantesTriees.map(m => {
               const isSelected = selectedManquant === m.id;
               const isSuggestion = m.isSuggestion && selectedTrouvees.length > 0 && !isSelected;
@@ -244,23 +267,25 @@ export default function PiecesPage() {
                 <div 
                   key={m.id} 
                   onClick={() => !isCommande && setSelectedManquant(isSelected ? null : m.id)}
-                  className={`p-4 rounded-2xl border-2 flex justify-between items-center gap-4 transition-all relative overflow-hidden 
+                  className={`p-4 rounded-2xl border-2 flex flex-col sm:flex-row justify-between sm:items-center gap-4 transition-all relative 
                     ${isCommande ? 'bg-slate-50 border-slate-200 opacity-80' : 
                       isSelected ? 'bg-white border-[#ff4d79] ring-4 ring-[#ff4d79]/30 shadow-md cursor-pointer' : 
                       isSuggestion ? 'bg-rose-50 border-[#ff4d79] border-dashed shadow-sm cursor-pointer' : 
                       'bg-white border-slate-100 hover:border-slate-300 cursor-pointer'}`}
                 >
-                  <div className="flex-1">
-                    <h3 className="font-bold text-lg leading-tight flex items-center gap-2">
-                      {m.nom} 
-                      {isCommande && <span className="text-orange-500 text-xs font-black bg-orange-100 px-2.5 py-1 rounded-md uppercase tracking-wide border border-orange-200">📦 Commandé</span>}
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-bold text-lg leading-tight flex items-center gap-2 flex-wrap">
+                      <span className="truncate">{m.nom}</span>
+                      {isCommande && <span className="text-orange-500 text-xs font-black bg-orange-100 px-2.5 py-1 rounded-md uppercase tracking-wide border border-orange-200 shrink-0">📦 Commandé</span>}
                       {m.hasMatch && !isSuggestion && !isCommande && <span title="Une pièce correspondante a été trouvée !" className="text-xl animate-pulse">💡</span>}
-                      {isSuggestion && !isCommande && <span className="text-[#ff4d79] text-xs font-black bg-white px-2 py-0.5 rounded-full border border-[#ff4d79]">✨ Suggestion</span>}
+                      {isSuggestion && !isCommande && <span className="text-[#ff4d79] text-xs font-black bg-white px-2 py-0.5 rounded-full border border-[#ff4d79] shrink-0">✨ Suggestion</span>}
                     </h3>
-                    <p className={`${isCommande ? 'text-slate-500' : 'text-[#ff4d79]'} font-bold text-sm mt-1`}>Manque : {m.element_manquant}</p>
+                    <div className="max-h-24 overflow-y-auto custom-scroll mt-2 pr-1">
+                      <p className={`${isCommande ? 'text-slate-500' : 'text-[#ff4d79]'} font-bold text-sm`}>Manque : {m.element_manquant}</p>
+                    </div>
                   </div>
                   
-                  <div className="flex gap-2 shrink-0">
+                  <div className="flex gap-2 shrink-0 self-end sm:self-center">
                     {isCommande ? (
                       <button onClick={(e) => { e.stopPropagation(); resoudreManquant(m.id); }} className="bg-emerald-100 hover:bg-emerald-200 text-emerald-700 px-4 py-2 rounded-xl text-sm font-bold transition-colors shadow-sm">
                         📦 Reçue ✓
@@ -282,10 +307,10 @@ export default function PiecesPage() {
         </div>
 
         {/* COLONNE DROITE : PIÈCES ORPHELINES */}
-        <div className="bg-white rounded-[3rem] p-8 lg:p-10 flex-1 shadow-md border-t-8 border-[#baff29]">
+        <div className="bg-white rounded-[3rem] p-8 lg:p-10 flex-1 shadow-md border-t-8 border-[#baff29] overflow-hidden flex flex-col">
           <h1 className="text-3xl font-black text-black mb-6">Pièces orphelines</h1>
           
-          <div className="bg-slate-50 border-2 border-slate-100 p-5 rounded-3xl mb-6 flex flex-col gap-3">
+          <div className="bg-slate-50 border-2 border-slate-100 p-5 rounded-3xl mb-4 flex flex-col gap-3 shrink-0">
             <input type="text" placeholder="Description (ex: 1 bille noire)..." value={descTrouvee} onChange={e => setDescTrouvee(e.target.value)} className="w-full border-2 border-slate-200 p-3 rounded-xl outline-none focus:border-black font-bold" />
             <div className="flex gap-3">
               <input type="text" placeholder="Jeu supposé (optionnel)..." value={nomSuppo} onChange={e => setNomSuppo(e.target.value)} onKeyDown={e => e.key === 'Enter' && ajouterTrouve()} className="flex-1 border-2 border-slate-200 p-3 rounded-xl outline-none focus:border-black text-sm" />
@@ -293,7 +318,26 @@ export default function PiecesPage() {
             </div>
           </div>
 
-          <div className="flex flex-col gap-3">
+          {/* BARRE DE FILTRES INTELLIGENTS */}
+          <div className="flex gap-2 overflow-x-auto pb-2 custom-scroll shrink-0 mb-4">
+            <button 
+              onClick={() => setFiltreType(null)} 
+              className={`whitespace-nowrap px-3 py-1.5 rounded-xl font-bold text-xs transition-colors border-2 ${filtreType === null ? 'bg-[#baff29] text-black border-[#baff29]' : 'bg-white text-slate-600 border-slate-200 hover:border-[#baff29]'}`}
+            >
+              Tous
+            </button>
+            {TYPES_PIECES.map(type => (
+              <button 
+                key={type.id}
+                onClick={() => setFiltreType(type.id === filtreType ? null : type.id)} 
+                className={`whitespace-nowrap px-3 py-1.5 rounded-xl font-bold text-xs transition-colors border-2 ${filtreType === type.id ? 'bg-[#baff29] text-black border-[#baff29]' : 'bg-white text-slate-600 border-slate-200 hover:border-[#baff29]'}`}
+              >
+                {type.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex flex-col gap-3 overflow-y-auto custom-scroll pr-2 flex-1 min-h-[300px] max-h-[600px]">
             {trouveesTriees.map(t => {
               const isSelected = selectedTrouvees.includes(t.id);
               const isSuggestion = t.isSuggestion && selectedManquant !== null && !isSelected;
@@ -302,25 +346,28 @@ export default function PiecesPage() {
                 <div 
                   key={t.id} 
                   onClick={() => setSelectedTrouvees(prev => isSelected ? prev.filter(id => id !== t.id) : [...prev, t.id])}
-                  className={`p-4 rounded-2xl border-2 cursor-pointer flex justify-between items-center gap-4 transition-all 
+                  className={`p-4 rounded-2xl border-2 cursor-pointer flex flex-col sm:flex-row justify-between sm:items-center gap-4 transition-all 
                     ${isSelected ? 'bg-white border-[#baff29] ring-4 ring-[#baff29]/50 shadow-md' : 
                       isSuggestion ? 'bg-[#f4fce3] border-[#baff29] border-dashed shadow-sm' : 
                       'bg-white border-slate-100 hover:border-slate-300'}`}
                 >
-                  <div className="flex-1">
-                    <h3 className="font-bold text-lg leading-tight flex items-center gap-2">
-                      {t.description}
-                      {isSuggestion && <span className="text-[#84b506] text-xs font-black bg-white px-2 py-0.5 rounded-full border border-[#baff29]">✨ Suggestion</span>}
-                    </h3>
-                    {t.nom_suppose && <p className="text-slate-500 text-sm mt-1">Peut-être : <span className="italic">{t.nom_suppose}</span></p>}
+                  <div className="flex-1 min-w-0">
+                    <div className="max-h-24 overflow-y-auto custom-scroll pr-1">
+                      <h3 className="font-bold text-lg leading-tight flex items-center gap-2 flex-wrap">
+                        {t.description}
+                        {isSuggestion && <span className="text-[#84b506] text-xs font-black bg-white px-2 py-0.5 rounded-full border border-[#baff29] shrink-0">✨ Suggestion</span>}
+                      </h3>
+                    </div>
+                    {t.nom_suppose && <p className="text-slate-500 text-sm mt-1 truncate">Peut-être : <span className="italic">{t.nom_suppose}</span></p>}
                   </div>
-                  <button onClick={(e) => { e.stopPropagation(); resoudreTrouve(t.id); }} className="shrink-0 bg-slate-100 hover:bg-slate-200 px-4 py-2 rounded-xl text-sm font-bold transition-colors">
+                  <button onClick={(e) => { e.stopPropagation(); resoudreTrouve(t.id); }} className="shrink-0 bg-slate-100 hover:bg-slate-200 px-4 py-2 rounded-xl text-sm font-bold transition-colors self-end sm:self-center">
                     Retirer seule ✕
                   </button>
                 </div>
               );
             })}
             {trouvees.length === 0 && <p className="text-slate-400 text-center py-4">Le bac des pièces seules est vide !</p>}
+            {trouvees.length > 0 && trouveesTriees.length === 0 && <p className="text-slate-400 text-center py-4">Aucune pièce ne correspond à ce filtre.</p>}
           </div>
         </div>
 
@@ -329,8 +376,8 @@ export default function PiecesPage() {
       {/* BARRE DE FUSION FLOTTANTE */}
       {selectedManquant !== null && selectedTrouvees.length > 0 && (
         <div className="fixed bottom-8 left-1/2 transform -translate-x-1/2 bg-black text-white px-8 py-5 rounded-full shadow-2xl flex items-center gap-6 z-50">
-          <span className="font-bold text-lg">🔗 Lier 1 jeu et {selectedTrouvees.length} pièce(s) ?</span>
-          <button onClick={lierElements} className="bg-[#baff29] text-black px-6 py-2.5 rounded-xl font-black hover:scale-105 transition-transform shadow-[0_0_15px_rgba(186,255,41,0.5)]">
+          <span className="font-bold text-lg whitespace-nowrap">🔗 Lier 1 jeu et {selectedTrouvees.length} pièce(s) ?</span>
+          <button onClick={lierElements} className="bg-[#baff29] text-black px-6 py-2.5 rounded-xl font-black hover:scale-105 transition-transform shadow-[0_0_15px_rgba(186,255,41,0.5)] whitespace-nowrap">
             Valider la fusion ✓
           </button>
         </div>

@@ -29,7 +29,7 @@ type JeuType = {
 type JeuAttenteType = {
   ean: string;
   nom: string;
-  typeAjout: "nouveaute" | "double" | "existant"; // NOUVEAU: 3 états possibles
+  typeAjout: "nouveaute" | "double" | "existant";
   etapes: Record<string, boolean>;
   couleur: string;
 };
@@ -58,6 +58,7 @@ export default function Home() {
   
   const [nbReparations, setNbReparations] = useState(0);
   const [nbManquants, setNbManquants] = useState(0);
+  const [nbOrphelines, setNbOrphelines] = useState(0); // NOUVEAU COMPTEUR
 
   const [jeuxAttente, setJeuxAttente] = useState<JeuAttenteType[]>([]);
   const [jeuxEnPrepa, setJeuxEnPrepa] = useState<JeuType[]>([]);
@@ -112,10 +113,12 @@ export default function Home() {
     });
 
     const { count: countRep } = await supabase.from('reparations').select('*', { count: 'exact', head: true }).eq('statut', 'À faire');
-    const { count: countManq } = await supabase.from('pieces_manquantes').select('*', { count: 'exact', head: true }).eq('statut', 'Manquant');
+    const { count: countManq } = await supabase.from('pieces_manquantes').select('*', { count: 'exact', head: true }).in('statut', ['Manquant', 'Commandé']);
+    const { count: countOrp } = await supabase.from('pieces_trouvees').select('*', { count: 'exact', head: true }).eq('statut', 'En attente');
 
     setNbReparations(countRep || 0);
     setNbManquants(countManq || 0);
+    setNbOrphelines(countOrp || 0); // MAJ DU COMPTEUR
   };
 
   useEffect(() => {
@@ -156,7 +159,6 @@ export default function Home() {
     }
   };
 
-  // NOUVEAU: Gère le changement d'état entre Nouveauté, Double, et Existant
   const changerTypeAjout = (index: number, nouveauType: "nouveaute" | "double" | "existant") => {
     setJeuxAttente(prev => prev.map((jeu, i) => {
       if (i === index) {
@@ -361,8 +363,12 @@ export default function Home() {
                 <span className="bg-white text-[#ff7b00] px-3 py-1 rounded-full text-sm font-black shadow-sm">{nbReparations}</span>
               </Link>
               <Link href="/pieces" className="bg-black/10 hover:bg-black/20 transition-colors p-4 rounded-2xl flex justify-between items-center text-black">
-                <span className="font-bold text-lg">🧩 Pièces manquantes</span>
+                <span className="font-bold text-lg">🧩 Jeux incomplets</span>
                 <span className="bg-white text-[#ff7b00] px-3 py-1 rounded-full text-sm font-black shadow-sm">{nbManquants}</span>
+              </Link>
+              <Link href="/pieces" className="bg-black/10 hover:bg-black/20 transition-colors p-4 rounded-2xl flex justify-between items-center text-black">
+                <span className="font-bold text-lg">🔍 Pièces trouvées</span>
+                <span className="bg-white text-[#ff7b00] px-3 py-1 rounded-full text-sm font-black shadow-sm">{nbOrphelines}</span>
               </Link>
             </div>
           </div>
@@ -585,7 +591,6 @@ export default function Home() {
                       </div>
                     </div>
 
-                    {/* NOUVEAU: Les 3 boutons d'état */}
                     <div className="flex items-center gap-2 mb-3 bg-slate-50 p-1.5 rounded-xl w-max border border-slate-200">
                       <button 
                         onClick={() => changerTypeAjout(index, 'nouveaute')}

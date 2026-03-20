@@ -202,6 +202,10 @@ export default function AgendaPage() {
     accent: '#baff29', equipeA: '#FD495B', equipeB: '#5BE0FB', swap: '#a855f7', zoneA: '#ffaa00', zoneB: '#6ba4ff', zoneC: '#9b51e0'
   });
 
+useEffect(() => {
+    console.log("URL SUPABASE UTILISÉE :", process.env.NEXT_PUBLIC_SUPABASE_URL);
+  }, []);
+
   useEffect(() => {
     const saved = localStorage.getItem('agenda_couleurs');
     if (saved) try { setCouleurs({...couleurs, ...JSON.parse(saved)}); } catch(e) {}

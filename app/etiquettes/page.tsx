@@ -43,11 +43,9 @@ export default function EtiquettesPage() {
   const [etiquettes, setEtiquettes] = useState<Record<string, Etiquette[]>>({
     vert: [], rose: [], bleu: [], rouge: [], jaune: []
   });
-
   const [sectionsOuvertes, setSectionsOuvertes] = useState<Record<string, boolean>>({
     vert: false, rose: false, bleu: false, rouge: false, jaune: false
   });
-
   const [recherche, setRecherche] = useState("");
 
   useEffect(() => {
@@ -56,16 +54,11 @@ export default function EtiquettesPage() {
   }, []);
 
   const chargerCatalogue = async () => {
-    const { data, error } = await supabase.from('catalogue').select('*');
-    
+    const { data } = await supabase.from('catalogue').select('*');
     if (data) {
-      const dbEtiquettes: Record<string, Etiquette[]> = {
-        vert: [], rose: [], bleu: [], rouge: [], jaune: []
-      };
-
+      const dbEtiquettes: Record<string, Etiquette[]> = { vert: [], rose: [], bleu: [], rouge: [], jaune: [] };
       data.forEach(item => {
         const couleur = item.couleur && dbEtiquettes[item.couleur] ? item.couleur : "vert";
-        
         dbEtiquettes[couleur].push({
           id: item.ean || Date.now() + Math.random(),
           ean: item.ean || "",
@@ -78,68 +71,36 @@ export default function EtiquettesPage() {
           etoiles: item.etoiles || "" 
         });
       });
-      Object.keys(dbEtiquettes).forEach(k => {
-        dbEtiquettes[k].sort((a, b) => a.nom.localeCompare(b.nom));
-      });
-
+      Object.keys(dbEtiquettes).forEach(k => dbEtiquettes[k].sort((a, b) => a.nom.localeCompare(b.nom)));
       setEtiquettes(dbEtiquettes);
     }
   };
 
-  const toggleSection = (id: string) => {
-    setSectionsOuvertes(prev => ({ ...prev, [id]: !prev[id] }));
-  };
+  const toggleSection = (id: string) => setSectionsOuvertes(prev => ({ ...prev, [id]: !prev[id] }));
 
   const ajouterLigne = (couleurId: string) => {
-    const nouvelleEtiquette: Etiquette = {
-      id: Date.now(),
-      ean: "",
-      quantity: 1, 
-      nom: "",
-      mecanique: "",
-      nb_de_joueurs: "",
-      coop_versus: "", 
-      temps_de_jeu: "",
-      etoiles: "" 
-    };
-    
-    setEtiquettes(prev => ({
-      ...prev,
-      [couleurId]: [nouvelleEtiquette, ...prev[couleurId]] 
-    }));
-    
+    const nouvelleEtiquette: Etiquette = { id: Date.now(), ean: "", quantity: 1, nom: "", mecanique: "", nb_de_joueurs: "", coop_versus: "", temps_de_jeu: "", etoiles: "" };
+    setEtiquettes(prev => ({ ...prev, [couleurId]: [nouvelleEtiquette, ...prev[couleurId]] }));
     if (!sectionsOuvertes[couleurId]) toggleSection(couleurId);
   };
 
-  // NOUVEAU : Fonction de sauvegarde individuelle en BDD
   const sauvegarderLigneEnBase = async (eti: Etiquette, couleurId: string) => {
-    if (!eti.ean || !eti.nom) return; // Requiert EAN et Nom au minimum
-    
+    if (!eti.ean || !eti.nom) return; 
     const dataToSave = {
-      ean: eti.ean,
-      nom: eti.nom, 
-      mecanique: eti.mecanique,
-      nb_de_joueurs: eti.nb_de_joueurs,
+      ean: eti.ean, nom: eti.nom, mecanique: eti.mecanique, nb_de_joueurs: eti.nb_de_joueurs,
       coop_versus: eti.coop_versus === "" ? null : eti.coop_versus,
-      temps_de_jeu: eti.temps_de_jeu,
-      etoiles: eti.etoiles === "" ? null : eti.etoiles,
-      couleur: couleurId 
+      temps_de_jeu: eti.temps_de_jeu, etoiles: eti.etoiles === "" ? null : eti.etoiles, couleur: couleurId 
     };
-
     const { error } = await supabase.from('catalogue').upsert(dataToSave);
-    if (error) console.error("Erreur de sauvegarde auto:", error.message);
+    if (error) console.error("Erreur auto-save:", error.message);
   };
 
   const mettreAJourLigne = (couleurId: string, id: string | number, champ: keyof Etiquette, valeur: string | number) => {
     setEtiquettes(prev => ({
-      ...prev,
-      [couleurId]: prev[couleurId].map(eti => {
+      ...prev, [couleurId]: prev[couleurId].map(eti => {
         if (eti.id === id) {
           const updated = { ...eti, [champ]: valeur };
-          // Auto-save immédiate pour les champs select
-          if (['mecanique', 'coop_versus', 'etoiles'].includes(champ as string)) {
-            sauvegarderLigneEnBase(updated, couleurId);
-          }
+          if (['mecanique', 'coop_versus', 'etoiles'].includes(champ as string)) sauvegarderLigneEnBase(updated, couleurId);
           return updated;
         }
         return eti;
@@ -148,53 +109,32 @@ export default function EtiquettesPage() {
   };
 
   const modifierQuantite = (couleurId: string, id: string | number, delta: number) => {
-    setEtiquettes(prev => ({
-      ...prev,
-      [couleurId]: prev[couleurId].map(eti => {
-        if (eti.id === id) {
-          const newQte = Math.max(0, eti.quantity + delta);
-          return { ...eti, quantity: newQte };
-        }
-        return eti;
-      })
-    }));
+    setEtiquettes(prev => ({ ...prev, [couleurId]: prev[couleurId].map(eti => eti.id === id ? { ...eti, quantity: Math.max(0, eti.quantity + delta) } : eti) }));
   };
 
   const supprimerLigne = (couleurId: string, id: string | number) => {
-    setEtiquettes(prev => ({
-      ...prev,
-      [couleurId]: prev[couleurId].filter(eti => eti.id !== id)
-    }));
+    setEtiquettes(prev => ({ ...prev, [couleurId]: prev[couleurId].filter(eti => eti.id !== id) }));
   };
 
   const chercherEan = async (couleurId: string, id: string | number, ean: string) => {
     if (!ean) return;
-
     let nomTrouve = "";
     let dataCatalogue = null;
 
     const { data } = await supabase.from('catalogue').select('*').eq('ean', ean).single();
-    
-    if (data) {
-      dataCatalogue = data;
-      nomTrouve = data.nom; 
-    } else {
+    if (data) { dataCatalogue = data; nomTrouve = data.nom; } 
+    else {
       const { data: dataJeux } = await supabase.from('jeux').select('nom').eq('ean', ean).limit(1).single();
-      if (dataJeux) {
-        nomTrouve = dataJeux.nom;
-      }
+      if (dataJeux) nomTrouve = dataJeux.nom;
     }
 
     setEtiquettes(prev => ({
-      ...prev,
-      [couleurId]: prev[couleurId].map(eti => {
+      ...prev, [couleurId]: prev[couleurId].map(eti => {
         if (eti.id === id) {
           const updated: Etiquette = {
-            ...eti,
-            nom: nomTrouve || eti.nom,
-            mecanique: dataCatalogue?.mecanique || eti.mecanique,
+            ...eti, nom: nomTrouve || eti.nom, mecanique: dataCatalogue?.mecanique || eti.mecanique,
             nb_de_joueurs: dataCatalogue?.nb_de_joueurs || eti.nb_de_joueurs,
-            coop_versus: (dataCatalogue?.coop_versus || eti.coop_versus || "") as "Coop" | "Versus" | "Solo" | "",
+            coop_versus: (dataCatalogue?.coop_versus || eti.coop_versus || "") as any,
             temps_de_jeu: dataCatalogue?.temps_de_jeu || eti.temps_de_jeu,
             etoiles: dataCatalogue?.etoiles || eti.etoiles || ""
           };
@@ -214,53 +154,25 @@ export default function EtiquettesPage() {
       liste.forEach(e => {
         if (e.ean && e.nom) {
           catalogueData.push({
-            ean: e.ean,
-            nom: e.nom, 
-            mecanique: e.mecanique,
-            nb_de_joueurs: e.nb_de_joueurs,
+            ean: e.ean, nom: e.nom, mecanique: e.mecanique, nb_de_joueurs: e.nb_de_joueurs,
             coop_versus: e.coop_versus === "" ? null : e.coop_versus,
-            temps_de_jeu: e.temps_de_jeu,
-            etoiles: e.etoiles === "" ? null : e.etoiles,
-            couleur: couleurId 
+            temps_de_jeu: e.temps_de_jeu, etoiles: e.etoiles === "" ? null : e.etoiles, couleur: couleurId 
           });
-
           const isIncomplet = !e.nom || !e.mecanique || !e.nb_de_joueurs || !e.coop_versus || !e.temps_de_jeu || e.etoiles === "";
-          if (!isIncomplet && e.quantity > 0) {
-            eansCompletsAImprimer.push(e.ean);
-          }
+          if (!isIncomplet && e.quantity > 0) eansCompletsAImprimer.push(e.ean);
         }
       });
     });
 
     const uniqueCatalogue = Array.from(new Map(catalogueData.map(item => [item.ean, item])).values());
-    
-    if (uniqueCatalogue.length > 0) {
-      const { error } = await supabase.from('catalogue').upsert(uniqueCatalogue);
-      if (error) {
-        alert("Erreur de sauvegarde dans le catalogue : " + error.message);
-      } else {
-        console.log("Catalogue mis à jour avec succès !");
-      }
-    }
+    if (uniqueCatalogue.length > 0) await supabase.from('catalogue').upsert(uniqueCatalogue);
 
     if (eansCompletsAImprimer.length > 0) {
-      const { data: jeuxEnPrepa } = await supabase
-        .from('jeux')
-        .select('*')
-        .in('ean', eansCompletsAImprimer)
-        .eq('statut', 'En préparation');
-
+      const { data: jeuxEnPrepa } = await supabase.from('jeux').select('*').in('ean', eansCompletsAImprimer).eq('statut', 'En préparation');
       if (jeuxEnPrepa && jeuxEnPrepa.length > 0) {
         for (const jeu of jeuxEnPrepa) {
           const isTermine = jeu.etape_plastifier && jeu.etape_contenu && true && jeu.etape_equiper && jeu.etape_encoder && jeu.etape_notice && jeu.etape_nouveaute;
-          
-          await supabase
-            .from('jeux')
-            .update({ 
-              etape_etiquette: true,
-              statut: isTermine ? 'En stock' : 'En préparation'
-            })
-            .eq('id', jeu.id);
+          await supabase.from('jeux').update({ etape_etiquette: true, statut: isTermine ? 'En stock' : 'En préparation' }).eq('id', jeu.id);
         }
       }
     }
@@ -269,9 +181,8 @@ export default function EtiquettesPage() {
   const totalEtiquettes = Object.values(etiquettes).flat().reduce((sum, eti) => sum + eti.quantity, 0);
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#e5e5e5] font-sans p-4 sm:p-8">
-      
-      <header className="flex justify-between items-center mb-6 w-full max-w-screen-2xl mx-auto shrink-0">
+    <div className="min-h-screen flex flex-col bg-[#e5e5e5] font-sans p-4 sm:p-8 relative">
+      <header className="flex justify-between items-center mb-6 w-full max-w-screen-2xl mx-auto shrink-0 relative z-10">
         <div className="w-10 h-10 bg-black rounded flex items-center justify-center text-white font-black text-xl italic cursor-pointer">+</div>
         <nav className="bg-[#2d2d2d] text-white p-1.5 rounded-full flex items-center text-sm font-bold shadow-lg gap-1">
           <Link href="/atelier" className="px-6 py-2.5 rounded-full hover:bg-white/10 transition">Retour Atelier</Link>
@@ -279,8 +190,8 @@ export default function EtiquettesPage() {
         <div className="w-10"></div>
       </header>
 
-      <div className="flex gap-6 w-full max-w-screen-2xl mx-auto items-start">
-        <main className="bg-white rounded-[3rem] p-8 lg:p-10 flex-1 shadow-md flex flex-col gap-6 overflow-hidden">
+      <div className="flex gap-6 w-full max-w-screen-2xl mx-auto items-start relative z-0">
+        <main className="bg-white rounded-[3rem] p-8 lg:p-10 flex-1 shadow-md flex flex-col gap-6 overflow-hidden border-2 border-slate-100">
           <h1 className="text-4xl font-black text-black mb-4">Impression des étiquettes</h1>
 
           <div className="flex flex-col gap-4">
@@ -292,20 +203,11 @@ export default function EtiquettesPage() {
               return (
               <div key={cat.id} className="border-2 border-slate-100 rounded-3xl overflow-hidden shadow-sm">
                 
-                <div 
-                  onClick={() => toggleSection(cat.id)}
-                  className={`${cat.color} p-5 flex justify-between items-center cursor-pointer select-none`}
-                >
+                <div onClick={() => toggleSection(cat.id)} className={`${cat.color} p-5 flex justify-between items-center cursor-pointer select-none`}>
                   <h2 className="text-xl font-bold flex items-center gap-3">
                     {cat.nom} 
-                    <span className="bg-white/20 px-3 py-1 rounded-full text-sm">
-                      {etiquettes[cat.id].length} jeu(x)
-                    </span>
-                    {nbIncomplets > 0 && (
-                      <span className="bg-red-500 text-white px-3 py-1 rounded-full text-sm font-bold shadow-sm border border-red-600">
-                         {nbIncomplets} incomplet(s)
-                      </span>
-                    )}
+                    <span className="bg-white/20 px-3 py-1 rounded-full text-sm">{etiquettes[cat.id].length} jeu(x)</span>
+                    {nbIncomplets > 0 && <span className="bg-red-500 text-white px-3 py-1 rounded-full text-sm font-bold shadow-sm border border-red-600">{nbIncomplets} incomplet(s)</span>}
                   </h2>
                   <span className="font-bold text-xl">{sectionsOuvertes[cat.id] ? "−" : "+"}</span>
                 </div>
@@ -333,58 +235,32 @@ export default function EtiquettesPage() {
                           <tbody>
                             {etiquettes[cat.id].map((eti) => {
                               const isIncomplet = !eti.nom || !eti.mecanique || !eti.nb_de_joueurs || !eti.coop_versus || !eti.temps_de_jeu || eti.etoiles === "";
-                              const ligneClasses = eti.quantity > 0 
-                                ? (isIncomplet ? 'bg-red-50/40 border-l-4 border-l-red-500' : 'bg-emerald-50/30 border-l-4 border-l-black')
-                                : 'bg-white hover:bg-slate-50';
+                              const ligneClasses = eti.quantity > 0 ? (isIncomplet ? 'bg-red-50/40 border-l-4 border-l-red-500' : 'bg-emerald-50/30 border-l-4 border-l-black') : 'bg-white hover:bg-slate-50';
 
                               return (
                                 <tr key={eti.id} className={`border-b border-slate-200 transition-colors ${ligneClasses}`}>
+                                  <td className="p-2"><input type="number" min="0" value={eti.quantity} onChange={(e) => mettreAJourLigne(cat.id, eti.id, "quantity", parseInt(e.target.value) || 0)} className={`w-full p-2 rounded-lg outline-none font-bold text-center border focus:border-slate-300 ${eti.quantity > 0 ? 'bg-black text-white' : 'bg-slate-100 border-transparent text-black'}`} /></td>
+                                  <td className="p-2"><input type="text" value={eti.ean} onChange={(e) => mettreAJourLigne(cat.id, eti.id, "ean", e.target.value)} onBlur={(e) => chercherEan(cat.id, eti.id, e.target.value)} placeholder="Code-barres..." className="w-full bg-slate-100 p-2 rounded-lg outline-none border border-transparent focus:border-slate-300 text-xs" /></td>
+                                  <td className="p-2"><input type="text" value={eti.nom} onChange={(e) => mettreAJourLigne(cat.id, eti.id, "nom", e.target.value)} onBlur={() => sauvegarderLigneEnBase(eti, cat.id)} placeholder="Nom du jeu..." className={`w-full p-2 rounded-lg outline-none font-bold border focus:border-slate-300 ${!eti.nom ? 'bg-red-50 border-red-300 text-red-700' : 'bg-slate-100 border-transparent'}`} /></td>
                                   <td className="p-2">
-                                    <input type="number" min="0" value={eti.quantity} onChange={(e) => mettreAJourLigne(cat.id, eti.id, "quantity", parseInt(e.target.value) || 0)} className={`w-full p-2 rounded-lg outline-none font-bold text-center border focus:border-slate-300 ${eti.quantity > 0 ? 'bg-black text-white' : 'bg-slate-100 border-transparent text-black'}`} />
-                                  </td>
-                                  <td className="p-2">
-                                    <input type="text" value={eti.ean} onChange={(e) => mettreAJourLigne(cat.id, eti.id, "ean", e.target.value)} onBlur={(e) => chercherEan(cat.id, eti.id, e.target.value)} placeholder="Code-barres..." className="w-full bg-slate-100 p-2 rounded-lg outline-none border border-transparent focus:border-slate-300 text-xs" />
-                                  </td>
-                                  <td className="p-2">
-                                    <input type="text" value={eti.nom} onChange={(e) => mettreAJourLigne(cat.id, eti.id, "nom", e.target.value)} onBlur={() => sauvegarderLigneEnBase(eti, cat.id)} placeholder="Nom du jeu..." className={`w-full p-2 rounded-lg outline-none font-bold border focus:border-slate-300 ${!eti.nom ? 'bg-red-50 border-red-300 text-red-700' : 'bg-slate-100 border-transparent'}`} />
-                                  </td>
-                                  <td className="p-2">
-                                    <select 
-                                      value={eti.mecanique} 
-                                      onChange={(e) => mettreAJourLigne(cat.id, eti.id, "mecanique", e.target.value)} 
-                                      className={`w-full p-2 rounded-lg outline-none cursor-pointer border focus:border-slate-300 text-sm ${!eti.mecanique ? 'bg-red-50 border-red-300 text-red-500' : 'bg-slate-100 border-transparent'}`}
-                                    >
+                                    <select value={eti.mecanique} onChange={(e) => mettreAJourLigne(cat.id, eti.id, "mecanique", e.target.value)} className={`w-full p-2 rounded-lg outline-none cursor-pointer border focus:border-slate-300 text-sm ${!eti.mecanique ? 'bg-red-50 border-red-300 text-red-500' : 'bg-slate-100 border-transparent'}`}>
                                       <option value="">Sélectionner...</option>
-                                      {MECANIQUES.map(m => (
-                                        <option key={m} value={m}>{m}</option>
-                                      ))}
+                                      {MECANIQUES.map(m => <option key={m} value={m}>{m}</option>)}
                                     </select>
                                   </td>
-                                  <td className="p-2">
-                                    <input type="text" value={eti.nb_de_joueurs} onChange={(e) => mettreAJourLigne(cat.id, eti.id, "nb_de_joueurs", e.target.value)} onBlur={() => sauvegarderLigneEnBase(eti, cat.id)} placeholder="Ex: 2-6" className={`w-full p-2 rounded-lg outline-none text-center border focus:border-slate-300 ${!eti.nb_de_joueurs ? 'bg-red-50 border-red-300 text-red-700' : 'bg-slate-100 border-transparent'}`} />
-                                  </td>
+                                  <td className="p-2"><input type="text" value={eti.nb_de_joueurs} onChange={(e) => mettreAJourLigne(cat.id, eti.id, "nb_de_joueurs", e.target.value)} onBlur={() => sauvegarderLigneEnBase(eti, cat.id)} placeholder="Ex: 2-6" className={`w-full p-2 rounded-lg outline-none text-center border focus:border-slate-300 ${!eti.nb_de_joueurs ? 'bg-red-50 border-red-300 text-red-700' : 'bg-slate-100 border-transparent'}`} /></td>
                                   <td className="p-2">
                                     <select value={eti.coop_versus} onChange={(e) => mettreAJourLigne(cat.id, eti.id, "coop_versus", e.target.value)} className={`w-full p-2 rounded-lg outline-none font-bold cursor-pointer border focus:border-slate-300 ${!eti.coop_versus ? 'bg-red-50 border-red-300 text-red-500' : 'bg-slate-100 border-transparent'}`}>
-                                      <option value="">Sélect...</option>
-                                      <option value="Coop">🤝 Coop</option>
-                                      <option value="Versus">⚔️ Versus</option>
-                                      <option value="Solo">👍 Solo</option>
+                                      <option value="">Sélect...</option><option value="Coop">🤝 Coop</option><option value="Versus">⚔️ Versus</option><option value="Solo">👍 Solo</option>
                                     </select>
                                   </td>
-                                  <td className="p-2">
-                                    <input type="text" value={eti.temps_de_jeu} onChange={(e) => mettreAJourLigne(cat.id, eti.id, "temps_de_jeu", e.target.value)} onBlur={() => sauvegarderLigneEnBase(eti, cat.id)} placeholder="Ex: 10-20" className={`w-full p-2 rounded-lg outline-none text-center border focus:border-slate-300 ${!eti.temps_de_jeu ? 'bg-red-50 border-red-300 text-red-700' : 'bg-slate-100 border-transparent'}`} />
-                                  </td>
+                                  <td className="p-2"><input type="text" value={eti.temps_de_jeu} onChange={(e) => mettreAJourLigne(cat.id, eti.id, "temps_de_jeu", e.target.value)} onBlur={() => sauvegarderLigneEnBase(eti, cat.id)} placeholder="Ex: 10-20" className={`w-full p-2 rounded-lg outline-none text-center border focus:border-slate-300 ${!eti.temps_de_jeu ? 'bg-red-50 border-red-300 text-red-700' : 'bg-slate-100 border-transparent'}`} /></td>
                                   <td className="p-2">
                                     <select value={eti.etoiles} onChange={(e) => mettreAJourLigne(cat.id, eti.id, "etoiles", e.target.value === "" ? "" : Number(e.target.value))} className={`w-full p-2 rounded-lg outline-none text-center font-bold text-lg cursor-pointer border focus:border-slate-300 tracking-widest ${eti.etoiles === "" ? 'bg-red-50 border-red-300 text-red-500' : 'bg-slate-100 border-transparent'}`}>
-                                      <option value="">-</option>
-                                      <option value={1}>★</option>
-                                      <option value={2}>★★</option>
-                                      {cat.maxStars === 3 && <option value={3}>★★★</option>}
+                                      <option value="">-</option><option value={1}>★</option><option value={2}>★★</option>{cat.maxStars === 3 && <option value={3}>★★★</option>}
                                     </select>
                                   </td>
-                                  <td className="p-2 text-center">
-                                    <button onClick={() => supprimerLigne(cat.id, eti.id)} className="text-red-500 hover:bg-red-50 p-2 rounded-lg transition-colors" title="Supprimer la ligne">🗑️</button>
-                                  </td>
+                                  <td className="p-2 text-center"><button onClick={() => supprimerLigne(cat.id, eti.id)} className="text-red-500 hover:bg-red-50 p-2 rounded-lg transition-colors" title="Supprimer la ligne">🗑️</button></td>
                                 </tr>
                               );
                             })}
@@ -392,33 +268,21 @@ export default function EtiquettesPage() {
                         </table>
                       </div>
                     )}
-                    
-                    <button 
-                      onClick={() => ajouterLigne(cat.id)}
-                      className="flex items-center gap-2 text-sm font-bold text-slate-500 hover:text-black hover:bg-slate-200 px-4 py-2 rounded-lg transition-colors mt-2"
-                    >
-                      ➕ Nouvelle ligne {cat.nom}
-                    </button>
+                    <button onClick={() => ajouterLigne(cat.id)} className="flex items-center gap-2 text-sm font-bold text-slate-500 hover:text-black hover:bg-slate-200 px-4 py-2 rounded-lg transition-colors mt-2">➕ Nouvelle ligne {cat.nom}</button>
                   </div>
                 )}
               </div>
             );
           })}
-        </div>
-      </main>
+          </div>
+        </main>
 
         <aside className="w-[350px] bg-white rounded-[2rem] shadow-md flex flex-col h-[calc(100vh-8rem)] sticky top-8 shrink-0 overflow-hidden border-2 border-slate-100">
           <div className="p-6 border-b border-slate-100 bg-slate-50/50">
             <h2 className="text-lg font-black text-slate-800 mb-4">Générateur d&apos;étiquettes</h2>
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">🔍</span>
-              <input 
-                type="text" 
-                placeholder="Rechercher un jeu..." 
-                value={recherche}
-                onChange={(e) => setRecherche(e.target.value)}
-                className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-sm outline-none focus:border-black transition-colors"
-              />
+              <input type="text" placeholder="Rechercher un jeu..." value={recherche} onChange={(e) => setRecherche(e.target.value)} className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-sm outline-none focus:border-black transition-colors" />
             </div>
           </div>
 
@@ -426,19 +290,15 @@ export default function EtiquettesPage() {
             {CATEGORIES.map(cat => {
               const items = etiquettes[cat.id].filter(eti => eti.nom.toLowerCase().includes(recherche.toLowerCase()));
               if (items.length === 0) return null;
-
               return (
                 <div key={`side-${cat.id}`} className="flex flex-col gap-2">
                   <div className="flex justify-between items-center px-2">
                     <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider">{cat.nom}</h3>
                     <span className="text-xs font-medium text-slate-400">({items.length})</span>
                   </div>
-                  
                   {items.map(eti => (
                     <div key={`side-item-${eti.id}`} className="flex items-center justify-between bg-slate-50 p-2.5 rounded-xl border border-slate-100 hover:border-slate-300 transition-colors">
-                      <span className="text-sm font-bold text-slate-700 truncate mr-2 flex-1">
-                        {eti.nom || <span className="italic text-slate-400">Sans nom</span>}
-                      </span>
+                      <span className="text-sm font-bold text-slate-700 truncate mr-2 flex-1">{eti.nom || <span className="italic text-slate-400">Sans nom</span>}</span>
                       <div className="flex items-center bg-white rounded-lg border border-slate-200 shadow-sm shrink-0">
                         <button onClick={() => modifierQuantite(cat.id, eti.id, -1)} className="px-2.5 py-1 text-slate-500 hover:text-black font-bold text-lg leading-none hover:bg-slate-50 rounded-l-lg">−</button>
                         <span className="w-8 text-center font-bold text-sm border-x border-slate-100">{eti.quantity}</span>
@@ -452,31 +312,16 @@ export default function EtiquettesPage() {
           </div>
 
           <div className="p-6 border-t border-slate-100 bg-white shadow-[0_-10px_15px_-3px_rgba(0,0,0,0.05)] relative z-10">
-            <p className="text-center text-sm font-bold text-slate-500 mb-4">
-              {totalEtiquettes} étiquette(s)
-            </p>
-            
+            <p className="text-center text-sm font-bold text-slate-500 mb-4">{totalEtiquettes} étiquette(s)</p>
             {isClient ? (
-              <PDFDownloadLink
-                document={<EtiquettesPDF etiquettesParCouleur={etiquettes} />}
-                fileName="etiquettes_ludo.pdf"
-              >
+              <PDFDownloadLink document={<EtiquettesPDF etiquettesParCouleur={etiquettes} />} fileName="etiquettes_ludo.pdf">
                 {({ loading }) => (
-                  <button 
-                    onClick={genererPDF}
-                    disabled={totalEtiquettes === 0 || loading}
-                    className="w-full bg-[#d63031] hover:bg-[#b02627] disabled:bg-slate-200 disabled:text-slate-400 text-white font-black py-4 rounded-xl transition-colors shadow-md"
-                  >
+                  <button onClick={genererPDF} disabled={totalEtiquettes === 0 || loading} className="w-full bg-[#d63031] hover:bg-[#b02627] disabled:bg-slate-200 disabled:text-slate-400 text-white font-black py-4 rounded-xl transition-colors shadow-md">
                     {loading ? 'PRÉPARATION PDF...' : 'GÉNÉRER LES ÉTIQUETTES'}
                   </button>
                 )}
               </PDFDownloadLink>
-            ) : (
-              <button disabled className="w-full bg-slate-200 text-slate-400 font-black py-4 rounded-xl">
-                CHARGEMENT...
-              </button>
-            )}
-
+            ) : (<button disabled className="w-full bg-slate-200 text-slate-400 font-black py-4 rounded-xl">CHARGEMENT...</button>)}
           </div>
         </aside>
       </div>

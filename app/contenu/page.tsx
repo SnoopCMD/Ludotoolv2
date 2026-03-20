@@ -74,25 +74,33 @@ export default function ContenuPage() {
   };
 
   const formaterTexte = (texte: string) => {
-    if (!texte || texte.trim() === "") return "- \n\n- 1 règle du jeu";
+    if (!texte || texte.trim() === "") return "- 1 règle du jeu";
 
-    let lignes = texte.split('\n');
+    let cleanTexte = texte.replace(/\n{3,}/g, '\n\n');
+    let lignes = cleanTexte.split('\n');
+
+    lignes = lignes.filter(l => {
+      const lower = l.toLowerCase();
+      return !(lower.includes('règle') || lower.includes('regle'));
+    });
 
     lignes = lignes.map(l => {
       if (l.trim() === '') return ''; 
       if (l.trim().endsWith(':')) return l.trim(); 
-      if (l.match(/^\s+[-*•]/)) return l; 
-      if (l.trim().match(/^[-*•]\s*/)) return '- ' + l.trim().replace(/^[-*•]\s*/, ''); 
+      if (l === l.toUpperCase() && /[A-Z]/.test(l)) return l.trim(); 
+      
+      if (l.match(/^\s*[-*•>+.]\s*/)) return '- ' + l.trim().replace(/^[-*•>+.]\s*/, ''); 
+      
       return '- ' + l.trim(); 
     });
 
-    const aRegle = lignes.some(l => l.toLowerCase().includes('règle du jeu'));
-    if (!aRegle) {
-      if (lignes[lignes.length - 1] !== '') lignes.push('');
-      lignes.push('- 1 règle du jeu');
+    while (lignes.length > 0 && lignes[lignes.length - 1] === '') {
+      lignes.pop();
     }
 
-    return lignes.join('\n');
+    lignes.push('- 1 règle du jeu'); 
+
+    return lignes.join('\n').replace(/\n{3,}/g, '\n\n');
   };
 
   const toggleSection = (id: string) => setSectionsOuvertes(prev => ({ ...prev, [id]: !prev[id] }));
@@ -102,9 +110,7 @@ export default function ContenuPage() {
   };
 
   const ajouterLigne = (couleurId: string) => {
-    const nouveauContenu: ContenuType = {
-      id: Date.now(), ean: "", nom: "", elements: "", quantity: 1, isOpen: true, 
-    };
+    const nouveauContenu: ContenuType = { id: Date.now(), ean: "", nom: "", elements: "", quantity: 1, isOpen: true };
     setContenus(prev => ({ ...prev, [couleurId]: [nouveauContenu, ...prev[couleurId]] }));
     if (!sectionsOuvertes[couleurId]) toggleSection(couleurId);
   };
@@ -127,14 +133,12 @@ export default function ContenuPage() {
     setContenus(prev => ({ ...prev, [couleurId]: prev[couleurId].filter(c => c.id !== id) }));
   };
 
-  // NOUVEAU : Fonction de validation automatique de l'étape contenu
   const genererPDF = async () => {
     const eansCompletsAImprimer: string[] = [];
 
     Object.values(contenus).forEach((liste) => {
       liste.forEach(c => {
         const estVide = !c.elements || c.elements.trim() === "";
-        // On valide si le jeu a un nom, un ean, un contenu rempli et qu'on l'imprime
         if (!estVide && c.nom && c.ean && c.quantity > 0) {
           eansCompletsAImprimer.push(c.ean);
         }
@@ -142,23 +146,11 @@ export default function ContenuPage() {
     });
 
     if (eansCompletsAImprimer.length > 0) {
-      const { data: jeuxEnPrepa } = await supabase
-        .from('jeux')
-        .select('*')
-        .in('ean', eansCompletsAImprimer)
-        .eq('statut', 'En préparation');
-
+      const { data: jeuxEnPrepa } = await supabase.from('jeux').select('*').in('ean', eansCompletsAImprimer).eq('statut', 'En préparation');
       if (jeuxEnPrepa && jeuxEnPrepa.length > 0) {
         for (const jeu of jeuxEnPrepa) {
           const isTermine = jeu.etape_plastifier && true && jeu.etape_etiquette && jeu.etape_equiper && jeu.etape_encoder && jeu.etape_notice && jeu.etape_nouveaute;
-          
-          await supabase
-            .from('jeux')
-            .update({ 
-              etape_contenu: true,
-              statut: isTermine ? 'En stock' : 'En préparation'
-            })
-            .eq('id', jeu.id);
+          await supabase.from('jeux').update({ etape_contenu: true, statut: isTermine ? 'En stock' : 'En préparation' }).eq('id', jeu.id);
         }
       }
     }
@@ -168,7 +160,8 @@ export default function ContenuPage() {
 
   return (
     <div className="min-h-screen flex flex-col bg-[#e5e5e5] font-sans p-4 sm:p-8">
-      <header className="flex justify-between items-center mb-6 w-full max-w-screen-2xl mx-auto shrink-0">
+      
+      <header className="flex justify-between items-center mb-6 w-full max-w-screen-2xl mx-auto shrink-0 relative z-10">
         <div className="w-10 h-10 bg-black rounded flex items-center justify-center text-white font-black text-xl italic cursor-pointer">+</div>
         <nav className="bg-[#2d2d2d] text-white p-1.5 rounded-full flex items-center text-sm font-bold shadow-lg gap-1">
           <Link href="/atelier" className="px-6 py-2.5 rounded-full hover:bg-white/10 transition">Retour Atelier</Link>
@@ -176,13 +169,12 @@ export default function ContenuPage() {
         <div className="w-10"></div>
       </header>
 
-      <div className="flex gap-6 w-full max-w-screen-2xl mx-auto items-start">
-        <main className="bg-white rounded-[3rem] p-8 lg:p-10 flex-1 shadow-md flex flex-col gap-6 overflow-hidden">
+      <div className="flex gap-6 w-full max-w-screen-2xl mx-auto items-start relative z-0">
+        <main className="bg-white rounded-[3rem] p-8 lg:p-10 flex-1 shadow-md flex flex-col gap-6 overflow-hidden border-2 border-slate-100">
           <h1 className="text-4xl font-black text-black mb-4">Impression du contenu</h1>
 
           <div className="flex flex-col gap-4">
             {CATEGORIES.map((cat) => {
-              // Calcul des incomplets
               const nbIncomplets = contenus[cat.id].filter(c => !c.elements || c.elements.trim() === "").length;
 
               return (
@@ -191,7 +183,6 @@ export default function ContenuPage() {
                   <h2 className="text-xl font-bold flex items-center gap-3">
                     {cat.nom} 
                     <span className="bg-white/20 px-3 py-1 rounded-full text-sm">{contenus[cat.id].length} jeu(x)</span>
-                    {/* Badge rouge */}
                     {nbIncomplets > 0 && (
                       <span className="bg-red-500 text-white px-3 py-1 rounded-full text-sm font-bold shadow-sm border border-red-600">
                          {nbIncomplets} incomplet(s)
@@ -253,7 +244,7 @@ export default function ContenuPage() {
                                       backgroundAttachment: 'local',
                                       backgroundPosition: '0 12px'
                                     }}
-                                    className="w-full bg-white p-3 rounded-lg outline-none border border-slate-200 focus:border-black shadow-sm min-h-[144px] resize-y font-mono text-sm" 
+                                    className="w-full bg-white p-3 rounded-lg outline-none border border-slate-200 focus:border-black shadow-sm min-h-[144px] resize-y font-mono text-sm custom-scroll" 
                                   />
                                 </div>
                                 <button onClick={() => supprimerLigne(cat.id, c.id)} className="text-red-500 hover:bg-red-50 p-3 rounded-lg transition-colors mt-4">🗑️</button>
@@ -283,7 +274,7 @@ export default function ContenuPage() {
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
+          <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4 custom-scroll">
             {CATEGORIES.map(cat => {
               const items = contenus[cat.id].filter(c => c.nom.toLowerCase().includes(recherche.toLowerCase()));
               if (items.length === 0) return null;
@@ -313,7 +304,6 @@ export default function ContenuPage() {
             {isClient ? (
               <PDFDownloadLink document={<ContenuPDF contenus={contenus} />} fileName="contenu_ludo.pdf">
                 {({ loading }) => (
-                  // NOUVEAU : Ajout de l'événement onClick={genererPDF}
                   <button onClick={genererPDF} disabled={totalContenus === 0 || loading} className="w-full bg-[#d63031] hover:bg-[#b02627] disabled:bg-slate-200 disabled:text-slate-400 text-white font-black py-4 rounded-xl transition-colors shadow-md">
                     {loading ? 'PRÉPARATION PDF...' : 'GÉNÉRER LES FICHES'}
                   </button>
