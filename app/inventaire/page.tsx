@@ -738,8 +738,12 @@ export default function InventairePage() {
             </div>
 
             <div className="p-6 border-t-2 border-slate-100 bg-slate-50 flex justify-between items-center shrink-0">
-              {editSelection.titre && editSelection.id.length > 30 ? (
-                <button onClick={() => supprimerSelection(editSelection.id)} className="text-rose-500 font-bold hover:bg-rose-50 px-4 py-2 rounded-xl transition-colors">
+              {/* On vérifie que editSelection.id existe bien avant de lire sa length */}
+              {editSelection.titre && editSelection.id && editSelection.id.length > 30 ? (
+                <button 
+                  onClick={() => editSelection.id && supprimerSelection(editSelection.id)} 
+                  className="text-rose-500 font-bold hover:bg-rose-50 px-4 py-2 rounded-xl transition-colors"
+                >
                   Supprimer la sélection
                 </button>
               ) : <div></div>}
