@@ -62,7 +62,7 @@ type ImportItem = {
   nb_de_joueurs: string | null;
   temps_de_jeu: string | null;
   etoiles: string | null;
-  coop_versus: string | null;
+  coop_versus: string | null; // <--- Correction ici !
   matchType: 'new' | 'auto_fill' | 'conflict' | 'suggested_link' | 'color_only';
   existingEan?: string;
   existingNom?: string;
@@ -489,8 +489,12 @@ export default function InventairePage() {
     return new Date(Math.min(...datesSorties)).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
   }, [nouveautesEnSalle]);
 
+  const resultatsRechercheAjout = useMemo(() => {
+    if (!rechercheAjout) return [];
+    const term = rechercheAjout.toLowerCase();
+    return jeux.filter(j => j.nom.toLowerCase().includes(term) || j.code_syracuse?.includes(term)).slice(0, 5);
+  }, [rechercheAjout, jeux]);
 
-  // --- LOGIQUE IMPORT SYRACUSE SMART (GÈRE CSV + UNIMARC) ---
   const handleSmartImport = async (files: FileList | File[]) => {
     if (files.length === 0) return;
 
@@ -533,8 +537,7 @@ export default function InventairePage() {
       ean: string, titre: string, auteurs: string, editeur: string, 
       description: string, contenu: string, mecanique: string, 
       nb_de_joueurs: string, temps_de_jeu: string, etoiles: string, 
-      coop_versus: string,
-      couleur: string | null, imageUrl: string, codesSyracuse: string[], isTempEan: boolean
+      coop_versus: string, couleur: string | null, imageUrl: string, codesSyracuse: string[], isTempEan: boolean
     ) => {
       let matchType: ImportItem['matchType'] = 'new';
       let existingEan, existingNom;
@@ -581,7 +584,6 @@ export default function InventairePage() {
       });
     };
 
-    // --- TRAITEMENT UNIMARC (UNIQUEMENT ÉTIQUETTES 941 + IDENTIFIANT) ---
     if (unimarcRecords) {
       for (let i = 0; i < unimarcRecords.length; i++) {
         const rec = unimarcRecords[i];
@@ -595,7 +597,6 @@ export default function InventairePage() {
 
         const codesSyracuse = extractAllSubfields(rec, '995', 'f');
 
-        // Extraction EXCLUSIVE du 941 (Étiquettes)
         const mecanique = extractSubfield(rec, '941', 'c') || "";
         
         let minJ = extractSubfield(rec, '941', 'a');
@@ -637,7 +638,6 @@ export default function InventairePage() {
            if (eMatch) etoiles = eMatch[0];
         }
 
-        // On n'envoie aucune donnée "parasite" (description, contenu, auteurs...)
         compareWithExisting(ean, titre, "", "", "", "", mecanique, nb_de_joueurs, temps_de_jeu, etoiles, coop_versus, couleur, "", codesSyracuse, isTempEan);
       }
       
@@ -646,7 +646,6 @@ export default function InventairePage() {
          return;
       }
     } 
-    // --- TRAITEMENT CSV (L'ANCIENNE MÉTHODE GÉNÉRALE) ---
     else {
       const cotesMap = new Map<string, string>();
       if (coteData) {
