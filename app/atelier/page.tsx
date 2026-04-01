@@ -58,7 +58,7 @@ export default function Home() {
   
   const [nbReparations, setNbReparations] = useState(0);
   const [nbManquants, setNbManquants] = useState(0);
-  const [nbOrphelines, setNbOrphelines] = useState(0); // NOUVEAU COMPTEUR
+  const [nbOrphelines, setNbOrphelines] = useState(0); 
 
   const [jeuxAttente, setJeuxAttente] = useState<JeuAttenteType[]>([]);
   const [jeuxEnPrepa, setJeuxEnPrepa] = useState<JeuType[]>([]);
@@ -109,7 +109,7 @@ export default function Home() {
       etape_equiper: jeux.filter(j => !j.etape_equiper).length,
       etape_encoder: jeux.filter(j => !j.etape_encoder).length,
       etape_notice: jeux.filter(j => !j.etape_notice).length,
-      etape_nouveaute: jeux.filter(j => !j.etape_nouveaute).length,
+      etape_nouveaute: jeux.filter(j => !j.is_double && !j.etape_nouveaute).length, // Ne compte plus les doubles
     });
 
     const { count: countRep } = await supabase.from('reparations').select('*', { count: 'exact', head: true }).eq('statut', 'À faire');
@@ -118,7 +118,7 @@ export default function Home() {
 
     setNbReparations(countRep || 0);
     setNbManquants(countManq || 0);
-    setNbOrphelines(countOrp || 0); // MAJ DU COMPTEUR
+    setNbOrphelines(countOrp || 0); 
   };
 
   useEffect(() => {
@@ -188,16 +188,21 @@ export default function Home() {
   const validerEtEnvoyer = async () => {
     const jeuxAInserer = jeuxAttente.map(jeu => {
       const isExistant = jeu.typeAjout === "existant";
-      const isTermine = isExistant || (jeu.typeAjout === "double" && 
-                        jeu.etapes.etape_plastifier && jeu.etapes.etape_contenu && 
-                        jeu.etapes.etape_etiquette && jeu.etapes.etape_equiper && 
-                        jeu.etapes.etape_encoder && jeu.etapes.etape_notice);
+      const isDouble = jeu.typeAjout === "double";
+      
+      const basesOk = jeu.etapes.etape_plastifier && jeu.etapes.etape_contenu && 
+                      jeu.etapes.etape_etiquette && jeu.etapes.etape_equiper && 
+                      jeu.etapes.etape_encoder && jeu.etapes.etape_notice;
+                      
+      // Un double va en stock si les bases sont faites. Un existant y va direct.
+      const isTermine = isExistant || (isDouble && basesOk);
+
       return { 
         nom: jeu.nom, 
         ean: jeu.ean, 
         statut: isTermine ? "En stock" : "En préparation",
-        is_double: jeu.typeAjout !== "nouveaute",
-        etape_nouveaute: jeu.typeAjout !== "nouveaute",
+        is_double: isDouble || isExistant,
+        etape_nouveaute: false, // JAMAIS true lors de l'ajout ! Se débloque manuellement pour les nouveautés dans l'atelier.
         etape_plastifier: isExistant ? true : jeu.etapes.etape_plastifier,
         etape_contenu: isExistant ? true : jeu.etapes.etape_contenu,
         etape_etiquette: isExistant ? true : jeu.etapes.etape_etiquette,
@@ -232,8 +237,10 @@ export default function Home() {
   };
 
   const verifierSiTermine = (jeu: JeuType) => {
-    return jeu.etape_plastifier && jeu.etape_contenu && jeu.etape_etiquette && 
-           jeu.etape_equiper && jeu.etape_encoder && jeu.etape_notice && jeu.etape_nouveaute;
+    const bases = jeu.etape_plastifier && jeu.etape_contenu && jeu.etape_etiquette && 
+                  jeu.etape_equiper && jeu.etape_encoder && jeu.etape_notice;
+    // Si c'est un double, il ne nécessite pas l'étape nouveauté pour être "Terminé"
+    return jeu.is_double ? bases : (bases && jeu.etape_nouveaute);
   };
 
   const toggleEtapeUnique = async (id: string | number, colonne: string, valeurActuelle: boolean) => {
@@ -285,7 +292,13 @@ export default function Home() {
   };
 
   const etapeActiveInfo = etapesVisuelles.find(e => e.id === etapeActive);
-  const jeuxPourEtapeActive = jeuxEnPrepa.filter(j => etapeActive && !j[etapeActive]);
+  
+  // NOUVEAU: On exclut les doubles de la modale de validation si l'étape active est "Nouveauté"
+  const jeuxPourEtapeActive = jeuxEnPrepa.filter(j => {
+    if (!etapeActive) return false;
+    if (etapeActive === 'etape_nouveaute' && j.is_double) return false;
+    return !j[etapeActive];
+  });
 
   const changerCouleurJeu = async (idJeu: string | number, ean: string, nom: string, nouvelleCouleur: string) => {
     setJeuxEnPrepa(prev => prev.map(j => j.id === idJeu ? { ...j, couleur: nouvelleCouleur } : j));
@@ -624,14 +637,20 @@ export default function Home() {
 
                         if (isExistant) {
                           checked = true;
-                          if (isEtapeNouv) label = "✅ Déjà en stock";
+                          if (isEtapeNouv) {
+                             checked = false;
+                             label = "🚫 Pas une nouveauté";
+                          }
                         } else if (isDouble) {
                           if (isEtapeNouv) {
-                            checked = true;
+                            checked = false;
                             label = "🔄 Double";
                           }
                         } else {
-                          if (isEtapeNouv) checked = false;
+                          if (isEtapeNouv) {
+                            checked = false;
+                            label = "🌟 Nouveauté (Atelier)";
+                          }
                         }
 
                         return (
