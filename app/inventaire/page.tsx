@@ -62,7 +62,7 @@ type ImportItem = {
   nb_de_joueurs: string | null;
   temps_de_jeu: string | null;
   etoiles: string | null;
-  coop_versus: string | null; // <--- Correction ici !
+  coop_versus: string | null;
   matchType: 'new' | 'auto_fill' | 'conflict' | 'suggested_link' | 'color_only';
   existingEan?: string;
   existingNom?: string;
@@ -78,6 +78,19 @@ const COULEURS = [
   { id: 'rouge', bg: 'bg-[#ff4d79]', text: 'text-white', border: 'border-[#ff4d79]', shadow: 'shadow-[#ff4d79]/50', label: 'Rouge' },
   { id: 'jaune', bg: 'bg-[#ffa600]', text: 'text-black', border: 'border-[#ffa600]', shadow: 'shadow-[#ffa600]/50', label: 'Jaune' }
 ];
+
+// LISTE OFFICIELLE DES MÉCANIQUES
+const MECANIQUES_OFFICIELLES = [
+  "(Dé)placement", "Adresse", "Bluff", "Casse-tête", "Collection", 
+  "Combinaison", "Communication", "Connaissances", "Conquête", "Course", 
+  "Deck building", "Déduction", "Dominos", "Draft", "Exploration", 
+  "Gestion", "Gestion de main", "Gestion de ressources", "Imagination", 
+  "Lancé de dés", "Livre-aventure", "Loto", "Manipulation", "Mémoire", 
+  "Multijeux", "Négociation", "Observation", "Paris", "Placement de cartes", 
+  "Placement de dés", "Placement de tuiles", "Placement d'ouvriers", "Plis", 
+  "Programmation", "Puzzle", "Rapidité", "Rôles cachés", "Roll & write", 
+  "Stop ou encore"
+].sort();
 
 const getDuree = (temps?: string) => {
   if (!temps) return { label: "", level: 0 };
@@ -324,6 +337,12 @@ export default function InventairePage() {
   const [colorFixEan, setColorFixEan] = useState("");
   const [colorFixLogs, setColorFixLogs] = useState<{msg: string, isError: boolean}[]>([]);
 
+  // --- OUTIL NETTOYAGE MÉCANIQUES ---
+  const [isMecaFixModalOpen, setIsMecaFixModalOpen] = useState(false);
+  const [jeuxMecaInvalides, setJeuxMecaInvalides] = useState<JeuType[]>([]);
+  const [mecaUpdates, setMecaUpdates] = useState<Record<string, string>>({});
+  const [isFixingMeca, setIsFixingMeca] = useState(false);
+
   const fetchInventaire = async () => {
     setIsLoading(true);
     const { data: jeuxData, error: jeuxError } = await supabase
@@ -388,7 +407,30 @@ export default function InventairePage() {
   }, []);
 
   const synchroniserBase = async () => { /* ... */ };
-  const nettoyerMecaniques = async () => { /* ... */ };
+  
+  // --- OUTIL DE NETTOYAGE MÉCANIQUES ---
+  const nettoyerMecaniques = () => {
+    const invalides = jeux.filter(j => !j.mecanique || !MECANIQUES_OFFICIELLES.includes(j.mecanique));
+    const uniqueInvalides = Array.from(new Map(invalides.map(item => [item.ean, item])).values());
+    setJeuxMecaInvalides(uniqueInvalides);
+    setMecaUpdates({});
+    setIsMecaFixModalOpen(true);
+    setIsSettingsOpen(false);
+  };
+
+  const validerCorrectionsMeca = async () => {
+    setIsFixingMeca(true);
+    const updates = Object.entries(mecaUpdates).filter(([ean, meca]) => meca !== "");
+    
+    for (const [ean, meca] of updates) {
+      await supabase.from('catalogue').update({ mecanique: meca }).eq('ean', ean);
+    }
+    
+    setIsFixingMeca(false);
+    setIsMecaFixModalOpen(false);
+    setMecaUpdates({});
+    fetchInventaire();
+  };
 
   const handleColorFixScan = async (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && colorFixEan.trim() !== "") {
@@ -1050,9 +1092,9 @@ export default function InventairePage() {
                   <div className="absolute right-0 top-full mt-3 bg-white shadow-xl rounded-2xl border border-slate-100 p-2 flex flex-col gap-1 z-50 min-w-[240px] animate-fade-in">
                     <span className="text-xs font-black text-slate-400 uppercase px-3 py-2">Maintenance</span>
                     <button onClick={() => { setImportStep('upload'); setIsImportModalOpen(true); setIsSettingsOpen(false); }} className="text-left w-full px-4 py-3 hover:bg-slate-50 rounded-xl font-bold text-sm text-black transition-colors flex items-center gap-2">📥 Importer Syracuse</button>
+                    <button onClick={() => { nettoyerMecaniques(); }} className="text-left w-full px-4 py-3 hover:bg-slate-50 rounded-xl font-bold text-sm text-black transition-colors flex items-center gap-2">🧽 Nettoyer Mécaniques</button>
                     <button onClick={() => { setIsColorFixOpen(true); setIsSettingsOpen(false); }} className="text-left w-full px-4 py-3 hover:bg-slate-50 rounded-xl font-bold text-sm text-black transition-colors flex items-center gap-2">🛠️ Corriger Couleurs (Scanner)</button>
                     <button onClick={() => { synchroniserBase(); setIsSettingsOpen(false); }} disabled={isSyncing} className="text-left w-full px-4 py-3 hover:bg-slate-50 rounded-xl font-bold text-sm text-black transition-colors flex items-center gap-2">🧹 Synchroniser Catalogue</button>
-                    <button onClick={() => { nettoyerMecaniques(); setIsSettingsOpen(false); }} disabled={isSyncing} className="text-left w-full px-4 py-3 hover:bg-slate-50 rounded-xl font-bold text-sm text-black transition-colors flex items-center gap-2">🧽 Nettoyer Mécaniques</button>
                   </div>
                 )}
               </div>
@@ -1438,6 +1480,73 @@ export default function InventairePage() {
                 )}
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- NOUVEAU: OUTIL DE NETTOYAGE DES MÉCANIQUES --- */}
+      {isMecaFixModalOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[90] flex items-center justify-center p-4 sm:p-8 animate-fade-in">
+          <div className="bg-white rounded-[2.5rem] w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden border-2 border-slate-200">
+            <div className="p-6 md:p-8 border-b-2 border-slate-100 bg-slate-50 flex justify-between items-start shrink-0">
+              <div>
+                <h2 className="text-2xl font-black text-slate-800">🧽 Nettoyage des Mécaniques</h2>
+                <p className="text-slate-500 font-bold mt-1 text-sm">{jeuxMecaInvalides.length} jeux ont une mécanique vide ou non standard.</p>
+              </div>
+              <button onClick={() => setIsMecaFixModalOpen(false)} className="w-10 h-10 flex items-center justify-center rounded-full bg-slate-200 text-slate-600 hover:bg-slate-300 hover:text-black font-black transition-colors shrink-0">✕</button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6 md:p-8 bg-[#e5e5e5] custom-scroll flex flex-col gap-4">
+              {jeuxMecaInvalides.length === 0 ? (
+                <div className="text-center py-20 text-slate-400">
+                  <span className="text-5xl mb-4 block">✨</span>
+                  <p className="font-bold text-xl">Tout est parfait ! Aucune mécanique à nettoyer.</p>
+                </div>
+              ) : (
+                jeuxMecaInvalides.map((jeu) => (
+                  <div key={jeu.ean} className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-black text-lg text-slate-800 truncate">{jeu.nom}</h4>
+                      <p className="text-xs font-bold text-slate-500 mt-1">
+                        Mécanique actuelle : <span className="text-red-500 bg-red-50 px-2 py-0.5 rounded border border-red-100">{jeu.mecanique || "Vide"}</span>
+                      </p>
+                    </div>
+                    
+                    <div className="shrink-0 w-full sm:w-64">
+                      <select 
+                        value={mecaUpdates[jeu.ean] !== undefined ? mecaUpdates[jeu.ean] : (jeu.mecanique || "")}
+                        onChange={(e) => setMecaUpdates({ ...mecaUpdates, [jeu.ean]: e.target.value })}
+                        className="w-full bg-slate-50 border-2 border-slate-200 font-bold text-slate-700 text-sm rounded-xl px-3 py-2 outline-none focus:border-black cursor-pointer shadow-sm"
+                      >
+                        <option value="">-- Conserver tel quel --</option>
+                        {MECANIQUES_OFFICIELLES.map(m => (
+                          <option key={m} value={m}>{m}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {jeuxMecaInvalides.length > 0 && (
+              <div className="p-6 border-t-2 border-slate-100 bg-slate-50 flex justify-between items-center shrink-0">
+                <button 
+                  onClick={() => setIsMecaFixModalOpen(false)} 
+                  disabled={isFixingMeca}
+                  className="px-6 py-3 bg-white hover:bg-slate-100 text-slate-600 font-bold rounded-xl transition-colors border border-slate-200 shadow-sm"
+                >
+                  Annuler
+                </button>
+                <button 
+                  onClick={validerCorrectionsMeca} 
+                  disabled={isFixingMeca || Object.keys(mecaUpdates).length === 0}
+                  className="bg-black hover:bg-slate-800 disabled:bg-slate-400 text-white font-black px-8 py-3 rounded-xl shadow-md transition-all flex items-center gap-2"
+                >
+                  {isFixingMeca ? "⏳ Mise à jour..." : `💾 Enregistrer (${Object.values(mecaUpdates).filter(v => v !== "").length})`}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1946,7 +2055,16 @@ export default function InventairePage() {
                     <div className="flex flex-col gap-1">
                       <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Mécanique</span>
                       {isEditingFiche && editedFiche ? (
-                        <input type="text" value={editedFiche.mecanique || ''} onChange={e => setEditedFiche({...editedFiche, mecanique: e.target.value})} className="font-bold text-slate-700 bg-slate-50 px-2 py-1 rounded border-2 border-slate-200 outline-none w-full" placeholder="Méca..." />
+                        <select 
+                          value={editedFiche.mecanique || ''} 
+                          onChange={e => setEditedFiche({...editedFiche, mecanique: e.target.value})} 
+                          className="font-bold text-slate-700 bg-slate-50 px-2 py-1 rounded border-2 border-slate-200 outline-none w-full cursor-pointer"
+                        >
+                          <option value="">—</option>
+                          {MECANIQUES_OFFICIELLES.map(m => (
+                            <option key={m} value={m}>{m}</option>
+                          ))}
+                        </select>
                       ) : (
                         <span className="font-bold text-slate-700 truncate block" title={ficheJeu.mecanique || ""}>{ficheJeu.mecanique || "—"}</span>
                       )}
