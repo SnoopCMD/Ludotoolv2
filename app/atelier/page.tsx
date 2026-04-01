@@ -72,6 +72,9 @@ export default function Home() {
   const [totalEnPrepa, setTotalEnPrepa] = useState(0);
   const [comptesEtapes, setComptesEtapes] = useState<Record<string, number>>({});
 
+  const [rechercheJeu, setRechercheJeu] = useState("");
+  const [isSearchDropdownOpen, setIsSearchDropdownOpen] = useState(false);
+
   const fetchDashboardData = async () => {
     const { data: jeuxData, error: jeuxError } = await supabase
       .from('jeux')
@@ -312,6 +315,11 @@ export default function Home() {
       alert("Erreur de sauvegarde de la couleur");
     }
   };
+  
+  const jeuxEnPrepaFiltres = jeuxEnPrepa.filter(jeu => 
+    jeu.nom.toLowerCase().includes(rechercheJeu.toLowerCase()) || 
+    jeu.ean.includes(rechercheJeu)
+  );
 
   return (
     <div className="min-h-screen flex flex-col bg-[#e5e5e5] font-sans p-4 sm:p-8 relative">
@@ -342,7 +350,7 @@ export default function Home() {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div 
-            onClick={() => setIsListeOpen(true)}
+            onClick={() => { setIsListeOpen(true); setRechercheJeu(""); }}
             className="group bg-white border-2 border-slate-100 rounded-[2.5rem] p-10 flex flex-col items-center justify-center shadow-sm relative cursor-pointer hover:border-[#baff29] transition-colors"
           >
             <div className="absolute top-6 right-8 text-slate-300 group-hover:text-[#baff29] transition-colors">
@@ -351,7 +359,49 @@ export default function Home() {
             <h1 className="text-[10rem] leading-none font-black text-[#baff29] tracking-tighter group-hover:scale-105 transition-transform">
               {formatNum(totalEnPrepa)}
             </h1>
-            <p className="text-3xl font-bold text-black mt-2">Jeux en préparation</p>
+            <p className="text-3xl font-bold text-black mt-2 mb-6">Jeux en préparation</p>
+
+            {/* Barre de recherche sur la carte */}
+            <div className="w-full relative z-20" onClick={(e) => e.stopPropagation()}>
+              <div className="relative">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 opacity-50">🔍</span>
+                <input 
+                  type="text" 
+                  placeholder="Rechercher un jeu précis..." 
+                  value={rechercheJeu}
+                  onChange={(e) => {
+                    setRechercheJeu(e.target.value);
+                    setIsSearchDropdownOpen(true);
+                  }}
+                  onFocus={() => setIsSearchDropdownOpen(true)}
+                  className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl pl-12 pr-4 py-3 text-black outline-none focus:border-[#baff29] transition-colors font-medium shadow-sm"
+                />
+                
+                {/* Menu déroulant des résultats rapides */}
+                {rechercheJeu && isSearchDropdownOpen && (
+                  <div className="absolute top-full left-0 w-full bg-white border border-slate-200 rounded-xl shadow-xl mt-2 max-h-48 overflow-y-auto z-30">
+                    {jeuxEnPrepaFiltres.length === 0 ? (
+                      <div className="p-4 text-center text-slate-500 text-sm font-medium">Aucun jeu trouvé</div>
+                    ) : (
+                      jeuxEnPrepaFiltres.map(jeu => (
+                        <div 
+                          key={jeu.id} 
+                          onClick={() => { 
+                            setRechercheJeu(jeu.nom); 
+                            setIsSearchDropdownOpen(false); 
+                            setIsListeOpen(true); 
+                          }}
+                          className="p-3 hover:bg-[#baff29]/20 cursor-pointer border-b border-slate-100 last:border-0 flex flex-col transition-colors"
+                        >
+                          <span className="font-bold text-black text-left">{jeu.nom}</span>
+                          <span className="text-xs font-medium text-slate-400 text-left">EAN: {jeu.ean}</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
 
           <div className="bg-[#cdff66] rounded-[2.5rem] p-10 flex flex-col items-start justify-center shadow-sm">
@@ -469,14 +519,26 @@ export default function Home() {
           <div className="bg-white rounded-[2rem] p-8 w-full max-w-6xl max-h-[90vh] flex flex-col shadow-2xl">
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-3xl font-black text-slate-800">📋 Jeux en préparation</h2>
-              <button onClick={() => setIsListeOpen(false)} className="text-slate-400 hover:text-black font-bold text-xl px-4 py-2 bg-slate-100 rounded-full">✕ Fermer</button>
+              <button onClick={() => { setIsListeOpen(false); setRechercheJeu(""); }} className="text-slate-400 hover:text-black font-bold text-xl px-4 py-2 bg-slate-100 rounded-full">✕ Fermer</button>
+            </div>
+
+            {/* Barre de recherche dans la modale */}
+            <div className="mb-4 relative">
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 opacity-50">🔍</span>
+              <input 
+                type="text" 
+                placeholder="Rechercher dans la liste..." 
+                value={rechercheJeu}
+                onChange={(e) => setRechercheJeu(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-12 pr-4 py-3 text-black outline-none focus:border-black transition-colors font-medium shadow-sm"
+              />
             </div>
             
             <div className="flex-1 overflow-y-auto bg-slate-50 rounded-2xl p-4 border border-slate-100">
-              {jeuxEnPrepa.length === 0 ? (
-                <p className="text-center text-slate-400 mt-10 font-medium">Aucun jeu en préparation.</p>
+              {jeuxEnPrepaFiltres.length === 0 ? (
+                <p className="text-center text-slate-400 mt-10 font-medium">Aucun jeu trouvé.</p>
               ) : (
-                jeuxEnPrepa.map((jeu) => {
+                jeuxEnPrepaFiltres.map((jeu) => {
                   const couleurObj = COULEURS.find(c => c.id === jeu.couleur);
                   return (
                     <div key={jeu.id} className="bg-white p-5 rounded-xl shadow-sm mb-3 border border-slate-100 flex flex-col lg:flex-row justify-between lg:items-center gap-4 hover:border-slate-300 transition-colors">
