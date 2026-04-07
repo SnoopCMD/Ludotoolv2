@@ -407,8 +407,10 @@ export default function Home() {
           <div className="bg-[#cdff66] rounded-[2.5rem] p-10 flex flex-col items-start justify-center shadow-sm">
             <h2 className="text-3xl font-bold text-black mb-8">Impression</h2>
             <div className="flex flex-col gap-4">
-              <Link href="/etiquettes" className="bg-[#4d4d4d] hover:bg-[#333] transition-colors text-white py-3 px-8 rounded-full font-bold text-lg w-max shadow-sm text-center">
+              <Link href="/etiquettes">
+               <button className="bg-[#4d4d4d] hover:bg-[#333] transition-colors text-white py-3 px-8 rounded-full font-bold text-lg w-max shadow-sm text-center">
                 Etiquettes
+                </button>
               </Link>
               <Link href="/contenu">
               <button className="bg-[#4d4d4d] hover:bg-[#333] transition-colors text-white py-3 px-8 rounded-full font-bold text-lg w-max shadow-sm text-center">

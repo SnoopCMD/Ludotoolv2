@@ -20,6 +20,7 @@ export type ContenuType = {
   elements: string;
   quantity: number;
   isOpen: boolean; 
+  sansRegle?: boolean; // <-- AJOUT ICI
 };
 
 export default function ContenuPage() {
@@ -91,23 +92,25 @@ export default function ContenuPage() {
     }
   };
 
-  const formaterTexte = (texte: string) => {
-    if (!texte || texte.trim() === "") return "- \n\n- 1 règle du jeu";
+  const formaterTexte = (texte: string, sansRegle?: boolean) => {
+    if (!texte || texte.trim() === "") return sansRegle ? "" : "- 1 règle du jeu";
 
-    let lignes = texte.split('\n');
-
-    lignes = lignes.map(l => {
+    let lignes = texte.split('\n').map(l => {
       if (l.trim() === '') return ''; 
       if (l.trim().endsWith(':')) return l.trim(); 
       if (l.match(/^\s+[-*•]/)) return l; 
       if (l.trim().match(/^[-*•]\s*/)) return '- ' + l.trim().replace(/^[-*•]\s*/, ''); 
       return '- ' + l.trim(); 
-    });
+    }).filter(l => l !== ''); // Supprime les lignes vides
 
-    const aRegle = lignes.some(l => l.toLowerCase().includes('règle du jeu'));
-    if (!aRegle) {
-      if (lignes[lignes.length - 1] !== '') lignes.push('');
-      lignes.push('- 1 règle du jeu');
+    if (sansRegle) {
+      // Nettoie si la case est cochée
+      lignes = lignes.filter(l => !l.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").match(/(regle|livret|notice)/));
+    } else {
+      const texteNormalise = lignes.join(' ').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      const aRegle = texteNormalise.match(/(regle|livret|notice)/);
+      // Ajout direct sans le saut de ligne vide !
+      if (!aRegle) lignes.push('- 1 règle du jeu'); 
     }
 
     return lignes.join('\n');
@@ -147,7 +150,7 @@ export default function ContenuPage() {
   };
 
   const gererBlur = (couleurId: string, jeu: ContenuType) => {
-    const texteFormate = formaterTexte(jeu.elements);
+    const texteFormate = formaterTexte(jeu.elements, jeu.sansRegle);
     mettreAJourLigne(couleurId, jeu.id, "elements", texteFormate);
     sauvegarderJeuDansBDD({ ...jeu, elements: texteFormate }, couleurId);
   };
@@ -340,8 +343,23 @@ export default function ContenuPage() {
                                       }}
                                       className="w-full bg-white p-3 rounded-lg outline-none border border-slate-200 focus:border-black shadow-sm min-h-[144px] resize-y font-mono text-sm" 
                                     />
+                                  </div >
+                                  <div className="flex flex-col gap-2 mt-4 shrink-0">
+                                    <button onClick={() => supprimerLigne(cat.id, c.id)} className="text-red-500 hover:bg-red-50 p-3 rounded-lg transition-colors" title="Supprimer">🗑️</button>
+                                    <button 
+                                      onClick={() => {
+                                        const newVal = !c.sansRegle;
+                                        mettreAJourLigne(cat.id, c.id, "sansRegle", newVal);
+                                        const newText = formaterTexte(c.elements, newVal);
+                                        mettreAJourLigne(cat.id, c.id, "elements", newText);
+                                        sauvegarderJeuDansBDD({ ...c, elements: newText }, cat.id);
+                                      }} 
+                                      className={`p-2 rounded-lg transition-colors flex flex-col items-center justify-center text-xs font-bold border ${c.sansRegle ? 'bg-orange-50 text-orange-500 border-orange-200' : 'bg-slate-50 text-slate-400 border-slate-200 hover:bg-slate-100'}`}
+                                      title={c.sansRegle ? "Ajouter la règle" : "Retirer la règle"}
+                                    >
+                                      <span className="text-lg">{c.sansRegle ? '🚫' : '📖'}</span>
+                                    </button>
                                   </div>
-                                  <button onClick={() => supprimerLigne(cat.id, c.id)} className="text-red-500 hover:bg-red-50 p-3 rounded-lg transition-colors mt-4">🗑️</button>
                                 </div>
                               )}
                             </div>

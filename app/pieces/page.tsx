@@ -243,12 +243,12 @@ export default function PiecesPage() {
               {contenuJeu.length > 0 && !saisieManuelle ? (
                 <>
                   <input type="number" placeholder="Qté" value={qteManq} onChange={e => setQteManq(Number(e.target.value))} className="w-20 border-2 border-slate-200 p-3 rounded-xl outline-none focus:border-black font-bold text-center" min="1" />
-                  <select value={itemManq} onChange={e => setItemManq(e.target.value)} className="flex-1 border-2 border-slate-200 p-3 rounded-xl outline-none focus:border-black font-semibold bg-white truncate">
+                  <select value={itemManq} onChange={e => setItemManq(e.target.value)} className="flex-1 min-w-0 border-2 border-slate-200 p-3 rounded-xl outline-none focus:border-black font-semibold bg-white truncate">
                     {contenuJeu.map((item, idx) => (
                       <option key={idx} value={item}>{item}</option>
                     ))}
                   </select>
-                  <button onClick={() => setSaisieManuelle(true)} className="px-3 text-sm text-slate-400 hover:text-black underline">Manuel</button>
+                  <button onClick={() => setSaisieManuelle(true)} className="px-3 text-sm text-slate-400 hover:text-black underline shrink-0">Manuel</button>
                 </>
               ) : (
                 <input type="text" placeholder="Pièce (ex: 1 dé rouge)..." value={elemManqManuel} onChange={e => setElemManqManuel(e.target.value)} onKeyDown={e => e.key === 'Enter' && ajouterManquant()} className="flex-1 border-2 border-slate-200 p-3 rounded-xl outline-none focus:border-black" />
@@ -280,9 +280,11 @@ export default function PiecesPage() {
                       {m.hasMatch && !isSuggestion && !isCommande && <span title="Une pièce correspondante a été trouvée !" className="text-xl animate-pulse">💡</span>}
                       {isSuggestion && !isCommande && <span className="text-[#ff4d79] text-xs font-black bg-white px-2 py-0.5 rounded-full border border-[#ff4d79] shrink-0">✨ Suggestion</span>}
                     </h3>
-                    <div className="max-h-24 overflow-y-auto custom-scroll mt-2 pr-1">
-                      <p className={`${isCommande ? 'text-slate-500' : 'text-[#ff4d79]'} font-bold text-sm`}>Manque : {m.element_manquant}</p>
-                    </div>
+                    <div className="mt-2 pr-1">
+                    <p className={`${isCommande ? 'text-slate-500' : 'text-[#ff4d79]'} font-bold text-sm line-clamp-2`} title={m.element_manquant}>
+                      Manque : {m.element_manquant}
+                    </p>
+                  </div>
                   </div>
                   
                   <div className="flex gap-2 shrink-0 self-end sm:self-center">
@@ -352,12 +354,12 @@ export default function PiecesPage() {
                       'bg-white border-slate-100 hover:border-slate-300'}`}
                 >
                   <div className="flex-1 min-w-0">
-                    <div className="max-h-24 overflow-y-auto custom-scroll pr-1">
-                      <h3 className="font-bold text-lg leading-tight flex items-center gap-2 flex-wrap">
-                        {t.description}
-                        {isSuggestion && <span className="text-[#84b506] text-xs font-black bg-white px-2 py-0.5 rounded-full border border-[#baff29] shrink-0">✨ Suggestion</span>}
-                      </h3>
-                    </div>
+                    <div className="pr-1">
+                    <h3 className="font-bold text-lg leading-tight flex items-center gap-2 flex-wrap line-clamp-2" title={t.description}>
+                      {t.description}
+                      {isSuggestion && <span className="text-[#84b506] text-xs font-black bg-white px-2 py-0.5 rounded-full border border-[#baff29] shrink-0 ml-1">✨ Suggestion</span>}
+                    </h3>
+                  </div>
                     {t.nom_suppose && <p className="text-slate-500 text-sm mt-1 truncate">Peut-être : <span className="italic">{t.nom_suppose}</span></p>}
                   </div>
                   <button onClick={(e) => { e.stopPropagation(); resoudreTrouve(t.id); }} className="shrink-0 bg-slate-100 hover:bg-slate-200 px-4 py-2 rounded-xl text-sm font-bold transition-colors self-end sm:self-center">
