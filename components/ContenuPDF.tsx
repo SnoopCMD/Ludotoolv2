@@ -26,7 +26,7 @@ const styles = StyleSheet.create({
   headerBox: {
     padding: '2mm', 
     borderBottom: '1pt solid #000000',
-    backgroundColor: '#f8f9fa', 
+    backgroundColor: '#f6f6f6', 
   },
   title: {
     fontSize: 14,
@@ -37,7 +37,7 @@ const styles = StyleSheet.create({
   listItemContainer: {
     paddingVertical: '1.5mm',
     paddingHorizontal: '3mm',
-    borderBottom: '0.5pt solid #e2e8f0', 
+    borderBottom: '0.5pt solid #ececec', 
   },
   listItem: {
     fontSize: 11, 
@@ -93,7 +93,7 @@ export const ContenuPDF = ({ contenus }: { contenus: Record<string, any[]> }) =>
                       if (estTitre) {
                         bgColor = '#f1f5f9';
                       } else {
-                        bgColor = indexCouleur % 2 === 0 ? '#f8f9fa' : '#ffffff';
+                        bgColor = indexCouleur % 2 === 0 ? '#f9f9f981' : '#ffffff';
                         indexCouleur++;
                       }
 
