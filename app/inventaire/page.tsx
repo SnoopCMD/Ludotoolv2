@@ -71,6 +71,8 @@ type ImportItem = {
   isUpdateOnly?: boolean;
 };
 
+type DoublonGroupe = { ean: string; nom: string; exemplaires: JeuType[]; suggeresIds: (string | number)[]; };
+
 const COULEURS = [
   { id: 'vert', bg: 'bg-[#baff29]', text: 'text-black', border: 'border-[#baff29]', shadow: 'shadow-[#baff29]/50', label: 'Vert' },
   { id: 'rose', bg: 'bg-[#f45be0]', text: 'text-white', border: 'border-[#f45be0]', shadow: 'shadow-[#f45be0]/50', label: 'Rose' },
@@ -343,6 +345,12 @@ export default function InventairePage() {
   const [mecaUpdates, setMecaUpdates] = useState<Record<string, string>>({});
   const [isFixingMeca, setIsFixingMeca] = useState(false);
 
+  // --- OUTIL NETTOYAGE DOUBLONS ---
+  const [isDoublonsModalOpen, setIsDoublonsModalOpen] = useState(false);
+  const [doublonGroupes, setDoublonGroupes] = useState<DoublonGroupe[]>([]);
+  const [doublonsSelectionnes, setDoublonsSelectionnes] = useState<(string | number)[]>([]);
+  const [isDeletingDoublons, setIsDeletingDoublons] = useState(false);
+
   const fetchInventaire = async () => {
     setIsLoading(true);
     const { data: jeuxData, error: jeuxError } = await supabase
@@ -416,6 +424,52 @@ export default function InventairePage() {
     setMecaUpdates({});
     setIsMecaFixModalOpen(true);
     setIsSettingsOpen(false);
+  };
+
+  const detecterDoublons = () => {
+    const map = new Map<string, JeuType[]>();
+    jeux.forEach(j => {
+      if (!map.has(j.ean)) map.set(j.ean, []);
+      map.get(j.ean)!.push(j);
+    });
+
+    const groupes: DoublonGroupe[] = [];
+    map.forEach((exemplaires, ean) => {
+      if (exemplaires.length < 2) return;
+      const sansSyracuse = exemplaires.filter(j => !j.code_syracuse);
+      if (sansSyracuse.length === 0) return;
+
+      const avecSyracuse = exemplaires.filter(j => !!j.code_syracuse);
+      let suggeresIds: (string | number)[];
+      if (avecSyracuse.length > 0) {
+        suggeresIds = sansSyracuse.map(j => j.id);
+      } else {
+        suggeresIds = sansSyracuse.slice(1).map(j => j.id);
+      }
+
+      groupes.push({ ean, nom: exemplaires[0].nom, exemplaires, suggeresIds });
+    });
+
+    groupes.sort((a, b) => a.nom.localeCompare(b.nom));
+
+    const initialSelection: (string | number)[] = [];
+    groupes.forEach(g => g.suggeresIds.forEach(id => initialSelection.push(id)));
+
+    setDoublonGroupes(groupes);
+    setDoublonsSelectionnes(initialSelection);
+    setIsDoublonsModalOpen(true);
+    setIsSettingsOpen(false);
+  };
+
+  const supprimerDoublonsSelectionnes = async () => {
+    if (doublonsSelectionnes.length === 0) return;
+    setIsDeletingDoublons(true);
+    await supabase.from('jeux').delete().in('id', doublonsSelectionnes);
+    setIsDeletingDoublons(false);
+    setIsDoublonsModalOpen(false);
+    setDoublonGroupes([]);
+    setDoublonsSelectionnes([]);
+    fetchInventaire();
   };
 
   const validerCorrectionsMeca = async () => {
@@ -1094,6 +1148,7 @@ export default function InventairePage() {
                     <button onClick={() => { setImportStep('upload'); setIsImportModalOpen(true); setIsSettingsOpen(false); }} className="text-left w-full px-4 py-3 hover:bg-slate-50 rounded-xl font-bold text-sm text-black transition-colors flex items-center gap-2">📥 Importer Syracuse</button>
                     <button onClick={() => { nettoyerMecaniques(); }} className="text-left w-full px-4 py-3 hover:bg-slate-50 rounded-xl font-bold text-sm text-black transition-colors flex items-center gap-2">🧽 Nettoyer Mécaniques</button>
                     <button onClick={() => { setIsColorFixOpen(true); setIsSettingsOpen(false); }} className="text-left w-full px-4 py-3 hover:bg-slate-50 rounded-xl font-bold text-sm text-black transition-colors flex items-center gap-2">🛠️ Corriger Couleurs (Scanner)</button>
+                    <button onClick={detecterDoublons} className="text-left w-full px-4 py-3 hover:bg-slate-50 rounded-xl font-bold text-sm text-black transition-colors flex items-center gap-2">🔍 Nettoyer les Doublons</button>
                     <button onClick={() => { synchroniserBase(); setIsSettingsOpen(false); }} disabled={isSyncing} className="text-left w-full px-4 py-3 hover:bg-slate-50 rounded-xl font-bold text-sm text-black transition-colors flex items-center gap-2">🧹 Synchroniser Catalogue</button>
                   </div>
                 )}
@@ -1544,6 +1599,101 @@ export default function InventairePage() {
                   className="bg-black hover:bg-slate-800 disabled:bg-slate-400 text-white font-black px-8 py-3 rounded-xl shadow-md transition-all flex items-center gap-2"
                 >
                   {isFixingMeca ? "⏳ Mise à jour..." : `💾 Enregistrer (${Object.values(mecaUpdates).filter(v => v !== "").length})`}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* --- OUTIL NETTOYAGE DOUBLONS --- */}
+      {isDoublonsModalOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[90] flex items-center justify-center p-2 sm:p-4 animate-fade-in">
+          <div className="bg-white rounded-[2.5rem] w-full max-w-6xl flex flex-col shadow-2xl overflow-hidden border-2 border-slate-200" style={{ height: '95vh' }}>
+            <div className="p-6 md:p-8 border-b-2 border-slate-100 bg-slate-50 flex justify-between items-start shrink-0">
+              <div>
+                <h2 className="text-2xl font-black text-slate-800">🔍 Nettoyage des Doublons</h2>
+                <p className="text-slate-500 font-bold mt-1 text-sm">
+                  {doublonGroupes.length === 0
+                    ? "Aucun doublon détecté."
+                    : `${doublonGroupes.length} jeu${doublonGroupes.length > 1 ? 'x' : ''} avec des exemplaires sans code Syracuse. ${doublonsSelectionnes.length} exemplaire${doublonsSelectionnes.length > 1 ? 's' : ''} sélectionné${doublonsSelectionnes.length > 1 ? 's' : ''} pour suppression.`}
+                </p>
+              </div>
+              <button onClick={() => setIsDoublonsModalOpen(false)} className="w-10 h-10 flex items-center justify-center rounded-full bg-slate-200 text-slate-600 hover:bg-slate-300 hover:text-black font-black transition-colors shrink-0">✕</button>
+            </div>
+
+            <div className="overflow-y-auto p-6 bg-[#e5e5e5] custom-scroll" style={{flex: '1 1 0', minHeight: 0}}>
+              {doublonGroupes.length === 0 ? (
+                <div className="text-center py-20 text-slate-400">
+                  <span className="text-5xl mb-4 block">✨</span>
+                  <p className="font-bold text-xl">Aucun doublon trouvé. L&apos;inventaire est propre !</p>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-4">
+                  {doublonGroupes.map((groupe) => {
+                    const tousSupprimes = groupe.exemplaires.every(ex => doublonsSelectionnes.includes(ex.id));
+                    return (
+                      <div key={groupe.ean} className="bg-white rounded-2xl border border-slate-200 shadow-sm">
+                        <div className="px-5 py-3 border-b border-slate-200 bg-slate-50 rounded-t-2xl">
+                          <p className="font-black text-slate-900 text-base">{groupe.nom}</p>
+                          <p className="text-xs text-slate-500 mt-0.5">{groupe.exemplaires.length} exemplaires · EAN {groupe.ean}</p>
+                          {tousSupprimes && <p className="text-xs text-red-500 font-bold mt-1">⚠️ Tous les exemplaires sélectionnés</p>}
+                        </div>
+                        {groupe.exemplaires.map((ex) => {
+                          const isSuggere = groupe.suggeresIds.includes(ex.id);
+                          const isChecked = doublonsSelectionnes.includes(ex.id);
+                          return (
+                            <div
+                              key={String(ex.id)}
+                              onClick={() => {
+                                if (isChecked) {
+                                  setDoublonsSelectionnes(prev => prev.filter(id => id !== ex.id));
+                                } else {
+                                  setDoublonsSelectionnes(prev => [...prev, ex.id]);
+                                }
+                              }}
+                              className={`flex items-start gap-3 px-5 py-3 cursor-pointer border-b border-slate-100 last:border-b-0 last:rounded-b-2xl ${isChecked ? 'bg-red-50' : 'hover:bg-slate-50'}`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                readOnly
+                                className="mt-0.5 w-4 h-4 accent-red-500 shrink-0"
+                              />
+                              <div>
+                                <p className="text-sm font-bold text-slate-800">
+                                  {ex.nom} <span className="text-slate-400 font-normal">· #{ex.id}</span>
+                                </p>
+                                <div className="flex flex-wrap gap-1 mt-1">
+                                  {ex.code_syracuse
+                                    ? <span className="text-xs px-2 py-0.5 rounded bg-green-100 text-green-700 border border-green-200 font-bold">✓ {ex.code_syracuse}</span>
+                                    : <span className="text-xs px-2 py-0.5 rounded bg-red-100 text-red-600 border border-red-200 font-bold">✗ Pas de code Syracuse</span>
+                                  }
+                                  <span className="text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">{ex.statut}</span>
+                                  {isSuggere && <span className="text-xs px-2 py-0.5 rounded bg-orange-50 text-orange-600 border border-orange-200 font-bold">Suggéré</span>}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {doublonGroupes.length > 0 && (
+              <div className="p-6 border-t-2 border-slate-100 bg-slate-50 flex justify-between items-center shrink-0">
+                <button onClick={() => setIsDoublonsModalOpen(false)} disabled={isDeletingDoublons} className="px-6 py-3 bg-white hover:bg-slate-100 text-slate-600 font-bold rounded-xl transition-colors border border-slate-200 shadow-sm">
+                  Annuler
+                </button>
+                <button
+                  onClick={supprimerDoublonsSelectionnes}
+                  disabled={isDeletingDoublons || doublonsSelectionnes.length === 0}
+                  className="bg-red-500 hover:bg-red-600 disabled:bg-slate-400 text-white font-black px-8 py-3 rounded-xl shadow-md transition-all flex items-center gap-2"
+                >
+                  {isDeletingDoublons ? "⏳ Suppression..." : `🗑️ Supprimer (${doublonsSelectionnes.length})`}
                 </button>
               </div>
             )}
