@@ -298,12 +298,13 @@ export default function AccueilPage() {
     const codeF = /^\d+$/.test(code) && code.length < 8 ? code.padStart(8, "0") : code;
     const { data } = await supabase
       .from("jeux")
-      .select("nom")
+      .select("nom, ean")
       .or(`code_syracuse.eq.${codeF},ean.eq.${codeF}`)
       .limit(1)
       .maybeSingle();
     if (data?.nom) {
-      setForm(f => ({ ...f, jeu_nom: data.nom, type: "jeu" }));
+      const suffix = data.ean ? ` (${String(data.ean).slice(-4)})` : "";
+      setForm(f => ({ ...f, jeu_nom: data.nom + suffix, type: "jeu" }));
       setScanCode("");
     } else {
       setScanError(`Aucun jeu trouvé pour le code « ${codeF} »`);
