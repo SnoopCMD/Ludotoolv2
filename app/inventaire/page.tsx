@@ -23,7 +23,8 @@ type JeuType = {
   etoiles?: string;
   temps_de_jeu?: string;
   coop_versus?: string;
-  date_entree?: string | null; 
+  image_url?: string;
+  date_entree?: string | null;
   date_sortie?: string | null;
 };
 
@@ -298,7 +299,8 @@ const readFileAsync = (file: File): Promise<string> => {
 
 export default function InventairePage() {
   const [jeux, setJeux] = useState<JeuType[]>([]);
-  const [selections, setSelections] = useState<SelectionThematique[]>([]); 
+  const [selections, setSelections] = useState<SelectionThematique[]>([]);
+  const [catalogueImages, setCatalogueImages] = useState<Record<string, string>>({});
   
   const [recherche, setRecherche] = useState("");
   const [couleurFiltre, setCouleurFiltre] = useState<string | null>(null);
@@ -372,13 +374,18 @@ export default function InventairePage() {
     }
 
     const jeuxBruts = jeuxData as JeuType[];
-    const { data: catData } = await supabase.from('catalogue').select('ean, couleur, mecanique, nb_de_joueurs, etoiles, temps_de_jeu, coop_versus');
+    const { data: catData } = await supabase.from('catalogue').select('ean, couleur, mecanique, nb_de_joueurs, etoiles, temps_de_jeu, coop_versus, image_url');
 
     let jeuxFrais = jeuxBruts;
 
     if (catData) {
       const catMap = new Map();
       catData.forEach(c => catMap.set(c.ean, c));
+
+      // Map EAN → image_url accessible directement dans le rendu
+      const imgMap: Record<string, string> = {};
+      catData.forEach(c => { if (c.image_url) imgMap[c.ean] = c.image_url; });
+      setCatalogueImages(imgMap);
 
       jeuxFrais = jeuxBruts.map(j => {
         const catInfo = catMap.get(j.ean);
@@ -390,6 +397,7 @@ export default function InventairePage() {
           etoiles: catInfo?.etoiles || "",
           temps_de_jeu: catInfo?.temps_de_jeu || "",
           coop_versus: catInfo?.coop_versus || "",
+          image_url: catInfo?.image_url || "",
         };
       });
     } 
@@ -1382,21 +1390,30 @@ export default function InventairePage() {
 
                   return (
                     <div key={jeu.ean} className="mb-3 bg-white rounded-2xl border shadow-sm hover:shadow-md transition-all border-slate-100 overflow-hidden">
-                      <div 
+                      <div
                         onClick={() => ouvrirFicheJeu(jeu)}
                         className="grid grid-cols-12 gap-4 p-4 items-center hover:bg-slate-50 cursor-pointer group relative"
                       >
                         <div className="col-span-12 md:col-span-7 lg:col-span-6 font-bold text-black flex flex-col gap-1.5">
                           <div className="flex items-center gap-3">
-                            <div className={`w-4 h-4 rounded-full shadow-inner shrink-0 ${couleurObj ? couleurObj.bg : 'bg-slate-200'}`} title={jeu.couleur || 'Aucune couleur'}></div>
-                            <span className="truncate text-base group-hover:text-blue-600 transition-colors">{jeu.nom}</span>
-                            {hasCopies && (
-                              <span className="bg-slate-100 text-slate-500 text-[10px] font-black px-2 py-0.5 rounded-md border border-slate-200">
-                                {groupe.length} EX
-                              </span>
-                            )}
+                            {/* Vignette */}
+                            <div className="w-10 h-10 rounded-lg overflow-hidden shrink-0 bg-slate-100 border border-slate-200 flex items-center justify-center">
+                              {catalogueImages[jeu.ean]
+                                ? <img src={catalogueImages[jeu.ean]} alt={jeu.nom} className="w-full h-full object-cover" loading="lazy" />
+                                : <div className={`w-full h-full ${couleurObj ? couleurObj.bg : 'bg-slate-200'}`} title={jeu.couleur || 'Aucune couleur'} />
+                              }
+                            </div>
+                            <div className="flex items-center gap-2 min-w-0">
+                              <div className={`w-3 h-3 rounded-full shadow-inner shrink-0 ${couleurObj ? couleurObj.bg : 'bg-slate-200'}`} title={jeu.couleur || 'Aucune couleur'} />
+                              <span className="truncate text-base group-hover:text-blue-600 transition-colors">{jeu.nom}</span>
+                              {hasCopies && (
+                                <span className="bg-slate-100 text-slate-500 text-[10px] font-black px-2 py-0.5 rounded-md border border-slate-200 shrink-0">
+                                  {groupe.length} EX
+                                </span>
+                              )}
+                            </div>
                           </div>
-                          <div className="flex items-center gap-2 ml-7 mt-0.5 flex-wrap">
+                          <div className="flex items-center gap-2 ml-14 mt-0.5 flex-wrap">
                             {jeu.mecanique && <span className="bg-slate-100 text-slate-500 text-[10px] font-bold px-2 py-0.5 rounded uppercase">{jeu.mecanique}</span>}
                             {jeu.coop_versus && <span className="bg-blue-50 text-blue-600 border border-blue-100 text-[10px] font-bold px-2 py-0.5 rounded">{jeu.coop_versus === 'Coop' ? '🤝 Coop' : jeu.coop_versus === 'Solo' ? '👤 Solo' : '⚔️ Versus'}</span>}
                             {jeu.nb_de_joueurs && <span className="bg-slate-100 text-slate-500 text-[10px] font-bold px-2 py-0.5 rounded">👥 {jeu.nb_de_joueurs}</span>}

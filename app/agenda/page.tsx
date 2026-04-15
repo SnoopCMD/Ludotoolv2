@@ -548,20 +548,34 @@ useEffect(() => {
 
       const toUpdate = occurrences.filter(o => o.id);
       const toInsert = occurrences.filter(o => !o.id);
-      
+
       if (toUpdate.length > 0) {
          for (const upd of toUpdate) {
-           await supabase.from('evenements').update(upd).eq('id', upd.id);
+           const { error } = await supabase.from('evenements').update(upd).eq('id', upd.id);
+           if (error) { console.error("Erreur mise à jour événement:", error); alert("Erreur lors de la mise à jour : " + error.message); return; }
          }
       }
       if (toInsert.length > 0) {
-         await supabase.from('evenements').insert(toInsert);
+         const toInsertClean = toInsert.map(occ => {
+           // eslint-disable-next-line @typescript-eslint/no-unused-vars
+           const { id, ...rest } = occ as Record<string, unknown>;
+           if (rest.parent_id === undefined || rest.parent_id === null) {
+             // eslint-disable-next-line @typescript-eslint/no-unused-vars
+             const { parent_id, ...restWithoutParent } = rest;
+             return restWithoutParent;
+           }
+           return rest;
+         });
+         const { error } = await supabase.from('evenements').insert(toInsertClean);
+         if (error) { console.error("Erreur insertion événement:", error); alert("Erreur lors de la création : " + error.message); return; }
       }
-      
+
       if (hasEquipeChanges) {
-        await Promise.all(
+        const results = await Promise.all(
           newEquipeState.filter(m => membresToUpdate.includes(m.id)).map(m => supabase.from('equipe').update({ horaires: m.horaires }).eq('id', m.id))
         );
+        const equipeError = results.find(r => r.error);
+        if (equipeError?.error) console.error("Erreur mise à jour équipe:", equipeError.error);
         chargerEquipe();
       }
       setShowEventModal(false); setNouvelEvent(eventParDefaut); setRep({...rep, active: false}); chargerEvenements();
@@ -686,6 +700,9 @@ useEffect(() => {
 
       newEvenements = newEvenements.map(ev => {
         if (ev.date_debut <= dateKey && ev.date_fin >= dateKey) {
+          // Les absences (Congé, RTT…) restent attachées à la personne d'origine.
+          // On ne les redistribue pas lors d'un échange de jours.
+          if (ABSENCE_TYPES.includes(ev.type)) return ev;
           const hasM1 = ev.membres.includes(swapSession.m1Id);
           const hasM2 = ev.membres.includes(swapSession.m2Id);
           if (hasM1 !== hasM2) {

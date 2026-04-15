@@ -59,13 +59,11 @@ export default function NouveautesPage() {
     }
 
     const bruts = stockData as any[];
-    const eans = [...new Set(bruts.map(j => j.ean))];
-    
+
+    // Charge tout le catalogue d'un coup (évite les requêtes .in() trop longues)
     let colorMap: Record<string, string> = {};
-    if (eans.length > 0) {
-      const { data: catData } = await supabase.from('catalogue').select('ean, couleur').in('ean', eans);
-      if (catData) catData.forEach(item => { if (item.couleur) colorMap[item.ean] = item.couleur; });
-    }
+    const { data: catData } = await supabase.from('catalogue').select('ean, couleur');
+    if (catData) catData.forEach(item => { if (item.couleur) colorMap[item.ean] = item.couleur; });
 
     const tousLesJeux = bruts.map(j => ({ ...j, couleur: colorMap[j.ean] || "" }));
     
