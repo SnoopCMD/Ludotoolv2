@@ -312,8 +312,15 @@ export default function InventairePage() {
   const [filtreType, setFiltreType] = useState(""); 
 
   const [isLoading, setIsLoading] = useState(true);
-  const [isSyncing, setIsSyncing] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
+  // Outil vignettes
+  const [isVignettesOpen, setIsVignettesOpen] = useState(false);
+  type VignetteItem = { ean: string; nom: string };
+  const [vignettesQueue, setVignettesQueue] = useState<VignetteItem[]>([]);
+  const [vignettesIdx, setVignettesIdx] = useState(0);
+  const [vignettesManualUrl, setVignettesManualUrl] = useState("");
+  const [vignettesDone, setVignettesDone] = useState(0);
 
   const [nbReparations, setNbReparations] = useState(0);
   const [nbManquants, setNbManquants] = useState(0);
@@ -422,8 +429,46 @@ export default function InventairePage() {
     fetchInventaire();
   }, []);
 
-  const synchroniserBase = async () => { /* ... */ };
-  
+  // --- OUTIL VIGNETTES ---
+  const ouvrirVignettes = async () => {
+    setIsSettingsOpen(false);
+    // Trouver tous les EAN sans image (un par titre dédupliqué)
+    const manquants: VignetteItem[] = [];
+    const seen = new Set<string>();
+    for (const j of jeux) {
+      if (seen.has(j.ean)) continue;
+      seen.add(j.ean);
+      if (!catalogueImages[j.ean]) {
+        manquants.push({ ean: j.ean, nom: j.nom });
+      }
+    }
+    if (manquants.length === 0) {
+      alert("Tous les jeux ont déjà une vignette !");
+      return;
+    }
+    setVignettesQueue(manquants);
+    setVignettesIdx(0);
+    setVignettesManualUrl("");
+    setVignettesDone(0);
+    setIsVignettesOpen(true);
+  };
+
+  const validerVignette = async () => {
+    const item = vignettesQueue[vignettesIdx];
+    if (!item || !vignettesManualUrl.trim()) return;
+    const url = vignettesManualUrl.trim();
+    await supabase.from('catalogue').upsert({ ean: item.ean, image_url: url }, { onConflict: 'ean' });
+    setCatalogueImages(prev => ({ ...prev, [item.ean]: url }));
+    setVignettesDone(d => d + 1);
+    avancerVignette();
+  };
+
+  const avancerVignette = () => {
+    const nextIdx = vignettesIdx + 1;
+    setVignettesManualUrl("");
+    setVignettesIdx(nextIdx);
+  };
+
   // --- OUTIL DE NETTOYAGE MÉCANIQUES ---
   const nettoyerMecaniques = () => {
     const invalides = jeux.filter(j => !j.mecanique || !MECANIQUES_OFFICIELLES.includes(j.mecanique));
@@ -1157,7 +1202,7 @@ export default function InventairePage() {
                     <button onClick={() => { nettoyerMecaniques(); }} className="text-left w-full px-4 py-3 hover:bg-slate-50 rounded-xl font-bold text-sm text-black transition-colors flex items-center gap-2">🧽 Nettoyer Mécaniques</button>
                     <button onClick={() => { setIsColorFixOpen(true); setIsSettingsOpen(false); }} className="text-left w-full px-4 py-3 hover:bg-slate-50 rounded-xl font-bold text-sm text-black transition-colors flex items-center gap-2">🛠️ Corriger Couleurs (Scanner)</button>
                     <button onClick={detecterDoublons} className="text-left w-full px-4 py-3 hover:bg-slate-50 rounded-xl font-bold text-sm text-black transition-colors flex items-center gap-2">🔍 Nettoyer les Doublons</button>
-                    <button onClick={() => { synchroniserBase(); setIsSettingsOpen(false); }} disabled={isSyncing} className="text-left w-full px-4 py-3 hover:bg-slate-50 rounded-xl font-bold text-sm text-black transition-colors flex items-center gap-2">🧹 Synchroniser Catalogue</button>
+                    <button onClick={ouvrirVignettes} className="text-left w-full px-4 py-3 hover:bg-slate-50 rounded-xl font-bold text-sm text-black transition-colors flex items-center gap-2">🖼️ Enrichir les Vignettes</button>
                   </div>
                 )}
               </div>
@@ -1712,6 +1757,128 @@ export default function InventairePage() {
                 >
                   {isDeletingDoublons ? "⏳ Suppression..." : `🗑️ Supprimer (${doublonsSelectionnes.length})`}
                 </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* --- MODAL VIGNETTES --- */}
+      {isVignettesOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[90] flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white rounded-[2.5rem] w-full max-w-lg shadow-2xl flex flex-col overflow-hidden border-2 border-slate-200">
+            {/* Header */}
+            <div className="flex items-center justify-between px-8 py-6 border-b border-slate-200 shrink-0">
+              <div>
+                <h2 className="text-2xl font-black text-black">Enrichir les Vignettes</h2>
+                <p className="text-sm text-slate-400 font-medium mt-0.5">
+                  {vignettesIdx < vignettesQueue.length
+                    ? `${vignettesIdx + 1} / ${vignettesQueue.length} · ${vignettesDone} validée${vignettesDone > 1 ? "s" : ""}`
+                    : `Terminé · ${vignettesDone} vignette${vignettesDone > 1 ? "s" : ""} ajoutée${vignettesDone > 1 ? "s" : ""}`
+                  }
+                </p>
+              </div>
+              <button
+                onClick={() => setIsVignettesOpen(false)}
+                className="w-10 h-10 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 font-black text-slate-600 transition-colors"
+              >✕</button>
+            </div>
+
+            {/* Corps */}
+            <div className="flex flex-col items-center gap-5 px-8 py-8 flex-1">
+              {vignettesIdx >= vignettesQueue.length ? (
+                /* Terminé */
+                <div className="flex flex-col items-center gap-4 py-8 text-center">
+                  <span className="text-5xl">✅</span>
+                  <p className="font-black text-xl text-black">Enrichissement terminé</p>
+                  <p className="text-slate-400 font-medium text-sm">
+                    {vignettesDone} vignette{vignettesDone > 1 ? "s" : ""} ajoutée{vignettesDone > 1 ? "s" : ""}
+                    {" · "}{vignettesQueue.length - vignettesDone} ignorée{vignettesQueue.length - vignettesDone > 1 ? "s" : ""}
+                  </p>
+                  <button
+                    onClick={() => setIsVignettesOpen(false)}
+                    className="mt-2 px-6 py-3 bg-black text-white font-black rounded-2xl hover:bg-slate-800 transition-colors"
+                  >Fermer</button>
+                </div>
+              ) : (
+                <>
+                  {/* Nom du jeu */}
+                  <div className="w-full text-center">
+                    <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">Jeu en cours</p>
+                    <p className="text-xl font-black text-black leading-snug">{vignettesQueue[vignettesIdx]?.nom}</p>
+                    <p className="text-xs text-slate-400 font-mono mt-0.5">{vignettesQueue[vignettesIdx]?.ean}</p>
+                  </div>
+
+                  {/* EAN + copier */}
+                  <button
+                    onClick={() => navigator.clipboard.writeText(vignettesQueue[vignettesIdx]?.ean ?? "")}
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm transition-colors border border-slate-200"
+                  >
+                    <span className="font-mono">{vignettesQueue[vignettesIdx]?.ean}</span>
+                    <span className="text-slate-400 text-xs">Copier</span>
+                  </button>
+
+                  {/* Zone preview + input */}
+                  <div className="w-full flex flex-col items-center gap-3">
+                    {/* Preview */}
+                    <div className="w-[160px] h-[160px] rounded-2xl border-2 border-slate-200 bg-slate-50 flex items-center justify-center overflow-hidden shrink-0">
+                      {vignettesManualUrl.trim() ? (
+                        <img
+                          src={vignettesManualUrl.trim()}
+                          alt="Preview"
+                          className="w-full h-full object-contain"
+                          onError={e => { (e.target as HTMLImageElement).style.display = "none"; }}
+                        />
+                      ) : (
+                        <div className="flex flex-col items-center gap-2 text-center px-4">
+                          <span className="text-3xl opacity-30">🖼️</span>
+                          <p className="text-xs font-bold text-slate-300">Colle l&apos;URL ici</p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Input URL */}
+                    <input
+                      type="url"
+                      placeholder="https://s.myludo.fr/images/jeux/…"
+                      value={vignettesManualUrl}
+                      onChange={e => setVignettesManualUrl(e.target.value)}
+                      className="w-full px-4 py-3 rounded-2xl border-2 border-slate-200 focus:border-black focus:outline-none text-sm font-mono text-slate-700 bg-white transition-colors"
+                    />
+                    <p className="text-[11px] text-slate-400 font-medium text-center">
+                      Sur MyLudo, clic droit sur la cover → <em>Copier le lien de l&apos;image</em>
+                    </p>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex gap-3 w-full mt-auto">
+                    <button
+                      onClick={avancerVignette}
+                      className="flex-1 px-4 py-3 rounded-2xl font-bold text-sm bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors"
+                    >
+                      Ignorer →
+                    </button>
+                    <button
+                      onClick={validerVignette}
+                      disabled={!vignettesManualUrl.trim()}
+                      className="flex-1 px-4 py-3 rounded-2xl font-bold text-sm bg-black text-white hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    >
+                      ✓ Valider
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Barre de progression */}
+            {vignettesQueue.length > 0 && (
+              <div className="px-8 pb-6 shrink-0">
+                <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                  <div
+                    className="bg-black h-1.5 rounded-full transition-all duration-300"
+                    style={{ width: `${(vignettesIdx / vignettesQueue.length) * 100}%` }}
+                  />
+                </div>
               </div>
             )}
           </div>

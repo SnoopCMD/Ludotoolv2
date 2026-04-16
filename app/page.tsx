@@ -421,7 +421,7 @@ export default function AccueilPage() {
   // ─── Render ──────────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-[#f5f5f0] flex flex-col items-center p-6 gap-6">
+    <div className="min-h-screen bg-[#e5e5e5] flex flex-col items-center p-4 sm:p-8 gap-6">
       <style>{`
         @keyframes fade-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
         .animate-fade-in { animation: fade-in 0.2s ease-out; }

@@ -982,7 +982,7 @@ useEffect(() => {
         </div>
       )}
 
-      <header className="flex justify-between items-center mb-6 w-full max-w-screen-2xl mx-auto">
+      <header className="flex justify-between items-center mb-6 relative w-full max-w-[96%] mx-auto shrink-0">
         <div className="w-10 h-10 bg-black rounded flex items-center justify-center text-white font-black text-xl italic">+</div>
         <nav className="absolute left-1/2 transform -translate-x-1/2 bg-[#2d2d2d] text-white p-1.5 rounded-full flex items-center text-sm font-bold shadow-lg z-10 gap-1">
           <Link href="/" className="px-6 py-2.5 rounded-full hover:bg-white/10 transition">Accueil</Link>
