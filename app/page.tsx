@@ -232,6 +232,7 @@ export default function AccueilPage() {
       .select("id, nom, ean, date_sortie")
       .eq("statut", "En stock")
       .eq("etape_nouveaute", true)
+      .not("date_sortie", "is", null)
       .order("id", { ascending: false });
 
     if (!jeuxData || jeuxData.length === 0) return;
