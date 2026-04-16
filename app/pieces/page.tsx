@@ -92,6 +92,9 @@ export default function PiecesPage() {
   const [selectedManquant, setSelectedManquant]   = useState<number | null>(null);
   const [selectedTrouvees, setSelectedTrouvees]   = useState<number[]>([]);
 
+  // Confirmation après commande
+  const [pendingConfirmId, setPendingConfirmId]   = useState<number | null>(null);
+
   // ── Modal Commander ──────────────────────────────────────────────────────
   const [isCommandeOpen,   setIsCommandeOpen]   = useState(false);
   const [commandeGroupes,  setCommandeGroupes]  = useState<CommandeGroupe[]>([]);
@@ -101,10 +104,14 @@ export default function PiecesPage() {
   const [emailCorps,       setEmailCorps]       = useState("");
 
   // ── Modal Éditeurs CRUD ──────────────────────────────────────────────────
-  const [isEditeursOpen,   setIsEditeursOpen]   = useState(false);
-  const [editeurs,         setEditeurs]         = useState<Editeur[]>([]);
-  const [editeurEdit,      setEditeurEdit]      = useState<Partial<Editeur> | null>(null);
-  const [isSavingEditeur,  setIsSavingEditeur]  = useState(false);
+  const [isEditeursOpen,    setIsEditeursOpen]    = useState(false);
+  const [editeurs,          setEditeurs]          = useState<Editeur[]>([]);
+  const [editeurEdit,       setEditeurEdit]       = useState<Partial<Editeur> & { _nomOriginal?: string } | null>(null);
+  const [isSavingEditeur,   setIsSavingEditeur]   = useState(false);
+  const [filtreEditeur,     setFiltreEditeur]     = useState("");
+  const [fusionSourceId,    setFusionSourceId]    = useState<string | null>(null);
+  const [fusionCibleId,     setFusionCibleId]     = useState<string>("");
+  const [isFusioning,       setIsFusioning]       = useState(false);
 
   // ─── Chargement ──────────────────────────────────────────────────────────
 
@@ -230,18 +237,24 @@ export default function PiecesPage() {
   const sauvegarderEditeur = async () => {
     if (!editeurEdit?.nom?.trim()) return;
     setIsSavingEditeur(true);
+    const nomOriginal = editeurEdit._nomOriginal;
+    const nomNouveau  = editeurEdit.nom.trim();
     if (editeurEdit.id) {
       await supabase.from("editeurs").update({
-        nom: editeurEdit.nom, type_commande: editeurEdit.type_commande,
+        nom: nomNouveau, type_commande: editeurEdit.type_commande,
         url_formulaire: editeurEdit.url_formulaire || null,
         email_contact: editeurEdit.email_contact || null,
         sujet_email: editeurEdit.sujet_email || null,
         corps_email: editeurEdit.corps_email || null,
         notes: editeurEdit.notes || null,
       }).eq("id", editeurEdit.id);
+      // Propager le renommage dans le catalogue
+      if (nomOriginal && nomOriginal !== nomNouveau) {
+        await supabase.from("catalogue").update({ editeur: nomNouveau }).eq("editeur", nomOriginal);
+      }
     } else {
       await supabase.from("editeurs").insert({
-        nom: editeurEdit.nom, type_commande: editeurEdit.type_commande ?? "inconnu",
+        nom: nomNouveau, type_commande: editeurEdit.type_commande ?? "inconnu",
         url_formulaire: editeurEdit.url_formulaire || null,
         email_contact: editeurEdit.email_contact || null,
         sujet_email: editeurEdit.sujet_email || null,
@@ -254,10 +267,61 @@ export default function PiecesPage() {
     setIsSavingEditeur(false);
   };
 
+  const fusionnerEditeur = async () => {
+    if (!fusionSourceId || !fusionCibleId || fusionSourceId === fusionCibleId) return;
+    const source = editeurs.find(e => e.id === fusionSourceId);
+    const cible  = editeurs.find(e => e.id === fusionCibleId);
+    if (!source || !cible) return;
+    if (!confirm(`Fusionner "${source.nom}" → "${cible.nom}" ?\nToutes les fiches catalogue seront mises à jour.`)) return;
+    setIsFusioning(true);
+    // Mettre à jour le catalogue
+    await supabase.from("catalogue").update({ editeur: cible.nom }).eq("editeur", source.nom);
+    // Supprimer l'éditeur source
+    await supabase.from("editeurs").delete().eq("id", fusionSourceId);
+    setFusionSourceId(null);
+    setFusionCibleId("");
+    await chargerEditeurs();
+    setIsFusioning(false);
+  };
+
   const supprimerEditeur = async (id: string) => {
     if (!confirm("Supprimer cet éditeur ?")) return;
     await supabase.from("editeurs").delete().eq("id", id);
     chargerEditeurs();
+  };
+
+  const [isImporting, setIsImporting] = useState(false);
+
+  const importerEditeursDepuisCatalogue = async () => {
+    setIsImporting(true);
+    // 1. Récupérer tous les éditeurs du catalogue
+    const { data: catData } = await supabase.from("catalogue").select("editeur").not("editeur", "is", null).neq("editeur", "");
+    // 2. Récupérer les éditeurs déjà en base
+    const { data: existants } = await supabase.from("editeurs").select("nom");
+    const nomsExistants = new Set((existants ?? []).map((e: { nom: string }) => normaliserEditeur(e.nom)));
+
+    // 3. Dédupliquer : normaliser, garder la première occurrence "propre" de chaque nom
+    const vus = new Map<string, string>(); // normalisé → nom affiché
+    for (const row of (catData ?? [])) {
+      const raw: string = row.editeur ?? "";
+      // Nettoyer la casse : capitalize first letter of each word
+      const propre = raw.trim().replace(/\b\w/g, c => c.toUpperCase()).replace(/\b(\w)/g, (_m, c) => c);
+      const norm = normaliserEditeur(raw);
+      if (!vus.has(norm)) vus.set(norm, propre);
+    }
+
+    // 4. Filtrer ceux qui n'existent pas encore
+    const aInserer = [...vus.entries()]
+      .filter(([norm]) => !nomsExistants.has(norm))
+      .map(([, nom]) => ({ nom, type_commande: "inconnu" as const }));
+
+    if (aInserer.length > 0) {
+      await supabase.from("editeurs").insert(aInserer);
+    }
+
+    await chargerEditeurs();
+    setIsImporting(false);
+    alert(`${aInserer.length} éditeur(s) importé(s).`);
   };
 
   // ─── Helpers existants ────────────────────────────────────────────────────
@@ -322,8 +386,8 @@ export default function PiecesPage() {
   const handleRechercheNom = async (text: string) => {
     setNomManq(text);
     if (text.length > 2) {
-      const { data } = await supabase.from("jeux").select("nom, code_syracuse, ean").ilike("nom", `%${text}%`).limit(5);
-      if (data) setSuggestionsNom(data.filter((v, i, a) => a.findIndex(t => t.nom === v.nom) === i));
+      const { data } = await supabase.from("jeux").select("nom, code_syracuse, ean").ilike("nom", `%${text}%`).order("nom").limit(20);
+      if (data) setSuggestionsNom(data);
     } else setSuggestionsNom([]);
   };
 
@@ -357,9 +421,30 @@ export default function PiecesPage() {
     setDescTrouvee(""); setNomSuppo(""); chargerDonnees();
   };
 
-  const commanderPiece = async (id: number) => {
-    await supabase.from("pieces_manquantes").update({ statut: "Commandé" }).eq("id", id);
-    if (selectedManquant === id) setSelectedManquant(null);
+  const commanderPieceDirecte = async (piece: PieceManquante) => {
+    const { data: editeursData } = await supabase.from("editeurs").select("*").order("nom");
+    const listeEditeurs = (editeursData ?? []) as Editeur[];
+    const nomEditeurCat = await trouverEditeurPourPiece(piece);
+    const editeur = nomEditeurCat ? matcherEditeur(nomEditeurCat, listeEditeurs) : null;
+
+    if (editeur?.type_commande === "formulaire" && editeur.url_formulaire) {
+      window.open(editeur.url_formulaire, "_blank");
+      setPendingConfirmId(piece.id);
+    } else {
+      ouvrirCommande();
+    }
+  };
+
+  const confirmerCommande = async (id: number, confirme: boolean) => {
+    if (confirme) {
+      await supabase.from("pieces_manquantes").update({ statut: "Commandé" }).eq("id", id);
+      chargerDonnees();
+    }
+    setPendingConfirmId(null);
+  };
+
+  const annulerCommande = async (id: number) => {
+    await supabase.from("pieces_manquantes").update({ statut: "Manquant" }).eq("id", id);
     chargerDonnees();
   };
 
@@ -408,14 +493,22 @@ export default function PiecesPage() {
         <div className="bg-white rounded-[3rem] p-8 lg:p-10 flex-1 shadow-md border-t-8 border-[#ff4d79] overflow-hidden flex flex-col">
           <div className="flex items-center justify-between mb-6">
             <h1 className="text-3xl font-black text-black">Jeux incomplets</h1>
-            {nbManquant > 0 && (
+            <div className="flex gap-2">
               <button
-                onClick={ouvrirCommande}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-black text-white text-sm font-bold hover:bg-slate-800 transition-colors shadow-sm"
+                onClick={() => { chargerEditeurs(); setIsEditeursOpen(true); }}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold transition-colors"
               >
-                📬 Commander ({nbManquant})
+                ⚙️ Éditeurs
               </button>
-            )}
+              {nbManquant > 0 && (
+                <button
+                  onClick={ouvrirCommande}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-black text-white text-sm font-bold hover:bg-slate-800 transition-colors shadow-sm"
+                >
+                  📬 Commander ({nbManquant})
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Formulaire ajout */}
@@ -427,9 +520,9 @@ export default function PiecesPage() {
                 {suggestionsNom.length > 0 && (
                   <div className="absolute top-full left-0 w-full mt-1 bg-white border-2 border-slate-200 rounded-xl shadow-lg z-10 overflow-hidden">
                     {suggestionsNom.map((jeu, i) => (
-                      <div key={i} onClick={() => selectionnerSuggestion(jeu)} className="p-3 hover:bg-slate-50 cursor-pointer font-bold border-b border-slate-100 last:border-none flex justify-between items-center">
-                        <span>{jeu.nom}</span>
-                        {jeu.code_syracuse && <span className="text-xs font-normal text-slate-400">{jeu.code_syracuse}</span>}
+                      <div key={i} onClick={() => selectionnerSuggestion(jeu)} className="p-3 hover:bg-slate-50 cursor-pointer font-bold border-b border-slate-100 last:border-none flex justify-between items-center gap-2">
+                        <span className="truncate">{jeu.nom}</span>
+                        {jeu.code_syracuse && <span className="text-xs font-mono font-normal text-slate-400 shrink-0">…{jeu.code_syracuse.slice(-4)}</span>}
                       </div>
                     ))}
                   </div>
@@ -469,19 +562,34 @@ export default function PiecesPage() {
                   <div className="flex-1 min-w-0">
                     <h3 className="font-bold text-lg leading-tight flex items-center gap-2 flex-wrap">
                       <span className="truncate">{m.nom}</span>
+                      {m.ean && <span className="text-slate-400 text-xs font-mono shrink-0">{m.ean.slice(-4)}</span>}
                       {isCommande && <span className="text-orange-500 text-xs font-black bg-orange-100 px-2.5 py-1 rounded-md uppercase tracking-wide border border-orange-200 shrink-0">📦 Commandé</span>}
                       {m.hasMatch && !isSuggestion && !isCommande && <span title="Une pièce correspondante a été trouvée !" className="text-xl animate-pulse">💡</span>}
                       {isSuggestion && !isCommande && <span className="text-[#ff4d79] text-xs font-black bg-white px-2 py-0.5 rounded-full border border-[#ff4d79] shrink-0">✨ Suggestion</span>}
                     </h3>
                     <p className={`${isCommande ? "text-slate-500" : "text-[#ff4d79]"} font-bold text-sm mt-2 line-clamp-2`}>{m.element_manquant}</p>
                   </div>
-                  <div className="flex gap-2 shrink-0 self-end sm:self-center">
-                    {isCommande ? (
-                      <button onClick={e => { e.stopPropagation(); resoudreManquant(m.id); }} className="bg-emerald-100 hover:bg-emerald-200 text-emerald-700 px-4 py-2 rounded-xl text-sm font-bold transition-colors shadow-sm">📦 Reçue ✓</button>
+                  <div className="flex gap-2 shrink-0 self-end sm:self-center flex-wrap justify-end">
+                    {pendingConfirmId === m.id ? (
+                      /* Confirmation après ouverture du formulaire */
+                      <>
+                        <span className="text-xs font-bold text-slate-500 self-center">Commande envoyée ?</span>
+                        <button onClick={e => { e.stopPropagation(); confirmerCommande(m.id, true); }} className="bg-emerald-100 hover:bg-emerald-200 text-emerald-700 px-4 py-2 rounded-xl text-sm font-bold transition-colors">Oui ✓</button>
+                        <button onClick={e => { e.stopPropagation(); confirmerCommande(m.id, false); }} className="bg-slate-100 hover:bg-slate-200 text-slate-600 px-4 py-2 rounded-xl text-sm font-bold transition-colors">Non</button>
+                      </>
+                    ) : isCommande ? (
+                      /* Pièce commandée : Reçue ou Annuler */
+                      <>
+                        <button onClick={e => { e.stopPropagation(); resoudreManquant(m.id); }} className="bg-emerald-100 hover:bg-emerald-200 text-emerald-700 px-4 py-2 rounded-xl text-sm font-bold transition-colors shadow-sm">📦 Reçue ✓</button>
+                        <button onClick={e => { e.stopPropagation(); annulerCommande(m.id); }} className="bg-slate-100 hover:bg-slate-200 text-slate-500 px-4 py-2 rounded-xl text-sm font-bold transition-colors">Annuler</button>
+                      </>
                     ) : (
-                      <button onClick={e => { e.stopPropagation(); commanderPiece(m.id); }} className="bg-orange-100 hover:bg-orange-200 text-orange-700 px-4 py-2 rounded-xl text-sm font-bold transition-colors shadow-sm">🛒 Commander</button>
+                      /* État normal */
+                      <>
+                        <button onClick={e => { e.stopPropagation(); commanderPieceDirecte(m); }} className="bg-orange-100 hover:bg-orange-200 text-orange-700 px-4 py-2 rounded-xl text-sm font-bold transition-colors shadow-sm">🛒 Commander</button>
+                        <button onClick={e => { e.stopPropagation(); resoudreManquant(m.id); }} className="bg-slate-100 hover:bg-slate-200 text-slate-500 px-4 py-2 rounded-xl text-sm font-bold transition-colors">✕</button>
+                      </>
                     )}
-                    <button onClick={e => { e.stopPropagation(); resoudreManquant(m.id); }} className="bg-slate-100 hover:bg-slate-200 text-slate-500 px-4 py-2 rounded-xl text-sm font-bold transition-colors">✕</button>
                   </div>
                 </div>
               );
@@ -577,7 +685,7 @@ export default function PiecesPage() {
                   const tc = groupe.editeur?.type_commande ?? "inconnu";
                   const toutCommande = groupe.pieces.every(p => p.statut === "Commandé");
                   return (
-                    <div key={idx} className={`rounded-2xl border-2 overflow-hidden transition-all ${toutCommande ? "opacity-50 border-slate-100" : "border-slate-200"}`}>
+                    <div key={idx} className={`rounded-2xl border-2 transition-all ${toutCommande ? "opacity-50 border-slate-100" : "border-slate-200"}`}>
                       {/* En-tête groupe */}
                       <div className="flex items-center justify-between px-5 py-3 bg-slate-50 border-b border-slate-100">
                         <div className="flex items-center gap-2">
@@ -664,72 +772,138 @@ export default function PiecesPage() {
       {isEditeursOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[90] flex items-center justify-center p-4">
           <div className="bg-white rounded-[2.5rem] w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
-            <div className="flex items-center justify-between px-8 py-6 border-b border-slate-100 shrink-0">
-              <h2 className="text-2xl font-black text-black">Éditeurs</h2>
-              <div className="flex gap-2">
-                <button onClick={() => setEditeurEdit({ type_commande: "inconnu" })} className="px-4 py-2 rounded-xl bg-black text-white text-sm font-bold hover:bg-slate-800 transition-colors">+ Ajouter</button>
-                <button onClick={() => { setIsEditeursOpen(false); setEditeurEdit(null); }} className="w-9 h-9 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 font-black text-slate-600">✕</button>
+            <div className="flex flex-col gap-3 px-8 py-6 border-b border-slate-100 shrink-0">
+              <div className="flex items-center justify-between">
+                <h2 className="text-2xl font-black text-black">Éditeurs <span className="text-base font-normal text-slate-400">({editeurs.length})</span></h2>
+                <div className="flex gap-2">
+                  <button onClick={importerEditeursDepuisCatalogue} disabled={isImporting} className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold transition-colors disabled:opacity-50">
+                    {isImporting ? "…" : "⬇ Importer catalogue"}
+                  </button>
+                  <button onClick={() => setEditeurEdit({ type_commande: "inconnu" })} className="px-4 py-2 rounded-xl bg-black text-white text-sm font-bold hover:bg-slate-800 transition-colors">+ Ajouter</button>
+                  <button onClick={() => { setIsEditeursOpen(false); setEditeurEdit(null); setFiltreEditeur(""); }} className="w-9 h-9 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 font-black text-slate-600">✕</button>
+                </div>
               </div>
+              <input
+                placeholder="Rechercher un éditeur…"
+                value={filtreEditeur}
+                onChange={e => setFiltreEditeur(e.target.value)}
+                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-black transition-colors"
+              />
             </div>
 
-            <div className="overflow-y-auto custom-scroll flex-1 p-6 flex flex-col gap-3">
-              {editeurs.length === 0 && !editeurEdit && <p className="text-center text-slate-400 py-8 text-sm">Aucun éditeur configuré.</p>}
+            <div className="overflow-y-auto custom-scroll flex-1 p-6">
 
-              {editeurs.map(e => (
-                <div key={e.id} className="flex items-center gap-3 p-4 rounded-2xl border border-slate-200 bg-slate-50 hover:bg-white transition-colors group">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-black text-sm">{e.nom}</span>
-                      <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${TYPE_COLORS[e.type_commande]}`}>{TYPE_LABELS[e.type_commande]}</span>
+              {/* ── Mode édition : formulaire plein cadre ── */}
+              {editeurEdit ? (
+                <div className="flex flex-col gap-4">
+                  <div className="flex items-center gap-3 mb-1">
+                    <button onClick={() => setEditeurEdit(null)} className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 font-black text-sm transition-colors">←</button>
+                    <p className="text-base font-black text-black">{editeurEdit.id ? `Modifier : ${editeurEdit._nomOriginal}` : "Nouvel éditeur"}</p>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-black text-slate-500 uppercase tracking-wider mb-1 block">Nom *</label>
+                    <input placeholder="Nom de l'éditeur" value={editeurEdit.nom ?? ""} onChange={e => setEditeurEdit(p => ({ ...p, nom: e.target.value }))} className="w-full px-3 py-2.5 rounded-xl border-2 border-slate-200 focus:border-black focus:outline-none text-sm font-bold transition-colors" />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-black text-slate-500 uppercase tracking-wider mb-2 block">Type de commande</label>
+                    <div className="flex gap-2">
+                      {(["formulaire", "email", "inconnu"] as const).map(t => (
+                        <button key={t} onClick={() => setEditeurEdit(p => ({ ...p, type_commande: t }))}
+                          className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-colors ${editeurEdit.type_commande === t ? "bg-black text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
+                          {TYPE_LABELS[t]}
+                        </button>
+                      ))}
                     </div>
-                    {e.type_commande === "email" && e.email_contact && <p className="text-xs text-slate-400 font-mono mt-0.5 truncate">{e.email_contact}</p>}
-                    {e.type_commande === "formulaire" && e.url_formulaire && <p className="text-xs text-slate-400 mt-0.5 truncate">{e.url_formulaire}</p>}
-                  </div>
-                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                    <button onClick={() => setEditeurEdit(e)} className="px-3 py-1.5 rounded-lg bg-slate-200 hover:bg-slate-300 text-xs font-bold text-slate-600 transition-colors">✏️</button>
-                    <button onClick={() => supprimerEditeur(e.id)} className="px-3 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-xs font-bold text-red-500 transition-colors">✕</button>
-                  </div>
-                </div>
-              ))}
-
-              {/* Formulaire ajout/édition */}
-              {editeurEdit && (
-                <div className="border-2 border-black rounded-2xl p-5 flex flex-col gap-3 mt-2">
-                  <p className="text-sm font-black text-black">{editeurEdit.id ? "Modifier" : "Nouvel éditeur"}</p>
-                  <input placeholder="Nom de l'éditeur *" value={editeurEdit.nom ?? ""} onChange={e => setEditeurEdit(p => ({ ...p, nom: e.target.value }))} className="px-3 py-2.5 rounded-xl border-2 border-slate-200 focus:border-black focus:outline-none text-sm font-bold transition-colors" />
-
-                  <div className="flex gap-2">
-                    {(["formulaire", "email", "inconnu"] as const).map(t => (
-                      <button key={t} onClick={() => setEditeurEdit(p => ({ ...p, type_commande: t }))}
-                        className={`flex-1 py-2 rounded-xl text-xs font-bold transition-colors ${editeurEdit.type_commande === t ? "bg-black text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
-                        {TYPE_LABELS[t]}
-                      </button>
-                    ))}
                   </div>
 
                   {editeurEdit.type_commande === "formulaire" && (
-                    <input placeholder="URL du formulaire" value={editeurEdit.url_formulaire ?? ""} onChange={e => setEditeurEdit(p => ({ ...p, url_formulaire: e.target.value }))} className="px-3 py-2.5 rounded-xl border-2 border-slate-200 focus:border-black focus:outline-none text-sm transition-colors" />
+                    <div>
+                      <label className="text-xs font-black text-slate-500 uppercase tracking-wider mb-1 block">URL du formulaire</label>
+                      <input placeholder="https://…" value={editeurEdit.url_formulaire ?? ""} onChange={e => setEditeurEdit(p => ({ ...p, url_formulaire: e.target.value }))} className="w-full px-3 py-2.5 rounded-xl border-2 border-slate-200 focus:border-black focus:outline-none text-sm transition-colors" />
+                    </div>
                   )}
 
                   {editeurEdit.type_commande === "email" && (
                     <>
-                      <input placeholder="Email de contact" value={editeurEdit.email_contact ?? ""} onChange={e => setEditeurEdit(p => ({ ...p, email_contact: e.target.value }))} className="px-3 py-2.5 rounded-xl border-2 border-slate-200 focus:border-black focus:outline-none text-sm font-mono transition-colors" />
-                      <input placeholder="Objet de l'email (optionnel)" value={editeurEdit.sujet_email ?? ""} onChange={e => setEditeurEdit(p => ({ ...p, sujet_email: e.target.value }))} className="px-3 py-2.5 rounded-xl border-2 border-slate-200 focus:border-black focus:outline-none text-sm transition-colors" />
                       <div>
-                        <p className="text-xs text-slate-400 font-medium mb-1">Variables : <code className="bg-slate-100 px-1 rounded">{"{pieces_liste}"}</code> <code className="bg-slate-100 px-1 rounded">{"{date}"}</code> <code className="bg-slate-100 px-1 rounded">{"{editeur}"}</code></p>
-                        <textarea placeholder={`Corps de l'email (optionnel)\n${CORPS_EMAIL_DEFAUT}`} value={editeurEdit.corps_email ?? ""} onChange={e => setEditeurEdit(p => ({ ...p, corps_email: e.target.value }))} rows={6} className="w-full px-3 py-2.5 rounded-xl border-2 border-slate-200 focus:border-black focus:outline-none text-sm font-mono resize-y transition-colors" />
+                        <label className="text-xs font-black text-slate-500 uppercase tracking-wider mb-1 block">Email de contact</label>
+                        <input placeholder="sav@editeur.fr" value={editeurEdit.email_contact ?? ""} onChange={e => setEditeurEdit(p => ({ ...p, email_contact: e.target.value }))} className="w-full px-3 py-2.5 rounded-xl border-2 border-slate-200 focus:border-black focus:outline-none text-sm font-mono transition-colors" />
+                      </div>
+                      <div>
+                        <label className="text-xs font-black text-slate-500 uppercase tracking-wider mb-1 block">Objet du mail <span className="text-slate-400 font-normal normal-case">(optionnel)</span></label>
+                        <input placeholder="Commande de pièces manquantes – {editeur}" value={editeurEdit.sujet_email ?? ""} onChange={e => setEditeurEdit(p => ({ ...p, sujet_email: e.target.value }))} className="w-full px-3 py-2.5 rounded-xl border-2 border-slate-200 focus:border-black focus:outline-none text-sm transition-colors" />
+                      </div>
+                      <div>
+                        <label className="text-xs font-black text-slate-500 uppercase tracking-wider mb-1 block">Corps du mail <span className="text-slate-400 font-normal normal-case">(optionnel — variables : <code className="bg-slate-100 px-1 rounded">{"{pieces_liste}"}</code> <code className="bg-slate-100 px-1 rounded">{"{date}"}</code> <code className="bg-slate-100 px-1 rounded">{"{editeur}"}</code>)</span></label>
+                        <textarea
+                          placeholder={CORPS_EMAIL_DEFAUT}
+                          value={editeurEdit.corps_email ?? ""}
+                          onChange={e => setEditeurEdit(p => ({ ...p, corps_email: e.target.value }))}
+                          rows={8}
+                          className="w-full px-3 py-2.5 rounded-xl border-2 border-slate-200 focus:border-black focus:outline-none text-sm font-mono resize-y transition-colors"
+                        />
                       </div>
                     </>
                   )}
 
-                  <input placeholder="Notes internes (optionnel)" value={editeurEdit.notes ?? ""} onChange={e => setEditeurEdit(p => ({ ...p, notes: e.target.value }))} className="px-3 py-2.5 rounded-xl border-2 border-slate-200 focus:border-black focus:outline-none text-sm transition-colors" />
+                  <div>
+                    <label className="text-xs font-black text-slate-500 uppercase tracking-wider mb-1 block">Notes internes <span className="text-slate-400 font-normal normal-case">(optionnel)</span></label>
+                    <input placeholder="Ex : contacter le distributeur Asmodee" value={editeurEdit.notes ?? ""} onChange={e => setEditeurEdit(p => ({ ...p, notes: e.target.value }))} className="w-full px-3 py-2.5 rounded-xl border-2 border-slate-200 focus:border-black focus:outline-none text-sm transition-colors" />
+                  </div>
 
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 pt-2">
                     <button onClick={() => setEditeurEdit(null)} className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-600 font-bold text-sm hover:bg-slate-200 transition-colors">Annuler</button>
                     <button onClick={sauvegarderEditeur} disabled={!editeurEdit.nom?.trim() || isSavingEditeur} className="flex-1 py-2.5 rounded-xl bg-black text-white font-bold text-sm hover:bg-slate-800 disabled:opacity-40 transition-colors">
                       {isSavingEditeur ? "…" : "Sauvegarder"}
                     </button>
                   </div>
+                </div>
+
+              ) : (
+                /* ── Mode liste ── */
+                <div className="flex flex-col gap-3">
+                  {editeurs.length === 0 && <p className="text-center text-slate-400 py-8 text-sm">Aucun éditeur configuré.</p>}
+
+                  {editeurs.filter(e => !filtreEditeur || normaliserEditeur(e.nom).includes(normaliserEditeur(filtreEditeur))).map(e => (
+                    <div key={e.id} className="flex flex-col rounded-2xl border border-slate-200 bg-slate-50 hover:bg-white transition-colors group">
+                      <div className="flex items-center gap-3 p-4">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-black text-sm">{e.nom}</span>
+                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${TYPE_COLORS[e.type_commande]}`}>{TYPE_LABELS[e.type_commande]}</span>
+                          </div>
+                          {e.type_commande === "email" && e.email_contact && <p className="text-xs text-slate-400 font-mono mt-0.5 truncate">{e.email_contact}</p>}
+                          {e.type_commande === "formulaire" && e.url_formulaire && <p className="text-xs text-slate-400 mt-0.5 truncate">{e.url_formulaire}</p>}
+                        </div>
+                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                          <button onClick={() => setFusionSourceId(fusionSourceId === e.id ? null : e.id)} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${fusionSourceId === e.id ? "bg-orange-200 text-orange-700" : "bg-slate-200 hover:bg-slate-300 text-slate-600"}`}>⇄</button>
+                          <button onClick={() => setEditeurEdit({ ...e, _nomOriginal: e.nom })} className="px-3 py-1.5 rounded-lg bg-slate-200 hover:bg-slate-300 text-xs font-bold text-slate-600 transition-colors">✏️</button>
+                          <button onClick={() => supprimerEditeur(e.id)} className="px-3 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-xs font-bold text-red-500 transition-colors">✕</button>
+                        </div>
+                      </div>
+
+                      {/* Panneau fusion */}
+                      {fusionSourceId === e.id && (
+                        <div className="border-t border-orange-200 bg-orange-50 rounded-b-2xl px-4 py-3 flex items-center gap-2">
+                          <span className="text-xs font-black text-orange-700 shrink-0">Fusionner vers →</span>
+                          <select value={fusionCibleId} onChange={ev => setFusionCibleId(ev.target.value)}
+                            className="flex-1 px-2 py-1.5 rounded-lg border border-orange-200 text-xs bg-white focus:outline-none focus:border-orange-400">
+                            <option value="">Choisir l&apos;éditeur cible…</option>
+                            {editeurs.filter(x => x.id !== e.id).map(x => (
+                              <option key={x.id} value={x.id}>{x.nom}</option>
+                            ))}
+                          </select>
+                          <button onClick={fusionnerEditeur} disabled={!fusionCibleId || isFusioning}
+                            className="px-3 py-1.5 rounded-lg bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold disabled:opacity-40 transition-colors shrink-0">
+                            {isFusioning ? "…" : "Fusionner"}
+                          </button>
+                          <button onClick={() => { setFusionSourceId(null); setFusionCibleId(""); }} className="px-2 py-1.5 rounded-lg bg-slate-200 text-slate-600 text-xs font-bold">✕</button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
