@@ -11,7 +11,7 @@ type PieceTrouvee   = { id: number; description: string; nom_suppose: string; st
 type Editeur = {
   id: string;
   nom: string;
-  type_commande: "formulaire" | "email" | "inconnu";
+  type_commande: "formulaire" | "email" | "inconnu" | "impossible";
   url_formulaire: string | null;
   email_contact:  string | null;
   sujet_email:    string | null;
@@ -42,12 +42,14 @@ const TYPE_LABELS: Record<Editeur["type_commande"], string> = {
   formulaire: "Formulaire",
   email:      "Email",
   inconnu:    "Non configuré",
+  impossible: "Commande impossible",
 };
 
 const TYPE_COLORS: Record<Editeur["type_commande"], string> = {
   formulaire: "bg-blue-100 text-blue-700",
   email:      "bg-violet-100 text-violet-700",
   inconnu:    "bg-slate-100 text-slate-500",
+  impossible: "bg-red-100 text-red-600",
 };
 
 const CORPS_EMAIL_DEFAUT = `Bonjour,
@@ -95,6 +97,9 @@ export default function PiecesPage() {
   // Confirmation après commande
   const [pendingConfirmId, setPendingConfirmId]   = useState<number | null>(null);
 
+  // Type d'éditeur par pièce (résolu au chargement pour griser les boutons)
+  const [editeurTypeParPiece, setEditeurTypeParPiece] = useState<Record<number, Editeur["type_commande"] | null>>({});
+
   // ── Modal Commander ──────────────────────────────────────────────────────
   const [isCommandeOpen,   setIsCommandeOpen]   = useState(false);
   const [commandeGroupes,  setCommandeGroupes]  = useState<CommandeGroupe[]>([]);
@@ -122,6 +127,19 @@ export default function PiecesPage() {
     const { data: d2 } = await supabase.from("pieces_trouvees").select("*").eq("statut", "En attente").order("id", { ascending: false });
     if (d1) setManquantes(d1);
     if (d2) setTrouvees(d2);
+    if (d1) resoudreTypesEditeurs(d1);
+  };
+
+  const resoudreTypesEditeurs = async (pieces: PieceManquante[]) => {
+    const { data: editeursData } = await supabase.from("editeurs").select("*");
+    const listeEditeurs = (editeursData ?? []) as Editeur[];
+    const types: Record<number, Editeur["type_commande"] | null> = {};
+    await Promise.all(pieces.filter(p => p.statut === "Manquant").map(async p => {
+      const nomCat = await trouverEditeurPourPiece(p);
+      const ed = nomCat ? matcherEditeur(nomCat, listeEditeurs) : null;
+      types[p.id] = ed?.type_commande ?? null;
+    }));
+    setEditeurTypeParPiece(types);
   };
 
   const chargerEditeurs = async () => {
@@ -230,6 +248,20 @@ export default function PiecesPage() {
         : g
     ));
     chargerDonnees();
+  };
+
+  // ─── Ouvrir config éditeur depuis modal Commander ─────────────────────────
+
+  const ouvrirConfigEditeur = async (groupe: CommandeGroupe) => {
+    const { data } = await supabase.from("editeurs").select("*").order("nom");
+    const liste = (data ?? []) as Editeur[];
+    setEditeurs(liste);
+    if (groupe.editeur) {
+      setEditeurEdit({ ...groupe.editeur, _nomOriginal: groupe.editeur.nom });
+    } else {
+      setEditeurEdit({ nom: groupe.nomEditeur, type_commande: "inconnu" });
+    }
+    setIsEditeursOpen(true);
   };
 
   // ─── CRUD éditeurs ────────────────────────────────────────────────────────
@@ -427,7 +459,9 @@ export default function PiecesPage() {
     const nomEditeurCat = await trouverEditeurPourPiece(piece);
     const editeur = nomEditeurCat ? matcherEditeur(nomEditeurCat, listeEditeurs) : null;
 
-    if (editeur?.type_commande === "formulaire" && editeur.url_formulaire) {
+    if (editeur?.type_commande === "impossible") {
+      return; // bouton grisé, ne devrait pas arriver
+    } else if (editeur?.type_commande === "formulaire" && editeur.url_formulaire) {
       window.open(editeur.url_formulaire, "_blank");
       setPendingConfirmId(piece.id);
     } else {
@@ -548,9 +582,10 @@ export default function PiecesPage() {
           {/* Liste */}
           <div className="flex flex-col gap-3 overflow-y-auto custom-scroll pr-2 flex-1 min-h-[300px] max-h-[600px]">
             {manquantesTriees.map(m => {
-              const isSelected  = selectedManquant === m.id;
+              const isSelected   = selectedManquant === m.id;
               const isSuggestion = m.isSuggestion && selectedTrouvees.length > 0 && !isSelected;
-              const isCommande  = m.statut === "Commandé";
+              const isCommande   = m.statut === "Commandé";
+              const isImpossible = editeurTypeParPiece[m.id] === "impossible";
               return (
                 <div key={m.id} onClick={() => !isCommande && setSelectedManquant(isSelected ? null : m.id)}
                   className={`p-4 rounded-2xl border-2 flex flex-col sm:flex-row justify-between sm:items-center gap-4 transition-all relative
@@ -586,7 +621,12 @@ export default function PiecesPage() {
                     ) : (
                       /* État normal */
                       <>
-                        <button onClick={e => { e.stopPropagation(); commanderPieceDirecte(m); }} className="bg-orange-100 hover:bg-orange-200 text-orange-700 px-4 py-2 rounded-xl text-sm font-bold transition-colors shadow-sm">🛒 Commander</button>
+                        <button onClick={e => { e.stopPropagation(); if (!isImpossible) commanderPieceDirecte(m); }}
+                        disabled={isImpossible}
+                        title={isImpossible ? "Cet éditeur ne fournit plus de pièces détachées" : undefined}
+                        className={`px-4 py-2 rounded-xl text-sm font-bold transition-colors shadow-sm ${isImpossible ? "bg-slate-100 text-slate-400 cursor-not-allowed" : "bg-orange-100 hover:bg-orange-200 text-orange-700"}`}>
+                        {isImpossible ? "🚫 Indisponible" : "🛒 Commander"}
+                      </button>
                         <button onClick={e => { e.stopPropagation(); resoudreManquant(m.id); }} className="bg-slate-100 hover:bg-slate-200 text-slate-500 px-4 py-2 rounded-xl text-sm font-bold transition-colors">✕</button>
                       </>
                     )}
@@ -723,7 +763,10 @@ export default function PiecesPage() {
                             </button>
                           )}
                           {tc === "inconnu" && (
-                            <span className="text-xs text-slate-400 italic py-2">Éditeur non configuré — <button onClick={() => { chargerEditeurs(); setIsEditeursOpen(true); }} className="underline hover:text-black">Configurer ↗</button></span>
+                            <span className="text-xs text-slate-400 italic py-2">Éditeur non configuré — <button onClick={() => ouvrirConfigEditeur(groupe)} className="underline hover:text-black">Configurer ↗</button></span>
+                          )}
+                          {tc === "impossible" && (
+                            <span className="text-xs text-red-400 italic py-2 flex items-center gap-1">🚫 Cet éditeur ne fournit plus de pièces — <button onClick={() => ouvrirConfigEditeur(groupe)} className="underline hover:text-red-600">Modifier ↗</button></span>
                           )}
                           <button onClick={() => marquerGroupeCommande(groupe)}
                             className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold transition-colors ml-auto">
@@ -808,10 +851,10 @@ export default function PiecesPage() {
 
                   <div>
                     <label className="text-xs font-black text-slate-500 uppercase tracking-wider mb-2 block">Type de commande</label>
-                    <div className="flex gap-2">
-                      {(["formulaire", "email", "inconnu"] as const).map(t => (
+                    <div className="flex flex-wrap gap-2">
+                      {(["formulaire", "email", "inconnu", "impossible"] as const).map(t => (
                         <button key={t} onClick={() => setEditeurEdit(p => ({ ...p, type_commande: t }))}
-                          className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-colors ${editeurEdit.type_commande === t ? "bg-black text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
+                          className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-colors min-w-[100px] ${editeurEdit.type_commande === t ? (t === "impossible" ? "bg-red-500 text-white" : "bg-black text-white") : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
                           {TYPE_LABELS[t]}
                         </button>
                       ))}
