@@ -297,6 +297,7 @@ export default function PiecesPage() {
     await chargerEditeurs();
     setEditeurEdit(null);
     setIsSavingEditeur(false);
+    if (isCommandeOpen) ouvrirCommande();
   };
 
   const fusionnerEditeur = async () => {
@@ -587,9 +588,10 @@ export default function PiecesPage() {
               const isCommande   = m.statut === "Commandé";
               const isImpossible = editeurTypeParPiece[m.id] === "impossible";
               return (
-                <div key={m.id} onClick={() => !isCommande && setSelectedManquant(isSelected ? null : m.id)}
+                <div key={m.id} onClick={() => !isCommande && !isImpossible && setSelectedManquant(isSelected ? null : m.id)}
                   className={`p-4 rounded-2xl border-2 flex flex-col sm:flex-row justify-between sm:items-center gap-4 transition-all relative
-                    ${isCommande ? "bg-slate-50 border-slate-200 opacity-80" :
+                    ${isImpossible ? "bg-slate-50 border-slate-200 opacity-60 cursor-not-allowed" :
+                      isCommande ? "bg-slate-50 border-slate-200 opacity-80" :
                       isSelected ? "bg-white border-[#ff4d79] ring-4 ring-[#ff4d79]/30 shadow-md cursor-pointer" :
                       isSuggestion ? "bg-rose-50 border-[#ff4d79] border-dashed shadow-sm cursor-pointer" :
                       "bg-white border-slate-100 hover:border-slate-300 cursor-pointer"}`}
@@ -598,9 +600,10 @@ export default function PiecesPage() {
                     <h3 className="font-bold text-lg leading-tight flex items-center gap-2 flex-wrap">
                       <span className="truncate">{m.nom}</span>
                       {m.ean && <span className="text-slate-400 text-xs font-mono shrink-0">{m.ean.slice(-4)}</span>}
-                      {isCommande && <span className="text-orange-500 text-xs font-black bg-orange-100 px-2.5 py-1 rounded-md uppercase tracking-wide border border-orange-200 shrink-0">📦 Commandé</span>}
-                      {m.hasMatch && !isSuggestion && !isCommande && <span title="Une pièce correspondante a été trouvée !" className="text-xl animate-pulse">💡</span>}
-                      {isSuggestion && !isCommande && <span className="text-[#ff4d79] text-xs font-black bg-white px-2 py-0.5 rounded-full border border-[#ff4d79] shrink-0">✨ Suggestion</span>}
+                      {isImpossible && <span className="text-red-400 text-xs font-black bg-red-50 px-2.5 py-1 rounded-md border border-red-200 shrink-0">🚫 Indisponible</span>}
+                      {isCommande && !isImpossible && <span className="text-orange-500 text-xs font-black bg-orange-100 px-2.5 py-1 rounded-md uppercase tracking-wide border border-orange-200 shrink-0">📦 Commandé</span>}
+                      {m.hasMatch && !isSuggestion && !isCommande && !isImpossible && <span title="Une pièce correspondante a été trouvée !" className="text-xl animate-pulse">💡</span>}
+                      {isSuggestion && !isCommande && !isImpossible && <span className="text-[#ff4d79] text-xs font-black bg-white px-2 py-0.5 rounded-full border border-[#ff4d79] shrink-0">✨ Suggestion</span>}
                     </h3>
                     <p className={`${isCommande ? "text-slate-500" : "text-[#ff4d79]"} font-bold text-sm mt-2 line-clamp-2`}>{m.element_manquant}</p>
                   </div>
