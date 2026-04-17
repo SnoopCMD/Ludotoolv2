@@ -457,7 +457,17 @@ export default function InventairePage() {
     const item = vignettesQueue[vignettesIdx];
     if (!item || !vignettesManualUrl.trim()) return;
     const url = vignettesManualUrl.trim();
-    await supabase.from('catalogue').upsert({ ean: item.ean, image_url: url }, { onConflict: 'ean' });
+    // Tenter d'abord un update (la ligne existe probablement déjà)
+    const { error: errUpdate } = await supabase.from('catalogue').update({ image_url: url }).eq('ean', item.ean);
+    if (errUpdate) {
+      // Si update échoue, tenter un insert
+      const { error: errInsert } = await supabase.from('catalogue').insert({ ean: item.ean, image_url: url });
+      if (errInsert) {
+        console.error('Erreur vignette:', errUpdate, errInsert);
+        alert(`Erreur lors de l'enregistrement : ${errInsert.message}`);
+        return;
+      }
+    }
     setCatalogueImages(prev => ({ ...prev, [item.ean]: url }));
     setVignettesDone(d => d + 1);
     avancerVignette();
