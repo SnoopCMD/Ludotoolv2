@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "../../lib/supabase"; 
 import Link from "next/link";
 
@@ -63,6 +63,17 @@ export default function Home() {
   const [jeuxAttente, setJeuxAttente] = useState<JeuAttenteType[]>([]);
   const [jeuxEnPrepa, setJeuxEnPrepa] = useState<JeuType[]>([]);
   const [jeuxSelectionnes, setJeuxSelectionnes] = useState<(string | number)[]>([]);
+
+  // ── Recherche dans les modals d'étape ──
+  const [rechercheEtape, setRechercheEtape] = useState("");
+
+  // ── Modal scan codes Syracuse après Équiper ──
+  const [isScanOpen,    setIsScanOpen]    = useState(false);
+  const [scanQueue,     setScanQueue]     = useState<JeuType[]>([]);
+  const [scanIdx,       setScanIdx]       = useState(0);
+  const [scanInput,     setScanInput]     = useState("");
+  const [scanDone,      setScanDone]      = useState<{ nom: string; code: string }[]>([]);
+  const scanInputRef = useRef<HTMLInputElement>(null);
 
   const [eanInput, setEanInput] = useState("");
   const [manuelInput, setManuelInput] = useState("");
@@ -273,7 +284,8 @@ export default function Home() {
 
   const validerSelectionEtape = async () => {
     if (!etapeActive || jeuxSelectionnes.length === 0) return;
-    
+
+    const jeuxValides: JeuType[] = [];
     for (const id of jeuxSelectionnes) {
       const jeuActuel = jeuxEnPrepa.find(j => j.id === id);
       if (!jeuActuel) continue;
@@ -283,11 +295,41 @@ export default function Home() {
       const newStatut = estFini ? "En stock" : "En préparation";
 
       await supabase.from('jeux').update({ [etapeActive]: true, statut: newStatut }).eq('id', id);
+      jeuxValides.push(jeuActuel);
     }
 
     setEtapeActive(null);
     setJeuxSelectionnes([]);
     fetchDashboardData();
+
+    // Ouvrir la modal de scan si étape Équiper
+    if (etapeActive === 'etape_equiper' && jeuxValides.length > 0) {
+      setScanQueue(jeuxValides);
+      setScanIdx(0);
+      setScanInput("");
+      setScanDone([]);
+      setIsScanOpen(true);
+    }
+  };
+
+  const scannerCode = async () => {
+    const code = scanInput.trim();
+    const jeu = scanQueue[scanIdx];
+    if (!jeu) return;
+    if (code) {
+      await supabase.from('jeux').update({ code_syracuse: code }).eq('id', jeu.id);
+      setScanDone(prev => [...prev, { nom: jeu.nom, code }]);
+    }
+    const next = scanIdx + 1;
+    setScanIdx(next);
+    setScanInput("");
+    setTimeout(() => scanInputRef.current?.focus(), 50);
+  };
+
+  const passerScan = () => {
+    setScanIdx(prev => prev + 1);
+    setScanInput("");
+    setTimeout(() => scanInputRef.current?.focus(), 50);
   };
 
   const toggleSelection = (id: string | number) => {
@@ -447,7 +489,7 @@ export default function Home() {
               <div 
                 key={etape.id} 
                 onClick={() => {
-                  setEtapeActive(etape.id);
+                  setEtapeActive(etape.id); setRechercheEtape("");
                   setJeuxSelectionnes([]); 
                 }}
                 className={`${etape.color} rounded-[2rem] p-5 flex flex-col justify-between aspect-square shadow-sm cursor-pointer hover:scale-105 hover:shadow-md transition-all`}
@@ -463,7 +505,7 @@ export default function Home() {
       {etapeActive && etapeActiveInfo && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-[2rem] p-8 w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl">
-            <div className="flex justify-between items-center mb-6">
+            <div className="flex justify-between items-center mb-4">
               <div className="flex items-center gap-4">
                 <div className={`${etapeActiveInfo.color} px-4 py-2 rounded-xl font-bold text-base`}>
                   {etapeActiveInfo.nom}
@@ -472,14 +514,24 @@ export default function Home() {
                   {jeuxPourEtapeActive.length} jeu(x) en attente
                 </h2>
               </div>
-              <button onClick={() => setEtapeActive(null)} className="text-slate-400 hover:text-black font-bold text-xl px-4 py-2 bg-slate-100 rounded-full">✕ Fermer</button>
+              <button onClick={() => { setEtapeActive(null); setRechercheEtape(""); }} className="text-slate-400 hover:text-black font-bold text-xl px-4 py-2 bg-slate-100 rounded-full">✕ Fermer</button>
             </div>
-            
+
+            <input
+              type="text"
+              placeholder="Rechercher par nom ou EAN…"
+              value={rechercheEtape}
+              onChange={e => setRechercheEtape(e.target.value)}
+              className="w-full px-4 py-2.5 rounded-xl border-2 border-slate-200 focus:border-black focus:outline-none text-sm mb-4 transition-colors"
+            />
+
             <div className="flex-1 overflow-y-auto bg-slate-50 rounded-2xl p-4 border border-slate-100 mb-6">
               {jeuxPourEtapeActive.length === 0 ? (
                 <p className="text-center text-slate-400 mt-10 font-medium">Tous les jeux ont validé cette étape ! 🎉</p>
               ) : (
-                jeuxPourEtapeActive.map((jeu) => (
+                jeuxPourEtapeActive
+                  .filter(j => !rechercheEtape || j.nom.toLowerCase().includes(rechercheEtape.toLowerCase()) || j.ean.includes(rechercheEtape))
+                  .map((jeu) => (
                   <label key={jeu.id} className={`flex items-center gap-4 bg-white p-5 rounded-xl shadow-sm mb-3 border cursor-pointer transition-colors ${jeuxSelectionnes.includes(jeu.id) ? 'border-black' : 'border-slate-100 hover:border-slate-300'}`}>
                     <input 
                       type="checkbox" 
@@ -493,6 +545,9 @@ export default function Home() {
                     </div>
                   </label>
                 ))
+              )}
+              {jeuxPourEtapeActive.length > 0 && rechercheEtape && !jeuxPourEtapeActive.some(j => j.nom.toLowerCase().includes(rechercheEtape.toLowerCase()) || j.ean.includes(rechercheEtape)) && (
+                <p className="text-center text-slate-400 mt-10 font-medium">Aucun résultat pour "{rechercheEtape}"</p>
               )}
             </div>
 
@@ -511,6 +566,94 @@ export default function Home() {
               >
                 ✓ Valider {jeuxSelectionnes.length > 0 ? `(${jeuxSelectionnes.length})` : ""}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══ MODAL SCAN CODES SYRACUSE ══ */}
+      {isScanOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[2.5rem] w-full max-w-lg shadow-2xl flex flex-col overflow-hidden">
+
+            {/* Header */}
+            <div className="px-8 py-6 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <h2 className="text-2xl font-black text-black">Scanner les codes Syracuse</h2>
+                <p className="text-sm text-slate-400 mt-0.5">
+                  {scanIdx < scanQueue.length
+                    ? `${scanIdx + 1} / ${scanQueue.length}`
+                    : `${scanDone.length} code${scanDone.length > 1 ? "s" : ""} enregistré${scanDone.length > 1 ? "s" : ""}`}
+                </p>
+              </div>
+              <button onClick={() => setIsScanOpen(false)} className="w-9 h-9 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 font-black text-slate-600">✕</button>
+            </div>
+
+            <div className="p-8 flex flex-col gap-6">
+              {scanIdx < scanQueue.length ? (
+                <>
+                  {/* Jeu courant */}
+                  <div className="bg-[#f45be0]/10 border-2 border-[#f45be0]/30 rounded-2xl px-6 py-5 text-center">
+                    <p className="text-xs font-black text-[#f45be0] uppercase tracking-widest mb-1">Jeu à équiper</p>
+                    <p className="text-xl font-black text-black">{scanQueue[scanIdx].nom}</p>
+                    <p className="text-xs text-slate-400 font-mono mt-1">EAN : {scanQueue[scanIdx].ean}</p>
+                  </div>
+
+                  {/* Input scan */}
+                  <div>
+                    <label className="text-xs font-black text-slate-500 uppercase tracking-wider mb-2 block">Code Syracuse</label>
+                    <input
+                      ref={scanInputRef}
+                      autoFocus
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="Scanner ou saisir le code…"
+                      value={scanInput}
+                      onChange={e => setScanInput(e.target.value)}
+                      onKeyDown={e => e.key === "Enter" && scannerCode()}
+                      className="w-full px-4 py-3 rounded-xl border-2 border-slate-200 focus:border-[#f45be0] focus:outline-none text-lg font-mono font-bold transition-colors"
+                    />
+                  </div>
+
+                  <div className="flex gap-3">
+                    <button onClick={passerScan} className="flex-1 py-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold transition-colors">
+                      Passer →
+                    </button>
+                    <button onClick={scannerCode} disabled={!scanInput.trim()} className="flex-1 py-3 rounded-xl bg-black hover:bg-slate-800 text-white font-black disabled:opacity-40 transition-colors">
+                      Valider ✓
+                    </button>
+                  </div>
+
+                  {/* Jeux déjà scannés */}
+                  {scanDone.length > 0 && (
+                    <div className="border-t border-slate-100 pt-4 flex flex-col gap-1">
+                      {scanDone.map((d, i) => (
+                        <div key={i} className="flex justify-between items-center text-sm">
+                          <span className="text-slate-600 truncate">{d.nom}</span>
+                          <span className="font-mono text-slate-400 shrink-0 ml-2">{d.code}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              ) : (
+                /* Terminé */
+                <div className="flex flex-col items-center gap-4 py-4 text-center">
+                  <span className="text-5xl">🎉</span>
+                  <p className="text-xl font-black text-black">{scanDone.length} code{scanDone.length > 1 ? "s" : ""} enregistré{scanDone.length > 1 ? "s" : ""}</p>
+                  {scanQueue.length - scanDone.length > 0 && (
+                    <p className="text-sm text-slate-400">{scanQueue.length - scanDone.length} jeu(x) passé(s) sans code</p>
+                  )}
+                  <button onClick={() => setIsScanOpen(false)} className="mt-2 px-8 py-3 rounded-xl bg-black text-white font-black hover:bg-slate-800 transition-colors">
+                    Fermer
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Barre de progression */}
+            <div className="h-1.5 bg-slate-100">
+              <div className="h-full bg-[#f45be0] transition-all" style={{ width: `${(Math.min(scanIdx, scanQueue.length) / scanQueue.length) * 100}%` }} />
             </div>
           </div>
         </div>
