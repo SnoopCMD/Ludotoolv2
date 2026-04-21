@@ -1180,6 +1180,7 @@ export default function InventairePage() {
         <Link href="/atelier" className="px-6 py-2.5 rounded-full hover:bg-white/10 transition">Atelier</Link>
         <Link href="/agenda" className="px-6 py-2.5 rounded-full hover:bg-white/10 transition">Agenda</Link>
         <Link href="/store" className="px-6 py-2.5 rounded-full hover:bg-white/10 transition">Store</Link>
+        <Link href="/export" className="px-6 py-2.5 rounded-full hover:bg-white/10 transition">Export</Link>
         </nav>
         <div className="w-10"></div>
       </header>

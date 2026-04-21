@@ -97,6 +97,13 @@ export default function PiecesPage() {
   // Confirmation après commande
   const [pendingConfirmId, setPendingConfirmId]   = useState<number | null>(null);
 
+  // Confirmation de liaison partielle/totale
+  const [lienConfirm, setLienConfirm] = useState<{
+    qteManquante: number;
+    qteTrouvee: number;
+    nomPiece: string;
+  } | null>(null);
+
   // Type d'éditeur par pièce (résolu au chargement pour griser les boutons)
   const [editeurTypeParPiece, setEditeurTypeParPiece] = useState<Record<number, Editeur["type_commande"] | null>>({});
 
@@ -495,11 +502,41 @@ export default function PiecesPage() {
     chargerDonnees();
   };
 
-  const lierElements = async () => {
+  const extraireQte = (texte: string): { qte: number; nom: string } => {
+    const m = texte.trim().match(/^(\d+)\s*(.*)/);
+    return m ? { qte: parseInt(m[1]), nom: m[2].trim() } : { qte: 1, nom: texte.trim() };
+  };
+
+  const lierElements = () => {
     if (!selectedManquant || selectedTrouvees.length === 0) return;
-    await supabase.from("pieces_manquantes").update({ statut: "Résolu" }).eq("id", selectedManquant);
-    for (const tId of selectedTrouvees) await supabase.from("pieces_trouvees").update({ statut: "Réaffecté" }).eq("id", tId);
-    setSelectedManquant(null); setSelectedTrouvees([]); chargerDonnees();
+    const pieceManq = manquantes.find(m => m.id === selectedManquant);
+    if (!pieceManq) return;
+
+    const { qte: qteManquante, nom: nomPiece } = extraireQte(pieceManq.element_manquant);
+    const qteTrouvee = selectedTrouvees.reduce((sum, tId) => {
+      const t = trouvees.find(tr => tr.id === tId);
+      return sum + (t ? extraireQte(t.description).qte : 0);
+    }, 0);
+
+    setLienConfirm({ qteManquante, qteTrouvee, nomPiece });
+  };
+
+  const confirmerLien = async (total: boolean) => {
+    if (!selectedManquant || !lienConfirm) return;
+    for (const tId of selectedTrouvees) {
+      await supabase.from("pieces_trouvees").update({ statut: "Réaffecté" }).eq("id", tId);
+    }
+    if (total) {
+      await supabase.from("pieces_manquantes").update({ statut: "Résolu" }).eq("id", selectedManquant);
+    } else {
+      const reste = lienConfirm.qteManquante - lienConfirm.qteTrouvee;
+      const nouveauTexte = `${Math.max(reste, 1)} ${lienConfirm.nomPiece}`;
+      await supabase.from("pieces_manquantes").update({ element_manquant: nouveauTexte }).eq("id", selectedManquant);
+    }
+    setLienConfirm(null);
+    setSelectedManquant(null);
+    setSelectedTrouvees([]);
+    chargerDonnees();
   };
 
   const nbManquant = manquantes.filter(m => m.statut === "Manquant").length;
@@ -588,10 +625,9 @@ export default function PiecesPage() {
               const isCommande   = m.statut === "Commandé";
               const isImpossible = editeurTypeParPiece[m.id] === "impossible";
               return (
-                <div key={m.id} onClick={() => !isCommande && !isImpossible && setSelectedManquant(isSelected ? null : m.id)}
+                <div key={m.id} onClick={() => !isCommande && setSelectedManquant(isSelected ? null : m.id)}
                   className={`p-4 rounded-2xl border-2 flex flex-col sm:flex-row justify-between sm:items-center gap-4 transition-all relative
-                    ${isImpossible ? "bg-slate-50 border-slate-200 opacity-60 cursor-not-allowed" :
-                      isCommande ? "bg-slate-50 border-slate-200 opacity-80" :
+                    ${isCommande ? "bg-slate-50 border-slate-200 opacity-80" :
                       isSelected ? "bg-white border-[#ff4d79] ring-4 ring-[#ff4d79]/30 shadow-md cursor-pointer" :
                       isSuggestion ? "bg-rose-50 border-[#ff4d79] border-dashed shadow-sm cursor-pointer" :
                       "bg-white border-slate-100 hover:border-slate-300 cursor-pointer"}`}
@@ -601,9 +637,9 @@ export default function PiecesPage() {
                       <span className="truncate">{m.nom}</span>
                       {m.ean && <span className="text-slate-400 text-xs font-mono shrink-0">{m.ean.slice(-4)}</span>}
                       {isImpossible && <span className="text-red-400 text-xs font-black bg-red-50 px-2.5 py-1 rounded-md border border-red-200 shrink-0">🚫 Indisponible</span>}
-                      {isCommande && !isImpossible && <span className="text-orange-500 text-xs font-black bg-orange-100 px-2.5 py-1 rounded-md uppercase tracking-wide border border-orange-200 shrink-0">📦 Commandé</span>}
-                      {m.hasMatch && !isSuggestion && !isCommande && !isImpossible && <span title="Une pièce correspondante a été trouvée !" className="text-xl animate-pulse">💡</span>}
-                      {isSuggestion && !isCommande && !isImpossible && <span className="text-[#ff4d79] text-xs font-black bg-white px-2 py-0.5 rounded-full border border-[#ff4d79] shrink-0">✨ Suggestion</span>}
+                      {isCommande && <span className="text-orange-500 text-xs font-black bg-orange-100 px-2.5 py-1 rounded-md uppercase tracking-wide border border-orange-200 shrink-0">📦 Commandé</span>}
+                      {m.hasMatch && !isSuggestion && !isCommande && <span title="Une pièce correspondante a été trouvée !" className="text-xl animate-pulse">💡</span>}
+                      {isSuggestion && !isCommande && <span className="text-[#ff4d79] text-xs font-black bg-white px-2 py-0.5 rounded-full border border-[#ff4d79] shrink-0">✨ Suggestion</span>}
                     </h3>
                     <p className={`${isCommande ? "text-slate-500" : "text-[#ff4d79]"} font-bold text-sm mt-2 line-clamp-2`}>{m.element_manquant}</p>
                   </div>
@@ -690,6 +726,59 @@ export default function PiecesPage() {
         <div className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-black text-white px-8 py-5 rounded-full shadow-2xl flex items-center gap-6 z-50">
           <span className="font-bold text-lg whitespace-nowrap">🔗 Lier 1 jeu et {selectedTrouvees.length} pièce(s) ?</span>
           <button onClick={lierElements} className="bg-[#baff29] text-black px-6 py-2.5 rounded-xl font-black hover:scale-105 transition-transform shadow-[0_0_15px_rgba(186,255,41,0.5)] whitespace-nowrap">Valider la fusion ✓</button>
+        </div>
+      )}
+
+      {/* ── Popup confirmation liaison partielle/totale ── */}
+      {lienConfirm && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[90] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[2rem] w-full max-w-md shadow-2xl p-8 flex flex-col gap-5">
+            <div className="text-center">
+              <p className="text-2xl font-black text-black mb-1">Liaison des pièces</p>
+              <p className="text-sm text-slate-400">
+                {lienConfirm.qteTrouvee} trouvée{lienConfirm.qteTrouvee > 1 ? "s" : ""} sur {lienConfirm.qteManquante} manquante{lienConfirm.qteManquante > 1 ? "s" : ""} · <span className="font-bold text-slate-600">{lienConfirm.nomPiece}</span>
+              </p>
+            </div>
+
+            {/* Résumé visuel */}
+            <div className="bg-slate-50 rounded-2xl p-4 flex items-center justify-center gap-4 text-sm font-bold">
+              <div className="text-center">
+                <p className="text-2xl font-black text-[#baff29] drop-shadow">{lienConfirm.qteTrouvee}</p>
+                <p className="text-slate-400 text-xs">trouvée{lienConfirm.qteTrouvee > 1 ? "s" : ""}</p>
+              </div>
+              <span className="text-slate-300 text-2xl">/</span>
+              <div className="text-center">
+                <p className="text-2xl font-black text-slate-700">{lienConfirm.qteManquante}</p>
+                <p className="text-slate-400 text-xs">manquante{lienConfirm.qteManquante > 1 ? "s" : ""}</p>
+              </div>
+              {lienConfirm.qteManquante - lienConfirm.qteTrouvee > 0 && (
+                <>
+                  <span className="text-slate-300 text-2xl">=</span>
+                  <div className="text-center">
+                    <p className="text-2xl font-black text-[#ff4d79]">{lienConfirm.qteManquante - lienConfirm.qteTrouvee}</p>
+                    <p className="text-slate-400 text-xs">restante{lienConfirm.qteManquante - lienConfirm.qteTrouvee > 1 ? "s" : ""}</p>
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="flex flex-col gap-3">
+              {lienConfirm.qteManquante - lienConfirm.qteTrouvee > 0 && (
+                <button onClick={() => confirmerLien(false)}
+                  className="w-full py-3.5 rounded-xl bg-[#ff4d79] hover:bg-[#e03a64] text-white font-black transition-colors">
+                  Résolution partielle — garder le jeu ({lienConfirm.qteManquante - lienConfirm.qteTrouvee} restante{lienConfirm.qteManquante - lienConfirm.qteTrouvee > 1 ? "s" : ""})
+                </button>
+              )}
+              <button onClick={() => confirmerLien(true)}
+                className="w-full py-3.5 rounded-xl bg-black hover:bg-slate-800 text-white font-black transition-colors">
+                Résolution totale — retirer le jeu ✓
+              </button>
+              <button onClick={() => setLienConfirm(null)}
+                className="w-full py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold transition-colors text-sm">
+                Annuler
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
