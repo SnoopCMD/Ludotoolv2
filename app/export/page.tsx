@@ -212,10 +212,8 @@ function buildRecord(game: CatalogueEntry): Uint8Array {
   // 100 : Données de traitement général
   fields.push(makeField("100", " ", " ", [{ code: "a", value: buildField100a() }]));
 
-  // 200 : Titre et mention de responsabilité
-  const sf200: SubfieldEntry[] = [{ code: "a", value: game.nom }];
-  if (game.auteurs) sf200.push({ code: "f", value: game.auteurs });
-  fields.push(makeField("200", "1", " ", sf200));
+  // 200 : Titre (sans mention de responsabilité — auteurs gérés manuellement dans Syracuse)
+  fields.push(makeField("200", "1", " ", [{ code: "a", value: game.nom }]));
 
   // 210 : Publication, distribution, etc.
   const sf210: SubfieldEntry[] = [];
@@ -223,13 +221,19 @@ function buildRecord(game: CatalogueEntry): Uint8Array {
   sf210.push({ code: "d", value: String(new Date().getFullYear()) });
   fields.push(makeField("210", " ", " ", sf210));
 
-  // 215 : Description physique
-  fields.push(makeField("215", " ", " ", [{ code: "a", value: "1 boîte de jeu" }]));
+  // 215 : Description physique — contenu de la boîte
+  const contenu215 = game.contenu?.trim()
+    ? "1 boîte de jeu : " + game.contenu.trim()
+    : "1 boîte de jeu";
+  fields.push(makeField("215", " ", " ", [{ code: "a", value: contenu215 }]));
 
   // 330 : Résumé
   if (game.description?.trim()) {
     fields.push(makeField("330", " ", " ", [{ code: "a", value: game.description.trim() }]));
   }
+
+  // 694 : Champ déclencheur type notice "JEUS" (Jeux de société) dans Syracuse
+  fields.push(makeField("694", " ", " ", [{ code: "a", value: "Jeux de société" }]));
 
   // 801 : Source de catalogage
   fields.push(makeField("801", " ", "0", [{ code: "b", value: "Médiathèque de Châtillon" }]));
@@ -330,7 +334,7 @@ export default function ExportPage() {
     setIsLoading(true);
     const { data } = await supabase
       .from("catalogue")
-      .select("ean, nom, auteurs, editeur, description, couleur, mecanique, nb_de_joueurs, temps_de_jeu, etoiles, coop_versus, image_url")
+      .select("ean, nom, auteurs, editeur, description, contenu, couleur, mecanique, nb_de_joueurs, temps_de_jeu, etoiles, coop_versus, image_url")
       .order("nom");
     if (data) setCatalogue(data as CatalogueEntry[]);
     setIsLoading(false);
