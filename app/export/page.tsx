@@ -148,7 +148,7 @@ function buildISO2709Record(fields: UnimarcField[]): Uint8Array {
   const leader =
     String(totalLength).padStart(5, "0") + // 0-4: longueur totale
     "n" +                                   // 5: statut (nouveau)
-    "r" +                                   // 6: type (artefact 3D = jeu)
+    "a" +                                   // 6: type matériau textuel (convention bibliothèques fr pour jeux)
     "m" +                                   // 7: niveau bibliographique (monographie)
     " " +                                   // 8: type de contrôle
     "a" +                                   // 9: encodage (a = Unicode/UTF-8)
@@ -222,9 +222,7 @@ function buildRecord(game: CatalogueEntry): Uint8Array {
   fields.push(makeField("210", " ", " ", sf210));
 
   // 215 : Description physique — contenu de la boîte
-  const contenu215 = game.contenu?.trim()
-    ? "1 boîte de jeu : " + game.contenu.trim()
-    : "1 boîte de jeu";
+  const contenu215 = game.contenu?.trim() || "1 boîte de jeu";
   fields.push(makeField("215", " ", " ", [{ code: "a", value: contenu215 }]));
 
   // 330 : Résumé
