@@ -48,13 +48,24 @@ function maxJoueursCode(max: number): string {
 function tempsCode(str?: string): string | null {
   if (!str) return null;
   let mins = 0;
+  // Heures : "1h", "1H", "1 h", "1h30" → on extrait aussi les minutes collées après
   const hMatch = str.match(/(\d+)\s*[hH]/);
-  const mMatch = str.match(/(\d+)\s*[mM]/);
-  if (hMatch) mins += parseInt(hMatch[1]) * 60;
-  if (mMatch) mins += parseInt(mMatch[1]);
+  if (hMatch) {
+    mins += parseInt(hMatch[1]) * 60;
+    // Minutes après l'heure : "1h30" ou "1h 30"
+    const rest = str.slice(str.indexOf(hMatch[0]) + hMatch[0].length);
+    const mAfterH = rest.match(/^\s*(\d+)/);
+    if (mAfterH) mins += parseInt(mAfterH[1]);
+  }
+  // Minutes : "30 min", "45min", "30M" — seulement si pas déjà en heures
+  if (!hMatch) {
+    const mMatch = str.match(/(\d+)\s*[mM]/);
+    if (mMatch) mins += parseInt(mMatch[1]);
+  }
+  // Fallback : premier nombre trouvé dans la chaîne (gère "30-60", "30", etc.)
   if (!mins) {
-    const raw = str.match(/^(\d+)$/);
-    if (raw) mins = parseInt(raw[1]);
+    const anyNum = str.match(/(\d+)/);
+    if (anyNum) mins = parseInt(anyNum[1]);
   }
   if (!mins) return null;
   if (mins <= 7) return "5M";
