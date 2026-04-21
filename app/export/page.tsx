@@ -200,7 +200,11 @@ function buildField100a(pubYear?: number): string {
 function buildRecord(game: CatalogueEntry): Uint8Array {
   const fields: UnimarcField[] = [];
 
-  // 073 : EAN
+  // 001 : Identifiant d'enregistrement (obligatoire pour l'import Syracuse)
+  // On utilise l'EAN comme identifiant unique de la notice
+  fields.push(makeField("001", " ", " ", [{ code: "", value: game.ean }]));
+
+  // 073 : EAN (International Article Number)
   if (game.ean) {
     fields.push(makeField("073", " ", " ", [{ code: "a", value: game.ean }]));
   }
