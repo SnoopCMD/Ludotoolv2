@@ -45,24 +45,27 @@ function maxJoueursCode(max: number): string {
   return "JQ13";
 }
 
+const WIKILUDO_TEMPS = ["4H", "2H", "1H", "45M", "30M", "20M", "10M", "5M"];
+
 function tempsCode(str?: string): string | null {
   if (!str) return null;
+  // Correspondance directe avec les labels du référentiel WIKILUDO
+  // ex: "10M - 10 - 20 min", "1H - 1h30", "4H - 4h et plus"
+  for (const code of WIKILUDO_TEMPS) {
+    if (str.startsWith(code)) return code;
+  }
   let mins = 0;
-  // Heures : "1h", "1H", "1 h", "1h30" → on extrait aussi les minutes collées après
   const hMatch = str.match(/(\d+)\s*[hH]/);
   if (hMatch) {
     mins += parseInt(hMatch[1]) * 60;
-    // Minutes après l'heure : "1h30" ou "1h 30"
     const rest = str.slice(str.indexOf(hMatch[0]) + hMatch[0].length);
     const mAfterH = rest.match(/^\s*(\d+)/);
     if (mAfterH) mins += parseInt(mAfterH[1]);
   }
-  // Minutes : "30 min", "45min", "30M" — seulement si pas déjà en heures
   if (!hMatch) {
     const mMatch = str.match(/(\d+)\s*[mM]/);
     if (mMatch) mins += parseInt(mMatch[1]);
   }
-  // Fallback : premier nombre trouvé dans la chaîne (gère "30-60", "30", etc.)
   if (!mins) {
     const anyNum = str.match(/(\d+)/);
     if (anyNum) mins = parseInt(anyNum[1]);
