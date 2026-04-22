@@ -74,6 +74,17 @@ type ImportItem = {
 
 type DoublonGroupe = { ean: string; nom: string; exemplaires: JeuType[]; suggeresIds: (string | number)[]; };
 
+type TempEanItem = {
+  tempEan: string;
+  nom: string;
+  copies: JeuType[];
+  tempCat: Record<string, string | null> | null;
+  match: Record<string, string | null> | null;
+  newEan: string;
+  status: "pending" | "done" | "skipped";
+  processing: boolean;
+};
+
 const COULEURS = [
   { id: 'vert', bg: 'bg-[#baff29]', text: 'text-black', border: 'border-[#baff29]', shadow: 'shadow-[#baff29]/50', label: 'Vert' },
   { id: 'rose', bg: 'bg-[#f45be0]', text: 'text-white', border: 'border-[#f45be0]', shadow: 'shadow-[#f45be0]/50', label: 'Rose' },
@@ -360,6 +371,10 @@ export default function InventairePage() {
   const [doublonsSelectionnes, setDoublonsSelectionnes] = useState<(string | number)[]>([]);
   const [isDeletingDoublons, setIsDeletingDoublons] = useState(false);
 
+  const [isTempEanModalOpen, setIsTempEanModalOpen] = useState(false);
+  const [tempEanItems, setTempEanItems] = useState<TempEanItem[]>([]);
+  const [isTempLoading, setIsTempLoading] = useState(false);
+
   const fetchInventaire = async () => {
     setIsLoading(true);
     const { data: jeuxData, error: jeuxError } = await supabase
@@ -532,6 +547,74 @@ export default function InventairePage() {
     setIsDoublonsModalOpen(false);
     setDoublonGroupes([]);
     setDoublonsSelectionnes([]);
+    fetchInventaire();
+  };
+
+  const detecterTempEans = async () => {
+    setIsTempLoading(true);
+    setIsTempEanModalOpen(true);
+    setIsSettingsOpen(false);
+
+    const isTempEan = (e: string) => /^(TEMP|SYR)-/i.test(e);
+
+    const { data: jeuxData } = await supabase.from('jeux').select('*');
+    const { data: catData } = await supabase.from('catalogue').select('*');
+    if (!jeuxData || !catData) { setIsTempLoading(false); return; }
+
+    const allCat = catData as Record<string, string | null>[];
+    const realCat = allCat.filter(c => !isTempEan(c.ean ?? ""));
+    const tempEans = [...new Set(jeuxData.filter(j => isTempEan(j.ean)).map(j => j.ean))];
+
+    const items: TempEanItem[] = tempEans.map(tempEan => {
+      const copies = jeuxData.filter(j => j.ean === tempEan);
+      const tempCat = allCat.find(c => c.ean === tempEan) ?? null;
+      const nom: string = (tempCat?.nom ?? copies[0]?.nom ?? tempEan) as string;
+      const normNom = normalizeStr(nom);
+      const match = realCat.find(g => {
+        const n = normalizeStr(g.nom as string ?? "");
+        return n === normNom || (n.length > 4 && normNom.includes(n)) || (normNom.length > 4 && n.includes(normNom));
+      }) ?? null;
+      return { tempEan, nom, copies, tempCat, match, newEan: (match?.ean ?? "") as string, status: "pending", processing: false };
+    });
+
+    setTempEanItems(items);
+    setIsTempLoading(false);
+  };
+
+  const mergeCatFields = (real: Record<string, string | null> | null, temp: Record<string, string | null> | null) => {
+    const fields = ["description", "resume", "auteurs", "auteurs_json", "boite_format", "contenu", "editeur", "couleur", "mecanique", "nb_de_joueurs", "temps_de_jeu", "etoiles", "coop_versus", "image_url"];
+    const merged: Record<string, string | null> = {};
+    for (const f of fields) {
+      merged[f] = (real?.[f] || null) ?? (temp?.[f] || null);
+    }
+    return merged;
+  };
+
+  const appliquerTempAction = async (tempEan: string, realEan: string) => {
+    setTempEanItems(prev => prev.map(i => i.tempEan === tempEan ? { ...i, processing: true } : i));
+
+    const item = tempEanItems.find(i => i.tempEan === tempEan);
+    if (!item) return;
+
+    // 1. Mettre à jour les copies dans jeux
+    await supabase.from('jeux').update({ ean: realEan }).eq('ean', tempEan);
+
+    // 2. Récupérer la notice réelle existante (si elle existe)
+    const { data: realCatRow } = await supabase.from('catalogue').select('*').eq('ean', realEan).maybeSingle();
+
+    // 3. Merger ou créer la notice
+    const merged = mergeCatFields(realCatRow as Record<string, string | null> | null, item.tempCat);
+    const { data: existingReal } = await supabase.from('catalogue').select('ean').eq('ean', realEan).maybeSingle();
+    if (existingReal) {
+      await supabase.from('catalogue').update({ ...merged, nom: item.nom }).eq('ean', realEan);
+    } else {
+      await supabase.from('catalogue').insert([{ ...merged, ean: realEan, nom: item.nom }]);
+    }
+
+    // 4. Supprimer l'entrée catalogue temp
+    await supabase.from('catalogue').delete().eq('ean', tempEan);
+
+    setTempEanItems(prev => prev.map(i => i.tempEan === tempEan ? { ...i, status: "done", processing: false } : i));
     fetchInventaire();
   };
 
@@ -1213,6 +1296,7 @@ export default function InventairePage() {
                     <button onClick={() => { nettoyerMecaniques(); }} className="text-left w-full px-4 py-3 hover:bg-slate-50 rounded-xl font-bold text-sm text-black transition-colors flex items-center gap-2">🧽 Nettoyer Mécaniques</button>
                     <button onClick={() => { setIsColorFixOpen(true); setIsSettingsOpen(false); }} className="text-left w-full px-4 py-3 hover:bg-slate-50 rounded-xl font-bold text-sm text-black transition-colors flex items-center gap-2">🛠️ Corriger Couleurs (Scanner)</button>
                     <button onClick={detecterDoublons} className="text-left w-full px-4 py-3 hover:bg-slate-50 rounded-xl font-bold text-sm text-black transition-colors flex items-center gap-2">🔍 Nettoyer les Doublons</button>
+                    <button onClick={detecterTempEans} className="text-left w-full px-4 py-3 hover:bg-slate-50 rounded-xl font-bold text-sm text-black transition-colors flex items-center gap-2">🔖 Nettoyer les EAN temporaires</button>
                     <button onClick={ouvrirVignettes} className="text-left w-full px-4 py-3 hover:bg-slate-50 rounded-xl font-bold text-sm text-black transition-colors flex items-center gap-2">🖼️ Enrichir les Vignettes</button>
                   </div>
                 )}
@@ -1776,6 +1860,120 @@ export default function InventairePage() {
                 </button>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* --- MODAL EAN TEMPORAIRES --- */}
+      {isTempEanModalOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[90] flex items-center justify-center p-2 sm:p-4 animate-fade-in">
+          <div className="bg-white rounded-[2.5rem] w-full max-w-4xl flex flex-col shadow-2xl overflow-hidden border-2 border-slate-200" style={{ height: '90vh' }}>
+
+            {/* Header */}
+            <div className="p-6 md:p-8 border-b-2 border-slate-100 bg-slate-50 flex justify-between items-start shrink-0">
+              <div>
+                <h2 className="text-2xl font-black text-slate-800">🔖 Nettoyage EAN temporaires</h2>
+                <p className="text-slate-500 font-bold mt-1 text-sm">
+                  {isTempLoading ? "Analyse en cours…" : `${tempEanItems.filter(i => i.status === "pending").length} jeu(x) avec EAN TEMP/SYR à traiter`}
+                </p>
+              </div>
+              <button onClick={() => setIsTempEanModalOpen(false)} className="w-10 h-10 flex items-center justify-center rounded-full bg-slate-200 text-slate-600 hover:bg-slate-300 hover:text-black font-black transition-colors shrink-0">✕</button>
+            </div>
+
+            {/* Corps */}
+            <div className="overflow-y-auto flex-1 p-6 bg-[#e5e5e5] custom-scroll flex flex-col gap-4">
+              {isTempLoading ? (
+                <div className="flex items-center justify-center h-full">
+                  <p className="font-bold text-slate-400 animate-pulse">Chargement…</p>
+                </div>
+              ) : tempEanItems.length === 0 ? (
+                <div className="text-center py-20 text-slate-400">
+                  <span className="text-5xl mb-4 block">✨</span>
+                  <p className="font-bold text-xl">Aucun EAN temporaire trouvé !</p>
+                </div>
+              ) : (
+                tempEanItems.map(item => (
+                  <div key={item.tempEan} className={`bg-white rounded-2xl border shadow-sm overflow-hidden transition-opacity ${item.status !== "pending" ? "opacity-40" : ""}`}>
+                    {/* Titre */}
+                    <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between gap-3">
+                      <div>
+                        <p className="font-black text-slate-900">{item.nom}</p>
+                        <p className="text-xs font-mono text-slate-400 mt-0.5">{item.tempEan} · {item.copies.length} exemplaire{item.copies.length > 1 ? "s" : ""}</p>
+                      </div>
+                      {item.status === "done" && <span className="text-xs font-black text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200">✓ Traité</span>}
+                      {item.status === "skipped" && <span className="text-xs font-black text-slate-500 bg-slate-100 px-3 py-1 rounded-full">Ignoré</span>}
+                    </div>
+
+                    {item.status === "pending" && (
+                      <div className="p-4 flex flex-col gap-3">
+                        {/* Match automatique */}
+                        {item.match ? (
+                          <div className="flex items-center justify-between gap-3 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3">
+                            <div>
+                              <p className="text-xs font-black text-emerald-700 uppercase tracking-wider mb-1">Correspondance trouvée</p>
+                              <p className="font-bold text-slate-800">{item.match.nom as string}</p>
+                              <p className="text-xs font-mono text-slate-500">{item.match.ean as string}</p>
+                            </div>
+                            <button
+                              onClick={() => appliquerTempAction(item.tempEan, item.match!.ean as string)}
+                              disabled={item.processing}
+                              className="shrink-0 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white font-black text-sm rounded-xl transition-colors"
+                            >
+                              {item.processing ? "…" : "Fusionner"}
+                            </button>
+                          </div>
+                        ) : (
+                          <p className="text-xs text-amber-600 font-bold bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">⚠️ Aucune correspondance automatique — saisir l&apos;EAN manuellement</p>
+                        )}
+
+                        {/* Saisie EAN manuelle */}
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={item.newEan}
+                            onChange={e => setTempEanItems(prev => prev.map(i => i.tempEan === item.tempEan ? { ...i, newEan: e.target.value } : i))}
+                            placeholder="EAN réel (ex: 3760146642399)"
+                            className="flex-1 bg-slate-50 border-2 border-slate-200 rounded-xl px-3 py-2 text-sm font-mono outline-none focus:border-black transition-colors"
+                          />
+                          <button
+                            onClick={() => appliquerTempAction(item.tempEan, item.newEan)}
+                            disabled={item.processing || !item.newEan.trim()}
+                            className="px-4 py-2 bg-black hover:bg-slate-800 disabled:opacity-40 text-white font-black text-sm rounded-xl transition-colors shrink-0"
+                          >
+                            {item.processing ? "…" : "Réassigner"}
+                          </button>
+                          <button
+                            onClick={() => setTempEanItems(prev => prev.map(i => i.tempEan === item.tempEan ? { ...i, status: "skipped" } : i))}
+                            className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-500 font-bold text-sm rounded-xl transition-colors shrink-0"
+                          >
+                            Ignorer
+                          </button>
+                        </div>
+
+                        {/* Copies */}
+                        <div className="flex flex-wrap gap-2">
+                          {item.copies.map(c => (
+                            <span key={String(c.id)} className="text-[10px] font-bold px-2 py-1 rounded-lg bg-slate-100 text-slate-600">
+                              #{c.id} · {c.statut}{c.code_syracuse ? ` · ${c.code_syracuse}` : ""}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="p-5 border-t-2 border-slate-100 bg-slate-50 flex justify-between items-center shrink-0">
+              <p className="text-xs text-slate-400 font-medium">
+                {tempEanItems.filter(i => i.status === "done").length} traité(s) · {tempEanItems.filter(i => i.status === "skipped").length} ignoré(s)
+              </p>
+              <button onClick={() => setIsTempEanModalOpen(false)} className="px-6 py-2.5 bg-white hover:bg-slate-100 text-slate-600 font-bold rounded-xl border border-slate-200 transition-colors">
+                Fermer
+              </button>
+            </div>
           </div>
         </div>
       )}
