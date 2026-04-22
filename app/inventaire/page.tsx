@@ -1881,9 +1881,9 @@ export default function InventairePage() {
             </div>
 
             {/* Corps */}
-            <div className="overflow-y-auto flex-1 p-6 bg-[#e5e5e5] custom-scroll flex flex-col gap-4">
+            <div className="overflow-y-auto p-6 bg-[#e5e5e5] custom-scroll" style={{flex: '1 1 0', minHeight: 0}}>
               {isTempLoading ? (
-                <div className="flex items-center justify-center h-full">
+                <div className="flex items-center justify-center py-20">
                   <p className="font-bold text-slate-400 animate-pulse">Chargement…</p>
                 </div>
               ) : tempEanItems.length === 0 ? (
@@ -1892,7 +1892,8 @@ export default function InventairePage() {
                   <p className="font-bold text-xl">Aucun EAN temporaire trouvé !</p>
                 </div>
               ) : (
-                tempEanItems.map(item => (
+                <div className="flex flex-col gap-4">
+                {tempEanItems.map(item => (
                   <div key={item.tempEan} className={`bg-white rounded-2xl border shadow-sm overflow-hidden transition-opacity ${item.status !== "pending" ? "opacity-40" : ""}`}>
                     {/* Titre */}
                     <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between gap-3">
@@ -1961,7 +1962,8 @@ export default function InventairePage() {
                       </div>
                     )}
                   </div>
-                ))
+                ))}
+                </div>
               )}
             </div>
 
