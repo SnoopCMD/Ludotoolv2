@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { supabase } from "../../lib/supabase";
 import Link from "next/link";
@@ -488,7 +488,7 @@ function ModalCatalogage({ game: initGame, onClose, onSaved }: {
 
 // ─── Page principale ──────────────────────────────────────────────────────────
 
-export default function CataloguePage() {
+function CataloguePageInner() {
   const searchParams = useSearchParams();
   const [catalogue, setCatalogue] = useState<CatalogueEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -685,5 +685,13 @@ export default function CataloguePage() {
         />
       )}
     </div>
+  );
+}
+
+export default function CataloguePage() {
+  return (
+    <Suspense>
+      <CataloguePageInner />
+    </Suspense>
   );
 }

@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "../../lib/supabase";
@@ -24,7 +24,7 @@ export type ContenuType = {
   sansRegle?: boolean; // <-- AJOUT ICI
 };
 
-export default function ContenuPage() {
+function ContenuPageInner() {
   const searchParams = useSearchParams();
   const [isClient, setIsClient] = useState(false);
 
@@ -428,5 +428,13 @@ export default function ContenuPage() {
         </aside>
       </div>
     </div>
+  );
+}
+
+export default function ContenuPage() {
+  return (
+    <Suspense>
+      <ContenuPageInner />
+    </Suspense>
   );
 }
