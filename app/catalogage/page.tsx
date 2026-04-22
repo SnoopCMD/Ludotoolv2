@@ -8,6 +8,11 @@ import Link from "next/link";
 
 type Role = "auteur" | "illustrateur" | "scenariste";
 
+type JeuCopie = {
+  ean: string;
+  code_syracuse: string | null;
+};
+
 type AuteurStructure = {
   prenom: string;
   nom: string;
@@ -87,6 +92,10 @@ function tempsCode(str?: string): string | null {
   if (m <= 180) return "2H"; return "4H";
 }
 
+const COULEUR_CODE: Record<string, string> = {
+  vert: "VR", rose: "RS", bleu: "BL", rouge: "RG", jaune: "JN",
+};
+
 const AGE_MAP: Record<string, Record<number, string>> = {
   vert: {1:"2A",2:"3A",3:"5A"}, rose: {1:"6A",2:"7A"},
   bleu: {1:"8A",2:"10A"}, rouge: {1:"12A",2:"14A"},
@@ -133,7 +142,7 @@ function buildField100a(): string {
   return d + "a" + "    " + "    " + "   " + "  " + "   " + "  " + "fre" + "50    ";
 }
 
-function buildRecord(game: CatalogueEntry): Uint8Array {
+function buildRecord(game: CatalogueEntry, copies: JeuCopie[] = []): Uint8Array {
   const fields: UnimarcField[] = [];
 
   fields.push(makeField("001", " ", " ", [{ code: "", value: game.ean }]));
@@ -184,11 +193,31 @@ function buildRecord(game: CatalogueEntry): Uint8Array {
   const niv = niveauCode(game.couleur, game.etoiles); if (niv) sf941.push({ code: "e", value: niv });
   if (sf941.length) fields.push(makeField("941", " ", " ", sf941));
 
+  // Exemplaires (915/920/930/921 par copie physique)
+  const couleurLow = (game.couleur ?? "").toLowerCase();
+  const couleurCode = COULEUR_CODE[couleurLow] ?? "";
+  const emplacement = couleurLow === "vert" ? "PJ" : "JE";
+  const etoilesVal = game.etoiles ?? "1";
+  for (const copie of copies) {
+    if (!copie.code_syracuse) continue;
+    fields.push(makeField("915", " ", " ", [{ code: "b", value: copie.code_syracuse }]));
+    const sf920: SubfieldEntry[] = [{ code: "e", value: emplacement }, { code: "t", value: "JS" }];
+    fields.push(makeField("920", " ", " ", sf920));
+    const sf930: SubfieldEntry[] = [
+      { code: "d", value: "L" },
+      { code: "g", value: "JE" },
+      ...(couleurCode ? [{ code: "h", value: couleurCode }] : []),
+      { code: "i", value: etoilesVal },
+    ];
+    fields.push(makeField("930", " ", " ", sf930));
+    fields.push(makeField("921", " ", " ", [{ code: "a", value: "2" }, { code: "b", value: "EXC" }]));
+  }
+
   return buildISO2709Record(fields);
 }
 
-function buildMrcFile(games: CatalogueEntry[]): Blob {
-  const parts = games.map(buildRecord);
+function buildMrcFile(games: CatalogueEntry[], copiesMap: Record<string, JeuCopie[]> = {}): Blob {
+  const parts = games.map(g => buildRecord(g, copiesMap[g.ean] ?? []));
   const total = parts.reduce((s, p) => s + p.length, 0);
   const res = new Uint8Array(total);
   let off = 0; for (const p of parts) { res.set(p, off); off += p.length; }
@@ -542,7 +571,18 @@ function CataloguePageInner() {
     if (!selectedGames.length) return;
     setIsExporting(true);
     try {
-      const blob = buildMrcFile(selectedGames);
+      const eans = selectedGames.map(g => g.ean);
+      const { data: jeux } = await supabase
+        .from("jeux")
+        .select("ean, code_syracuse")
+        .in("ean", eans)
+        .not("code_syracuse", "is", null);
+      const copiesMap: Record<string, JeuCopie[]> = {};
+      for (const j of (jeux ?? [])) {
+        if (!copiesMap[j.ean]) copiesMap[j.ean] = [];
+        copiesMap[j.ean].push(j as JeuCopie);
+      }
+      const blob = buildMrcFile(selectedGames, copiesMap);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
