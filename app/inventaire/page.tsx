@@ -1180,7 +1180,7 @@ export default function InventairePage() {
         <Link href="/atelier" className="px-6 py-2.5 rounded-full hover:bg-white/10 transition">Atelier</Link>
         <Link href="/agenda" className="px-6 py-2.5 rounded-full hover:bg-white/10 transition">Agenda</Link>
         <Link href="/store" className="px-6 py-2.5 rounded-full hover:bg-white/10 transition">Store</Link>
-        <Link href="/export" className="px-6 py-2.5 rounded-full hover:bg-white/10 transition">Export</Link>
+        <Link href="/catalogage" className="px-6 py-2.5 rounded-full hover:bg-white/10 transition">Catalogage</Link>
         </nav>
         <div className="w-10"></div>
       </header>
@@ -1509,8 +1509,8 @@ export default function InventairePage() {
 
                         <div className="col-span-12 lg:col-span-1 flex justify-end gap-2">
                            {hasCopies ? (
-                             <button 
-                               onClick={(e) => { e.stopPropagation(); toggleGroupe(jeu.ean); }} 
+                             <button
+                               onClick={(e) => { e.stopPropagation(); toggleGroupe(jeu.ean); }}
                                className="text-slate-500 hover:bg-slate-200 bg-slate-100 px-3 py-1.5 rounded-lg font-bold text-xs transition-colors flex items-center justify-center min-w-[40px] shadow-sm"
                              >
                                {estDeplie ? '▲' : '▼'}
@@ -1518,6 +1518,12 @@ export default function InventairePage() {
                            ) : (
                              <button onClick={(e) => { e.stopPropagation(); ouvrirFicheJeu(jeu); }} className="text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg font-bold text-xs transition-colors opacity-0 group-hover:opacity-100">✏️</button>
                            )}
+                           <Link
+                             href={`/catalogage?ean=${jeu.ean}`}
+                             onClick={(e) => e.stopPropagation()}
+                             className="text-slate-600 bg-slate-100 hover:bg-[#baff29] hover:text-black px-3 py-1.5 rounded-lg font-bold text-xs transition-colors opacity-0 group-hover:opacity-100">
+                             📋
+                           </Link>
                         </div>
                       </div>
 

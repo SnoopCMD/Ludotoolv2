@@ -1,7 +1,8 @@
 "use client";
 import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { supabase } from "../../lib/supabase"; 
+import { supabase } from "../../lib/supabase";
 import { PDFDownloadLink } from "@react-pdf/renderer";
 import { ContenuPDF } from "../../components/ContenuPDF";
 
@@ -24,7 +25,8 @@ export type ContenuType = {
 };
 
 export default function ContenuPage() {
-  const [isClient, setIsClient] = useState(false); 
+  const searchParams = useSearchParams();
+  const [isClient, setIsClient] = useState(false);
 
   const [contenus, setContenus] = useState<Record<string, ContenuType[]>>({
     vert: [], rose: [], bleu: [], rouge: [], jaune: []
@@ -34,7 +36,7 @@ export default function ContenuPage() {
     vert: false, rose: false, bleu: false, rouge: false, jaune: false
   });
 
-  const [recherche, setRecherche] = useState("");
+  const [recherche, setRecherche] = useState(searchParams.get("nom") ?? "");
 
   useEffect(() => {
     setIsClient(true);
