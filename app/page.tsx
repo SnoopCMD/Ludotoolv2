@@ -2,6 +2,7 @@
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { supabase } from "../lib/supabase";
+import NavBar from "../components/NavBar";
 import {
   format, startOfWeek, endOfWeek, eachDayOfInterval,
   isToday, addWeeks, subWeeks, getISOWeek,
@@ -55,6 +56,9 @@ type Alerte = {
   statut: "active" | "resolue";
   created_at: string;
 };
+
+type JeuNote = { texte: string; rappel: boolean };
+type RappelItem = { jeu_id: string | number; nom: string; texte: string; code_syracuse?: string };
 
 // ─── Helpers planning ─────────────────────────────────────────────────────────
 
@@ -186,6 +190,7 @@ const ALERTE_STYLES: Record<string, { bg: string; border: string; badge: string;
 
 export default function AccueilPage() {
   const [alertes, setAlertes] = useState<Alerte[]>([]);
+  const [rappels, setRappels] = useState<RappelItem[]>([]);
   const [equipe, setEquipe] = useState<MembreEquipe[]>([]);
   const [evenements, setEvenements] = useState<Evenement[]>([]);
   const [nouveautes, setNouveautes] = useState<Nouveaute[]>([]);
@@ -193,7 +198,7 @@ export default function AccueilPage() {
   const [isLoading, setIsLoading] = useState(true);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [form, setForm] = useState({ titre: "", description: "", type: "info", jeu_nom: "" });
+  const [form, setForm] = useState({ titre: "", description: "", type: "info", jeu_nom: "", jeu_id: "" });
   const [isSaving, setIsSaving] = useState(false);
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [scanCode, setScanCode] = useState("");
@@ -212,13 +217,33 @@ export default function AccueilPage() {
   }, [semaineRef]);
 
   const chargerAlertes = async () => {
-    const { data } = await supabase
-      .from("alertes")
-      .select("*")
-      .eq("statut", "active")
-      .order("created_at", { ascending: false });
-    if (data) setAlertes(data as Alerte[]);
+    const [{ data: alertesData }, { data: rappelsData }] = await Promise.all([
+      supabase.from("alertes").select("*").eq("statut", "active").order("created_at", { ascending: false }),
+      supabase.from("jeux").select("id, nom, notes, code_syracuse").eq("notes_rappel", true),
+    ]);
+    if (alertesData) setAlertes(alertesData as Alerte[]);
+    const flat: RappelItem[] = [];
+    for (const r of (rappelsData ?? []) as any[]) {
+      for (const note of ((r.notes as JeuNote[]) || [])) {
+        if (note.rappel) flat.push({ jeu_id: r.id, nom: r.nom, texte: note.texte, code_syracuse: r.code_syracuse || undefined });
+      }
+    }
+    setRappels(flat);
     setIsLoading(false);
+  };
+
+  const resolveRappel = async (jeu_id: string | number, texte: string) => {
+    const { data } = await supabase.from("jeux").select("notes").eq("id", jeu_id).maybeSingle();
+    const current: JeuNote[] = (data?.notes as JeuNote[]) || [];
+    const idx = current.findIndex(n => n.rappel && n.texte === texte);
+    if (idx >= 0) {
+      const newNotes = current.filter((_, i) => i !== idx);
+      await supabase.from("jeux").update({ notes: newNotes, notes_rappel: newNotes.some(n => n.rappel) }).eq("id", jeu_id);
+    }
+    setRappels(prev => {
+      const i = prev.findIndex(r => r.jeu_id === jeu_id && r.texte === texte);
+      return i >= 0 ? prev.filter((_, j) => j !== i) : prev;
+    });
   };
 
   const chargerEquipe = async () => {
@@ -288,6 +313,7 @@ export default function AccueilPage() {
   const fermerModal = () => {
     setScanCode("");
     setScanError(null);
+    setForm({ titre: "", description: "", type: "info", jeu_nom: "", jeu_id: "" });
     setIsModalOpen(false);
   };
 
@@ -295,17 +321,16 @@ export default function AccueilPage() {
     const code = raw.trim();
     if (!code) return;
     setScanError(null);
-    // Formatage code Syracuse : numérique court → padding 8 chiffres
     const codeF = /^\d+$/.test(code) && code.length < 8 ? code.padStart(8, "0") : code;
     const { data } = await supabase
       .from("jeux")
-      .select("nom, code_syracuse")
+      .select("id, nom, code_syracuse")
       .or(`code_syracuse.eq.${codeF},ean.eq.${codeF}`)
       .limit(1)
       .maybeSingle();
     if (data?.nom) {
       const suffix = data.code_syracuse ? ` (${String(data.code_syracuse).slice(-4)})` : "";
-      setForm(f => ({ ...f, jeu_nom: data.nom + suffix, type: "jeu" }));
+      setForm(f => ({ ...f, jeu_nom: data.nom + suffix, type: "jeu", jeu_id: String(data.id) }));
       setScanCode("");
     } else {
       setScanError(`Aucun jeu trouvé pour le code « ${codeF} »`);
@@ -315,16 +340,29 @@ export default function AccueilPage() {
   const creerAlerte = async () => {
     if (!form.titre.trim()) return;
     setIsSaving(true);
-    const payload: Record<string, string> = {
-      titre: form.titre.trim(),
-      type: form.type,
-      statut: "active",
-    };
-    if (form.description.trim()) payload.description = form.description.trim();
-    if (form.jeu_nom.trim()) payload.jeu_nom = form.jeu_nom.trim();
-    const { data } = await supabase.from("alertes").insert([payload]).select().single();
-    if (data) setAlertes([data as Alerte, ...alertes]);
-    setForm({ titre: "", description: "", type: "info", jeu_nom: "" });
+
+    if (form.type === "jeu" && form.jeu_id) {
+      // Alerte liée à un exemplaire précis → note sur le jeu (rappel), pas dans alertes
+      const noteText = [form.titre.trim(), form.description.trim()].filter(Boolean).join("\n");
+      const { data: jeuData } = await supabase.from("jeux").select("notes").eq("id", form.jeu_id).maybeSingle();
+      const existing: JeuNote[] = (jeuData?.notes as JeuNote[]) || [];
+      const newNotes: JeuNote[] = [...existing, { texte: noteText, rappel: true }];
+      await supabase.from("jeux").update({ notes: newNotes, notes_rappel: true }).eq("id", form.jeu_id);
+      await chargerAlertes();
+    } else {
+      // Alerte générale (info, urgent, ou jeu sans exemplaire scanné)
+      const payload: Record<string, string> = {
+        titre: form.titre.trim(),
+        type: form.type,
+        statut: "active",
+      };
+      if (form.description.trim()) payload.description = form.description.trim();
+      if (form.jeu_nom.trim()) payload.jeu_nom = form.jeu_nom.trim();
+      const { data } = await supabase.from("alertes").insert([payload]).select().single();
+      if (data) setAlertes([data as Alerte, ...alertes]);
+    }
+
+    setForm({ titre: "", description: "", type: "info", jeu_nom: "", jeu_id: "" });
     setScanCode("");
     setScanError(null);
     setIsModalOpen(false);
@@ -436,14 +474,7 @@ export default function AccueilPage() {
       {/* ── Navigation ── */}
       <header className="flex justify-between items-center w-full max-w-[96%] mx-auto shrink-0 relative">
         <div className="w-10 h-10 bg-black rounded flex items-center justify-center text-white font-black text-xl italic">+</div>
-        <nav className="absolute left-1/2 -translate-x-1/2 bg-[#2d2d2d] text-white p-1.5 rounded-full flex items-center text-sm font-bold shadow-lg z-10 gap-1">
-          <Link href="/" className="px-6 py-2.5 rounded-full bg-[#baff29] text-black shadow-sm">Accueil</Link>
-          <Link href="/inventaire" className="px-6 py-2.5 rounded-full hover:bg-white/10 transition">Inventaire</Link>
-          <Link href="/atelier" className="px-6 py-2.5 rounded-full hover:bg-white/10 transition">Atelier</Link>
-          <Link href="/agenda" className="px-6 py-2.5 rounded-full hover:bg-white/10 transition">Agenda</Link>
-          <Link href="/store" className="px-6 py-2.5 rounded-full hover:bg-white/10 transition">Store</Link>
-          <Link href="/catalogage" className="px-6 py-2.5 rounded-full hover:bg-white/10 transition">Catalogage</Link>
-        </nav>
+        <NavBar current="accueil" />
         <div className="w-10" />
       </header>
 
@@ -698,69 +729,115 @@ export default function AccueilPage() {
 
           {/* ══ Alertes ═══════════════════════════════════════════════════════ */}
           <section className="w-full lg:w-[320px] shrink-0 flex flex-col gap-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-black text-black flex items-center gap-2">
-                Alertes
-                {alertes.length > 0 && (
-                  <span className="text-sm font-black bg-rose-500 text-white w-6 h-6 rounded-full flex items-center justify-center">
-                    {alertes.length}
-                  </span>
-                )}
-              </h2>
-              <button
-                onClick={ouvrirModal}
-                className="flex items-center gap-1.5 text-xs font-bold px-3 py-2 bg-black text-white rounded-xl hover:bg-slate-800 transition-colors"
-              >
-                + Nouvelle
-              </button>
-            </div>
-
-            <div className="flex flex-col gap-2 overflow-y-auto custom-scroll pr-1" style={{ maxHeight: "calc(100vh - 300px)" }}>
-              {isLoading ? (
-                <p className="text-slate-400 font-medium text-sm text-center py-8">Chargement…</p>
-              ) : alertes.length === 0 ? (
-                <div className="flex flex-col items-center justify-center gap-2 py-12 text-center">
-                  <span className="text-3xl">✅</span>
-                  <p className="font-bold text-slate-400 text-sm">Aucune alerte active</p>
-                </div>
-              ) : (
-                alertes.map(alerte => {
-                  const style = ALERTE_STYLES[alerte.type] ?? ALERTE_STYLES.info;
-                  const isResolving = resolvingId === alerte.id;
-                  return (
-                    <div
-                      key={alerte.id}
-                      className={`${style.bg} border ${style.border} rounded-2xl p-4 flex flex-col gap-2 animate-fade-in ${isResolving ? "animate-slide-out" : ""}`}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex items-center gap-2 flex-1 min-w-0 flex-wrap">
-                          <span className={`text-xs font-black px-2 py-0.5 rounded-full shrink-0 ${style.badge}`}>
-                            {style.icon} {style.label}
-                          </span>
-                          {alerte.jeu_nom && (
-                            <span className="text-xs font-bold text-slate-500 truncate">
-                              🎲 {alerte.jeu_nom}
-                            </span>
-                          )}
-                        </div>
-                        <button
-                          onClick={() => resoudreAlerte(alerte.id)}
-                          title="Marquer comme résolu"
-                          className="w-7 h-7 flex items-center justify-center rounded-full bg-white/80 hover:bg-white border border-slate-200 text-slate-500 hover:text-emerald-600 transition-colors shrink-0 text-sm"
-                        >✓</button>
-                      </div>
-                      <p className="font-bold text-sm text-black leading-snug">{alerte.titre}</p>
-                      {alerte.description && (
-                        <p className="text-xs text-slate-600 leading-relaxed">{alerte.description}</p>
+            {(() => {
+              const rotationAlertes = nouveautes.filter(j => j.date_sortie && new Date(j.date_sortie) <= new Date());
+              const totalCount = alertes.length + rappels.length + rotationAlertes.length;
+              const allEmpty = totalCount === 0;
+              return (
+                <>
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-lg font-black text-black flex items-center gap-2">
+                      Alertes
+                      {totalCount > 0 && (
+                        <span className="text-sm font-black bg-rose-500 text-white w-6 h-6 rounded-full flex items-center justify-center">
+                          {totalCount}
+                        </span>
                       )}
-                      <p className="text-[10px] text-slate-400 font-medium">
-                        {format(new Date(alerte.created_at), "d MMM yyyy", { locale: fr })}
-                      </p>
-                    </div>
-                  );
-                })
-              )}
-            </div>
+                    </h2>
+                    <button
+                      onClick={ouvrirModal}
+                      className="flex items-center gap-1.5 text-xs font-bold px-3 py-2 bg-black text-white rounded-xl hover:bg-slate-800 transition-colors"
+                    >
+                      + Nouvelle
+                    </button>
+                  </div>
+
+                  <div className="flex flex-col gap-2 overflow-y-auto custom-scroll pr-1" style={{ maxHeight: "calc(100vh - 300px)" }}>
+                    {isLoading ? (
+                      <p className="text-slate-400 font-medium text-sm text-center py-8">Chargement…</p>
+                    ) : allEmpty ? (
+                      <div className="flex flex-col items-center justify-center gap-2 py-12 text-center">
+                        <span className="text-3xl">✅</span>
+                        <p className="font-bold text-slate-400 text-sm">Aucune alerte active</p>
+                      </div>
+                    ) : (
+                      <>
+                        {alertes.map(alerte => {
+                          const style = ALERTE_STYLES[alerte.type] ?? ALERTE_STYLES.info;
+                          const isResolving = resolvingId === alerte.id;
+                          return (
+                            <div
+                              key={alerte.id}
+                              className={`${style.bg} border ${style.border} rounded-2xl p-4 flex flex-col gap-2 animate-fade-in ${isResolving ? "animate-slide-out" : ""}`}
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex items-center gap-2 flex-1 min-w-0 flex-wrap">
+                                  <span className={`text-xs font-black px-2 py-0.5 rounded-full shrink-0 ${style.badge}`}>
+                                    {style.icon} {style.label}
+                                  </span>
+                                  {alerte.jeu_nom && (
+                                    <span className="text-xs font-bold text-slate-500 truncate">
+                                      🎲 {alerte.jeu_nom}
+                                    </span>
+                                  )}
+                                </div>
+                                <button
+                                  onClick={() => resoudreAlerte(alerte.id)}
+                                  title="Marquer comme résolu"
+                                  className="w-7 h-7 flex items-center justify-center rounded-full bg-white/80 hover:bg-white border border-slate-200 text-slate-500 hover:text-emerald-600 transition-colors shrink-0 text-sm"
+                                >✓</button>
+                              </div>
+                              <p className="font-bold text-sm text-black leading-snug">{alerte.titre}</p>
+                              {alerte.description && (
+                                <p className="text-xs text-slate-600 leading-relaxed">{alerte.description}</p>
+                              )}
+                              <p className="text-[10px] text-slate-400 font-medium">
+                                {format(new Date(alerte.created_at), "d MMM yyyy", { locale: fr })}
+                              </p>
+                            </div>
+                          );
+                        })}
+
+                        {rotationAlertes.map(jeu => (
+                          <div key={`rot-${jeu.id}`} className="bg-rose-50 border border-rose-200 rounded-2xl p-4 flex flex-col gap-2">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-black px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 shrink-0">
+                                🔄 Rotation
+                              </span>
+                              <span className="text-xs font-bold text-slate-500 truncate">🎲 {jeu.nom}</span>
+                            </div>
+                            <p className="font-bold text-sm text-black leading-snug">Nouveauté à sortir</p>
+                            <p className="text-xs text-slate-600">
+                              Date de sortie dépassée : {jeu.date_sortie ? format(new Date(jeu.date_sortie), "d MMM yyyy", { locale: fr }) : ""}
+                            </p>
+                          </div>
+                        ))}
+
+                        {rappels.map((r, idx) => {
+                          const suffix = r.code_syracuse ? ` (${String(r.code_syracuse).slice(-4)})` : "";
+                          return (
+                            <div key={`rappel-${r.jeu_id}-${idx}`} className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex flex-col gap-2">
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex items-center gap-2 flex-1 min-w-0 flex-wrap">
+                                  <span className="text-xs font-black px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 shrink-0">🎲 Jeu</span>
+                                  <span className="text-xs font-bold text-slate-500 truncate">🎲 {r.nom}{suffix}</span>
+                                </div>
+                                <button
+                                  onClick={() => resolveRappel(r.jeu_id, r.texte)}
+                                  title="Marquer comme traité"
+                                  className="w-7 h-7 flex items-center justify-center rounded-full bg-white/80 hover:bg-white border border-slate-200 text-slate-500 hover:text-emerald-600 transition-colors shrink-0 text-sm"
+                                >✓</button>
+                              </div>
+                              <p className="font-bold text-sm text-black leading-snug">{r.texte}</p>
+                            </div>
+                          );
+                        })}
+                      </>
+                    )}
+                  </div>
+                </>
+              );
+            })()}
           </section>
         </div>
 

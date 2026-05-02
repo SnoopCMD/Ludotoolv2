@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { supabase } from "../../lib/supabase";
 import Link from "next/link";
+import NavBar from "../../components/NavBar";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -639,14 +640,7 @@ function CataloguePageInner() {
       {/* Nav */}
       <header className="flex justify-between items-center w-full max-w-[96%] mx-auto shrink-0 relative">
         <div className="w-10 h-10 bg-black rounded flex items-center justify-center text-white font-black text-xl italic">+</div>
-        <nav className="absolute left-1/2 -translate-x-1/2 bg-[#2d2d2d] text-white p-1.5 rounded-full flex items-center text-sm font-bold shadow-lg z-10 gap-1">
-          <Link href="/" className="px-6 py-2.5 rounded-full hover:bg-white/10 transition">Accueil</Link>
-          <Link href="/inventaire" className="px-6 py-2.5 rounded-full hover:bg-white/10 transition">Inventaire</Link>
-          <Link href="/atelier" className="px-6 py-2.5 rounded-full hover:bg-white/10 transition">Atelier</Link>
-          <Link href="/agenda" className="px-6 py-2.5 rounded-full hover:bg-white/10 transition">Agenda</Link>
-          <Link href="/store" className="px-6 py-2.5 rounded-full hover:bg-white/10 transition">Store</Link>
-          <Link href="/catalogage" className="px-6 py-2.5 rounded-full bg-[#baff29] text-black shadow-sm">Catalogage</Link>
-        </nav>
+        <NavBar current="catalogage" />
         <div className="w-10" />
       </header>
 

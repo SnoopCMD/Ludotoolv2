@@ -2,19 +2,26 @@
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { supabase } from "../../lib/supabase";
+import NavBar from "../../components/NavBar";
 import { format, addMonths, subMonths, addWeeks, subWeeks, startOfWeek, endOfWeek, eachDayOfInterval, startOfMonth, endOfMonth, isSameMonth, isToday, subDays, setMonth, setYear, getISOWeek, getYear } from "date-fns";
 import { fr } from "date-fns/locale";
 
-type MembreEquipe = { 
-  id: string; 
-  nom: string; 
-  role: string; 
-  heures_hebdo_base: number; 
-  groupe?: string; 
-  solde_conges?: number; 
+type AbsenceHS = { debut: string; fin: string; type: 'conge' | 'rtt' | 'recup' };
+
+type MembreEquipe = {
+  id: string;
+  nom: string;
+  role: string;
+  heures_hebdo_base: number;
+  groupe?: string;
+  solde_conges?: number;
   solde_rtt?: number;
   solde_recup?: number;
-  horaires: any; 
+  conges_pris_extra?: number;
+  rtt_pris_extra?: number;
+  recup_pris_extra?: number;
+  absences_hs?: AbsenceHS[];
+  horaires: any;
 };
 type Evenement = { id?: string; parent_id?: string; titre: string; type: string; date_debut: string; date_fin: string; heure_debut?: string; heure_fin?: string; membres: string[]; };
 
@@ -104,11 +111,27 @@ const getEventIcon = (type: string) => {
   if (type.includes('RTT')) return '🌴';
   if (type.includes('Récupération')) return '🛋️';
   if (type === 'Réunion') return '💬';
-  if (type === 'Animation') return '🎪'; 
+  if (type === 'Animation') return '🎪';
   if (type === 'Soirée Jeux') return '🌙';
   if (type === 'Heures Exceptionnelles') return '⭐';
   return '📌';
 };
+
+function isJourTravaille(membre: MembreEquipe, dateStr: string, feries: Record<string, string>): boolean {
+  if (feries[dateStr]) return false;
+  const d = new Date(dateStr + 'T12:00:00');
+  const nomJour = format(d, 'EEEE', { locale: fr }).toLowerCase();
+  const typeSemaine = getISOWeek(d) % 2 !== 0 ? 'semaineA' : 'semaineB';
+  const h = membre.horaires?.[typeSemaine]?.[nomJour];
+  return !!(h && h.debut && h.fin);
+}
+
+function compterJoursTravailles(debut: string, fin: string, membre: MembreEquipe, feries: Record<string, string>): number {
+  try {
+    const days = eachDayOfInterval({ start: new Date(debut + 'T12:00:00'), end: new Date(fin + 'T12:00:00') });
+    return days.filter(d => isJourTravaille(membre, format(d, 'yyyy-MM-dd'), feries)).length;
+  } catch { return 0; }
+}
 
 const getHoraireForDay = (membre: MembreEquipe, dateKey: string, nomJour: string, typeSemaine: string) => {
   if (membre.horaires?.exceptions?.[dateKey]) {
@@ -263,6 +286,7 @@ useEffect(() => {
   // NOUVEAU: Modification de rep.interval et rep.period
   const [rep, setRep] = useState({ active: false, interval: 1, period: 'weeks', date_limite: format(addMonths(new Date(), 1), 'yyyy-MM-dd'), rotation: false });
   const [quickEditEv, setQuickEditEv] = useState<Evenement | null>(null);
+  const [newAbsHS, setNewAbsHS] = useState<AbsenceHS | null>(null);
 
   const isAbsenceType = ABSENCE_TYPES.includes(nouvelEvent.type);
   const mainTypeUI = isAbsenceType ? 'Absence' : (['Réunion', 'Animation', 'Soirée Jeux', 'Heures Exceptionnelles'].includes(nouvelEvent.type) ? nouvelEvent.type : 'Autre');
@@ -412,7 +436,7 @@ useEffect(() => {
 
   const sauvegarderMembre = async () => {
     if (!membreActif || !membreActif.nom) return;
-    const payload = { nom: membreActif.nom, role: membreActif.role, groupe: membreActif.groupe, heures_hebdo_base: membreActif.heures_hebdo_base, solde_conges: membreActif.solde_conges, solde_rtt: membreActif.solde_rtt, solde_recup: membreActif.solde_recup, horaires: membreActif.horaires };
+    const payload = { nom: membreActif.nom, role: membreActif.role, groupe: membreActif.groupe, heures_hebdo_base: membreActif.heures_hebdo_base, solde_conges: membreActif.solde_conges, solde_rtt: membreActif.solde_rtt, solde_recup: membreActif.solde_recup, absences_hs: membreActif.absences_hs ?? [], horaires: membreActif.horaires };
     if (isDraftMode) {
       const idx = draftEquipe.findIndex(e => e.id === membreActif.id);
       if (idx >= 0) draftEquipe[idx] = membreActif;
@@ -428,12 +452,19 @@ useEffect(() => {
 
   const sauvegarderSoldes = async () => {
     if (!membreActif) return;
-    await supabase.from('equipe').update({
-      solde_conges: membreActif.solde_conges ?? null,
-      solde_rtt: membreActif.solde_rtt ?? null,
-      solde_recup: membreActif.solde_recup ?? null,
-    }).eq('id', membreActif.id);
-    setEquipe(eq => eq.map(m => m.id === membreActif.id ? { ...m, solde_conges: membreActif.solde_conges, solde_rtt: membreActif.solde_rtt, solde_recup: membreActif.solde_recup } : m));
+    const patch = {
+      solde_conges: membreActif.solde_conges ?? 25,
+      solde_rtt: membreActif.solde_rtt ?? 0,
+      solde_recup: membreActif.solde_recup ?? 0,
+      absences_hs: membreActif.absences_hs ?? [],
+    };
+    if (isDraftMode) {
+      setDraftEquipe(prev => prev.map(m => m.id === membreActif.id ? { ...m, ...patch } : m));
+      return;
+    }
+    const { error } = await supabase.from('equipe').update(patch).eq('id', membreActif.id);
+    if (error) { alert('Erreur sauvegarde soldes : ' + error.message); return; }
+    chargerEquipe();
   };
 
   const sauvegarderQuickEdit = async () => {
@@ -873,14 +904,12 @@ useEffect(() => {
     activeEvenements.forEach(ev => {
       if (getYear(new Date(ev.date_debut)) === currentYear && (!ev.membres.length || ev.membres.includes(membreActif.id))) {
         if (ev.type.includes('Congé')) {
-          const days = eachDayOfInterval({start: new Date(ev.date_debut), end: new Date(ev.date_fin)});
           const factor = ev.type.startsWith('Demi-') ? 0.5 : 1;
-          congesPrisJours += days.filter(d => format(d, 'EEEE', {locale: fr}) !== 'dimanche').length * factor; 
+          congesPrisJours += compterJoursTravailles(ev.date_debut, ev.date_fin, membreActif, joursFeries) * factor;
         }
         if (ev.type.includes('RTT')) {
-          const days = eachDayOfInterval({start: new Date(ev.date_debut), end: new Date(ev.date_fin)});
           const factor = ev.type.startsWith('Demi-') ? 0.5 : 1;
-          rttPrisJours += days.filter(d => format(d, 'EEEE', {locale: fr}) !== 'dimanche').length * factor; 
+          rttPrisJours += compterJoursTravailles(ev.date_debut, ev.date_fin, membreActif, joursFeries) * factor;
         }
         if (ev.type.includes('Récupération')) {
           if (ev.heure_debut && ev.heure_fin) recupPriseHeures += (timeToMins(ev.heure_fin, true) - timeToMins(ev.heure_debut)) / 60;
@@ -888,6 +917,14 @@ useEffect(() => {
         }
       }
     });
+
+    // Absences hors système (périodes datées)
+    for (const ab of (membreActif.absences_hs ?? [])) {
+      const jours = compterJoursTravailles(ab.debut, ab.fin, membreActif, joursFeries);
+      if (ab.type === 'conge') congesPrisJours += jours;
+      else if (ab.type === 'rtt') rttPrisJours += jours;
+      else recupPriseHeures += jours * (membreActif.heures_hebdo_base / 5);
+    }
 
     const joursMois = eachDayOfInterval({ start: startOfMonth(dateActuelle), end: endOfMonth(dateActuelle) });
     let totalExpectedMois = 0;
@@ -1007,14 +1044,7 @@ useEffect(() => {
 
       <header className="flex justify-between items-center mb-6 relative w-full max-w-[96%] mx-auto shrink-0">
         <div className="w-10 h-10 bg-black rounded flex items-center justify-center text-white font-black text-xl italic">+</div>
-        <nav className="absolute left-1/2 transform -translate-x-1/2 bg-[#2d2d2d] text-white p-1.5 rounded-full flex items-center text-sm font-bold shadow-lg z-10 gap-1">
-          <Link href="/" className="px-6 py-2.5 rounded-full hover:bg-white/10 transition">Accueil</Link>
-          <Link href="/inventaire" className="px-6 py-2.5 rounded-full hover:bg-white/10 transition">Inventaire</Link>
-          <Link href="/atelier" className="px-6 py-2.5 rounded-full hover:bg-white/10 transition">Atelier</Link>
-          <Link href="/agenda" className="px-6 py-2.5 rounded-full text-black shadow-sm" style={{ backgroundColor: couleurs.accent }}>Agenda</Link>
-          <Link href="/store" className="px-6 py-2.5 rounded-full hover:bg-white/10 transition">Store</Link>
-          <Link href="/catalogage" className="px-6 py-2.5 rounded-full hover:bg-white/10 transition">Catalogage</Link>
-        </nav>
+        <NavBar current="agenda" />
         <div className="w-10"></div>
       </header>
 
@@ -1548,31 +1578,109 @@ useEffect(() => {
                                 <span className="text-[9px] font-bold text-slate-400 mt-1">({statsPerso.recupPriseHeures}h prises)</span>
                               </div>
                             </div>
-                            <div className="border-t border-slate-200 pt-4">
-                              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Ajuster les soldes initiaux</p>
-                              <div className="grid grid-cols-3 gap-2">
-                                <div>
-                                  <label className="text-[9px] font-bold text-slate-400 uppercase">Congés (jrs)</label>
-                                  <input type="number" step="0.5" value={membreActif.solde_conges ?? 25}
-                                    onChange={e => setMembreActif({...membreActif, solde_conges: parseFloat(e.target.value)})}
-                                    className="w-full mt-0.5 p-2 rounded-lg border-2 border-slate-200 font-bold text-sm outline-none focus:border-black text-center" />
-                                </div>
-                                <div>
-                                  <label className="text-[9px] font-bold text-slate-400 uppercase">RTT (jrs)</label>
-                                  <input type="number" step="0.5" value={membreActif.solde_rtt ?? 0}
-                                    onChange={e => setMembreActif({...membreActif, solde_rtt: parseFloat(e.target.value)})}
-                                    className="w-full mt-0.5 p-2 rounded-lg border-2 border-slate-200 font-bold text-sm outline-none focus:border-black text-center" />
-                                </div>
-                                <div>
-                                  <label className="text-[9px] font-bold text-slate-400 uppercase">Récup (h)</label>
-                                  <input type="number" step="0.5" value={membreActif.solde_recup ?? 0}
-                                    onChange={e => setMembreActif({...membreActif, solde_recup: parseFloat(e.target.value)})}
-                                    className="w-full mt-0.5 p-2 rounded-lg border-2 border-slate-200 font-bold text-sm outline-none focus:border-black text-center" />
+                            <div className="border-t border-slate-200 pt-4 flex flex-col gap-4">
+                              <div>
+                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Soldes initiaux</p>
+                                <div className="grid grid-cols-3 gap-2">
+                                  <div>
+                                    <label className="text-[9px] font-bold text-slate-400 uppercase">Congés (jrs)</label>
+                                    <input type="number" step="0.5" value={membreActif.solde_conges ?? 25}
+                                      onChange={e => setMembreActif({...membreActif, solde_conges: parseFloat(e.target.value) || 0})}
+                                      className="w-full mt-0.5 p-2 rounded-lg border-2 border-slate-200 font-bold text-sm outline-none focus:border-black text-center" />
+                                  </div>
+                                  <div>
+                                    <label className="text-[9px] font-bold text-slate-400 uppercase">RTT (jrs)</label>
+                                    <input type="number" step="0.5" value={membreActif.solde_rtt ?? 0}
+                                      onChange={e => setMembreActif({...membreActif, solde_rtt: parseFloat(e.target.value) || 0})}
+                                      className="w-full mt-0.5 p-2 rounded-lg border-2 border-slate-200 font-bold text-sm outline-none focus:border-black text-center" />
+                                  </div>
+                                  <div>
+                                    <label className="text-[9px] font-bold text-slate-400 uppercase">Récup (h)</label>
+                                    <input type="number" step="0.5" value={membreActif.solde_recup ?? 0}
+                                      onChange={e => setMembreActif({...membreActif, solde_recup: parseFloat(e.target.value) || 0})}
+                                      className="w-full mt-0.5 p-2 rounded-lg border-2 border-slate-200 font-bold text-sm outline-none focus:border-black text-center" />
+                                  </div>
                                 </div>
                               </div>
+                              <div>
+                                <div className="flex items-center justify-between mb-2">
+                                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Périodes hors système</p>
+                                  {!newAbsHS && (
+                                    <button onClick={() => setNewAbsHS({ debut: format(new Date(), 'yyyy-MM-dd'), fin: format(new Date(), 'yyyy-MM-dd'), type: 'conge' })}
+                                      className="text-[9px] font-black px-2 py-1 bg-black text-white rounded-lg hover:bg-slate-700 transition-colors">
+                                      + Ajouter
+                                    </button>
+                                  )}
+                                </div>
+                                {/* Liste des périodes */}
+                                <div className="flex flex-col gap-1.5 mb-2">
+                                  {(membreActif.absences_hs ?? []).length === 0 && !newAbsHS && (
+                                    <p className="text-[10px] text-slate-400 italic py-1">Aucune période saisie</p>
+                                  )}
+                                  {(membreActif.absences_hs ?? []).map((ab, idx) => {
+                                    const jours = compterJoursTravailles(ab.debut, ab.fin, membreActif, joursFeries);
+                                    const label = ab.type === 'conge' ? 'Congé' : ab.type === 'rtt' ? 'RTT' : 'Récup';
+                                    const color = ab.type === 'rtt' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : ab.type === 'recup' ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-rose-50 border-rose-200 text-rose-700';
+                                    return (
+                                      <div key={idx} className={`flex items-center justify-between px-3 py-2 rounded-xl border text-[10px] font-bold ${color}`}>
+                                        <span>{label} · {format(new Date(ab.debut + 'T12:00:00'), 'dd/MM')} – {format(new Date(ab.fin + 'T12:00:00'), 'dd/MM/yy')}</span>
+                                        <span className="flex items-center gap-2">
+                                          <span className="opacity-70">{jours} j{ab.type === 'recup' ? ` × ${(membreActif.heures_hebdo_base/5).toFixed(1)}h` : ''}</span>
+                                          <button onClick={() => setMembreActif({...membreActif, absences_hs: (membreActif.absences_hs ?? []).filter((_, i) => i !== idx)})}
+                                            className="w-4 h-4 rounded-full bg-white/60 hover:bg-white flex items-center justify-center opacity-80 hover:opacity-100">✕</button>
+                                        </span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                                {/* Formulaire d'ajout */}
+                                {newAbsHS && (
+                                  <div className="bg-slate-50 border-2 border-slate-200 rounded-xl p-3 flex flex-col gap-2">
+                                    <div className="flex gap-1.5">
+                                      {(['conge', 'rtt', 'recup'] as const).map(t => (
+                                        <button key={t}
+                                          onClick={() => setNewAbsHS({...newAbsHS, type: t})}
+                                          className={`flex-1 py-1.5 rounded-lg font-bold text-[10px] border-2 transition-colors ${newAbsHS.type === t ? 'bg-black text-white border-black' : 'bg-white text-slate-500 border-slate-200'}`}>
+                                          {t === 'conge' ? '🏖️ Congé' : t === 'rtt' ? '🌴 RTT' : '🛋️ Récup'}
+                                        </button>
+                                      ))}
+                                    </div>
+                                    <div className="flex gap-2">
+                                      <div className="flex-1">
+                                        <label className="text-[9px] font-bold text-slate-400 uppercase">Début</label>
+                                        <input type="date" value={newAbsHS.debut}
+                                          onChange={e => setNewAbsHS({...newAbsHS, debut: e.target.value, fin: e.target.value > newAbsHS.fin ? e.target.value : newAbsHS.fin})}
+                                          className="w-full mt-0.5 p-2 rounded-lg border-2 border-slate-200 font-bold text-xs outline-none focus:border-black" />
+                                      </div>
+                                      <div className="flex-1">
+                                        <label className="text-[9px] font-bold text-slate-400 uppercase">Fin</label>
+                                        <input type="date" value={newAbsHS.fin} min={newAbsHS.debut}
+                                          onChange={e => setNewAbsHS({...newAbsHS, fin: e.target.value})}
+                                          className="w-full mt-0.5 p-2 rounded-lg border-2 border-slate-200 font-bold text-xs outline-none focus:border-black" />
+                                      </div>
+                                    </div>
+                                    <div className="text-[10px] font-bold text-slate-500 text-center">
+                                      {compterJoursTravailles(newAbsHS.debut, newAbsHS.fin, membreActif, joursFeries)} jour(s) travaillé(s) dans la période
+                                    </div>
+                                    <div className="flex gap-2">
+                                      <button onClick={() => setNewAbsHS(null)}
+                                        className="flex-1 py-1.5 rounded-lg bg-slate-200 text-slate-600 font-bold text-xs hover:bg-slate-300 transition-colors">
+                                        Annuler
+                                      </button>
+                                      <button onClick={() => {
+                                        setMembreActif({...membreActif, absences_hs: [...(membreActif.absences_hs ?? []), newAbsHS]});
+                                        setNewAbsHS(null);
+                                      }}
+                                        className="flex-1 py-1.5 rounded-lg bg-black text-white font-bold text-xs hover:bg-slate-800 transition-colors">
+                                        Ajouter
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
                               <button onClick={sauvegarderSoldes}
-                                className="w-full mt-3 py-2 rounded-xl bg-black text-white font-black text-xs hover:bg-slate-800 transition-colors">
-                                Enregistrer les soldes
+                                className="w-full py-2 rounded-xl bg-black text-white font-black text-xs hover:bg-slate-800 transition-colors">
+                                Enregistrer
                               </button>
                             </div>
                           </div>

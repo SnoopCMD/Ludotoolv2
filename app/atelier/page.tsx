@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "../../lib/supabase"; 
 import Link from "next/link";
+import NavBar from "../../components/NavBar";
 
 const BarcodeIcon = () => (
   <svg width="22" height="16" viewBox="0 0 24 18" fill="none" stroke="black" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="mr-1.5 opacity-80">
@@ -372,14 +373,7 @@ export default function Home() {
       
       <header className="flex justify-between items-center mb-6 relative w-full max-w-[96%] mx-auto shrink-0">
         <div className="w-10 h-10 bg-black rounded flex items-center justify-center text-white font-black text-xl italic cursor-pointer">+</div>
-        <nav className="absolute left-1/2 transform -translate-x-1/2 bg-[#2d2d2d] text-white p-1.5 rounded-full flex items-center text-sm font-bold shadow-lg z-10 gap-1">
-        <Link href="/" className="px-6 py-2.5 rounded-full hover:bg-white/10 transition">Accueil</Link>
-        <Link href="/inventaire" className="px-6 py-2.5 rounded-full hover:bg-white/10 transition">Inventaire</Link>
-        <Link href="/atelier" className="px-6 py-2.5 rounded-full bg-[#baff29] text-black shadow-sm">Atelier</Link>
-        <Link href="/agenda" className="px-6 py-2.5 rounded-full hover:bg-white/10 transition">Agenda</Link>
-        <Link href="/store" className="px-6 py-2.5 rounded-full hover:bg-white/10 transition">Store</Link>
-        <Link href="/catalogage" className="px-6 py-2.5 rounded-full hover:bg-white/10 transition">Catalogage</Link>
-        </nav>
+        <NavBar current="atelier" />
         <div className="w-10"></div>
       </header>
 

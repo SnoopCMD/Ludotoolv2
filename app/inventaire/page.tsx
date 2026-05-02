@@ -1,7 +1,10 @@
 "use client";
 import { useState, useEffect, useMemo, useRef } from "react";
-import { supabase } from "../../lib/supabase"; 
+import { supabase } from "../../lib/supabase";
 import Link from "next/link";
+import NavBar from "../../components/NavBar";
+
+type JeuNote = { texte: string; rappel: boolean };
 
 type JeuType = {
   id: string | number;
@@ -26,6 +29,8 @@ type JeuType = {
   image_url?: string;
   date_entree?: string | null;
   date_sortie?: string | null;
+  notes?: JeuNote[] | null;
+  notes_rappel?: boolean;
 };
 
 type SelectionThematique = {
@@ -34,6 +39,16 @@ type SelectionThematique = {
   is_permanent: boolean;
   date_fin: string | null;
   jeux: JeuType[];
+};
+
+type Alerte = {
+  id: string;
+  titre: string;
+  description: string | null;
+  type: "urgent" | "info" | "jeu";
+  jeu_nom: string | null;
+  statut: "active" | "resolue";
+  created_at: string;
 };
 
 type FicheJeuData = JeuType & {
@@ -346,6 +361,9 @@ export default function InventairePage() {
   const [isLoadingFiche, setIsLoadingFiche] = useState(false);
   const [isEditingFiche, setIsEditingFiche] = useState(false);
   const [editedFiche, setEditedFiche] = useState<FicheJeuData | null>(null);
+  const [ficheAlertes, setFicheAlertes] = useState<Alerte[]>([]);
+  const [newNoteText, setNewNoteText] = useState("");
+  const [newNoteRappel, setNewNoteRappel] = useState(false);
 
   const [groupesDeplies, setGroupesDeplies] = useState<Record<string, boolean>>({});
 
@@ -379,7 +397,7 @@ export default function InventairePage() {
     setIsLoading(true);
     const { data: jeuxData, error: jeuxError } = await supabase
       .from('jeux')
-      .select('id, nom, ean, code_syracuse, statut, is_double, etape_nouveaute, date_entree, date_sortie, etape_plastifier, etape_contenu, etape_etiquette, etape_equiper, etape_encoder, etape_notice')
+      .select('id, nom, ean, code_syracuse, statut, is_double, etape_nouveaute, date_entree, date_sortie, etape_plastifier, etape_contenu, etape_etiquette, etape_equiper, etape_encoder, etape_notice, notes, notes_rappel')
       .order('id', { ascending: false });
 
     const { count: countRep } = await supabase.from('reparations').select('*', { count: 'exact', head: true }).eq('statut', 'À faire');
@@ -1080,17 +1098,24 @@ export default function InventairePage() {
   const ouvrirFicheJeu = async (jeu: JeuType) => {
     setIsLoadingFiche(true);
     setIsEditingFiche(false);
+    setFicheAlertes([]);
+    setNewNoteText("");
+    setNewNoteRappel(false);
 
     const copies = jeux.filter(j => j.ean === jeu.ean).sort((a, b) => Number(a.id) - Number(b.id));
     const activeIndex = copies.findIndex(c => c.id === jeu.id);
 
-    setFicheJeu({ ...jeu, copies, activeCopyIndex: activeIndex >= 0 ? activeIndex : 0 }); 
-    
-    try {
-      const { data: catData } = await supabase.from('catalogue').select('*').eq('ean', jeu.ean).maybeSingle();
-      const { data: manqData } = await supabase.from('pieces_manquantes').select('*').eq('ean', jeu.ean).order('id', { ascending: false });
-      const { data: repData } = await supabase.from('reparations').select('*').eq('nom_jeu', jeu.nom).order('id', { ascending: false });
+    setFicheJeu({ ...jeu, copies, activeCopyIndex: activeIndex >= 0 ? activeIndex : 0 });
 
+    try {
+      const [{ data: catData }, { data: manqData }, { data: repData }, { data: alertesData }] = await Promise.all([
+        supabase.from('catalogue').select('*').eq('ean', jeu.ean).maybeSingle(),
+        supabase.from('pieces_manquantes').select('*').eq('ean', jeu.ean).order('id', { ascending: false }),
+        supabase.from('reparations').select('*').eq('nom_jeu', jeu.nom).order('id', { ascending: false }),
+        supabase.from('alertes').select('*').eq('jeu_nom', jeu.nom).eq('statut', 'active').order('created_at', { ascending: false }),
+      ]);
+
+      setFicheAlertes((alertesData as Alerte[]) || []);
       setFicheJeu(prev => {
         if (!prev) return null;
         return {
@@ -1102,7 +1127,7 @@ export default function InventairePage() {
           auteurs: catData?.auteurs || "",
           editeur: catData?.editeur || "",
           description: catData?.description || "",
-          pdf_url: catData?.pdf_url || ""
+          pdf_url: catData?.pdf_url || "",
         };
       });
     } catch (error) {
@@ -1189,16 +1214,42 @@ export default function InventairePage() {
     fetchInventaire();
   };
 
+  const supprimerNote = async (index: number) => {
+    if (!ficheJeu) return;
+    const activeCopy = ficheJeu.copies[ficheJeu.activeCopyIndex];
+    const current: JeuNote[] = (activeCopy?.notes as JeuNote[]) || [];
+    const newNotes = current.filter((_, i) => i !== index);
+    const newRappel = newNotes.some(n => n.rappel);
+    await supabase.from('jeux').update({ notes: newNotes, notes_rappel: newRappel }).eq('id', activeCopy.id);
+    const newCopies = ficheJeu.copies.map((c, i) =>
+      i === ficheJeu.activeCopyIndex ? { ...c, notes: newNotes, notes_rappel: newRappel } : c
+    );
+    setFicheJeu({ ...ficheJeu, notes: newNotes, notes_rappel: newRappel, copies: newCopies });
+  };
+
+  const ajouterNote = async (texte: string, rappel: boolean) => {
+    if (!ficheJeu || !texte.trim()) return;
+    const activeCopy = ficheJeu.copies[ficheJeu.activeCopyIndex];
+    const current: JeuNote[] = (activeCopy?.notes as JeuNote[]) || [];
+    const newNotes = [...current, { texte: texte.trim(), rappel }];
+    const newRappel = newNotes.some(n => n.rappel);
+    await supabase.from('jeux').update({ notes: newNotes, notes_rappel: newRappel }).eq('id', activeCopy.id);
+    const newCopies = ficheJeu.copies.map((c, i) =>
+      i === ficheJeu.activeCopyIndex ? { ...c, notes: newNotes, notes_rappel: newRappel } : c
+    );
+    setFicheJeu({ ...ficheJeu, notes: newNotes, notes_rappel: newRappel, copies: newCopies });
+  };
+
   const sauvegarderFicheJeu = async () => {
     if (!editedFiche) return;
 
     const { error: errJeux } = await supabase.from('jeux').update({
-      nom: editedFiche.nom, 
+      nom: editedFiche.nom,
       ean: editedFiche.ean,
       code_syracuse: editedFiche.code_syracuse || null,
       statut: editedFiche.statut,
       is_double: editedFiche.is_double,
-      etape_nouveaute: editedFiche.etape_nouveaute
+      etape_nouveaute: editedFiche.etape_nouveaute,
     }).eq('id', editedFiche.id);
 
     const catalogueData = {
@@ -1214,7 +1265,7 @@ export default function InventairePage() {
       auteurs: editedFiche.auteurs || null,
       editeur: editedFiche.editeur || null,
       description: editedFiche.description || null,
-      pdf_url: editedFiche.pdf_url || null
+      pdf_url: editedFiche.pdf_url || null,
     };
 
     const { data: existingCat } = await supabase.from('catalogue').select('ean').eq('ean', editedFiche.ean).maybeSingle();
@@ -1257,14 +1308,7 @@ export default function InventairePage() {
       
       <header className="flex justify-between items-center mb-6 relative w-full max-w-[96%] mx-auto shrink-0">
         <div className="w-10 h-10 bg-black rounded flex items-center justify-center text-white font-black text-xl italic cursor-pointer">+</div>
-        <nav className="absolute left-1/2 transform -translate-x-1/2 bg-[#2d2d2d] text-white p-1.5 rounded-full flex items-center text-sm font-bold shadow-lg z-10 gap-1">
-        <Link href="/" className="px-6 py-2.5 rounded-full hover:bg-white/10 transition">Accueil</Link>
-        <Link href="/inventaire" className="px-6 py-2.5 rounded-full bg-[#baff29] text-black shadow-sm">Inventaire</Link>
-        <Link href="/atelier" className="px-6 py-2.5 rounded-full hover:bg-white/10 transition">Atelier</Link>
-        <Link href="/agenda" className="px-6 py-2.5 rounded-full hover:bg-white/10 transition">Agenda</Link>
-        <Link href="/store" className="px-6 py-2.5 rounded-full hover:bg-white/10 transition">Store</Link>
-        <Link href="/catalogage" className="px-6 py-2.5 rounded-full hover:bg-white/10 transition">Catalogage</Link>
-        </nav>
+        <NavBar current="inventaire" />
         <div className="w-10"></div>
       </header>
 
@@ -1527,6 +1571,7 @@ export default function InventairePage() {
                   const couleurObj = COULEURS.find(c => c.id === jeu.couleur);
                   const estDeplie = groupesDeplies[jeu.ean];
                   const hasCopies = groupe.length > 1;
+                  const hasNotes = groupe.some(j => j.notes && (j.notes as any[]).length > 0);
 
                   return (
                     <div key={jeu.ean} className="mb-3 bg-white rounded-2xl border shadow-sm hover:shadow-md transition-all border-slate-100 overflow-hidden">
@@ -1550,6 +1595,9 @@ export default function InventairePage() {
                                 <span className="bg-slate-100 text-slate-500 text-[10px] font-black px-2 py-0.5 rounded-md border border-slate-200 shrink-0">
                                   {groupe.length} EX
                                 </span>
+                              )}
+                              {hasNotes && (
+                                <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" title="Commentaires sur cet exemplaire" />
                               )}
                             </div>
                           </div>
@@ -2693,7 +2741,73 @@ export default function InventairePage() {
                       </p>
                     )}
                   </div>
+
+                  <div className="mt-6">
+                    {(() => {
+                      const activeCopy = ficheJeu.copies[ficheJeu.activeCopyIndex];
+                      const notes: JeuNote[] = (activeCopy?.notes as JeuNote[]) || [];
+                      return (
+                        <>
+                          <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2">Commentaires internes</span>
+                          <div className="flex flex-col gap-2">
+                            {notes.length > 0 ? notes.map((note, i) => (
+                              <div key={i} className={`flex items-center justify-between gap-2 px-3 py-2 rounded-xl border text-sm ${note.rappel ? "bg-amber-50 border-amber-200" : "bg-slate-50 border-slate-200"}`}>
+                                <div className="flex items-center gap-2 flex-1 min-w-0">
+                                  {note.rappel && <span className="text-amber-500 shrink-0 text-xs">🔔</span>}
+                                  <span className="text-slate-700 font-medium truncate">{note.texte}</span>
+                                </div>
+                                <button onClick={() => supprimerNote(i)} className="w-5 h-5 flex items-center justify-center rounded-full hover:bg-rose-100 text-slate-300 hover:text-rose-500 transition-colors shrink-0 text-xs">✕</button>
+                              </div>
+                            )) : (
+                              <p className="text-slate-400 text-sm italic">Aucun commentaire.</p>
+                            )}
+                          </div>
+                          <div className="flex gap-2 mt-3">
+                            <input
+                              type="text"
+                              value={newNoteText}
+                              onChange={e => setNewNoteText(e.target.value)}
+                              onKeyDown={e => { if (e.key === 'Enter' && newNoteText.trim()) { ajouterNote(newNoteText, newNoteRappel); setNewNoteText(""); setNewNoteRappel(false); } }}
+                              placeholder="Ajouter un commentaire…"
+                              className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-black transition-colors"
+                            />
+                            <button
+                              onClick={() => setNewNoteRappel(r => !r)}
+                              title="Afficher sur l'accueil"
+                              className={`w-9 h-9 shrink-0 flex items-center justify-center rounded-xl border text-sm transition-colors ${newNoteRappel ? "bg-amber-100 border-amber-300 text-amber-600" : "bg-slate-100 border-slate-200 text-slate-400 hover:bg-slate-200"}`}
+                            >🔔</button>
+                            <button
+                              onClick={() => { if (newNoteText.trim()) { ajouterNote(newNoteText, newNoteRappel); setNewNoteText(""); setNewNoteRappel(false); } }}
+                              className="px-3 py-2 bg-black text-white text-xs font-bold rounded-xl hover:bg-slate-800 transition-colors shrink-0"
+                            >+ Ajouter</button>
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </div>
                 </div>
+
+                {ficheAlertes.length > 0 && (
+                  <div className="bg-amber-50 rounded-[2rem] p-6 md:p-8 border-2 border-amber-200 shadow-sm">
+                    <h3 className="text-lg font-black text-amber-800 mb-4 flex items-center gap-2">
+                      🚨 Alertes actives sur ce jeu
+                      <span className="text-sm font-black bg-amber-200 text-amber-800 w-6 h-6 rounded-full flex items-center justify-center">{ficheAlertes.length}</span>
+                    </h3>
+                    <div className="flex flex-col gap-2">
+                      {ficheAlertes.map(alerte => (
+                        <div key={alerte.id} className="bg-white rounded-xl p-3 border border-amber-200 flex flex-col gap-1">
+                          <div className="flex items-center gap-2">
+                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${alerte.type === 'urgent' ? 'bg-rose-100 text-rose-700' : alerte.type === 'jeu' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>
+                              {alerte.type === 'urgent' ? '🚨 Urgent' : alerte.type === 'jeu' ? '🎲 Jeu' : '💡 Info'}
+                            </span>
+                          </div>
+                          <p className="font-bold text-sm text-slate-800">{alerte.titre}</p>
+                          {alerte.description && <p className="text-xs text-slate-500">{alerte.description}</p>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <div className="bg-white rounded-[2rem] p-6 md:p-8 border-2 border-slate-100 shadow-sm flex flex-col max-h-[350px]">
                   <div className="flex justify-between items-center mb-4 shrink-0">
