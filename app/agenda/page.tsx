@@ -262,6 +262,7 @@ useEffect(() => {
 
   // NOUVEAU: Modification de rep.interval et rep.period
   const [rep, setRep] = useState({ active: false, interval: 1, period: 'weeks', date_limite: format(addMonths(new Date(), 1), 'yyyy-MM-dd'), rotation: false });
+  const [quickEditEv, setQuickEditEv] = useState<Evenement | null>(null);
 
   const isAbsenceType = ABSENCE_TYPES.includes(nouvelEvent.type);
   const mainTypeUI = isAbsenceType ? 'Absence' : (['Réunion', 'Animation', 'Soirée Jeux', 'Heures Exceptionnelles'].includes(nouvelEvent.type) ? nouvelEvent.type : 'Autre');
@@ -423,6 +424,28 @@ useEffect(() => {
       setMembreActif(null);
       chargerEquipe();
     }
+  };
+
+  const sauvegarderSoldes = async () => {
+    if (!membreActif) return;
+    await supabase.from('equipe').update({
+      solde_conges: membreActif.solde_conges ?? null,
+      solde_rtt: membreActif.solde_rtt ?? null,
+      solde_recup: membreActif.solde_recup ?? null,
+    }).eq('id', membreActif.id);
+    setEquipe(eq => eq.map(m => m.id === membreActif.id ? { ...m, solde_conges: membreActif.solde_conges, solde_rtt: membreActif.solde_rtt, solde_recup: membreActif.solde_recup } : m));
+  };
+
+  const sauvegarderQuickEdit = async () => {
+    if (!quickEditEv?.id) return;
+    await supabase.from('evenements').update({
+      type: quickEditEv.type,
+      titre: quickEditEv.titre,
+      date_debut: quickEditEv.date_debut,
+      date_fin: quickEditEv.date_fin,
+    }).eq('id', quickEditEv.id);
+    setQuickEditEv(null);
+    chargerEvenements();
   };
 
   const sauvegarderEvenement = async () => {
@@ -1508,7 +1531,7 @@ useEffect(() => {
                         <>
                           <div className="bg-slate-50 p-5 rounded-2xl border-2 border-slate-100">
                             <h3 className="text-xs font-black text-slate-500 uppercase tracking-wide mb-4">Bilan Annuel ({dateActuelle.getFullYear()})</h3>
-                            <div className="grid grid-cols-3 gap-3">
+                            <div className="grid grid-cols-3 gap-3 mb-4">
                               <div className="bg-white p-3 rounded-xl border border-slate-200 flex flex-col justify-center shadow-sm">
                                 <span className="text-[9px] font-bold text-slate-400 uppercase">Congés restants</span>
                                 <span className="text-xl font-black mt-1">{(membreActif.solde_conges ?? 25) - statsPerso.congesPrisJours} <span className="text-xs font-bold text-slate-500">jrs</span></span>
@@ -1524,6 +1547,33 @@ useEffect(() => {
                                 <span className="text-xl font-black mt-1">{(membreActif.solde_recup ?? 0) - statsPerso.recupPriseHeures} <span className="text-xs font-bold text-slate-500">h</span></span>
                                 <span className="text-[9px] font-bold text-slate-400 mt-1">({statsPerso.recupPriseHeures}h prises)</span>
                               </div>
+                            </div>
+                            <div className="border-t border-slate-200 pt-4">
+                              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Ajuster les soldes initiaux</p>
+                              <div className="grid grid-cols-3 gap-2">
+                                <div>
+                                  <label className="text-[9px] font-bold text-slate-400 uppercase">Congés (jrs)</label>
+                                  <input type="number" step="0.5" value={membreActif.solde_conges ?? 25}
+                                    onChange={e => setMembreActif({...membreActif, solde_conges: parseFloat(e.target.value)})}
+                                    className="w-full mt-0.5 p-2 rounded-lg border-2 border-slate-200 font-bold text-sm outline-none focus:border-black text-center" />
+                                </div>
+                                <div>
+                                  <label className="text-[9px] font-bold text-slate-400 uppercase">RTT (jrs)</label>
+                                  <input type="number" step="0.5" value={membreActif.solde_rtt ?? 0}
+                                    onChange={e => setMembreActif({...membreActif, solde_rtt: parseFloat(e.target.value)})}
+                                    className="w-full mt-0.5 p-2 rounded-lg border-2 border-slate-200 font-bold text-sm outline-none focus:border-black text-center" />
+                                </div>
+                                <div>
+                                  <label className="text-[9px] font-bold text-slate-400 uppercase">Récup (h)</label>
+                                  <input type="number" step="0.5" value={membreActif.solde_recup ?? 0}
+                                    onChange={e => setMembreActif({...membreActif, solde_recup: parseFloat(e.target.value)})}
+                                    className="w-full mt-0.5 p-2 rounded-lg border-2 border-slate-200 font-bold text-sm outline-none focus:border-black text-center" />
+                                </div>
+                              </div>
+                              <button onClick={sauvegarderSoldes}
+                                className="w-full mt-3 py-2 rounded-xl bg-black text-white font-black text-xs hover:bg-slate-800 transition-colors">
+                                Enregistrer les soldes
+                              </button>
                             </div>
                           </div>
 
@@ -1551,16 +1601,24 @@ useEffect(() => {
                               <div className="divide-y-2 divide-slate-50 max-h-[300px] overflow-y-auto hide-scrollbar">
                                 {statsPerso.eventsDuMois.length === 0 && <p className="p-4 text-sm text-slate-400 italic">Aucun événement ce mois-ci.</p>}
                                 {statsPerso.eventsDuMois.map(ev => (
-                                  <div key={ev.id} className="p-4 hover:bg-slate-50 transition-colors flex flex-col gap-1">
-                                    <div className="flex justify-between items-start">
-                                      <span className="font-bold text-sm flex items-center gap-2">{getEventIcon(ev.type)} {ev.titre}</span>
-                                      <span className={`text-[10px] font-black px-2 py-1 rounded-md uppercase ${getEventStyle(ev.type)}`}>{ev.type.replace('Demi-', '1/2 ')}</span>
+                                  <div key={ev.id} className="px-4 py-3 hover:bg-slate-50 transition-colors flex items-center gap-3">
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <span className="font-bold text-sm flex items-center gap-1.5 truncate">{getEventIcon(ev.type)} {ev.titre}</span>
+                                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-md uppercase shrink-0 ${getEventStyle(ev.type)}`}>{ev.type.replace('Demi-', '1/2 ')}</span>
+                                      </div>
+                                      <span className="text-xs font-medium text-slate-500">
+                                        {format(new Date(ev.date_debut), 'dd MMM', {locale: fr})}
+                                        {ev.date_debut !== ev.date_fin && ` - ${format(new Date(ev.date_fin), 'dd MMM', {locale: fr})}`}
+                                        {ev.heure_debut && ` • ${ev.heure_debut}-${ev.heure_fin}`}
+                                      </span>
                                     </div>
-                                    <span className="text-xs font-medium text-slate-500">
-                                      {format(new Date(ev.date_debut), 'dd MMM', {locale: fr})}
-                                      {ev.date_debut !== ev.date_fin && ` - ${format(new Date(ev.date_fin), 'dd MMM', {locale: fr})}`}
-                                      {ev.heure_debut && ` • ${ev.heure_debut}-${ev.heure_fin}`}
-                                    </span>
+                                    {ABSENCE_TYPES.includes(ev.type) && (
+                                      <button onClick={() => setQuickEditEv(ev)}
+                                        className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-black hover:text-white text-slate-500 flex items-center justify-center text-xs transition-colors shrink-0">
+                                        ✏️
+                                      </button>
+                                    )}
                                   </div>
                                 ))}
                               </div>
@@ -1573,9 +1631,12 @@ useEffect(() => {
                 </div>
               )}
             </div>
-            {membreActif && ongletMembre === "profil" && (
+            {membreActif && (
               <div className="p-6 border-t-2 border-slate-100 bg-white shrink-0">
-                <button onClick={sauvegarderMembre} disabled={!membreActif.nom} className="w-full bg-black hover:bg-gray-800 disabled:bg-slate-300 text-white font-black py-4 rounded-2xl transition-colors shadow-md">Enregistrer les infos</button>
+                {ongletMembre === "profil"
+                  ? <button onClick={sauvegarderMembre} disabled={!membreActif.nom} className="w-full bg-black hover:bg-gray-800 disabled:bg-slate-300 text-white font-black py-4 rounded-2xl transition-colors shadow-md">Enregistrer le profil</button>
+                  : <button onClick={sauvegarderSoldes} className="w-full bg-black hover:bg-gray-800 text-white font-black py-4 rounded-2xl transition-colors shadow-md">Enregistrer les soldes</button>
+                }
               </div>
             )}
           </div>
@@ -1861,6 +1922,79 @@ useEffect(() => {
             <button onClick={sauvegarderEvenement} className="w-full mt-6 text-black font-black py-4 rounded-2xl transition-colors shadow-sm hover:brightness-95 shrink-0" style={{ backgroundColor: couleurs.accent }}>
               {nouvelEvent.id ? 'Mettre à jour' : 'Enregistrer'}
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Mini-modal modification absence (Fiche Perso RH) */}
+      {quickEditEv && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[60] flex items-center justify-center p-4"
+          onClick={e => { if (e.target === e.currentTarget) setQuickEditEv(null); }}>
+          <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl">
+            <div className="flex items-center justify-between p-5 border-b border-slate-100">
+              <h2 className="font-black text-base">Modifier l'absence</h2>
+              <button onClick={() => setQuickEditEv(null)}
+                className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center font-bold text-slate-500">✕</button>
+            </div>
+            <div className="p-5 flex flex-col gap-4">
+              <div className="flex flex-col gap-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Type d'absence</label>
+                <div className="flex gap-2">
+                  {(['Congé', 'RTT', 'Récupération'] as const).map(base => {
+                    const isActive = quickEditEv.type === base || quickEditEv.type === `Demi-${base}`;
+                    return (
+                      <button key={base}
+                        onClick={() => {
+                          const isDemi = quickEditEv.type.startsWith('Demi-');
+                          const newType = isDemi ? `Demi-${base}` : base;
+                          setQuickEditEv({...quickEditEv, type: newType, titre: newType});
+                        }}
+                        className={`flex-1 py-2.5 rounded-xl font-bold text-xs border-2 transition-colors ${isActive ? 'bg-black text-white border-black' : 'bg-white text-slate-500 border-slate-200 hover:border-slate-400'}`}>
+                        {getEventIcon(base)} {base}
+                      </button>
+                    );
+                  })}
+                </div>
+                <button
+                  onClick={() => {
+                    const isDemi = quickEditEv.type.startsWith('Demi-');
+                    const base = isDemi ? quickEditEv.type.replace('Demi-', '') : quickEditEv.type;
+                    const newType = isDemi ? base : `Demi-${base}`;
+                    setQuickEditEv({...quickEditEv, type: newType, titre: newType});
+                  }}
+                  className={`w-full py-2 rounded-xl font-bold text-xs border-2 transition-colors ${quickEditEv.type.startsWith('Demi-') ? 'bg-amber-50 text-amber-700 border-amber-300' : 'bg-slate-50 text-slate-400 border-slate-200 hover:border-slate-300'}`}>
+                  {quickEditEv.type.startsWith('Demi-') ? '✓ Demi-journée activée' : 'Basculer en demi-journée'}
+                </button>
+              </div>
+              <div className="flex gap-3">
+                <div className="flex-1">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Début</label>
+                  <input type="date" value={quickEditEv.date_debut}
+                    onChange={e => setQuickEditEv({...quickEditEv, date_debut: e.target.value, date_fin: e.target.value > quickEditEv.date_fin ? e.target.value : quickEditEv.date_fin})}
+                    className="w-full mt-1 p-2.5 rounded-xl border-2 border-slate-200 font-bold text-sm outline-none focus:border-black" />
+                </div>
+                <div className="flex-1">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Fin</label>
+                  <input type="date" value={quickEditEv.date_fin} min={quickEditEv.date_debut}
+                    onChange={e => setQuickEditEv({...quickEditEv, date_fin: e.target.value})}
+                    className="w-full mt-1 p-2.5 rounded-xl border-2 border-slate-200 font-bold text-sm outline-none focus:border-black" />
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-2 p-5 border-t border-slate-100">
+              <button onClick={() => { supprimerEvenement(quickEditEv.id!); setQuickEditEv(null); }}
+                className="px-3 py-2.5 rounded-xl bg-rose-50 text-rose-600 font-bold text-xs hover:bg-rose-100 transition-colors">
+                Supprimer
+              </button>
+              <button onClick={() => setQuickEditEv(null)}
+                className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-600 font-bold text-sm hover:bg-slate-200 transition-colors">
+                Annuler
+              </button>
+              <button onClick={sauvegarderQuickEdit}
+                className="flex-1 py-2.5 rounded-xl bg-black text-white font-bold text-sm hover:bg-slate-800 transition-colors">
+                Enregistrer
+              </button>
+            </div>
           </div>
         </div>
       )}
