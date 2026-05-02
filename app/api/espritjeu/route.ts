@@ -51,11 +51,12 @@ function getParagraphs(zone: string): string[] {
     .filter(t => t.length > 20);
 }
 
-function extractCarac(html: string): { auteurs: string[]; illustrateurs: string[] } {
+function extractCarac(html: string): { auteurs: string[]; illustrateurs: string[]; editeur: string | null } {
   const auteurs: string[] = [];
   const illustrateurs: string[] = [];
+  let editeur: string | null = null;
   const zone = zoneFrom(html, /id="tableau_carac"/i, 5000);
-  if (!zone) return { auteurs, illustrateurs };
+  if (!zone) return { auteurs, illustrateurs, editeur };
   for (const li of zone.matchAll(/<li[^>]*class="row"[^>]*>([\s\S]{0,600}?)<\/li>/gi)) {
     const liHtml = li[1];
     const labelMatch = liHtml.match(/label_carac[^"]*"[^>]*>([\s\S]{0,80}?)<\/span>/i);
@@ -65,8 +66,16 @@ function extractCarac(html: string): { auteurs: string[]; illustrateurs: string[
       .map(m => m[1].trim()).filter(Boolean);
     if (label.includes("auteur")) auteurs.push(...names);
     else if (label.includes("illustrateur")) illustrateurs.push(...names);
+    else if (label.includes("diteur")) {
+      if (names.length) {
+        editeur = names[0];
+      } else {
+        const valSpan = liHtml.match(/label_valeur[^"]*"[^>]*>([\s\S]{0,300}?)<\/span>/i);
+        if (valSpan) editeur = stripHtml(valSpan[1]).trim() || null;
+      }
+    }
   }
-  return { auteurs, illustrateurs };
+  return { auteurs, illustrateurs, editeur };
 }
 
 function extractTexts(html: string) {
@@ -154,7 +163,7 @@ export async function GET(req: NextRequest) {
 
     // 3. Extraire les textes et les auteurs
     const { resume, description } = extractTexts(productHtml);
-    const { auteurs, illustrateurs } = extractCarac(productHtml);
+    const { auteurs, illustrateurs, editeur } = extractCarac(productHtml);
 
     return NextResponse.json({
       url: productUrl,
@@ -162,6 +171,7 @@ export async function GET(req: NextRequest) {
       description: description || null,
       auteurs,
       illustrateurs,
+      editeur: editeur || null,
     });
   } catch (err) {
     console.error("[espritjeu]", err);

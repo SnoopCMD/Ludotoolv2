@@ -144,6 +144,9 @@ function buildField100a(): string {
 
 function buildRecord(game: CatalogueEntry, copies: JeuCopie[] = []): Uint8Array {
   const fields: UnimarcField[] = [];
+  if (process.env.NODE_ENV !== "production") {
+    console.log(`[buildRecord] ${game.nom} | boite_format=${game.boite_format ?? "–"} | copies=${copies.length}`, copies.map(c => c.code_syracuse));
+  }
 
   fields.push(makeField("001", " ", " ", [{ code: "", value: game.ean }]));
   if (game.ean) fields.push(makeField("073", " ", " ", [{ code: "a", value: game.ean }]));
@@ -256,6 +259,7 @@ function ModalCatalogage({ game: initGame, onClose, onSaved }: {
     url: string;
     auteurs?: string[];
     illustrateurs?: string[];
+    editeur?: string | null;
   } | null>(null);
   const [searchError, setSearchError] = useState<string | null>(null);
 
@@ -296,15 +300,20 @@ function ModalCatalogage({ game: initGame, onClose, onSaved }: {
 
   const saveGame = async () => {
     setIsSaving(true);
-    const payload: Partial<CatalogueEntry> & { auteurs_json: string } = {
+    const filteredAuteurs = auteurs.filter(a => a.nom.trim() || a.prenom.trim());
+    const auteursText = filteredAuteurs.map(a => [a.prenom, a.nom].filter(Boolean).join(" ")).join(", ");
+    const payload: Partial<CatalogueEntry> & { auteurs_json: string; auteurs: string } = {
       description: game.description,
       resume: game.resume,
       boite_format: game.boite_format,
-      auteurs_json: JSON.stringify(auteurs.filter(a => a.nom.trim() || a.prenom.trim())),
+      editeur: game.editeur,
+      auteurs_json: JSON.stringify(filteredAuteurs),
+      auteurs: auteursText,
     };
     const { error } = await supabase.from("catalogue").update(payload).eq("ean", game.ean);
     if (error) { alert("Erreur de sauvegarde : " + error.message); setIsSaving(false); return; }
-    onSaved({ ...game, ...payload, auteurs_json: payload.auteurs_json });
+    await supabase.from("jeux").update({ etape_notice: true }).eq("ean", game.ean);
+    onSaved({ ...game, ...payload });
     setIsSaving(false);
     onClose();
   };
@@ -335,6 +344,28 @@ function ModalCatalogage({ game: initGame, onClose, onSaved }: {
 
         {/* Corps scrollable */}
         <div className="overflow-y-auto flex flex-col divide-y divide-slate-100" style={{ maxHeight: "70vh" }}>
+
+          {/* Section Éditeur */}
+          <div className="p-6 flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-black text-slate-400 uppercase tracking-widest">
+                Éditeur (champ 210 $c)
+              </span>
+              {espritData?.editeur && (
+                <button onClick={() => setGame(g => ({ ...g, editeur: espritData.editeur! }))}
+                  className="text-xs font-bold text-black bg-[#baff29] px-3 py-1 rounded-lg hover:bg-[#a8e820] transition-colors">
+                  Importer "{espritData.editeur}" →
+                </button>
+              )}
+            </div>
+            <input
+              type="text"
+              value={game.editeur ?? ""}
+              onChange={e => setGame(g => ({ ...g, editeur: e.target.value }))}
+              placeholder="Nom de l'éditeur…"
+              className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-4 py-3 text-sm font-medium outline-none focus:border-black transition-colors"
+            />
+          </div>
 
           {/* Section Description */}
           <div className="p-6 flex flex-col gap-5">
@@ -525,6 +556,7 @@ function CataloguePageInner() {
   const [editGame, setEditGame] = useState<CatalogueEntry | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [isExporting, setIsExporting] = useState(false);
+  const [exportInfo, setExportInfo] = useState<string | null>(null);
   const [filterComplet, setFilterComplet] = useState(false);
 
   useEffect(() => { loadCatalogue(); }, []);
@@ -576,12 +608,16 @@ function CataloguePageInner() {
         .from("jeux")
         .select("ean, code_syracuse")
         .in("ean", eans)
-        .not("code_syracuse", "is", null);
+        .not("code_syracuse", "is", null)
+        .neq("code_syracuse", "");
       const copiesMap: Record<string, JeuCopie[]> = {};
       for (const j of (jeux ?? [])) {
         if (!copiesMap[j.ean]) copiesMap[j.ean] = [];
         copiesMap[j.ean].push(j as JeuCopie);
       }
+      const totalExemplaires = Object.values(copiesMap).reduce((s, arr) => s + arr.length, 0);
+      setExportInfo(`${selectedGames.length} notice${selectedGames.length > 1 ? "s" : ""} · ${totalExemplaires} exemplaire${totalExemplaires > 1 ? "s" : ""} inclus`);
+      console.log("[export mrc] copies map:", copiesMap);
       const blob = buildMrcFile(selectedGames, copiesMap);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -622,12 +658,17 @@ function CataloguePageInner() {
             <h1 className="text-4xl font-black text-black">Catalogage</h1>
             <p className="text-slate-400 font-medium mt-1">Enrichis les notices et exporte-les pour Syracuse</p>
           </div>
-          <button onClick={exportMrc} disabled={selected.size === 0 || isExporting}
-            className="flex items-center gap-2 px-6 py-3.5 bg-black text-white rounded-2xl font-bold text-sm hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0">
-            {isExporting
-              ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Génération…</>
-              : <>⬇ Exporter {selected.size > 0 ? `(${selected.size})` : ""} notices .mrc</>}
-          </button>
+          <div className="flex flex-col items-end gap-1.5 shrink-0">
+            <button onClick={exportMrc} disabled={selected.size === 0 || isExporting}
+              className="flex items-center gap-2 px-6 py-3.5 bg-black text-white rounded-2xl font-bold text-sm hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+              {isExporting
+                ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Génération…</>
+                : <>⬇ Exporter {selected.size > 0 ? `(${selected.size})` : ""} notices .mrc</>}
+            </button>
+            {exportInfo && (
+              <span className="text-[11px] font-bold text-slate-400">{exportInfo}</span>
+            )}
+          </div>
         </div>
 
         {/* Sélection */}
