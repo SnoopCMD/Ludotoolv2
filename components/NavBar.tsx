@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { supabase } from "../lib/supabase";
 
-type Page = "accueil" | "inventaire" | "atelier" | "agenda" | "store" | "catalogage";
+type Page = "accueil" | "inventaire" | "atelier" | "agenda" | "store" | "catalogage" | "jv";
 
 export default function NavBar({ current }: { current: Page }) {
   const [alertCount, setAlertCount] = useState(0);
@@ -29,6 +29,7 @@ export default function NavBar({ current }: { current: Page }) {
     { href: "/agenda", label: "Agenda", page: "agenda" },
     { href: "/store", label: "Store", page: "store" },
     { href: "/catalogage", label: "Catalogage", page: "catalogage" },
+    { href: "/jv", label: "Jeux Vidéo", page: "jv" },
   ];
 
   return (
