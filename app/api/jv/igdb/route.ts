@@ -123,6 +123,16 @@ export async function GET(req: NextRequest) {
     const multiMap: Record<number, any> = {};
     for (const mm of multimodes) multiMap[mm.game] = mm;
 
+    // PEGI — category 2 = PEGI (1=ESRB), rating 1→3, 2→7, 3→12, 4→16, 5→18
+    const ageRatingIds = [...new Set(games.flatMap(g => g.age_ratings ?? []))];
+    const ageRatings = ageRatingIds.length
+      ? await igdbFetch("age_ratings", `fields id, category, rating; where id = (${ageRatingIds.join(",")});`, token)
+      : [];
+    const pegiById: Record<number, number> = {};
+    for (const ar of ageRatings) {
+      if (ar.category === 2 && PEGI_VALUES[ar.rating]) pegiById[ar.id] = PEGI_VALUES[ar.rating];
+    }
+
     const results = games.map(g => {
       const console_detected = (g.platforms ?? [])
         .map((pid: number) => PLATFORM_TO_CONSOLE[pid])
@@ -166,7 +176,7 @@ export async function GET(req: NextRequest) {
         annee,
         editeur,
         genre: genres[0] ?? null,
-        pegi: null, // récupéré depuis la source plateforme FR
+        pegi: (g.age_ratings ?? []).map((id: number) => pegiById[id]).find((p: number | undefined) => p != null) ?? null,
         nb_joueurs,
         console: console_detected,
       };
