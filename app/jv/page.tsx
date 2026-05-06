@@ -622,6 +622,7 @@ function ModalRotation({
   const consoleName = SLOT_CONSOLE[slot];
   const [pickerGroupe, setPickerGroupe] = useState<number | null>(null);
   const [pickerSearch, setPickerSearch] = useState("");
+  const [pickerSelected, setPickerSelected] = useState<string[]>([]);
   const pickerRef = useRef<HTMLInputElement>(null);
 
   const planifiees = selections
@@ -646,10 +647,17 @@ function ModalRotation({
   const openPicker = (groupe: number) => {
     setPickerGroupe(groupe);
     setPickerSearch("");
+    setPickerSelected([]);
     setTimeout(() => pickerRef.current?.focus(), 50);
   };
 
-  const closePicker = () => { setPickerGroupe(null); setPickerSearch(""); };
+  const closePicker = () => { setPickerGroupe(null); setPickerSearch(""); setPickerSelected([]); };
+
+  const confirmPicker = () => {
+    if (pickerGroupe === null) return;
+    pickerSelected.forEach(id => onAddToGroup(id, pickerGroupe));
+    closePicker();
+  };
 
   const pickerGames = pickerGroupe !== null
     ? disponibles.filter(j => {
@@ -753,50 +761,83 @@ function ModalRotation({
         </div>
 
         {/* Picker overlay */}
-        {pickerGroupe !== null && (
-          <div className="absolute inset-0 bg-white rounded-3xl flex flex-col z-10">
-            <div className="flex items-center gap-3 p-5 border-b border-slate-100 shrink-0">
-              <button onClick={closePicker}
-                className="w-8 h-8 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold transition-colors">←</button>
-              <div>
-                <p className="font-black text-sm text-black">
-                  Ajouter un jeu — Groupe {groupNums.indexOf(pickerGroupe) >= 0 ? groupNums.indexOf(pickerGroupe) + 1 : groupNums.length + 1}
-                </p>
-                <p className="text-[11px] text-slate-400">{consoleName} · {disponibles.length} jeux disponibles</p>
+        {pickerGroupe !== null && (() => {
+          const existingInGroup = planifiees.filter(s => s.groupe === pickerGroupe).length;
+          const slotsLeft = 3 - existingInGroup - pickerSelected.length;
+          const groupLabel = groupNums.indexOf(pickerGroupe) >= 0 ? groupNums.indexOf(pickerGroupe) + 1 : groupNums.length + 1;
+          return (
+            <div className="absolute inset-0 bg-white rounded-3xl flex flex-col z-10">
+              <div className="flex items-center gap-3 p-5 border-b border-slate-100 shrink-0">
+                <button onClick={closePicker}
+                  className="w-8 h-8 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold transition-colors">←</button>
+                <div className="flex-1 min-w-0">
+                  <p className="font-black text-sm text-black">Groupe {groupLabel}</p>
+                  <p className="text-[11px] text-slate-400">
+                    {pickerSelected.length > 0
+                      ? `${pickerSelected.length} sélectionné${pickerSelected.length > 1 ? "s" : ""} · ${slotsLeft} place${slotsLeft > 1 ? "s" : ""} restante${slotsLeft > 1 ? "s" : ""}`
+                      : `${consoleName} · choisir jusqu'à ${slotsLeft} jeu${slotsLeft > 1 ? "x" : ""}`}
+                  </p>
+                </div>
+              </div>
+              <div className="p-4 border-b border-slate-100 shrink-0">
+                <input
+                  ref={pickerRef}
+                  type="text"
+                  value={pickerSearch}
+                  onChange={e => setPickerSearch(e.target.value)}
+                  placeholder="Rechercher un jeu…"
+                  className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-4 py-3 text-sm font-medium outline-none focus:border-black transition-colors"
+                />
+              </div>
+              <div className="flex-1 overflow-y-auto custom-scroll p-4">
+                {pickerGames.length === 0 ? (
+                  <p className="text-sm text-slate-400 text-center py-8">Aucun jeu disponible</p>
+                ) : (
+                  <div className="grid grid-cols-3 gap-3">
+                    {pickerGames.map(j => {
+                      const isSelected = pickerSelected.includes(j.id);
+                      const isDisabled = !isSelected && slotsLeft === 0;
+                      return (
+                        <button key={j.id}
+                          disabled={isDisabled}
+                          onClick={() => setPickerSelected(prev =>
+                            prev.includes(j.id) ? prev.filter(id => id !== j.id) : [...prev, j.id]
+                          )}
+                          className={`flex flex-col items-center gap-1.5 p-2 rounded-2xl border-2 transition-all text-left relative ${
+                            isSelected
+                              ? "border-black bg-slate-50"
+                              : isDisabled
+                              ? "border-slate-100 bg-white opacity-40 cursor-not-allowed"
+                              : "border-slate-100 bg-white hover:border-black hover:bg-slate-50"
+                          }`}>
+                          {isSelected && (
+                            <span className="absolute top-1.5 right-1.5 w-5 h-5 bg-black rounded-full flex items-center justify-center text-white text-[10px] font-black z-10">✓</span>
+                          )}
+                          <div className="w-full aspect-[3/4] rounded-xl overflow-hidden bg-slate-100 flex items-center justify-center">
+                            {j.image_url
+                              ? <img src={j.image_url} alt={j.titre} className="w-full h-full object-cover" />
+                              : <span className="text-3xl">🎮</span>}
+                          </div>
+                          <p className="text-[11px] font-bold text-black text-center leading-tight line-clamp-2 w-full">{j.titre}</p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+              <div className="p-4 border-t border-slate-100 shrink-0">
+                <button
+                  onClick={confirmPicker}
+                  disabled={pickerSelected.length === 0}
+                  className="w-full py-3 rounded-2xl bg-black text-white font-bold text-sm hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed transition-all">
+                  {pickerSelected.length === 0
+                    ? "Sélectionner des jeux"
+                    : `Ajouter ${pickerSelected.length} jeu${pickerSelected.length > 1 ? "x" : ""} au groupe`}
+                </button>
               </div>
             </div>
-            <div className="p-4 border-b border-slate-100 shrink-0">
-              <input
-                ref={pickerRef}
-                type="text"
-                value={pickerSearch}
-                onChange={e => setPickerSearch(e.target.value)}
-                placeholder="Rechercher un jeu…"
-                className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-4 py-3 text-sm font-medium outline-none focus:border-black transition-colors"
-              />
-            </div>
-            <div className="flex-1 overflow-y-auto custom-scroll p-4">
-              {pickerGames.length === 0 ? (
-                <p className="text-sm text-slate-400 text-center py-8">Aucun jeu disponible</p>
-              ) : (
-                <div className="grid grid-cols-3 gap-3">
-                  {pickerGames.map(j => (
-                    <button key={j.id}
-                      onClick={() => { onAddToGroup(j.id, pickerGroupe); closePicker(); }}
-                      className="flex flex-col items-center gap-1.5 p-2 rounded-2xl border-2 border-slate-100 bg-white hover:border-black hover:bg-slate-50 transition-all text-left group">
-                      <div className="w-full aspect-[3/4] rounded-xl overflow-hidden bg-slate-100 flex items-center justify-center">
-                        {j.image_url
-                          ? <img src={j.image_url} alt={j.titre} className="w-full h-full object-cover" />
-                          : <span className="text-3xl">🎮</span>}
-                      </div>
-                      <p className="text-[11px] font-bold text-black text-center leading-tight line-clamp-2 w-full">{j.titre}</p>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+          );
+        })()}
       </div>
     </div>
   );
