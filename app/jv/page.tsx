@@ -65,6 +65,7 @@ type JvRotationConfig = {
 type JvReservation = {
   id: string;
   jeu_id: string;
+  jeu2_id: string | null;
   poste: string;
   date_creneau: string;
   creneau: string;
@@ -1113,6 +1114,247 @@ function ModalReservation({
   );
 }
 
+// ─── Statut calculé automatiquement ──────────────────────────────────────────
+
+function parseCreneau(creneau: string): { startH: number; endH: number } {
+  const parts = creneau.split("-");
+  return { startH: parseInt(parts[0]), endH: parseInt(parts[1]) };
+}
+
+type DisplayStatus = "a_venir" | "en_cours" | "passee" | "annulee";
+
+function getDisplayStatus(r: JvReservation): DisplayStatus {
+  if (r.statut === "annulee") return "annulee";
+  const today = format(new Date(), "yyyy-MM-dd");
+  const nowH = new Date().getHours();
+  if (r.date_creneau < today) return "passee";
+  if (r.date_creneau > today) return "a_venir";
+  const { startH, endH } = parseCreneau(r.creneau);
+  if (nowH >= startH && nowH < endH) return "en_cours";
+  if (nowH >= endH) return "passee";
+  return "a_venir";
+}
+
+const STATUS_LABEL: Record<DisplayStatus, string> = {
+  a_venir: "À venir", en_cours: "En cours", passee: "Passée", annulee: "Annulée",
+};
+const STATUS_COLORS: Record<DisplayStatus, string> = {
+  a_venir: "bg-slate-100 text-slate-500",
+  en_cours: "bg-[#baff29]/40 text-black",
+  passee: "bg-slate-100 text-slate-400",
+  annulee: "bg-rose-50 text-rose-400",
+};
+
+// ─── Modal : Détail / modification d'une réservation ─────────────────────────
+
+function ModalReservationDetail({
+  reservation,
+  jeux,
+  selections,
+  onClose,
+  onSaved,
+  onCancelled,
+}: {
+  reservation: JvReservation;
+  jeux: JvJeu[];
+  selections: JvSelection[];
+  onClose: () => void;
+  onSaved: (r: JvReservation) => void;
+  onCancelled: (id: string) => void;
+}) {
+  const [nom, setNom] = useState(reservation.adherent_nom);
+  const [nbJoueurs, setNbJoueurs] = useState(reservation.nb_joueurs);
+  const [notes, setNotes] = useState(reservation.notes ?? "");
+  const [jeuId, setJeuId] = useState(reservation.jeu_id);
+  const [jeu2Id, setJeu2Id] = useState<string | null>(reservation.jeu2_id ?? null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [confirmCancel, setConfirmCancel] = useState(false);
+
+  const poste = POSTES.find(p => p.id === reservation.poste)!;
+  const slot = POSTE_SLOT[reservation.poste] ?? "PS5";
+  const displayStatus = getDisplayStatus(reservation);
+
+  const activeJeux = selections
+    .filter(s => s.slot === slot && s.statut === "actif")
+    .map(s => jeux.find(j => j.id === s.jeu_id))
+    .filter((j): j is JvJeu => !!j);
+  const jeuActuel = jeux.find(j => j.id === jeuId);
+  const jeuDansSelection = activeJeux.some(j => j.id === jeuId);
+  const jeu2Actuel = jeu2Id ? jeux.find(j => j.id === jeu2Id) : null;
+  const jeu2DansSelection = jeu2Id ? activeJeux.some(j => j.id === jeu2Id) : true;
+
+  const save = async () => {
+    setIsSaving(true);
+    const { data, error } = await supabase.from("jv_reservations")
+      .update({ adherent_nom: nom.trim(), nb_joueurs: nbJoueurs, notes: notes.trim() || null, jeu_id: jeuId, jeu2_id: jeu2Id })
+      .eq("id", reservation.id).select().single();
+    if (error) { alert("Erreur : " + error.message); setIsSaving(false); return; }
+    onSaved(data as JvReservation);
+    setIsSaving(false);
+    onClose();
+  };
+
+  const cancel = async () => {
+    await supabase.from("jv_reservations").update({ statut: "annulee" }).eq("id", reservation.id);
+    onCancelled(reservation.id);
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-start justify-center p-4 pt-8 overflow-y-auto"
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden mb-8">
+
+        {/* Header */}
+        <div className="flex items-center gap-3 p-6 border-b border-slate-100">
+          <div className={`w-10 h-10 rounded-2xl flex items-center justify-center font-bold text-sm border-2 ${POSTE_COLORS[reservation.poste] ?? "bg-slate-100 border-slate-200"}`}>
+            {poste?.label ?? reservation.poste}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-black text-base text-black capitalize">
+              {format(parseISO(reservation.date_creneau), "EEEE d MMMM", { locale: fr })}
+            </p>
+            <div className="flex items-center gap-2 mt-0.5">
+              <span className="text-xs text-slate-400">{reservation.creneau}</span>
+              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-lg flex items-center gap-1 ${STATUS_COLORS[displayStatus]}`}>
+                {displayStatus === "en_cours" && <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />}
+                {STATUS_LABEL[displayStatus]}
+              </span>
+            </div>
+          </div>
+          <button onClick={onClose}
+            className="w-9 h-9 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 font-bold">✕</button>
+        </div>
+
+        <div className="p-6 flex flex-col gap-4 overflow-y-auto custom-scroll" style={{ maxHeight: "65vh" }}>
+
+          {/* Jeu 1 */}
+          <div className="flex flex-col gap-2">
+            <label className="text-xs font-black text-slate-400 uppercase tracking-widest">Jeu</label>
+            {activeJeux.map(j => (
+              <button key={j.id} onClick={() => setJeuId(j.id)}
+                className={`flex items-center gap-3 p-2.5 rounded-2xl border-2 text-left transition-all ${
+                  jeuId === j.id ? "border-black bg-slate-50" : "border-slate-100 bg-white hover:border-slate-200"
+                }`}>
+                <div className="w-9 h-9 rounded-xl overflow-hidden bg-slate-100 shrink-0 flex items-center justify-center">
+                  {j.image_url ? <img src={j.image_url} alt={j.titre} className="w-full h-full object-cover" /> : <span>🎮</span>}
+                </div>
+                <span className="font-bold text-sm flex-1 truncate text-black">{j.titre}</span>
+                {jeuId === j.id && <span className="font-black text-black">✓</span>}
+              </button>
+            ))}
+            {jeuActuel && !jeuDansSelection && (
+              <div className="flex items-center gap-3 p-2.5 rounded-2xl border-2 border-slate-100 bg-slate-50 opacity-60">
+                <div className="w-9 h-9 rounded-xl overflow-hidden bg-slate-100 shrink-0 flex items-center justify-center">
+                  {jeuActuel.image_url ? <img src={jeuActuel.image_url} alt={jeuActuel.titre} className="w-full h-full object-cover" /> : <span>🎮</span>}
+                </div>
+                <span className="font-bold text-sm flex-1 truncate">{jeuActuel.titre}</span>
+                <span className="text-[10px] text-slate-400 shrink-0">hors sélection</span>
+              </div>
+            )}
+          </div>
+
+          {/* Jeu 2 — changement en cours de créneau */}
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-black text-slate-400 uppercase tracking-widest">Changement de jeu</label>
+              {jeu2Id && (
+                <button onClick={() => setJeu2Id(null)}
+                  className="text-[10px] font-bold text-rose-400 hover:text-rose-600 transition-colors">
+                  Supprimer
+                </button>
+              )}
+            </div>
+            {!jeu2Id && (
+              <p className="text-[11px] text-slate-400 font-medium">
+                Optionnel — si les joueurs ont changé de jeu pendant le créneau
+              </p>
+            )}
+            {activeJeux.filter(j => j.id !== jeuId).map(j => (
+              <button key={j.id} onClick={() => setJeu2Id(jeu2Id === j.id ? null : j.id)}
+                className={`flex items-center gap-3 p-2.5 rounded-2xl border-2 text-left transition-all ${
+                  jeu2Id === j.id ? "border-black bg-slate-50" : "border-slate-100 bg-white hover:border-slate-200"
+                }`}>
+                <div className="w-9 h-9 rounded-xl overflow-hidden bg-slate-100 shrink-0 flex items-center justify-center">
+                  {j.image_url ? <img src={j.image_url} alt={j.titre} className="w-full h-full object-cover" /> : <span>🎮</span>}
+                </div>
+                <span className="font-bold text-sm flex-1 truncate text-black">{j.titre}</span>
+                {jeu2Id === j.id && <span className="font-black text-black">✓</span>}
+              </button>
+            ))}
+            {jeu2Actuel && !jeu2DansSelection && (
+              <div className="flex items-center gap-3 p-2.5 rounded-2xl border-2 border-slate-100 bg-slate-50 opacity-60">
+                <div className="w-9 h-9 rounded-xl overflow-hidden bg-slate-100 shrink-0 flex items-center justify-center">
+                  {jeu2Actuel.image_url ? <img src={jeu2Actuel.image_url} alt={jeu2Actuel.titre} className="w-full h-full object-cover" /> : <span>🎮</span>}
+                </div>
+                <span className="font-bold text-sm flex-1 truncate">{jeu2Actuel.titre}</span>
+                <span className="text-[10px] text-slate-400 shrink-0">hors sélection</span>
+              </div>
+            )}
+          </div>
+
+          {/* Adhérent */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-black text-slate-400 uppercase tracking-widest">Adhérent</label>
+            <input type="text" value={nom} onChange={e => setNom(e.target.value)}
+              className="bg-slate-50 border-2 border-slate-100 rounded-2xl px-4 py-3 text-sm font-medium outline-none focus:border-black transition-colors" />
+          </div>
+
+          {/* Nb joueurs */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-black text-slate-400 uppercase tracking-widest">
+              Nb joueurs <span className="normal-case font-medium">(max {poste?.maxJoueurs ?? 2})</span>
+            </label>
+            <div className="flex gap-2">
+              {Array.from({ length: poste?.maxJoueurs ?? 2 }, (_, i) => i + 1).map(n => (
+                <button key={n} onClick={() => setNbJoueurs(n)}
+                  className={`flex-1 py-3 rounded-2xl text-sm font-bold border-2 transition-colors ${
+                    nbJoueurs === n ? "bg-black text-white border-black" : "bg-white border-slate-200 text-slate-500 hover:border-slate-300"
+                  }`}>
+                  {n}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Notes */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-black text-slate-400 uppercase tracking-widest">Notes</label>
+            <input type="text" value={notes} onChange={e => setNotes(e.target.value)}
+              placeholder="Remarques optionnelles…"
+              className="bg-slate-50 border-2 border-slate-100 rounded-2xl px-4 py-3 text-sm font-medium outline-none focus:border-black transition-colors" />
+          </div>
+        </div>
+
+        <div className="flex gap-3 p-6 border-t border-slate-100">
+          {reservation.statut !== "annulee" && !confirmCancel && (
+            <button onClick={() => setConfirmCancel(true)}
+              className="px-4 py-3 rounded-2xl bg-slate-100 hover:bg-rose-50 text-rose-400 font-bold text-sm transition-colors">
+              Annuler
+            </button>
+          )}
+          {confirmCancel && (
+            <button onClick={cancel}
+              className="px-4 py-3 rounded-2xl bg-rose-500 text-white font-bold text-sm hover:bg-rose-600 transition-colors">
+              Confirmer annulation
+            </button>
+          )}
+          <button onClick={onClose}
+            className="flex-1 px-4 py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-sm transition-colors">
+            Fermer
+          </button>
+          {reservation.statut !== "annulee" && (
+            <button onClick={save} disabled={isSaving || !nom.trim() || !jeuId}
+              className="flex-1 px-4 py-3 rounded-2xl bg-black text-white font-bold text-sm hover:bg-slate-800 disabled:opacity-50 transition-colors">
+              {isSaving ? "Sauvegarde…" : "Enregistrer"}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Onglet Catalogue ─────────────────────────────────────────────────────────
 
 function TabCatalogue({
@@ -1406,25 +1648,28 @@ function TabReservations({
   jeux,
   reservations,
   onNouvelle,
-  onUpdateStatut,
+  onOpenDetail,
 }: {
   jeux: JvJeu[];
   reservations: JvReservation[];
   onNouvelle: (date?: string, creneau?: string, poste?: string) => void;
-  onUpdateStatut: (id: string, statut: JvReservation["statut"]) => void;
+  onOpenDetail: (r: JvReservation) => void;
 }) {
   const [semaine, setSemaine] = useState(new Date());
   const lundi = startOfWeek(semaine, { weekStartsOn: 1 });
-  // Seulement les 4 jours ouverts (Mar → Ven)
   const joursOuverts = eachDayOfInterval({ start: addDays(lundi, 1), end: addDays(lundi, 4) });
 
   const stats: JvStat[] = useMemo(() => {
     const map: Record<string, { titre: string; console: Console; image_url: string | null; count: number }> = {};
-    for (const r of reservations.filter(r => r.statut !== "annulee")) {
-      const jeu = jeux.find(j => j.id === r.jeu_id);
-      if (!jeu) continue;
-      if (!map[r.jeu_id]) map[r.jeu_id] = { titre: jeu.titre, console: jeu.console, image_url: jeu.image_url, count: 0 };
-      map[r.jeu_id].count++;
+    const addJeu = (jeuId: string) => {
+      const jeu = jeux.find(j => j.id === jeuId);
+      if (!jeu) return;
+      if (!map[jeuId]) map[jeuId] = { titre: jeu.titre, console: jeu.console, image_url: jeu.image_url, count: 0 };
+      map[jeuId].count++;
+    };
+    for (const r of reservations.filter(r => getDisplayStatus(r) !== "annulee")) {
+      addJeu(r.jeu_id);
+      if (r.jeu2_id) addJeu(r.jeu2_id);
     }
     return Object.entries(map)
       .map(([jeu_id, v]) => ({ jeu_id, titre: v.titre, console: v.console, image_url: v.image_url, nb_reservations: v.count }))
@@ -1437,22 +1682,41 @@ function TabReservations({
       r.creneau === cr && r.poste === posteId && r.statut !== "annulee"
     );
 
+  const countByStatus = useMemo(() => ({
+    en_cours: reservations.filter(r => getDisplayStatus(r) === "en_cours").length,
+    a_venir:  reservations.filter(r => getDisplayStatus(r) === "a_venir").length,
+    passee:   reservations.filter(r => getDisplayStatus(r) === "passee").length,
+  }), [reservations]);
+
+  const sidebarResas = useMemo(() => {
+    const today = format(new Date(), "yyyy-MM-dd");
+    return reservations
+      .filter(r => r.statut !== "annulee" && r.date_creneau >= today)
+      .sort((a, b) => a.date_creneau.localeCompare(b.date_creneau) || a.creneau.localeCompare(b.creneau));
+  }, [reservations]);
+
+  const enCoursResas = sidebarResas.filter(r => getDisplayStatus(r) === "en_cours");
+  const aVenirResas  = sidebarResas.filter(r => getDisplayStatus(r) === "a_venir");
+
   return (
     <div className="flex flex-col gap-6">
 
       {/* Stats */}
       <div className="grid grid-cols-3 gap-3">
+        <div className="bg-[#baff29]/20 rounded-2xl p-4 border-2 border-[#baff29]/40 flex items-center gap-3">
+          {countByStatus.en_cours > 0 && <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse shrink-0" />}
+          <div>
+            <p className="text-3xl font-black text-black">{countByStatus.en_cours}</p>
+            <p className="text-xs text-slate-500 font-bold mt-1">En cours</p>
+          </div>
+        </div>
         <div className="bg-slate-50 rounded-2xl p-4 border-2 border-slate-100">
-          <p className="text-3xl font-black text-black">{reservations.filter(r => r.statut === "confirmee").length}</p>
+          <p className="text-3xl font-black text-black">{countByStatus.a_venir}</p>
           <p className="text-xs text-slate-400 font-bold mt-1">À venir</p>
         </div>
         <div className="bg-slate-50 rounded-2xl p-4 border-2 border-slate-100">
-          <p className="text-3xl font-black text-black">{reservations.filter(r => r.statut === "terminee").length}</p>
-          <p className="text-xs text-slate-400 font-bold mt-1">Terminées</p>
-        </div>
-        <div className="bg-slate-50 rounded-2xl p-4 border-2 border-slate-100">
-          <p className="text-3xl font-black text-black">{reservations.reduce((s, r) => s + (r.statut !== "annulee" ? r.nb_joueurs : 0), 0)}</p>
-          <p className="text-xs text-slate-400 font-bold mt-1">Joueurs total</p>
+          <p className="text-3xl font-black text-black">{countByStatus.passee}</p>
+          <p className="text-xs text-slate-400 font-bold mt-1">Passées</p>
         </div>
       </div>
 
@@ -1494,12 +1758,10 @@ function TabReservations({
               const dateStr = format(d, "yyyy-MM-dd");
               return (
                 <div key={dateStr} className={`rounded-2xl border-2 overflow-hidden ${isToday(d) ? "border-black" : "border-slate-100"}`}>
-                  {/* En-tête jour */}
                   <div className={`flex items-center justify-between px-4 py-2.5 ${isToday(d) ? "bg-black text-white" : "bg-slate-50 text-slate-700"}`}>
                     <span className="font-black text-sm capitalize">{format(d, "EEEE d MMMM", { locale: fr })}</span>
                     {isToday(d) && <span className="text-[10px] font-bold bg-white/20 px-2 py-0.5 rounded-full">Aujourd'hui</span>}
                   </div>
-                  {/* Créneaux */}
                   <div className="divide-y divide-slate-100">
                     {creneaux.map(cr => (
                       <div key={cr} className="flex items-start gap-3 px-4 py-3">
@@ -1508,28 +1770,32 @@ function TabReservations({
                           {POSTES.map(p => {
                             const resa = getResaPoste(d, cr, p.id);
                             const jeu = resa ? jeux.find(j => j.id === resa.jeu_id) : null;
-                            return resa ? (
-                              <div key={p.id}
-                                className={`flex flex-col gap-0.5 px-2.5 py-2 rounded-xl border-2 min-w-[90px] max-w-[130px] ${POSTE_COLORS[p.id]}`}>
-                                <span className="text-[9px] font-black uppercase tracking-wide opacity-60">{p.label}</span>
-                                <span className="text-[11px] font-bold leading-tight truncate">{jeu?.titre ?? "?"}</span>
-                                <span className="text-[10px] font-medium opacity-70 truncate">{resa.adherent_nom} · {resa.nb_joueurs}J</span>
-                                <div className="flex gap-1 mt-1">
-                                  <button
-                                    onClick={() => onUpdateStatut(resa.id, resa.statut === "confirmee" ? "terminee" : "confirmee")}
-                                    className="text-[9px] font-bold bg-white/50 hover:bg-white/80 rounded px-1 py-0.5 transition-colors">
-                                    {resa.statut === "confirmee" ? "✓ OK" : "↩"}
-                                  </button>
-                                  {resa.statut === "confirmee" && (
-                                    <button
-                                      onClick={() => onUpdateStatut(resa.id, "annulee")}
-                                      className="text-[9px] font-bold bg-white/50 hover:bg-rose-100 hover:text-rose-600 rounded px-1 py-0.5 transition-colors">
-                                      ✕
-                                    </button>
+                            const jeu2 = resa?.jeu2_id ? jeux.find(j => j.id === resa.jeu2_id) : null;
+                            if (resa) {
+                              const ds = getDisplayStatus(resa);
+                              const isEnCours = ds === "en_cours";
+                              return (
+                                <button key={p.id}
+                                  onClick={() => onOpenDetail(resa)}
+                                  className={`flex flex-col gap-0.5 px-2.5 py-2 rounded-xl border-2 min-w-[90px] max-w-[130px] text-left transition-all hover:brightness-95 ${
+                                    isEnCours ? "ring-2 ring-green-400 ring-offset-1" : ""
+                                  } ${POSTE_COLORS[p.id]}`}>
+                                  <div className="flex items-center gap-1">
+                                    {isEnCours && <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse shrink-0" />}
+                                    <span className="text-[9px] font-black uppercase tracking-wide opacity-60">{p.label}</span>
+                                  </div>
+                                  {jeu2 ? (
+                                    <span className="text-[11px] font-bold leading-tight truncate">
+                                      {jeu?.titre ?? "?"} <span className="opacity-50">→</span> {jeu2.titre}
+                                    </span>
+                                  ) : (
+                                    <span className="text-[11px] font-bold leading-tight truncate">{jeu?.titre ?? "?"}</span>
                                   )}
-                                </div>
-                              </div>
-                            ) : (
+                                  <span className="text-[10px] font-medium opacity-70 truncate">{resa.adherent_nom} · {resa.nb_joueurs}J</span>
+                                </button>
+                              );
+                            }
+                            return (
                               <button key={p.id}
                                 onClick={() => onNouvelle(dateStr, cr, p.id)}
                                 className="flex flex-col items-center justify-center gap-0.5 px-2.5 py-2 rounded-xl border-2 border-dashed border-slate-200 hover:border-slate-400 hover:bg-slate-50 transition-all min-w-[90px] text-slate-300 hover:text-slate-500">
@@ -1548,7 +1814,7 @@ function TabReservations({
           </div>
         </div>
 
-        {/* Sidebar : top jeux + prochaines résa */}
+        {/* Sidebar : top jeux + résa en cours / à venir */}
         <div className="flex flex-col gap-4">
           <h3 className="font-black text-base text-black">Jeux les + joués</h3>
           {stats.length === 0 ? (
@@ -1576,41 +1842,56 @@ function TabReservations({
             </div>
           )}
 
-          <h3 className="font-black text-base text-black mt-2">Prochaines réservations</h3>
-          {reservations.filter(r => r.statut === "confirmee" && r.date_creneau >= format(new Date(), "yyyy-MM-dd")).length === 0 ? (
-            <p className="text-sm text-slate-400 font-medium">Aucune réservation à venir</p>
-          ) : (
-            <div className="flex flex-col gap-2">
-              {reservations
-                .filter(r => r.statut === "confirmee" && r.date_creneau >= format(new Date(), "yyyy-MM-dd"))
-                .sort((a, b) => a.date_creneau.localeCompare(b.date_creneau) || a.creneau.localeCompare(b.creneau))
-                .slice(0, 8)
-                .map(r => {
+          {enCoursResas.length > 0 && (
+            <>
+              <h3 className="font-black text-base text-black mt-2 flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                En cours
+              </h3>
+              <div className="flex flex-col gap-2">
+                {enCoursResas.map(r => {
                   const jeu = jeux.find(j => j.id === r.jeu_id);
                   const poste = POSTES.find(p => p.id === r.poste);
                   return (
-                    <div key={r.id} className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100">
+                    <button key={r.id} onClick={() => onOpenDetail(r)}
+                      className="flex items-center gap-3 p-3 bg-[#baff29]/20 rounded-xl border border-[#baff29]/40 text-left hover:bg-[#baff29]/30 transition-colors w-full">
                       <div className="flex flex-col items-center shrink-0 w-12">
                         <span className="text-[10px] font-black text-black">{format(parseISO(r.date_creneau), "d MMM", { locale: fr })}</span>
-                        <span className="text-[9px] text-slate-400 font-medium">{r.creneau}</span>
+                        <span className="text-[9px] text-slate-500 font-medium">{r.creneau}</span>
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-bold text-black truncate">{jeu?.titre ?? "?"}</p>
-                        <p className="text-[10px] text-slate-400">{r.adherent_nom} · {r.nb_joueurs}J · {poste?.label ?? r.poste}</p>
+                        <p className="text-[10px] text-slate-500">{r.adherent_nom} · {r.nb_joueurs}J · {poste?.label ?? r.poste}</p>
                       </div>
-                      <div className="flex gap-1 shrink-0">
-                        <button onClick={() => onUpdateStatut(r.id, "terminee")}
-                          className="px-2 py-1 rounded-lg text-[9px] font-bold bg-white border border-slate-200 hover:bg-emerald-50 hover:border-emerald-200 text-slate-500 hover:text-emerald-600 transition-colors">
-                          ✓
-                        </button>
-                        <button onClick={() => onUpdateStatut(r.id, "annulee")}
-                          className="px-2 py-1 rounded-lg text-[9px] font-bold bg-white border border-slate-200 hover:bg-rose-50 hover:border-rose-200 text-slate-500 hover:text-rose-500 transition-colors">
-                          ✕
-                        </button>
-                      </div>
-                    </div>
+                    </button>
                   );
                 })}
+              </div>
+            </>
+          )}
+
+          <h3 className="font-black text-base text-black mt-2">À venir</h3>
+          {aVenirResas.length === 0 ? (
+            <p className="text-sm text-slate-400 font-medium">Aucune réservation à venir</p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {aVenirResas.slice(0, 8).map(r => {
+                const jeu = jeux.find(j => j.id === r.jeu_id);
+                const poste = POSTES.find(p => p.id === r.poste);
+                return (
+                  <button key={r.id} onClick={() => onOpenDetail(r)}
+                    className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100 text-left hover:bg-slate-100 transition-colors w-full">
+                    <div className="flex flex-col items-center shrink-0 w-12">
+                      <span className="text-[10px] font-black text-black">{format(parseISO(r.date_creneau), "d MMM", { locale: fr })}</span>
+                      <span className="text-[9px] text-slate-400 font-medium">{r.creneau}</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold text-black truncate">{jeu?.titre ?? "?"}</p>
+                      <p className="text-[10px] text-slate-400">{r.adherent_nom} · {r.nb_joueurs}J · {poste?.label ?? r.poste}</p>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
@@ -1635,6 +1916,7 @@ export default function JvPage() {
   const [modalRotation, setModalRotation] = useState<SelectionSlot | null>(null);
   const [modalPlanning, setModalPlanning] = useState(false);
   const [modalResa, setModalResa] = useState<{ open: boolean; date?: string; creneau?: string; poste?: string }>({ open: false });
+  const [modalResaDetail, setModalResaDetail] = useState<JvReservation | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -1744,14 +2026,17 @@ export default function JvPage() {
     setReservations(prev => [r, ...prev]);
   }, []);
 
-  const handleUpdateStatut = useCallback(async (id: string, statut: JvReservation["statut"]) => {
-    await supabase.from("jv_reservations").update({ statut }).eq("id", id);
-    setReservations(prev => prev.map(r => r.id === id ? { ...r, statut } : r));
+  const handleResaUpdated = useCallback((r: JvReservation) => {
+    setReservations(prev => prev.map(x => x.id === r.id ? r : x));
+  }, []);
+
+  const handleResaCancelled = useCallback((id: string) => {
+    setReservations(prev => prev.map(r => r.id === id ? { ...r, statut: "annulee" } : r));
   }, []);
 
   const totalJeux = jeux.length;
   const totalConsolesActives = new Set(jeux.map(j => j.console)).size;
-  const totalResasVenir = reservations.filter(r => r.statut === "confirmee").length;
+  const totalResasVenir = reservations.filter(r => { const ds = getDisplayStatus(r); return ds === "a_venir" || ds === "en_cours"; }).length;
 
   return (
     <div className="min-h-screen bg-[#e5e5e5] flex flex-col items-center p-4 sm:p-8 gap-6">
@@ -1837,7 +2122,7 @@ export default function JvPage() {
                 jeux={jeux}
                 reservations={reservations}
                 onNouvelle={(date, creneau, poste) => setModalResa({ open: true, date, creneau, poste })}
-                onUpdateStatut={handleUpdateStatut}
+                onOpenDetail={r => setModalResaDetail(r)}
               />
             )}
           </>
@@ -1882,6 +2167,16 @@ export default function JvPage() {
           prePoste={modalResa.poste}
           onClose={() => setModalResa({ open: false })}
           onSaved={handleResaSaved}
+        />
+      )}
+      {modalResaDetail && (
+        <ModalReservationDetail
+          reservation={modalResaDetail}
+          jeux={jeux}
+          selections={selections}
+          onClose={() => setModalResaDetail(null)}
+          onSaved={handleResaUpdated}
+          onCancelled={handleResaCancelled}
         />
       )}
     </div>
