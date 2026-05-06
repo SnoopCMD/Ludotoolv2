@@ -49,10 +49,17 @@ type JvSelection = {
   console: Console;
   statut: "actif" | "planifie";
   permanent: boolean;
+  groupe: number;
   date_debut: string | null;
   date_fin: string | null;
   ordre: number;
   jeu?: JvJeu;
+};
+
+type JvRotationConfig = {
+  id: string;
+  current_slot_index: number;
+  week_start: string;
 };
 
 type JvReservation = {
@@ -347,7 +354,7 @@ function ModalJeu({
                 <input
                   type="text"
                   value={titreRecherche}
-                  onChange={e => { setTitreRecherche(e.target.value); setSearchResults([]); }}
+                  onChange={e => setTitreRecherche(e.target.value)}
                   onKeyDown={e => {
                     if (e.key === "Enter") searchIgdb(titreRecherche, consoleRecherche);
                     if (e.key === "Escape") setSearchResults([]);
@@ -360,7 +367,7 @@ function ModalJeu({
                   <span className="absolute right-4 top-1/2 -translate-y-1/2 w-3 h-3 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin" />
                 )}
               </div>
-              <select value={consoleRecherche} onChange={e => { setConsoleRecherche(e.target.value as Console | ""); setSearchResults([]); }}
+              <select value={consoleRecherche} onChange={e => setConsoleRecherche(e.target.value as Console | "")}
                 className="bg-slate-50 border-2 border-slate-100 rounded-2xl px-3 py-3 text-sm font-bold outline-none focus:border-black transition-colors">
                 <option value="">Toutes</option>
                 {CONSOLES.map(c => <option key={c} value={c}>{c}</option>)}
@@ -592,51 +599,45 @@ function ModalJeu({
   );
 }
 
-// ─── Modal : Rotation à venir ─────────────────────────────────────────────────
+// ─── Modal : File de rotation (groupes de 3) ─────────────────────────────────
 
 function ModalRotation({
   slot,
   selections,
   jeux,
   onClose,
-  onReorder,
-  onAddSelection,
+  onAddToGroup,
   onRemoveSelection,
+  onMoveGroup,
 }: {
   slot: SelectionSlot;
   selections: JvSelection[];
   jeux: JvJeu[];
   onClose: () => void;
-  onReorder: (ids: string[]) => void;
-  onAddSelection: (jeuId: string) => void;
+  onAddToGroup: (jeuId: string, groupe: number) => void;
   onRemoveSelection: (selId: string) => void;
+  onMoveGroup: (fromGroupe: number, toGroupe: number) => void;
 }) {
   const consoleName = SLOT_CONSOLE[slot];
 
   const planifiees = selections
     .filter(s => s.slot === slot && s.statut === "planifie")
-    .sort((a, b) => a.ordre - b.ordre);
+    .sort((a, b) => a.groupe - b.groupe || a.ordre - b.ordre);
 
-  const usedIds = new Set(selections.filter(s => s.slot === slot).map(s => s.jeu_id));
+  const groupNums = [...new Set(planifiees.map(s => s.groupe))].sort((a, b) => a - b);
+  const nextGroupe = groupNums.length > 0 ? Math.max(...groupNums) + 1 : 1;
+
+  const usedPlanifieIds = new Set(planifiees.map(s => s.jeu_id));
+  const usedActifIds = new Set(
+    selections.filter(s => s.slot === slot && s.statut === "actif").map(s => s.jeu_id)
+  );
   const disponibles = jeux.filter(
     j => j.console === consoleName &&
     j.statut !== "retire" &&
-    !usedIds.has(j.id) &&
+    !usedPlanifieIds.has(j.id) &&
+    !usedActifIds.has(j.id) &&
     (slot !== "Switch_Multi" || (j.nb_joueurs && j.nb_joueurs !== "1"))
   );
-
-  const [selectedJeuId, setSelectedJeuId] = useState("");
-  const [dragIdx, setDragIdx] = useState<number | null>(null);
-  const [overIdx, setOverIdx] = useState<number | null>(null);
-
-  const handleDrop = (targetIdx: number) => {
-    if (dragIdx === null || dragIdx === targetIdx) return;
-    const reordered = [...planifiees];
-    const [moved] = reordered.splice(dragIdx, 1);
-    reordered.splice(targetIdx, 0, moved);
-    onReorder(reordered.map(s => s.id));
-    setDragIdx(null); setOverIdx(null);
-  };
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-start justify-center p-4 pt-8 overflow-y-auto"
@@ -646,75 +647,257 @@ function ModalRotation({
         <div className="flex items-center gap-3 p-6 border-b border-slate-100">
           <div className={`w-8 h-8 rounded-full ${CONSOLE_DOT[consoleName]}`} />
           <div>
-            <h2 className="font-black text-xl text-black">Rotation {SLOT_LABEL[slot]}</h2>
-            <p className="text-xs text-slate-400 font-medium mt-0.5">Planifiez l'ordre des prochaines sélections</p>
+            <h2 className="font-black text-xl text-black">File d'attente — {SLOT_LABEL[slot]}</h2>
+            <p className="text-xs text-slate-400 font-medium mt-0.5">Groupes de 3 jeux · chaque groupe = une rotation</p>
           </div>
           <button onClick={onClose}
             className="ml-auto w-9 h-9 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 font-bold">✕</button>
         </div>
 
-        <div className="flex flex-col divide-y divide-slate-100 overflow-y-auto" style={{ maxHeight: "60vh" }}>
+        <div className="flex flex-col gap-4 p-6 overflow-y-auto custom-scroll" style={{ maxHeight: "60vh" }}>
 
-          {/* File de rotation */}
-          <div className="p-6 flex flex-col gap-3">
-            <span className="text-xs font-black text-slate-400 uppercase tracking-widest">File d'attente ({planifiees.length})</span>
-            {planifiees.length === 0 && (
-              <p className="text-sm text-slate-400 font-medium py-4 text-center">Aucun jeu en attente — ajoutez-en ci-dessous</p>
-            )}
-            {planifiees.map((sel, idx) => {
-              const jeu = jeux.find(j => j.id === sel.jeu_id);
-              if (!jeu) return null;
-              return (
-                <div key={sel.id}
-                  draggable
-                  onDragStart={() => setDragIdx(idx)}
-                  onDragOver={e => { e.preventDefault(); setOverIdx(idx); }}
-                  onDrop={() => handleDrop(idx)}
-                  onDragEnd={() => { setDragIdx(null); setOverIdx(null); }}
-                  className={`flex items-center gap-3 p-3 rounded-2xl border-2 cursor-grab transition-all ${
-                    overIdx === idx ? "border-black bg-slate-50 scale-[0.98]" : "border-slate-100 bg-white hover:border-slate-200"
-                  }`}>
-                  <span className="text-slate-300 text-sm font-black w-5 text-center select-none">⠿</span>
-                  <span className="w-6 h-6 rounded-lg bg-slate-100 text-slate-500 text-xs font-black flex items-center justify-center shrink-0">
-                    {idx + 1}
+          {groupNums.length === 0 && (
+            <p className="text-sm text-slate-400 font-medium text-center py-6">
+              Aucun groupe planifié — créez le premier ci-dessous
+            </p>
+          )}
+
+          {groupNums.map((g, gIdx) => {
+            const games = planifiees.filter(s => s.groupe === g);
+            const dispoPourGroupe = disponibles.filter(j => !games.some(s => s.jeu_id === j.id));
+
+            return (
+              <div key={g} className="flex flex-col gap-2 p-4 bg-slate-50 rounded-2xl border-2 border-slate-100">
+                {/* En-tête groupe */}
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black text-slate-400 uppercase tracking-widest">
+                    Groupe {gIdx + 1}
+                    <span className="normal-case font-medium ml-1 text-slate-300">({games.length}/3)</span>
                   </span>
-                  <div className="w-10 h-10 rounded-xl overflow-hidden bg-slate-100 shrink-0">
-                    {jeu.image_url
-                      ? <img src={jeu.image_url} alt={jeu.titre} className="w-full h-full object-cover" />
-                      : <span className="w-full h-full flex items-center justify-center text-lg">🎮</span>}
+                  <div className="flex gap-1">
+                    {gIdx > 0 && (
+                      <button onClick={() => onMoveGroup(g, groupNums[gIdx - 1])}
+                        className="w-6 h-6 flex items-center justify-center rounded-lg bg-white border border-slate-200 hover:border-slate-400 text-slate-400 hover:text-black text-xs transition-colors">▲</button>
+                    )}
+                    {gIdx < groupNums.length - 1 && (
+                      <button onClick={() => onMoveGroup(g, groupNums[gIdx + 1])}
+                        className="w-6 h-6 flex items-center justify-center rounded-lg bg-white border border-slate-200 hover:border-slate-400 text-slate-400 hover:text-black text-xs transition-colors">▼</button>
+                    )}
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-bold text-sm text-black truncate">{jeu.titre}</p>
-                    {jeu.genre && <p className="text-xs text-slate-400">{jeu.genre}</p>}
-                  </div>
-                  <button onClick={() => onRemoveSelection(sel.id)}
-                    className="w-7 h-7 flex items-center justify-center rounded-full text-slate-300 hover:text-rose-500 hover:bg-rose-50 transition-colors text-sm shrink-0">✕</button>
                 </div>
-              );
-            })}
-          </div>
 
-          {/* Ajouter un jeu */}
-          <div className="p-6 flex flex-col gap-3">
-            <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Ajouter à la rotation</span>
-            {disponibles.length === 0 ? (
-              <p className="text-sm text-slate-400 font-medium">Tous les jeux disponibles sont déjà dans la rotation.</p>
-            ) : (
-              <div className="flex gap-2">
-                <select value={selectedJeuId} onChange={e => setSelectedJeuId(e.target.value)}
-                  className="flex-1 bg-slate-50 border-2 border-slate-100 rounded-2xl px-4 py-2.5 text-sm font-medium outline-none focus:border-black transition-colors">
-                  <option value="">Choisir un jeu…</option>
-                  {disponibles.map(j => <option key={j.id} value={j.id}>{j.titre}</option>)}
-                </select>
-                <button
-                  onClick={() => { if (selectedJeuId) { onAddSelection(selectedJeuId); setSelectedJeuId(""); } }}
-                  disabled={!selectedJeuId}
-                  className="px-4 py-2.5 bg-black text-white rounded-2xl text-sm font-bold hover:bg-slate-800 disabled:opacity-40 transition-colors">
-                  + Ajouter
-                </button>
+                {/* Jeux du groupe */}
+                <div className="flex flex-col gap-1.5">
+                  {games.map(sel => {
+                    const jeu = jeux.find(j => j.id === sel.jeu_id);
+                    if (!jeu) return null;
+                    return (
+                      <div key={sel.id} className="flex items-center gap-3 p-2.5 bg-white rounded-xl border border-slate-100">
+                        <div className="w-9 h-9 rounded-lg overflow-hidden bg-slate-100 shrink-0 flex items-center justify-center">
+                          {jeu.image_url
+                            ? <img src={jeu.image_url} alt={jeu.titre} className="w-full h-full object-cover" />
+                            : <span className="text-base">🎮</span>}
+                        </div>
+                        <p className="font-bold text-sm text-black flex-1 truncate">{jeu.titre}</p>
+                        <button onClick={() => onRemoveSelection(sel.id)}
+                          className="text-slate-300 hover:text-rose-500 font-black text-sm transition-colors shrink-0">✕</button>
+                      </div>
+                    );
+                  })}
+
+                  {/* Slot vide — ajouter un jeu */}
+                  {games.length < 3 && (
+                    <select
+                      defaultValue=""
+                      onChange={e => { if (e.target.value) onAddToGroup(e.target.value, g); }}
+                      className="bg-white border-2 border-dashed border-slate-200 rounded-xl px-3 py-2.5 text-xs font-medium outline-none focus:border-[#baff29] transition-colors text-slate-400">
+                      <option value="">+ Jeu {games.length + 1}/3…</option>
+                      {dispoPourGroupe.length === 0
+                        ? <option disabled>Aucun jeu disponible</option>
+                        : dispoPourGroupe.map(j => <option key={j.id} value={j.id}>{j.titre}</option>)}
+                    </select>
+                  )}
+                </div>
               </div>
-            )}
+            );
+          })}
+
+          {/* Nouveau groupe */}
+          {disponibles.length > 0 && (
+            <button
+              onClick={() => {
+                const firstDispo = disponibles[0];
+                if (firstDispo) onAddToGroup(firstDispo.id, nextGroupe);
+              }}
+              className="flex items-center justify-center gap-2 py-3 rounded-2xl border-2 border-dashed border-slate-200 hover:border-black text-slate-400 hover:text-black text-sm font-bold transition-colors">
+              + Nouveau groupe
+            </button>
+          )}
+        </div>
+
+        <div className="p-6 border-t border-slate-100">
+          <button onClick={onClose}
+            className="w-full py-3 rounded-2xl bg-black text-white font-bold text-sm hover:bg-slate-800 transition-colors">
+            Fermer
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Modal : Planning global de rotation ──────────────────────────────────────
+
+function ModalRotationPlanning({
+  selections,
+  jeux,
+  rotationConfig,
+  onUpdateConfig,
+  onClose,
+}: {
+  selections: JvSelection[];
+  jeux: JvJeu[];
+  rotationConfig: JvRotationConfig;
+  onUpdateConfig: (slotIndex: number, weekStart: string) => void;
+  onClose: () => void;
+}) {
+  const [slotIndex, setSlotIndex] = useState(rotationConfig.current_slot_index);
+  const [weekStart, setWeekStart] = useState(rotationConfig.week_start);
+
+  // Construit la grille planning : 12 semaines à venir
+  const planning = useMemo(() => {
+    // Pour chaque slot, les groupes planifiés triés
+    const slotGroups: Record<SelectionSlot, number[]> = {
+      PS5: [], Switch_Multi: [], Switch_Solo: [], PC: [],
+    };
+    for (const slot of ROTATION_ORDER) {
+      const sels = selections.filter(s => s.slot === slot && s.statut === "planifie");
+      slotGroups[slot] = [...new Set(sels.map(s => s.groupe))].sort((a, b) => a - b);
+    }
+
+    // Tracker combien de groupes ont été "consommés" par slot
+    const consumed: Record<SelectionSlot, number> = { PS5: 0, Switch_Multi: 0, Switch_Solo: 0, PC: 0 };
+
+    return Array.from({ length: 12 }, (_, weekOffset) => {
+      const slotIdx = (slotIndex + weekOffset) % 4;
+      const slot = ROTATION_ORDER[slotIdx];
+      const groupeIdx = consumed[slot];
+      const groupeNum = slotGroups[slot][groupeIdx] ?? null;
+
+      const games = groupeNum !== null
+        ? selections
+            .filter(s => s.slot === slot && s.statut === "planifie" && s.groupe === groupeNum)
+            .map(s => jeux.find(j => j.id === s.jeu_id))
+            .filter(Boolean) as JvJeu[]
+        : [];
+
+      // Si c'est la semaine 0, on montre les actifs (pas les planifiés)
+      const activeGames = weekOffset === 0
+        ? selections
+            .filter(s => s.slot === slot && s.statut === "actif" && !s.permanent)
+            .map(s => jeux.find(j => j.id === s.jeu_id))
+            .filter(Boolean) as JvJeu[]
+        : games;
+
+      consumed[slot] = groupeIdx + (weekOffset > 0 ? 1 : 0);
+
+      const date = addDays(parseISO(weekStart), weekOffset * 7);
+
+      return { weekOffset, slot, date, games: activeGames, isActive: weekOffset === 0, groupeNum };
+    });
+  }, [selections, jeux, slotIndex, weekStart]);
+
+  const hasChanges = slotIndex !== rotationConfig.current_slot_index || weekStart !== rotationConfig.week_start;
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-start justify-center p-4 pt-8 overflow-y-auto"
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="bg-white rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden mb-8">
+
+        <div className="flex items-center gap-3 p-6 border-b border-slate-100">
+          <span className="text-2xl">📅</span>
+          <div className="flex-1">
+            <h2 className="font-black text-xl text-black">Planning de rotation</h2>
+            <p className="text-xs text-slate-400 font-medium mt-0.5">Vue globale des changements de sélection semaine par semaine</p>
           </div>
+          <button onClick={onClose}
+            className="w-9 h-9 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 font-bold">✕</button>
+        </div>
+
+        {/* Config point de départ */}
+        <div className="flex items-center gap-4 px-6 py-4 bg-slate-50 border-b border-slate-100 flex-wrap">
+          <span className="text-xs font-black text-slate-400 uppercase tracking-widest shrink-0">Point de départ</span>
+          <div className="flex gap-2 flex-wrap flex-1">
+            {ROTATION_ORDER.map((slot, idx) => (
+              <button key={slot} onClick={() => setSlotIndex(idx)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold border-2 transition-colors ${
+                  slotIndex === idx
+                    ? "bg-black text-white border-black"
+                    : `${CONSOLE_COLORS[SLOT_CONSOLE[slot]]} hover:opacity-80`
+                }`}>
+                {SLOT_LABEL[slot]}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-400 font-medium shrink-0">Semaine du</span>
+            <input type="date" value={weekStart} onChange={e => setWeekStart(e.target.value)}
+              className="bg-white border-2 border-slate-200 rounded-xl px-3 py-1.5 text-xs font-medium outline-none focus:border-black transition-colors" />
+          </div>
+          {hasChanges && (
+            <button onClick={() => onUpdateConfig(slotIndex, weekStart)}
+              className="px-4 py-2 bg-black text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition-colors">
+              Enregistrer
+            </button>
+          )}
+        </div>
+
+        {/* Tableau planning */}
+        <div className="overflow-y-auto custom-scroll" style={{ maxHeight: "55vh" }}>
+          <table className="w-full">
+            <thead className="sticky top-0 bg-white border-b border-slate-100">
+              <tr>
+                <th className="text-left px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest w-28">Semaine</th>
+                <th className="text-left px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest w-32">Console</th>
+                <th className="text-left px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Jeux</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {planning.map(({ weekOffset, slot, date, games, isActive }) => (
+                <tr key={weekOffset} className={isActive ? "bg-[#baff29]/10" : "hover:bg-slate-50"}>
+                  <td className="px-6 py-3">
+                    <p className={`text-xs font-black ${isActive ? "text-black" : "text-slate-500"}`}>
+                      {isActive ? "Cette sem." : `Sem. +${weekOffset}`}
+                    </p>
+                    <p className="text-[10px] text-slate-400">{format(date, "d MMM", { locale: fr })}</p>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`text-[11px] font-bold px-2 py-1 rounded-lg border ${CONSOLE_COLORS[SLOT_CONSOLE[slot]]}`}>
+                      {SLOT_LABEL[slot]}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    {games.length === 0 ? (
+                      <span className="text-[11px] text-slate-300 font-medium italic">— non planifié</span>
+                    ) : (
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {games.map(j => (
+                          <div key={j.id} className="flex items-center gap-1.5">
+                            <div className="w-5 h-5 rounded overflow-hidden bg-slate-100 shrink-0">
+                              {j.image_url
+                                ? <img src={j.image_url} alt={j.titre} className="w-full h-full object-cover" />
+                                : <span className="text-[10px] flex items-center justify-center h-full">🎮</span>}
+                            </div>
+                            <span className="text-[11px] font-bold text-black">{j.titre}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
 
         <div className="p-6 border-t border-slate-100">
@@ -1053,11 +1236,13 @@ function TabSelections({
   selections,
   onRotationOpen,
   onToggleActif,
+  onPlanningOpen,
 }: {
   jeux: JvJeu[];
   selections: JvSelection[];
   onRotationOpen: (slot: SelectionSlot) => void;
   onToggleActif: (jeuId: string, slot: SelectionSlot, isPermanent: boolean, currentSel: JvSelection | undefined) => void;
+  onPlanningOpen: () => void;
 }) {
   return (
     <div className="flex flex-col gap-6">
@@ -1074,6 +1259,10 @@ function TabSelections({
           </span>
         ))}
         <span className="text-slate-300 font-bold text-sm">→ …</span>
+        <button onClick={onPlanningOpen}
+          className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-white border-2 border-slate-200 hover:border-black rounded-xl text-xs font-bold text-slate-600 hover:text-black transition-colors">
+          📅 Planning global
+        </button>
       </div>
 
       {/* Cartes par slot */}
@@ -1081,9 +1270,9 @@ function TabSelections({
         {ROTATION_ORDER.map(slot => {
           const console = SLOT_CONSOLE[slot];
           const actifSels = selections.filter(s => s.slot === slot && s.statut === "actif" && !s.permanent);
-          const permanentSel = SLOT_HAS_PERMANENT[slot]
-            ? selections.find(s => s.slot === slot && s.permanent)
-            : undefined;
+          const permanentSels = SLOT_HAS_PERMANENT[slot]
+            ? selections.filter(s => s.slot === slot && s.permanent)
+            : [];
           const planifies = selections.filter(s => s.slot === slot && s.statut === "planifie").length;
 
           const usedIds = new Set(selections.filter(s => s.slot === slot).map(s => s.jeu_id));
@@ -1093,8 +1282,6 @@ function TabSelections({
             !usedIds.has(j.id) &&
             (slot !== "Switch_Multi" || (j.nb_joueurs && j.nb_joueurs !== "1"))
           );
-
-          const permanentJeu = permanentSel ? jeux.find(j => j.id === permanentSel.jeu_id) : undefined;
 
           return (
             <div key={slot} className="bg-slate-50 rounded-2xl p-4 border-2 border-slate-100 flex flex-col gap-4">
@@ -1116,31 +1303,34 @@ function TabSelections({
                 </button>
               </div>
 
-              {/* Jeu permanent (PS5 / PC) */}
+              {/* Jeux permanents (PS5 / PC) — sans limite */}
               {SLOT_HAS_PERMANENT[slot] && (
                 <div className="flex flex-col gap-1.5">
-                  <span className="text-[10px] font-black text-amber-500 uppercase tracking-widest">Permanent</span>
-                  {permanentJeu && permanentSel ? (
-                    <div className="flex items-center gap-2 p-2.5 bg-amber-50 rounded-xl border border-amber-200">
-                      <div className="w-8 h-8 rounded-lg overflow-hidden bg-slate-100 shrink-0 flex items-center justify-center">
-                        {permanentJeu.image_url
-                          ? <img src={permanentJeu.image_url} alt={permanentJeu.titre} className="w-full h-full object-cover" />
-                          : <span className="text-sm">🎮</span>}
+                  <span className="text-[10px] font-black text-amber-500 uppercase tracking-widest">Permanents</span>
+                  {permanentSels.map(pSel => {
+                    const pJeu = jeux.find(j => j.id === pSel.jeu_id);
+                    if (!pJeu) return null;
+                    return (
+                      <div key={pSel.id} className="flex items-center gap-2 p-2.5 bg-amber-50 rounded-xl border border-amber-200">
+                        <div className="w-8 h-8 rounded-lg overflow-hidden bg-slate-100 shrink-0 flex items-center justify-center">
+                          {pJeu.image_url
+                            ? <img src={pJeu.image_url} alt={pJeu.titre} className="w-full h-full object-cover" />
+                            : <span className="text-sm">🎮</span>}
+                        </div>
+                        <p className="font-bold text-xs flex-1 truncate text-black">{pJeu.titre}</p>
+                        <button onClick={() => onToggleActif(pJeu.id, slot, true, pSel)}
+                          className="text-[11px] text-amber-400 hover:text-rose-500 font-black transition-colors shrink-0 ml-1">✕</button>
                       </div>
-                      <p className="font-bold text-xs flex-1 truncate text-black">{permanentJeu.titre}</p>
-                      <button onClick={() => onToggleActif(permanentJeu.id, slot, true, permanentSel)}
-                        className="text-[11px] text-amber-400 hover:text-rose-500 font-black transition-colors shrink-0 ml-1">✕</button>
-                    </div>
-                  ) : (
-                    <select
-                      defaultValue=""
-                      onChange={e => { if (e.target.value) onToggleActif(e.target.value, slot, true, undefined); }}
-                      className="bg-white border-2 border-dashed border-amber-200 rounded-xl px-3 py-2 text-xs font-medium outline-none focus:border-amber-400 transition-colors text-slate-500">
-                      <option value="">+ Choisir un jeu permanent…</option>
-                      {jeux.filter(j => j.console === console && j.statut !== "retire" && !usedIds.has(j.id))
-                        .map(j => <option key={j.id} value={j.id}>{j.titre}</option>)}
-                    </select>
-                  )}
+                    );
+                  })}
+                  <select
+                    defaultValue=""
+                    onChange={e => { if (e.target.value) onToggleActif(e.target.value, slot, true, undefined); }}
+                    className="bg-white border-2 border-dashed border-amber-200 rounded-xl px-3 py-2 text-xs font-medium outline-none focus:border-amber-400 transition-colors text-slate-500">
+                    <option value="">+ Ajouter un jeu permanent…</option>
+                    {jeux.filter(j => j.console === console && j.statut !== "retire" && !usedIds.has(j.id))
+                      .map(j => <option key={j.id} value={j.id}>{j.titre}</option>)}
+                  </select>
                 </div>
               )}
 
@@ -1436,23 +1626,29 @@ export default function JvPage() {
   const [jeux, setJeux] = useState<JvJeu[]>([]);
   const [selections, setSelections] = useState<JvSelection[]>([]);
   const [reservations, setReservations] = useState<JvReservation[]>([]);
+  const [rotationConfig, setRotationConfig] = useState<JvRotationConfig>({
+    id: "main", current_slot_index: 0, week_start: format(new Date(), "yyyy-MM-dd"),
+  });
   const [isLoading, setIsLoading] = useState(true);
 
   const [modalJeu, setModalJeu] = useState<{ open: boolean; jeu: JvJeu | null }>({ open: false, jeu: null });
   const [modalRotation, setModalRotation] = useState<SelectionSlot | null>(null);
+  const [modalPlanning, setModalPlanning] = useState(false);
   const [modalResa, setModalResa] = useState<{ open: boolean; date?: string; creneau?: string; poste?: string }>({ open: false });
 
   useEffect(() => {
     const load = async () => {
       setIsLoading(true);
-      const [{ data: j }, { data: s }, { data: r }] = await Promise.all([
+      const [{ data: j }, { data: s }, { data: r }, { data: cfg }] = await Promise.all([
         supabase.from("jv_jeux").select("*").order("titre"),
-        supabase.from("jv_selections").select("*").order("ordre"),
+        supabase.from("jv_selections").select("*").order("groupe").order("ordre"),
         supabase.from("jv_reservations").select("*").order("date_creneau", { ascending: false }),
+        supabase.from("jv_rotation_config").select("*").eq("id", "main").single(),
       ]);
       if (j) setJeux(j as JvJeu[]);
       if (s) setSelections(s as JvSelection[]);
       if (r) setReservations(r as JvReservation[]);
+      if (cfg) setRotationConfig(cfg as JvRotationConfig);
       setIsLoading(false);
     };
     load();
@@ -1479,7 +1675,6 @@ export default function JvPage() {
       await supabase.from("jv_selections").delete().eq("id", currentSel.id);
       setSelections(prev => {
         const next = prev.filter(s => s.id !== currentSel.id);
-        // Remet "disponible" seulement si le jeu n'est plus dans aucune sélection active
         if (!next.some(s => s.jeu_id === jeuId && s.statut === "actif")) {
           supabase.from("jv_jeux").update({ statut: "disponible" }).eq("id", jeuId);
           setJeux(j => j.map(x => x.id === jeuId ? { ...x, statut: "disponible" } : x));
@@ -1488,12 +1683,8 @@ export default function JvPage() {
       });
     } else {
       const { data } = await supabase.from("jv_selections").insert({
-        jeu_id: jeuId,
-        slot,
-        console: SLOT_CONSOLE[slot],
-        statut: "actif",
-        permanent: isPermanent,
-        ordre: 0,
+        jeu_id: jeuId, slot, console: SLOT_CONSOLE[slot],
+        statut: "actif", permanent: isPermanent, groupe: 0, ordre: 0,
       }).select().single();
       if (data) setSelections(prev => [...prev, data as JvSelection]);
       await supabase.from("jv_jeux").update({ statut: "selection" }).eq("id", jeuId);
@@ -1501,15 +1692,14 @@ export default function JvPage() {
     }
   }, []);
 
-  const handleAddSelection = useCallback(async (jeuId: string, slot: SelectionSlot) => {
-    const maxOrdre = Math.max(0, ...selections.filter(s => s.slot === slot && s.statut === "planifie").map(s => s.ordre));
+  // Ajoute un jeu à un groupe planifié spécifique
+  const handleAddToGroup = useCallback(async (jeuId: string, slot: SelectionSlot, groupe: number) => {
+    const groupSels = selections.filter(s => s.slot === slot && s.statut === "planifie" && s.groupe === groupe);
+    if (groupSels.length >= 3) return;
+    const ordre = groupSels.length + 1;
     const { data } = await supabase.from("jv_selections").insert({
-      jeu_id: jeuId,
-      slot,
-      console: SLOT_CONSOLE[slot],
-      statut: "planifie",
-      permanent: false,
-      ordre: maxOrdre + 1,
+      jeu_id: jeuId, slot, console: SLOT_CONSOLE[slot],
+      statut: "planifie", permanent: false, groupe, ordre,
     }).select().single();
     if (data) setSelections(prev => [...prev, data as JvSelection]);
   }, [selections]);
@@ -1519,13 +1709,33 @@ export default function JvPage() {
     setSelections(prev => prev.filter(s => s.id !== selId));
   }, []);
 
-  const handleReorder = useCallback(async (ids: string[]) => {
-    const updates = ids.map((id, idx) => supabase.from("jv_selections").update({ ordre: idx + 1 }).eq("id", id));
-    await Promise.all(updates);
+  // Échange les groupes fromGroupe et toGroupe (pour les boutons ▲/▼)
+  const handleMoveGroup = useCallback(async (slot: SelectionSlot, fromGroupe: number, toGroupe: number) => {
+    const TEMP = -9999;
+    const fromIds = selections.filter(s => s.slot === slot && s.groupe === fromGroupe).map(s => s.id);
+    const toIds = selections.filter(s => s.slot === slot && s.groupe === toGroupe).map(s => s.id);
+    await Promise.all([
+      ...fromIds.map(id => supabase.from("jv_selections").update({ groupe: TEMP }).eq("id", id)),
+    ]);
+    await Promise.all([
+      ...toIds.map(id => supabase.from("jv_selections").update({ groupe: fromGroupe }).eq("id", id)),
+    ]);
+    await Promise.all([
+      ...fromIds.map(id => supabase.from("jv_selections").update({ groupe: toGroupe }).eq("id", id)),
+    ]);
     setSelections(prev => prev.map(s => {
-      const idx = ids.indexOf(s.id);
-      return idx >= 0 ? { ...s, ordre: idx + 1 } : s;
+      if (s.slot === slot && s.groupe === fromGroupe) return { ...s, groupe: toGroupe };
+      if (s.slot === slot && s.groupe === toGroupe) return { ...s, groupe: fromGroupe };
+      return s;
     }));
+  }, [selections]);
+
+  // Met à jour le point de départ de la rotation
+  const handleUpdateRotationConfig = useCallback(async (slotIndex: number, weekStart: string) => {
+    await supabase.from("jv_rotation_config")
+      .update({ current_slot_index: slotIndex, week_start: weekStart })
+      .eq("id", "main");
+    setRotationConfig(prev => ({ ...prev, current_slot_index: slotIndex, week_start: weekStart }));
   }, []);
 
   // ── Handlers réservations ─────────────────────────────────────────────────
@@ -1619,6 +1829,7 @@ export default function JvPage() {
                 selections={selections}
                 onRotationOpen={slot => setModalRotation(slot)}
                 onToggleActif={handleToggleActif}
+                onPlanningOpen={() => setModalPlanning(true)}
               />
             )}
             {onglet === "reservations" && (
@@ -1648,9 +1859,18 @@ export default function JvPage() {
           selections={selections}
           jeux={jeux}
           onClose={() => setModalRotation(null)}
-          onReorder={ids => handleReorder(ids)}
-          onAddSelection={jeuId => handleAddSelection(jeuId, modalRotation)}
+          onAddToGroup={(jeuId, groupe) => handleAddToGroup(jeuId, modalRotation, groupe)}
           onRemoveSelection={handleRemoveSelection}
+          onMoveGroup={(fromG, toG) => handleMoveGroup(modalRotation, fromG, toG)}
+        />
+      )}
+      {modalPlanning && (
+        <ModalRotationPlanning
+          selections={selections}
+          jeux={jeux}
+          rotationConfig={rotationConfig}
+          onUpdateConfig={handleUpdateRotationConfig}
+          onClose={() => setModalPlanning(false)}
         />
       )}
       {modalResa.open && (
