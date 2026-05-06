@@ -620,6 +620,9 @@ function ModalRotation({
   onMoveGroup: (fromGroupe: number, toGroupe: number) => void;
 }) {
   const consoleName = SLOT_CONSOLE[slot];
+  const [pickerGroupe, setPickerGroupe] = useState<number | null>(null);
+  const [pickerSearch, setPickerSearch] = useState("");
+  const pickerRef = useRef<HTMLInputElement>(null);
 
   const planifiees = selections
     .filter(s => s.slot === slot && s.statut === "planifie")
@@ -640,10 +643,27 @@ function ModalRotation({
     (slot !== "Switch_Multi" || (j.nb_joueurs && j.nb_joueurs !== "1"))
   );
 
+  const openPicker = (groupe: number) => {
+    setPickerGroupe(groupe);
+    setPickerSearch("");
+    setTimeout(() => pickerRef.current?.focus(), 50);
+  };
+
+  const closePicker = () => { setPickerGroupe(null); setPickerSearch(""); };
+
+  const pickerGames = pickerGroupe !== null
+    ? disponibles.filter(j => {
+        const inGroup = planifiees.filter(s => s.groupe === pickerGroupe).some(s => s.jeu_id === j.id);
+        if (inGroup) return false;
+        const q = normalizeStr(pickerSearch);
+        return q === "" || normalizeStr(j.titre).includes(q);
+      })
+    : [];
+
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-start justify-center p-4 pt-8 overflow-y-auto"
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden mb-8">
+      <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden mb-8 relative">
 
         <div className="flex items-center gap-3 p-6 border-b border-slate-100">
           <div className={`w-8 h-8 rounded-full ${CONSOLE_DOT[consoleName]}`} />
@@ -665,7 +685,6 @@ function ModalRotation({
 
           {groupNums.map((g, gIdx) => {
             const games = planifiees.filter(s => s.groupe === g);
-            const dispoPourGroupe = disponibles.filter(j => !games.some(s => s.jeu_id === j.id));
 
             return (
               <div key={g} className="flex flex-col gap-2 p-4 bg-slate-50 rounded-2xl border-2 border-slate-100">
@@ -706,17 +725,11 @@ function ModalRotation({
                     );
                   })}
 
-                  {/* Slot vide — ajouter un jeu */}
                   {games.length < 3 && (
-                    <select
-                      defaultValue=""
-                      onChange={e => { if (e.target.value) onAddToGroup(e.target.value, g); }}
-                      className="bg-white border-2 border-dashed border-slate-200 rounded-xl px-3 py-2.5 text-xs font-medium outline-none focus:border-[#baff29] transition-colors text-slate-400">
-                      <option value="">+ Jeu {games.length + 1}/3…</option>
-                      {dispoPourGroupe.length === 0
-                        ? <option disabled>Aucun jeu disponible</option>
-                        : dispoPourGroupe.map(j => <option key={j.id} value={j.id}>{j.titre}</option>)}
-                    </select>
+                    <button onClick={() => openPicker(g)}
+                      className="flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 border-dashed border-slate-200 hover:border-black text-slate-400 hover:text-black text-xs font-bold transition-colors">
+                      + Jeu {games.length + 1}/3
+                    </button>
                   )}
                 </div>
               </div>
@@ -725,11 +738,7 @@ function ModalRotation({
 
           {/* Nouveau groupe */}
           {disponibles.length > 0 && (
-            <button
-              onClick={() => {
-                const firstDispo = disponibles[0];
-                if (firstDispo) onAddToGroup(firstDispo.id, nextGroupe);
-              }}
+            <button onClick={() => openPicker(nextGroupe)}
               className="flex items-center justify-center gap-2 py-3 rounded-2xl border-2 border-dashed border-slate-200 hover:border-black text-slate-400 hover:text-black text-sm font-bold transition-colors">
               + Nouveau groupe
             </button>
@@ -742,6 +751,52 @@ function ModalRotation({
             Fermer
           </button>
         </div>
+
+        {/* Picker overlay */}
+        {pickerGroupe !== null && (
+          <div className="absolute inset-0 bg-white rounded-3xl flex flex-col z-10">
+            <div className="flex items-center gap-3 p-5 border-b border-slate-100 shrink-0">
+              <button onClick={closePicker}
+                className="w-8 h-8 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold transition-colors">←</button>
+              <div>
+                <p className="font-black text-sm text-black">
+                  Ajouter un jeu — Groupe {groupNums.indexOf(pickerGroupe) >= 0 ? groupNums.indexOf(pickerGroupe) + 1 : groupNums.length + 1}
+                </p>
+                <p className="text-[11px] text-slate-400">{consoleName} · {disponibles.length} jeux disponibles</p>
+              </div>
+            </div>
+            <div className="p-4 border-b border-slate-100 shrink-0">
+              <input
+                ref={pickerRef}
+                type="text"
+                value={pickerSearch}
+                onChange={e => setPickerSearch(e.target.value)}
+                placeholder="Rechercher un jeu…"
+                className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-4 py-3 text-sm font-medium outline-none focus:border-black transition-colors"
+              />
+            </div>
+            <div className="flex-1 overflow-y-auto custom-scroll p-4">
+              {pickerGames.length === 0 ? (
+                <p className="text-sm text-slate-400 text-center py-8">Aucun jeu disponible</p>
+              ) : (
+                <div className="grid grid-cols-3 gap-3">
+                  {pickerGames.map(j => (
+                    <button key={j.id}
+                      onClick={() => { onAddToGroup(j.id, pickerGroupe); closePicker(); }}
+                      className="flex flex-col items-center gap-1.5 p-2 rounded-2xl border-2 border-slate-100 bg-white hover:border-black hover:bg-slate-50 transition-all text-left group">
+                      <div className="w-full aspect-[3/4] rounded-xl overflow-hidden bg-slate-100 flex items-center justify-center">
+                        {j.image_url
+                          ? <img src={j.image_url} alt={j.titre} className="w-full h-full object-cover" />
+                          : <span className="text-3xl">🎮</span>}
+                      </div>
+                      <p className="text-[11px] font-bold text-black text-center leading-tight line-clamp-2 w-full">{j.titre}</p>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1608,32 +1663,48 @@ function TabSelections({
                 )}
               </div>
 
-              {/* File planifiée (compacte) */}
-              {planifies > 0 && (
-                <div className="flex flex-col gap-1.5">
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">À venir ({planifies})</span>
-                  {selections
-                    .filter(s => s.slot === slot && s.statut === "planifie")
-                    .sort((a, b) => a.ordre - b.ordre)
-                    .slice(0, 2)
-                    .map((sel, idx) => {
-                      const j = jeux.find(x => x.id === sel.jeu_id);
-                      if (!j) return null;
+              {/* File planifiée — groupes de 3 vignettes */}
+              {planifies > 0 && (() => {
+                const planifiesSorted = selections
+                  .filter(s => s.slot === slot && s.statut === "planifie")
+                  .sort((a, b) => a.groupe - b.groupe || a.ordre - b.ordre);
+                const gNums = [...new Set(planifiesSorted.map(s => s.groupe))].sort((a, b) => a - b);
+                return (
+                  <div className="flex flex-col gap-2">
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                      À venir · {gNums.length} groupe{gNums.length > 1 ? "s" : ""}
+                    </span>
+                    {gNums.map((g, gIdx) => {
+                      const gSels = planifiesSorted.filter(s => s.groupe === g);
                       return (
-                        <div key={sel.id} className="flex items-center gap-2 px-2.5 py-1.5 bg-white rounded-lg border border-slate-100">
-                          <span className="text-[10px] font-black text-slate-300 w-3">{idx + 1}</span>
-                          <span className="text-[11px] font-bold text-slate-700 truncate">{j.titre}</span>
+                        <div key={g} className="flex flex-col gap-1">
+                          <span className="text-[9px] font-black text-slate-300 uppercase tracking-wider">Groupe {gIdx + 1}</span>
+                          <div className="flex gap-1.5">
+                            {gSels.map(sel => {
+                              const j = jeux.find(x => x.id === sel.jeu_id);
+                              return (
+                                <div key={sel.id} title={j?.titre}
+                                  className="w-11 h-14 rounded-xl overflow-hidden bg-slate-100 border border-slate-200 shrink-0 flex items-center justify-center">
+                                  {j?.image_url
+                                    ? <img src={j.image_url} alt={j.titre} className="w-full h-full object-cover" />
+                                    : <span className="text-lg">🎮</span>}
+                                </div>
+                              );
+                            })}
+                            {Array.from({ length: 3 - gSels.length }).map((_, i) => (
+                              <div key={i} className="w-11 h-14 rounded-xl border-2 border-dashed border-slate-200 shrink-0" />
+                            ))}
+                          </div>
                         </div>
                       );
                     })}
-                  {planifies > 2 && (
                     <button onClick={() => onRotationOpen(slot)}
-                      className="text-[10px] text-slate-400 font-medium text-center py-0.5 hover:text-black transition-colors">
-                      +{planifies - 2} autres
+                      className="text-[10px] text-slate-400 font-medium text-left hover:text-black transition-colors mt-0.5">
+                      Gérer la file →
                     </button>
-                  )}
-                </div>
-              )}
+                  </div>
+                );
+              })()}
             </div>
           );
         })}
