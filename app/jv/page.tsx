@@ -1567,6 +1567,158 @@ function TabCatalogue({
   );
 }
 
+// ─── Modal : Correction des jeux d'une semaine passée ────────────────────────
+
+function ModalCorrectionSemaine({
+  slot,
+  jeux,
+  reservations,
+  onClose,
+  onSaved,
+}: {
+  slot: SelectionSlot;
+  jeux: JvJeu[];
+  reservations: JvReservation[];
+  onClose: () => void;
+  onSaved: (updated: JvReservation[]) => void;
+}) {
+  const consoleName = SLOT_CONSOLE[slot];
+  const postes = POSTES.filter(p => POSTE_SLOT[p.id] === slot);
+  const consolJeux = jeux.filter(j => j.console === consoleName && j.statut !== "retire");
+
+  const [semaine, setSemaine] = useState(() => addDays(startOfWeek(new Date(), { weekStartsOn: 1 }), -7));
+  const lundi = startOfWeek(semaine, { weekStartsOn: 1 });
+  const weekStart = format(addDays(lundi, 1), "yyyy-MM-dd");
+  const weekEnd   = format(addDays(lundi, 4), "yyyy-MM-dd");
+
+  const resasSemaine = reservations
+    .filter(r => postes.some(p => p.id === r.poste) && r.statut !== "annulee" && r.date_creneau >= weekStart && r.date_creneau <= weekEnd)
+    .sort((a, b) => a.date_creneau.localeCompare(b.date_creneau) || a.creneau.localeCompare(b.creneau));
+
+  const [jeuMap, setJeuMap] = useState<Record<string, string>>({});
+  const weekKey = format(lundi, "yyyy-MM-dd");
+  useEffect(() => {
+    setJeuMap(Object.fromEntries(resasSemaine.map(r => [r.id, r.jeu_id])));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weekKey]);
+
+  const [bulkJeuId, setBulkJeuId] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+
+  const applyBulk = () => {
+    if (!bulkJeuId) return;
+    setJeuMap(Object.fromEntries(resasSemaine.map(r => [r.id, bulkJeuId])));
+  };
+
+  const hasChanges = resasSemaine.some(r => (jeuMap[r.id] ?? r.jeu_id) !== r.jeu_id);
+
+  const save = async () => {
+    setIsSaving(true);
+    const toUpdate = resasSemaine.filter(r => jeuMap[r.id] && jeuMap[r.id] !== r.jeu_id);
+    await Promise.all(toUpdate.map(r =>
+      supabase.from("jv_reservations").update({ jeu_id: jeuMap[r.id] }).eq("id", r.id)
+    ));
+    onSaved(resasSemaine.map(r => ({ ...r, jeu_id: jeuMap[r.id] ?? r.jeu_id })));
+    setIsSaving(false);
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-start justify-center p-4 pt-8 overflow-y-auto"
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden mb-8">
+
+        <div className="flex items-center gap-3 p-6 border-b border-slate-100">
+          <div className={`w-8 h-8 rounded-full ${CONSOLE_DOT[consoleName]}`} />
+          <div className="flex-1">
+            <h2 className="font-black text-xl text-black">Corriger les réservations</h2>
+            <p className="text-xs text-slate-400 font-medium mt-0.5">{SLOT_LABEL[slot]} · modifier le jeu des créneaux passés</p>
+          </div>
+          <button onClick={onClose}
+            className="w-9 h-9 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 font-bold">✕</button>
+        </div>
+
+        {/* Sélecteur de semaine */}
+        <div className="flex items-center justify-between px-6 py-3 border-b border-slate-100 bg-slate-50">
+          <button onClick={() => setSemaine(d => addDays(d, -7))}
+            className="w-8 h-8 flex items-center justify-center rounded-xl bg-white border border-slate-200 hover:border-slate-400 text-slate-600 font-bold transition-colors">‹</button>
+          <span className="text-sm font-bold text-black">
+            {format(addDays(lundi, 1), "d MMM", { locale: fr })} – {format(addDays(lundi, 4), "d MMM yyyy", { locale: fr })}
+          </span>
+          <button onClick={() => setSemaine(d => addDays(d, 7))}
+            className="w-8 h-8 flex items-center justify-center rounded-xl bg-white border border-slate-200 hover:border-slate-400 text-slate-600 font-bold transition-colors">›</button>
+        </div>
+
+        {/* Appliquer à tous */}
+        {resasSemaine.length > 1 && (
+          <div className="flex items-center gap-2 px-6 py-3 border-b border-slate-100">
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest shrink-0">Tout mettre sur</span>
+            <select value={bulkJeuId} onChange={e => setBulkJeuId(e.target.value)}
+              className="flex-1 bg-slate-50 border-2 border-slate-100 rounded-xl px-3 py-1.5 text-xs font-medium outline-none focus:border-black transition-colors">
+              <option value="">— choisir un jeu —</option>
+              {consolJeux.map(j => <option key={j.id} value={j.id}>{j.titre}</option>)}
+            </select>
+            <button onClick={applyBulk} disabled={!bulkJeuId}
+              className="px-3 py-1.5 bg-black text-white rounded-xl text-xs font-bold disabled:opacity-30 hover:bg-slate-800 transition-colors shrink-0">
+              Appliquer
+            </button>
+          </div>
+        )}
+
+        {/* Liste des réservations */}
+        <div className="overflow-y-auto custom-scroll" style={{ maxHeight: "50vh" }}>
+          {resasSemaine.length === 0 ? (
+            <p className="text-sm text-slate-400 font-medium text-center py-12">Aucune réservation cette semaine</p>
+          ) : (
+            resasSemaine.map(r => {
+              const poste = POSTES.find(p => p.id === r.poste);
+              const currentJeuId = jeuMap[r.id] ?? r.jeu_id;
+              const isModified = currentJeuId !== r.jeu_id;
+              return (
+                <div key={r.id} className="flex items-center gap-3 px-6 py-3 border-b border-slate-50 last:border-b-0">
+                  <div className="shrink-0 w-24">
+                    <p className="text-[10px] font-black text-black capitalize">
+                      {format(parseISO(r.date_creneau), "EEE d MMM", { locale: fr })}
+                    </p>
+                    <p className="text-[9px] text-slate-400 font-medium">{r.creneau}</p>
+                    <p className="text-[9px] text-slate-500">{poste?.label} · {r.adherent_nom} · {r.nb_joueurs}J</p>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <select
+                      value={currentJeuId}
+                      onChange={e => setJeuMap(prev => ({ ...prev, [r.id]: e.target.value }))}
+                      className={`w-full border-2 rounded-xl px-3 py-2 text-xs font-medium outline-none transition-colors ${
+                        isModified
+                          ? "bg-amber-50 border-amber-300 focus:border-amber-500"
+                          : "bg-slate-50 border-slate-100 focus:border-black"
+                      }`}>
+                      {consolJeux.map(j => <option key={j.id} value={j.id}>{j.titre}</option>)}
+                    </select>
+                  </div>
+                  {isModified && (
+                    <span className="text-[9px] bg-amber-100 text-amber-600 font-bold px-1.5 py-0.5 rounded shrink-0">modifié</span>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        <div className="flex gap-3 p-6 border-t border-slate-100">
+          <button onClick={onClose}
+            className="flex-1 py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-sm transition-colors">
+            Annuler
+          </button>
+          <button onClick={save} disabled={isSaving || !hasChanges}
+            className="flex-1 py-3 rounded-2xl bg-black text-white font-bold text-sm hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-all">
+            {isSaving ? "Sauvegarde…" : "Enregistrer"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Onglet Sélections ────────────────────────────────────────────────────────
 
 function TabSelections({
@@ -1575,12 +1727,14 @@ function TabSelections({
   onRotationOpen,
   onToggleActif,
   onPlanningOpen,
+  onCorrectionOpen,
 }: {
   jeux: JvJeu[];
   selections: JvSelection[];
   onRotationOpen: (slot: SelectionSlot) => void;
   onToggleActif: (jeuId: string, slot: SelectionSlot, isPermanent: boolean, currentSel: JvSelection | undefined) => void;
   onPlanningOpen: () => void;
+  onCorrectionOpen: (slot: SelectionSlot) => void;
 }) {
   return (
     <div className="flex flex-col gap-6">
@@ -1625,20 +1779,27 @@ function TabSelections({
             <div key={slot} className="bg-slate-50 rounded-2xl p-4 border-2 border-slate-100 flex flex-col gap-4">
 
               {/* Header */}
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-1">
                 <div className="flex items-center gap-2">
                   <div className={`w-3 h-3 rounded-full ${CONSOLE_DOT[console]}`} />
                   <span className="font-black text-sm text-black">{SLOT_LABEL[slot]}</span>
                 </div>
-                <button onClick={() => onRotationOpen(slot)}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white border-2 border-slate-200 hover:border-black rounded-xl text-xs font-bold text-slate-600 hover:text-black transition-colors">
-                  🔄
-                  {planifies > 0 && (
-                    <span className="min-w-[16px] h-4 bg-black text-white text-[9px] font-black rounded-full flex items-center justify-center px-0.5">
-                      {planifies}
-                    </span>
-                  )}
-                </button>
+                <div className="flex items-center gap-1">
+                  <button onClick={() => onCorrectionOpen(slot)}
+                    title="Corriger les jeux d'une semaine passée"
+                    className="w-8 h-8 flex items-center justify-center bg-white border-2 border-slate-200 hover:border-slate-400 rounded-xl text-xs text-slate-400 hover:text-slate-700 transition-colors">
+                    📋
+                  </button>
+                  <button onClick={() => onRotationOpen(slot)}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white border-2 border-slate-200 hover:border-black rounded-xl text-xs font-bold text-slate-600 hover:text-black transition-colors">
+                    🔄
+                    {planifies > 0 && (
+                      <span className="min-w-[16px] h-4 bg-black text-white text-[9px] font-black rounded-full flex items-center justify-center px-0.5">
+                        {planifies}
+                      </span>
+                    )}
+                  </button>
+                </div>
               </div>
 
               {/* Jeux permanents (PS5 / PC) — sans limite */}
@@ -2029,6 +2190,7 @@ export default function JvPage() {
   const [modalPlanning, setModalPlanning] = useState(false);
   const [modalResa, setModalResa] = useState<{ open: boolean; date?: string; creneau?: string; poste?: string }>({ open: false });
   const [modalResaDetail, setModalResaDetail] = useState<JvReservation | null>(null);
+  const [modalCorrection, setModalCorrection] = useState<SelectionSlot | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -2146,6 +2308,11 @@ export default function JvPage() {
     setReservations(prev => prev.map(r => r.id === id ? { ...r, statut: "annulee" } : r));
   }, []);
 
+  const handleCorrectionSaved = useCallback((updated: JvReservation[]) => {
+    const map = Object.fromEntries(updated.map(r => [r.id, r]));
+    setReservations(prev => prev.map(r => map[r.id] ?? r));
+  }, []);
+
   const totalJeux = jeux.length;
   const totalConsolesActives = new Set(jeux.map(j => j.console)).size;
   const totalResasVenir = reservations.filter(r => { const ds = getDisplayStatus(r); return ds === "a_venir" || ds === "en_cours"; }).length;
@@ -2227,6 +2394,7 @@ export default function JvPage() {
                 onRotationOpen={slot => setModalRotation(slot)}
                 onToggleActif={handleToggleActif}
                 onPlanningOpen={() => setModalPlanning(true)}
+                onCorrectionOpen={slot => setModalCorrection(slot)}
               />
             )}
             {onglet === "reservations" && (
@@ -2279,6 +2447,15 @@ export default function JvPage() {
           prePoste={modalResa.poste}
           onClose={() => setModalResa({ open: false })}
           onSaved={handleResaSaved}
+        />
+      )}
+      {modalCorrection && (
+        <ModalCorrectionSemaine
+          slot={modalCorrection}
+          jeux={jeux}
+          reservations={reservations}
+          onClose={() => setModalCorrection(null)}
+          onSaved={handleCorrectionSaved}
         />
       )}
       {modalResaDetail && (
