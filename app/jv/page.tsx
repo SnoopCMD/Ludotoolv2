@@ -850,16 +850,25 @@ function ModalRotationPlanning({
   jeux,
   rotationConfig,
   onUpdateConfig,
+  onApplyRotation,
   onClose,
 }: {
   selections: JvSelection[];
   jeux: JvJeu[];
   rotationConfig: JvRotationConfig;
   onUpdateConfig: (slotIndex: number, weekStart: string) => void;
+  onApplyRotation: () => Promise<void>;
   onClose: () => void;
 }) {
   const [slotIndex, setSlotIndex] = useState(rotationConfig.current_slot_index);
   const [weekStart, setWeekStart] = useState(rotationConfig.week_start);
+  const [isApplying, setIsApplying] = useState(false);
+
+  const handleApply = async () => {
+    setIsApplying(true);
+    await onApplyRotation();
+    setIsApplying(false);
+  };
 
   // Construit la grille planning : 12 semaines à venir
   const planning = useMemo(() => {
@@ -949,8 +958,63 @@ function ModalRotationPlanning({
           )}
         </div>
 
+        {/* Prochaine rotation — action principale */}
+        {(() => {
+          const currentSlot = ROTATION_ORDER[rotationConfig.current_slot_index];
+          const nextSlotVal = ROTATION_ORDER[(rotationConfig.current_slot_index + 1) % 4];
+          const planifiedForNext = selections
+            .filter(s => s.slot === nextSlotVal && s.statut === "planifie")
+            .sort((a, b) => a.groupe - b.groupe || a.ordre - b.ordre);
+          const firstNextGroupe = planifiedForNext.length > 0 ? planifiedForNext[0].groupe : null;
+          const nextGroupGames = (firstNextGroupe !== null
+            ? planifiedForNext.filter(s => s.groupe === firstNextGroupe)
+            : []
+          ).map(s => jeux.find(j => j.id === s.jeu_id)).filter(Boolean) as JvJeu[];
+
+          return (
+            <div className="flex items-center gap-3 px-6 py-4 bg-[#baff29]/10 border-b border-[#baff29]/30 flex-wrap">
+              <div className="flex items-center gap-2 flex-1 flex-wrap min-w-0">
+                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest shrink-0">Appliquer la rotation</span>
+                <span className={`text-xs font-bold px-2.5 py-1 rounded-lg border ${CONSOLE_COLORS[SLOT_CONSOLE[currentSlot]]}`}>
+                  {SLOT_LABEL[currentSlot]}
+                </span>
+                <span className="text-slate-400 font-bold text-sm shrink-0">→</span>
+                <span className={`text-xs font-bold px-2.5 py-1 rounded-lg border ${CONSOLE_COLORS[SLOT_CONSOLE[nextSlotVal]]}`}>
+                  {SLOT_LABEL[nextSlotVal]}
+                </span>
+                {nextGroupGames.length > 0 ? (
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {nextGroupGames.map(j => (
+                      <div key={j.id} className="flex items-center gap-1">
+                        <div className="w-5 h-5 rounded-md overflow-hidden bg-slate-100 shrink-0">
+                          {j.image_url
+                            ? <img src={j.image_url} alt={j.titre} className="w-full h-full object-cover" />
+                            : <span className="text-[9px] flex items-center justify-center h-full">🎮</span>}
+                        </div>
+                        <span className="text-[11px] font-bold text-slate-600 max-w-[80px] truncate">{j.titre}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <span className="text-[11px] text-slate-300 italic">aucun jeu planifié</span>
+                )}
+              </div>
+              <button
+                onClick={handleApply}
+                disabled={isApplying}
+                className="flex items-center gap-2 px-4 py-2 bg-black text-white rounded-xl text-xs font-bold hover:bg-slate-800 disabled:opacity-50 transition-colors shrink-0">
+                {isApplying ? (
+                  <><div className="w-3 h-3 border border-white/30 border-t-white rounded-full animate-spin" />En cours…</>
+                ) : (
+                  <>🔄 Valider</>
+                )}
+              </button>
+            </div>
+          );
+        })()}
+
         {/* Tableau planning */}
-        <div className="overflow-y-auto custom-scroll" style={{ maxHeight: "55vh" }}>
+        <div className="overflow-y-auto custom-scroll" style={{ maxHeight: "50vh" }}>
           <table className="w-full">
             <thead className="sticky top-0 bg-white border-b border-slate-100">
               <tr>
@@ -2294,6 +2358,65 @@ export default function JvPage() {
     setRotationConfig(prev => ({ ...prev, current_slot_index: slotIndex, week_start: weekStart }));
   }, []);
 
+  // Applique la rotation : le prochain slot dans le cycle remplace ses actifs par son 1er groupe planifié
+  const handleApplyRotation = useCallback(async () => {
+    const nextSlotIndex = (rotationConfig.current_slot_index + 1) % 4;
+    const nextSlot = ROTATION_ORDER[nextSlotIndex];
+
+    // Actifs non-permanents du prochain slot → seront retirés
+    const activeSels = selections.filter(s => s.slot === nextSlot && s.statut === "actif" && !s.permanent);
+    const activeIds = activeSels.map(s => s.id);
+
+    // Premier groupe planifié du prochain slot → sera promu
+    const planifiedSorted = selections
+      .filter(s => s.slot === nextSlot && s.statut === "planifie")
+      .sort((a, b) => a.groupe - b.groupe || a.ordre - b.ordre);
+    const firstGroupeNum = planifiedSorted.length > 0 ? planifiedSorted[0].groupe : null;
+    const nextGroupSels = firstGroupeNum !== null
+      ? planifiedSorted.filter(s => s.groupe === firstGroupeNum)
+      : [];
+    const nextGroupIds = nextGroupSels.map(s => s.id);
+
+    // 1. Supprimer les actifs non-permanents du prochain slot
+    if (activeIds.length > 0) {
+      await supabase.from("jv_selections").delete().in("id", activeIds);
+    }
+
+    // 2. Promouvoir le premier groupe planifié en actif
+    if (nextGroupIds.length > 0) {
+      await supabase.from("jv_selections")
+        .update({ statut: "actif", groupe: 0, ordre: 0 })
+        .in("id", nextGroupIds);
+    }
+
+    // 3. Mettre à jour les statuts des jeux
+    const removedJeuIds = activeSels.map(s => s.jeu_id);
+    const addedJeuIds = nextGroupSels.map(s => s.jeu_id);
+    const toDisponible = removedJeuIds.filter(id => !addedJeuIds.includes(id));
+    const toSelection = addedJeuIds.filter(id => !removedJeuIds.includes(id));
+    await Promise.all([
+      ...toDisponible.map(id => supabase.from("jv_jeux").update({ statut: "disponible" }).eq("id", id)),
+      ...toSelection.map(id => supabase.from("jv_jeux").update({ statut: "selection" }).eq("id", id)),
+    ]);
+
+    // 4. Avancer la config
+    const newWeekStart = format(addDays(parseISO(rotationConfig.week_start), 7), "yyyy-MM-dd");
+    await handleUpdateRotationConfig(nextSlotIndex, newWeekStart);
+
+    // 5. State local
+    setSelections(prev => {
+      const afterDelete = prev.filter(s => !activeIds.includes(s.id));
+      return afterDelete.map(s =>
+        nextGroupIds.includes(s.id) ? { ...s, statut: "actif" as const, groupe: 0, ordre: 0 } : s
+      );
+    });
+    setJeux(prev => prev.map(j => {
+      if (toDisponible.includes(j.id)) return { ...j, statut: "disponible" as const };
+      if (toSelection.includes(j.id)) return { ...j, statut: "selection" as const };
+      return j;
+    }));
+  }, [rotationConfig, selections, handleUpdateRotationConfig]);
+
   // ── Handlers réservations ─────────────────────────────────────────────────
 
   const handleResaSaved = useCallback((r: JvReservation) => {
@@ -2435,6 +2558,7 @@ export default function JvPage() {
           jeux={jeux}
           rotationConfig={rotationConfig}
           onUpdateConfig={handleUpdateRotationConfig}
+          onApplyRotation={handleApplyRotation}
           onClose={() => setModalPlanning(false)}
         />
       )}
