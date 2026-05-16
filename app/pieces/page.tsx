@@ -543,238 +543,323 @@ export default function PiecesPage() {
 
   // ─── Rendu ────────────────────────────────────────────────────────────────
 
-  return (
-    <div className="min-h-screen p-4 sm:p-8 bg-[#e5e5e5] font-sans relative">
-      <style>{`
-        .custom-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
-        .custom-scroll::-webkit-scrollbar-track { background: transparent; }
-        .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
-      `}</style>
+  const inp: React.CSSProperties = {
+    border: "2px solid var(--ink)", borderRadius: 8, padding: "9px 14px",
+    background: "var(--white)", outline: "none", fontSize: 13,
+    fontFamily: "inherit", width: "100%", boxSizing: "border-box",
+  };
 
-      <header className="flex justify-between items-center mb-6 relative w-full max-w-[96%] mx-auto shrink-0">
-        <div className="w-10 h-10 bg-black rounded flex items-center justify-center text-white font-black text-xl italic">+</div>
-        <nav className="absolute left-1/2 -translate-x-1/2 bg-[#2d2d2d] text-white p-1.5 rounded-full flex items-center text-sm font-bold shadow-lg z-10 gap-1">
-          <Link href="/atelier" className="px-6 py-2.5 rounded-full hover:bg-white/10 transition">Retour Atelier</Link>
-        </nav>
-        <div className="w-10" />
+  const pillBtn = (active: boolean, color: string): React.CSSProperties => ({
+    padding: "5px 12px", borderRadius: 20, fontSize: 11, fontWeight: 700,
+    border: "2px solid var(--ink)", cursor: "pointer", fontFamily: "inherit",
+    whiteSpace: "nowrap",
+    background: active ? color : "var(--white)",
+    color: "var(--ink)", boxShadow: active ? "2px 2px 0 var(--ink)" : "none",
+    transition: "all 0.1s",
+  });
+
+  return (
+    <div style={{ minHeight: "100vh", background: "var(--cream)", display: "flex", flexDirection: "column" }}>
+
+      {/* Mini sticky header */}
+      <header style={{
+        position: "sticky", top: 0, zIndex: 200, height: 56,
+        background: "var(--cream)", borderBottom: "2.5px solid var(--ink)",
+        display: "flex", alignItems: "center", padding: "0 24px", gap: 16,
+      }}>
+        <Link href="/atelier" style={{
+          display: "inline-flex", alignItems: "center", gap: 6,
+          background: "var(--ink)", color: "var(--cream)",
+          border: "2px solid var(--ink)", borderRadius: 6, padding: "4px 12px",
+          fontWeight: 700, fontSize: 12, textDecoration: "none",
+          boxShadow: "2px 2px 0 rgba(0,0,0,0.3)", fontFamily: "inherit",
+        }}>← Atelier</Link>
+        <h1 className="bc" style={{
+          fontSize: 22, letterSpacing: "0.03em", margin: 0,
+          background: "linear-gradient(90deg, var(--rouge), var(--vert))",
+          WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
+        }}>Pièces manquantes</h1>
+        {nbManquant > 0 && (
+          <button onClick={ouvrirCommande}
+            className="pop-btn pop-btn-dark"
+            style={{ marginLeft: "auto", padding: "5px 14px", fontSize: 12, display: "flex", alignItems: "center", gap: 6 }}>
+            <span className="bc" style={{ fontSize: 13 }}>📬 Commander ({nbManquant})</span>
+          </button>
+        )}
+        <button onClick={() => { chargerEditeurs(); setIsEditeursOpen(true); }}
+          style={{
+            ...(nbManquant > 0 ? {} : { marginLeft: "auto" }),
+            background: "var(--cream2)", border: "2px solid var(--ink)",
+            borderRadius: 6, padding: "5px 12px", fontSize: 12, fontWeight: 700,
+            cursor: "pointer", boxShadow: "2px 2px 0 var(--ink)", fontFamily: "inherit",
+          }}>
+          ⚙️ Éditeurs
+        </button>
       </header>
 
-      <main className="w-full max-w-[96%] mx-auto flex flex-col lg:flex-row gap-6 pb-24">
+      <main style={{ padding: "20px 24px", display: "flex", gap: 20, alignItems: "flex-start", flex: 1, flexWrap: "wrap" }}>
 
         {/* ── JEUX INCOMPLETS ── */}
-        <div className="bg-white rounded-[3rem] p-8 lg:p-10 flex-1 shadow-md border-t-8 border-[#ff4d79] overflow-hidden flex flex-col">
-          <div className="flex items-center justify-between mb-6">
-            <h1 className="text-3xl font-black text-black">Jeux incomplets</h1>
-            <div className="flex gap-2">
-              <button
-                onClick={() => { chargerEditeurs(); setIsEditeursOpen(true); }}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold transition-colors"
-              >
-                ⚙️ Éditeurs
-              </button>
-              {nbManquant > 0 && (
-                <button
-                  onClick={ouvrirCommande}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-black text-white text-sm font-bold hover:bg-slate-800 transition-colors shadow-sm"
-                >
-                  📬 Commander ({nbManquant})
-                </button>
-              )}
-            </div>
-          </div>
+        <div className="pop-card" style={{
+          flex: 1, minWidth: 340, display: "flex", flexDirection: "column", gap: 16,
+          borderTop: "4px solid var(--rouge)", padding: "20px 22px",
+        }}>
+          <p className="bc" style={{ fontSize: 18, margin: 0, letterSpacing: "0.02em" }}>Jeux incomplets</p>
 
           {/* Formulaire ajout */}
-          <div className="bg-slate-50 border-2 border-slate-100 p-5 rounded-3xl mb-4 flex flex-col gap-3 shrink-0">
-            <div className="flex gap-3 relative">
-              <input type="text" placeholder="Code Syracuse..." value={codeManq} onChange={e => setCodeManq(e.target.value)} onBlur={() => chercherNom(codeManq)} className="w-1/3 border-2 border-slate-200 p-3 rounded-xl outline-none focus:border-black" />
-              <div className="relative w-2/3">
-                <input type="text" placeholder="Nom du jeu..." value={nomManq} onChange={e => handleRechercheNom(e.target.value)} className="w-full border-2 border-slate-200 p-3 rounded-xl outline-none focus:border-black font-bold" />
+          <div style={{ background: "var(--cream2)", border: "2px solid var(--ink)", borderRadius: 10, padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ display: "flex", gap: 10 }}>
+              <input type="text" placeholder="Code Syracuse..." value={codeManq}
+                onChange={e => setCodeManq(e.target.value)} onBlur={() => chercherNom(codeManq)}
+                style={{ ...inp, width: 140, flexShrink: 0 }} />
+              <div style={{ flex: 1, position: "relative" }}>
+                <input type="text" placeholder="Nom du jeu..." value={nomManq}
+                  onChange={e => handleRechercheNom(e.target.value)}
+                  style={{ ...inp, fontWeight: 700 }} />
                 {suggestionsNom.length > 0 && (
-                  <div className="absolute top-full left-0 w-full mt-1 bg-white border-2 border-slate-200 rounded-xl shadow-lg z-10 overflow-hidden">
+                  <div style={{
+                    position: "absolute", top: "100%", left: 0, right: 0, zIndex: 50, marginTop: 4,
+                    background: "var(--white)", border: "2px solid var(--ink)",
+                    borderRadius: 8, boxShadow: "4px 4px 0 var(--ink)", overflow: "hidden",
+                  }}>
                     {suggestionsNom.map((jeu, i) => (
-                      <div key={i} onClick={() => selectionnerSuggestion(jeu)} className="p-3 hover:bg-slate-50 cursor-pointer font-bold border-b border-slate-100 last:border-none flex justify-between items-center gap-2">
-                        <span className="truncate">{jeu.nom}</span>
-                        {jeu.code_syracuse && <span className="text-xs font-mono font-normal text-slate-400 shrink-0">…{jeu.code_syracuse.slice(-4)}</span>}
+                      <div key={i} onClick={() => selectionnerSuggestion(jeu)}
+                        style={{ padding: "9px 14px", cursor: "pointer", fontWeight: 700, fontSize: 13, borderBottom: "1px solid var(--cream2)", display: "flex", justifyContent: "space-between" }}
+                        onMouseEnter={e => (e.currentTarget.style.background = "var(--cream2)")}
+                        onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
+                        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{jeu.nom}</span>
+                        {jeu.code_syracuse && <span style={{ fontSize: 10, color: "rgba(0,0,0,0.4)", flexShrink: 0, marginLeft: 8 }}>…{jeu.code_syracuse.slice(-4)}</span>}
                       </div>
                     ))}
                   </div>
                 )}
               </div>
             </div>
-            <div className="flex gap-3">
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
               {contenuJeu.length > 0 && !saisieManuelle ? (
                 <>
-                  <input type="number" placeholder="Qté" value={qteManq} onChange={e => setQteManq(Number(e.target.value))} className="w-20 border-2 border-slate-200 p-3 rounded-xl outline-none focus:border-black font-bold text-center" min="1" />
-                  <select value={itemManq} onChange={e => setItemManq(e.target.value)} className="flex-1 min-w-0 border-2 border-slate-200 p-3 rounded-xl outline-none focus:border-black font-semibold bg-white truncate">
+                  <input type="number" placeholder="Qté" value={qteManq}
+                    onChange={e => setQteManq(Number(e.target.value))}
+                    style={{ ...inp, width: 64, textAlign: "center", fontWeight: 700 }} min="1" />
+                  <select value={itemManq} onChange={e => setItemManq(e.target.value)}
+                    style={{ ...inp, flex: 1 }}>
                     {contenuJeu.map((item, idx) => <option key={idx} value={item}>{item}</option>)}
                   </select>
-                  <button onClick={() => setSaisieManuelle(true)} className="px-3 text-sm text-slate-400 hover:text-black underline shrink-0">Manuel</button>
+                  <button onClick={() => setSaisieManuelle(true)}
+                    style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, fontWeight: 700, color: "rgba(0,0,0,0.4)", textDecoration: "underline", fontFamily: "inherit" }}>
+                    Manuel
+                  </button>
                 </>
               ) : (
-                <input type="text" placeholder="Pièce (ex: 1 dé rouge)..." value={elemManqManuel} onChange={e => setElemManqManuel(e.target.value)} onKeyDown={e => e.key === "Enter" && ajouterManquant()} className="flex-1 border-2 border-slate-200 p-3 rounded-xl outline-none focus:border-black" />
+                <input type="text" placeholder="Pièce (ex: 1 dé rouge)..." value={elemManqManuel}
+                  onChange={e => setElemManqManuel(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && ajouterManquant()}
+                  style={{ ...inp, flex: 1 }} />
               )}
-              <button onClick={ajouterManquant} disabled={!nomManq || (saisieManuelle ? !elemManqManuel : !qteManq)} className="bg-[#ff4d79] hover:bg-[#e03a64] disabled:bg-slate-200 text-white font-black px-6 rounded-xl transition-colors">Ajouter</button>
+              <button onClick={ajouterManquant}
+                disabled={!nomManq || (saisieManuelle ? !elemManqManuel : !qteManq)}
+                className="pop-btn"
+                style={{ background: "var(--rouge)", border: "2px solid var(--ink)", boxShadow: "2px 2px 0 var(--ink)", padding: "8px 18px", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", opacity: (!nomManq || (saisieManuelle ? !elemManqManuel : !qteManq)) ? 0.4 : 1 }}>
+                Ajouter
+              </button>
             </div>
           </div>
 
           {/* Liste */}
-          <div className="flex flex-col gap-3 overflow-y-auto custom-scroll pr-2 flex-1 min-h-[300px] max-h-[600px]">
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, overflowY: "auto", maxHeight: 520 }}>
             {manquantesTriees.map(m => {
               const isSelected   = selectedManquant === m.id;
               const isSuggestion = m.isSuggestion && selectedTrouvees.length > 0 && !isSelected;
               const isCommande   = m.statut === "Commandé";
               const isImpossible = editeurTypeParPiece[m.id] === "impossible";
               return (
-                <div key={m.id} onClick={() => !isCommande && setSelectedManquant(isSelected ? null : m.id)}
-                  className={`p-4 rounded-2xl border-2 flex flex-col sm:flex-row justify-between sm:items-center gap-4 transition-all relative
-                    ${isCommande ? "bg-slate-50 border-slate-200 opacity-80" :
-                      isSelected ? "bg-white border-[#ff4d79] ring-4 ring-[#ff4d79]/30 shadow-md cursor-pointer" :
-                      isSuggestion ? "bg-rose-50 border-[#ff4d79] border-dashed shadow-sm cursor-pointer" :
-                      "bg-white border-slate-100 hover:border-slate-300 cursor-pointer"}`}
-                >
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-bold text-lg leading-tight flex items-center gap-2 flex-wrap">
-                      <span className="truncate">{m.nom}</span>
-                      {m.ean && <span className="text-slate-400 text-xs font-mono shrink-0">{m.ean.slice(-4)}</span>}
-                      {isImpossible && <span className="text-red-400 text-xs font-black bg-red-50 px-2.5 py-1 rounded-md border border-red-200 shrink-0">🚫 Indisponible</span>}
-                      {isCommande && <span className="text-orange-500 text-xs font-black bg-orange-100 px-2.5 py-1 rounded-md uppercase tracking-wide border border-orange-200 shrink-0">📦 Commandé</span>}
-                      {m.hasMatch && !isSuggestion && !isCommande && <span title="Une pièce correspondante a été trouvée !" className="text-xl animate-pulse">💡</span>}
-                      {isSuggestion && !isCommande && <span className="text-[#ff4d79] text-xs font-black bg-white px-2 py-0.5 rounded-full border border-[#ff4d79] shrink-0">✨ Suggestion</span>}
-                    </h3>
-                    <p className={`${isCommande ? "text-slate-500" : "text-[#ff4d79]"} font-bold text-sm mt-2 line-clamp-2`}>{m.element_manquant}</p>
+                <div key={m.id}
+                  onClick={() => !isCommande && setSelectedManquant(isSelected ? null : m.id)}
+                  style={{
+                    padding: "12px 16px", borderRadius: 8, cursor: isCommande ? "default" : "pointer",
+                    display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap",
+                    border: `2px solid ${isSelected ? "var(--rouge)" : isSuggestion ? "var(--rouge)" : isCommande ? "var(--cream2)" : "var(--ink)"}`,
+                    background: isSelected ? "#fff0f4" : isSuggestion ? "#fff5f7" : isCommande ? "var(--cream2)" : "var(--white)",
+                    boxShadow: isSelected ? "3px 3px 0 var(--rouge)" : isCommande ? "none" : "2px 2px 0 var(--ink)",
+                    borderStyle: isSuggestion && !isSelected ? "dashed" : "solid",
+                    opacity: isCommande ? 0.7 : 1,
+                  }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
+                      <span style={{ fontWeight: 700, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.nom}</span>
+                      {m.ean && <span style={{ fontSize: 10, color: "rgba(0,0,0,0.35)" }}>{m.ean.slice(-4)}</span>}
+                      {isImpossible && <span style={{ fontSize: 10, fontWeight: 800, background: "#fff0f0", color: "var(--rouge)", border: "1.5px solid var(--rouge)", borderRadius: 6, padding: "1px 7px" }}>🚫 Indisponible</span>}
+                      {isCommande && <span style={{ fontSize: 10, fontWeight: 800, background: "var(--orange)", color: "var(--ink)", border: "1.5px solid var(--ink)", borderRadius: 6, padding: "1px 7px", boxShadow: "1px 1px 0 var(--ink)" }}>📦 Commandé</span>}
+                      {m.hasMatch && !isSuggestion && !isCommande && <span title="Une pièce correspondante a été trouvée !">💡</span>}
+                      {isSuggestion && !isCommande && <span style={{ fontSize: 10, fontWeight: 800, background: "var(--white)", color: "var(--rouge)", border: "1.5px solid var(--rouge)", borderRadius: 20, padding: "1px 8px" }}>✨ Suggestion</span>}
+                    </div>
+                    <p style={{ color: isCommande ? "rgba(0,0,0,0.4)" : "var(--rouge)", fontWeight: 700, fontSize: 12, margin: 0 }}>{m.element_manquant}</p>
                   </div>
-                  <div className="flex gap-2 shrink-0 self-end sm:self-center flex-wrap justify-end">
+                  <div style={{ display: "flex", gap: 6, flexShrink: 0, flexWrap: "wrap" }}>
                     {pendingConfirmId === m.id ? (
-                      /* Confirmation après ouverture du formulaire */
                       <>
-                        <span className="text-xs font-bold text-slate-500 self-center">Commande envoyée ?</span>
-                        <button onClick={e => { e.stopPropagation(); confirmerCommande(m.id, true); }} className="bg-emerald-100 hover:bg-emerald-200 text-emerald-700 px-4 py-2 rounded-xl text-sm font-bold transition-colors">Oui ✓</button>
-                        <button onClick={e => { e.stopPropagation(); confirmerCommande(m.id, false); }} className="bg-slate-100 hover:bg-slate-200 text-slate-600 px-4 py-2 rounded-xl text-sm font-bold transition-colors">Non</button>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: "rgba(0,0,0,0.5)", alignSelf: "center" }}>Commande envoyée ?</span>
+                        <button onClick={e => { e.stopPropagation(); confirmerCommande(m.id, true); }} style={{ background: "var(--vert)", border: "2px solid var(--ink)", borderRadius: 6, padding: "5px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Oui ✓</button>
+                        <button onClick={e => { e.stopPropagation(); confirmerCommande(m.id, false); }} style={{ background: "var(--cream2)", border: "2px solid var(--ink)", borderRadius: 6, padding: "5px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Non</button>
                       </>
                     ) : isCommande ? (
-                      /* Pièce commandée : Reçue ou Annuler */
                       <>
-                        <button onClick={e => { e.stopPropagation(); resoudreManquant(m.id); }} className="bg-emerald-100 hover:bg-emerald-200 text-emerald-700 px-4 py-2 rounded-xl text-sm font-bold transition-colors shadow-sm">📦 Reçue ✓</button>
-                        <button onClick={e => { e.stopPropagation(); annulerCommande(m.id); }} className="bg-slate-100 hover:bg-slate-200 text-slate-500 px-4 py-2 rounded-xl text-sm font-bold transition-colors">Annuler</button>
+                        <button onClick={e => { e.stopPropagation(); resoudreManquant(m.id); }} style={{ background: "var(--vert)", border: "2px solid var(--ink)", borderRadius: 6, padding: "5px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", boxShadow: "1px 1px 0 var(--ink)" }}>📦 Reçue ✓</button>
+                        <button onClick={e => { e.stopPropagation(); annulerCommande(m.id); }} style={{ background: "var(--cream2)", border: "2px solid var(--ink)", borderRadius: 6, padding: "5px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Annuler</button>
                       </>
                     ) : (
-                      /* État normal */
                       <>
                         <button onClick={e => { e.stopPropagation(); if (!isImpossible) commanderPieceDirecte(m); }}
-                        disabled={isImpossible}
-                        title={isImpossible ? "Cet éditeur ne fournit plus de pièces détachées" : undefined}
-                        className={`px-4 py-2 rounded-xl text-sm font-bold transition-colors shadow-sm ${isImpossible ? "bg-slate-100 text-slate-400 cursor-not-allowed" : "bg-orange-100 hover:bg-orange-200 text-orange-700"}`}>
-                        {isImpossible ? "🚫 Indisponible" : "🛒 Commander"}
-                      </button>
-                        <button onClick={e => { e.stopPropagation(); resoudreManquant(m.id); }} className="bg-slate-100 hover:bg-slate-200 text-slate-500 px-4 py-2 rounded-xl text-sm font-bold transition-colors">✕</button>
+                          disabled={isImpossible}
+                          style={{ background: isImpossible ? "var(--cream2)" : "var(--orange)", border: "2px solid var(--ink)", borderRadius: 6, padding: "5px 12px", fontSize: 11, fontWeight: 700, cursor: isImpossible ? "not-allowed" : "pointer", fontFamily: "inherit", boxShadow: isImpossible ? "none" : "1px 1px 0 var(--ink)", opacity: isImpossible ? 0.5 : 1 }}>
+                          {isImpossible ? "🚫 Indisponible" : "🛒 Commander"}
+                        </button>
+                        <button onClick={e => { e.stopPropagation(); resoudreManquant(m.id); }} style={{ background: "var(--cream2)", border: "2px solid var(--ink)", borderRadius: 6, padding: "5px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>✕</button>
                       </>
                     )}
                   </div>
                 </div>
               );
             })}
-            {manquantes.length === 0 && <p className="text-slate-400 text-center py-4">Aucun jeu incomplet !</p>}
+            {manquantes.length === 0 && <p style={{ textAlign: "center", color: "rgba(0,0,0,0.35)", fontWeight: 700, padding: "24px 0" }}>Aucun jeu incomplet !</p>}
           </div>
         </div>
 
         {/* ── PIÈCES ORPHELINES ── */}
-        <div className="bg-white rounded-[3rem] p-8 lg:p-10 flex-1 shadow-md border-t-8 border-[#baff29] overflow-hidden flex flex-col">
-          <h1 className="text-3xl font-black text-black mb-6">Pièces orphelines</h1>
-          <div className="bg-slate-50 border-2 border-slate-100 p-5 rounded-3xl mb-4 flex flex-col gap-3 shrink-0">
-            <input type="text" placeholder="Description (ex: 1 bille noire)..." value={descTrouvee} onChange={e => setDescTrouvee(e.target.value)} className="w-full border-2 border-slate-200 p-3 rounded-xl outline-none focus:border-black font-bold" />
-            <div className="flex gap-3">
-              <input type="text" placeholder="Jeu supposé (optionnel)..." value={nomSuppo} onChange={e => setNomSuppo(e.target.value)} onKeyDown={e => e.key === "Enter" && ajouterTrouve()} className="flex-1 border-2 border-slate-200 p-3 rounded-xl outline-none focus:border-black text-sm" />
-              <button onClick={ajouterTrouve} disabled={!descTrouvee} className="bg-[#baff29] hover:bg-[#a1e619] disabled:bg-slate-200 text-black font-black px-6 rounded-xl transition-colors">Ajouter</button>
+        <div className="pop-card" style={{
+          flex: 1, minWidth: 340, display: "flex", flexDirection: "column", gap: 16,
+          borderTop: "4px solid var(--vert)", padding: "20px 22px",
+        }}>
+          <p className="bc" style={{ fontSize: 18, margin: 0, letterSpacing: "0.02em" }}>Pièces orphelines</p>
+
+          {/* Formulaire ajout */}
+          <div style={{ background: "var(--cream2)", border: "2px solid var(--ink)", borderRadius: 10, padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+            <input type="text" placeholder="Description (ex: 1 bille noire)..." value={descTrouvee}
+              onChange={e => setDescTrouvee(e.target.value)} style={{ ...inp, fontWeight: 700 }} />
+            <div style={{ display: "flex", gap: 8 }}>
+              <input type="text" placeholder="Jeu supposé (optionnel)..." value={nomSuppo}
+                onChange={e => setNomSuppo(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && ajouterTrouve()}
+                style={{ ...inp, flex: 1 }} />
+              <button onClick={ajouterTrouve} disabled={!descTrouvee}
+                className="pop-btn"
+                style={{ background: "var(--vert)", border: "2px solid var(--ink)", boxShadow: "2px 2px 0 var(--ink)", padding: "8px 18px", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", opacity: !descTrouvee ? 0.4 : 1 }}>
+                Ajouter
+              </button>
             </div>
           </div>
-          <div className="flex gap-2 overflow-x-auto pb-2 custom-scroll shrink-0 mb-4">
-            <button onClick={() => setFiltreType(null)} className={`whitespace-nowrap px-3 py-1.5 rounded-xl font-bold text-xs transition-colors border-2 ${filtreType === null ? "bg-[#baff29] text-black border-[#baff29]" : "bg-white text-slate-600 border-slate-200 hover:border-[#baff29]"}`}>Tous</button>
+
+          {/* Filtres type */}
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <button onClick={() => setFiltreType(null)} style={pillBtn(filtreType === null, "var(--vert)")}>Tous</button>
             {TYPES_PIECES.map(type => (
-              <button key={type.id} onClick={() => setFiltreType(type.id === filtreType ? null : type.id)} className={`whitespace-nowrap px-3 py-1.5 rounded-xl font-bold text-xs transition-colors border-2 ${filtreType === type.id ? "bg-[#baff29] text-black border-[#baff29]" : "bg-white text-slate-600 border-slate-200 hover:border-[#baff29]"}`}>{type.label}</button>
+              <button key={type.id} onClick={() => setFiltreType(type.id === filtreType ? null : type.id)}
+                style={pillBtn(filtreType === type.id, "var(--vert)")}>
+                {type.label}
+              </button>
             ))}
           </div>
-          <div className="flex flex-col gap-3 overflow-y-auto custom-scroll pr-2 flex-1 min-h-[300px] max-h-[600px]">
+
+          {/* Liste */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, overflowY: "auto", maxHeight: 520 }}>
             {trouveesTriees.map(t => {
               const isSelected   = selectedTrouvees.includes(t.id);
               const isSuggestion = t.isSuggestion && selectedManquant !== null && !isSelected;
               return (
-                <div key={t.id} onClick={() => setSelectedTrouvees(prev => isSelected ? prev.filter(id => id !== t.id) : [...prev, t.id])}
-                  className={`p-4 rounded-2xl border-2 cursor-pointer flex flex-col sm:flex-row justify-between sm:items-center gap-4 transition-all
-                    ${isSelected ? "bg-white border-[#baff29] ring-4 ring-[#baff29]/50 shadow-md" :
-                      isSuggestion ? "bg-[#f4fce3] border-[#baff29] border-dashed shadow-sm" :
-                      "bg-white border-slate-100 hover:border-slate-300"}`}
-                >
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-bold text-lg leading-tight flex items-center gap-2 flex-wrap line-clamp-2">
-                      {t.description}
-                      {isSuggestion && <span className="text-[#84b506] text-xs font-black bg-white px-2 py-0.5 rounded-full border border-[#baff29] shrink-0 ml-1">✨ Suggestion</span>}
-                    </h3>
-                    {t.nom_suppose && <p className="text-slate-500 text-sm mt-1 truncate">Peut-être : <span className="italic">{t.nom_suppose}</span></p>}
+                <div key={t.id}
+                  onClick={() => setSelectedTrouvees(prev => isSelected ? prev.filter(id => id !== t.id) : [...prev, t.id])}
+                  style={{
+                    padding: "12px 16px", borderRadius: 8, cursor: "pointer",
+                    display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12,
+                    border: `2px solid ${isSelected ? "var(--vert)" : isSuggestion ? "var(--vert)" : "var(--ink)"}`,
+                    background: isSelected ? "#f0fff4" : isSuggestion ? "#f6fff0" : "var(--white)",
+                    boxShadow: isSelected ? "3px 3px 0 var(--vert)" : "2px 2px 0 var(--ink)",
+                    borderStyle: isSuggestion && !isSelected ? "dashed" : "solid",
+                  }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <span style={{ fontWeight: 700, fontSize: 14 }}>{t.description}</span>
+                      {isSuggestion && <span style={{ fontSize: 10, fontWeight: 800, background: "var(--white)", color: "var(--vert)", border: "1.5px solid var(--vert)", borderRadius: 20, padding: "1px 8px" }}>✨ Suggestion</span>}
+                    </div>
+                    {t.nom_suppose && <p style={{ color: "rgba(0,0,0,0.45)", fontSize: 12, margin: "3px 0 0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Peut-être : <em>{t.nom_suppose}</em></p>}
                   </div>
-                  <button onClick={e => { e.stopPropagation(); resoudreTrouve(t.id); }} className="shrink-0 bg-slate-100 hover:bg-slate-200 px-4 py-2 rounded-xl text-sm font-bold transition-colors self-end sm:self-center">Retirer seule ✕</button>
+                  <button onClick={e => { e.stopPropagation(); resoudreTrouve(t.id); }}
+                    style={{ background: "var(--cream2)", border: "2px solid var(--ink)", borderRadius: 6, padding: "5px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}>
+                    Retirer ✕
+                  </button>
                 </div>
               );
             })}
-            {trouvees.length === 0 && <p className="text-slate-400 text-center py-4">Le bac des pièces seules est vide !</p>}
-            {trouvees.length > 0 && trouveesTriees.length === 0 && <p className="text-slate-400 text-center py-4">Aucune pièce ne correspond à ce filtre.</p>}
+            {trouvees.length === 0 && <p style={{ textAlign: "center", color: "rgba(0,0,0,0.35)", fontWeight: 700, padding: "24px 0" }}>Le bac des pièces seules est vide !</p>}
+            {trouvees.length > 0 && trouveesTriees.length === 0 && <p style={{ textAlign: "center", color: "rgba(0,0,0,0.35)", fontWeight: 700, padding: "24px 0" }}>Aucune pièce ne correspond à ce filtre.</p>}
           </div>
         </div>
       </main>
 
       {/* ── Barre fusion flottante ── */}
       {selectedManquant !== null && selectedTrouvees.length > 0 && (
-        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-black text-white px-8 py-5 rounded-full shadow-2xl flex items-center gap-6 z-50">
-          <span className="font-bold text-lg whitespace-nowrap">🔗 Lier 1 jeu et {selectedTrouvees.length} pièce(s) ?</span>
-          <button onClick={lierElements} className="bg-[#baff29] text-black px-6 py-2.5 rounded-xl font-black hover:scale-105 transition-transform shadow-[0_0_15px_rgba(186,255,41,0.5)] whitespace-nowrap">Valider la fusion ✓</button>
+        <div style={{
+          position: "fixed", bottom: 28, left: "50%", transform: "translateX(-50%)",
+          background: "var(--ink)", color: "var(--white)",
+          padding: "16px 32px", borderRadius: 40,
+          boxShadow: "0 8px 32px rgba(0,0,0,0.35)",
+          display: "flex", alignItems: "center", gap: 20, zIndex: 50,
+          border: "2.5px solid var(--ink)",
+        }}>
+          <span style={{ fontWeight: 700, fontSize: 15, whiteSpace: "nowrap" }}>🔗 Lier 1 jeu et {selectedTrouvees.length} pièce(s) ?</span>
+          <button onClick={lierElements}
+            style={{ background: "var(--vert)", color: "var(--ink)", border: "2px solid var(--vert)", borderRadius: 10, padding: "8px 20px", fontWeight: 900, fontSize: 13, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>
+            Valider la fusion ✓
+          </button>
         </div>
       )}
 
       {/* ── Popup confirmation liaison partielle/totale ── */}
       {lienConfirm && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[90] flex items-center justify-center p-4">
-          <div className="bg-white rounded-[2rem] w-full max-w-md shadow-2xl p-8 flex flex-col gap-5">
-            <div className="text-center">
-              <p className="text-2xl font-black text-black mb-1">Liaison des pièces</p>
-              <p className="text-sm text-slate-400">
-                {lienConfirm.qteTrouvee} trouvée{lienConfirm.qteTrouvee > 1 ? "s" : ""} sur {lienConfirm.qteManquante} manquante{lienConfirm.qteManquante > 1 ? "s" : ""} · <span className="font-bold text-slate-600">{lienConfirm.nomPiece}</span>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 90, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <div className="pop-card" style={{ background: "var(--white)", width: "100%", maxWidth: 440, padding: 32, display: "flex", flexDirection: "column", gap: 20 }}>
+            <div style={{ textAlign: "center" }}>
+              <p className="bc" style={{ fontSize: 22, margin: "0 0 4px", letterSpacing: "0.02em" }}>Liaison des pièces</p>
+              <p style={{ fontSize: 13, color: "rgba(0,0,0,0.45)", margin: 0 }}>
+                {lienConfirm.qteTrouvee} trouvée{lienConfirm.qteTrouvee > 1 ? "s" : ""} sur {lienConfirm.qteManquante} manquante{lienConfirm.qteManquante > 1 ? "s" : ""} · <strong>{lienConfirm.nomPiece}</strong>
               </p>
             </div>
 
             {/* Résumé visuel */}
-            <div className="bg-slate-50 rounded-2xl p-4 flex items-center justify-center gap-4 text-sm font-bold">
-              <div className="text-center">
-                <p className="text-2xl font-black text-[#baff29] drop-shadow">{lienConfirm.qteTrouvee}</p>
-                <p className="text-slate-400 text-xs">trouvée{lienConfirm.qteTrouvee > 1 ? "s" : ""}</p>
+            <div style={{ background: "var(--cream2)", border: "2px solid var(--ink)", borderRadius: 12, padding: 16, display: "flex", alignItems: "center", justifyContent: "center", gap: 16 }}>
+              <div style={{ textAlign: "center" }}>
+                <p style={{ fontSize: 28, fontWeight: 900, color: "var(--vert)", margin: 0 }}>{lienConfirm.qteTrouvee}</p>
+                <p style={{ fontSize: 10, color: "rgba(0,0,0,0.4)", margin: 0, fontWeight: 700 }}>trouvée{lienConfirm.qteTrouvee > 1 ? "s" : ""}</p>
               </div>
-              <span className="text-slate-300 text-2xl">/</span>
-              <div className="text-center">
-                <p className="text-2xl font-black text-slate-700">{lienConfirm.qteManquante}</p>
-                <p className="text-slate-400 text-xs">manquante{lienConfirm.qteManquante > 1 ? "s" : ""}</p>
+              <span style={{ fontSize: 24, color: "rgba(0,0,0,0.2)", fontWeight: 900 }}>/</span>
+              <div style={{ textAlign: "center" }}>
+                <p style={{ fontSize: 28, fontWeight: 900, color: "var(--ink)", margin: 0 }}>{lienConfirm.qteManquante}</p>
+                <p style={{ fontSize: 10, color: "rgba(0,0,0,0.4)", margin: 0, fontWeight: 700 }}>manquante{lienConfirm.qteManquante > 1 ? "s" : ""}</p>
               </div>
               {lienConfirm.qteManquante - lienConfirm.qteTrouvee > 0 && (
                 <>
-                  <span className="text-slate-300 text-2xl">=</span>
-                  <div className="text-center">
-                    <p className="text-2xl font-black text-[#ff4d79]">{lienConfirm.qteManquante - lienConfirm.qteTrouvee}</p>
-                    <p className="text-slate-400 text-xs">restante{lienConfirm.qteManquante - lienConfirm.qteTrouvee > 1 ? "s" : ""}</p>
+                  <span style={{ fontSize: 24, color: "rgba(0,0,0,0.2)", fontWeight: 900 }}>=</span>
+                  <div style={{ textAlign: "center" }}>
+                    <p style={{ fontSize: 28, fontWeight: 900, color: "var(--rouge)", margin: 0 }}>{lienConfirm.qteManquante - lienConfirm.qteTrouvee}</p>
+                    <p style={{ fontSize: 10, color: "rgba(0,0,0,0.4)", margin: 0, fontWeight: 700 }}>restante{lienConfirm.qteManquante - lienConfirm.qteTrouvee > 1 ? "s" : ""}</p>
                   </div>
                 </>
               )}
             </div>
 
-            <div className="flex flex-col gap-3">
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {lienConfirm.qteManquante - lienConfirm.qteTrouvee > 0 && (
                 <button onClick={() => confirmerLien(false)}
-                  className="w-full py-3.5 rounded-xl bg-[#ff4d79] hover:bg-[#e03a64] text-white font-black transition-colors">
+                  style={{ width: "100%", padding: "12px 20px", borderRadius: 10, background: "var(--rouge)", color: "var(--white)", border: "2.5px solid var(--ink)", boxShadow: "3px 3px 0 var(--ink)", fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>
                   Résolution partielle — garder le jeu ({lienConfirm.qteManquante - lienConfirm.qteTrouvee} restante{lienConfirm.qteManquante - lienConfirm.qteTrouvee > 1 ? "s" : ""})
                 </button>
               )}
               <button onClick={() => confirmerLien(true)}
-                className="w-full py-3.5 rounded-xl bg-black hover:bg-slate-800 text-white font-black transition-colors">
+                style={{ width: "100%", padding: "12px 20px", borderRadius: 10, background: "var(--ink)", color: "var(--white)", border: "2.5px solid var(--ink)", boxShadow: "3px 3px 0 rgba(0,0,0,0.3)", fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>
                 Résolution totale — retirer le jeu ✓
               </button>
               <button onClick={() => setLienConfirm(null)}
-                className="w-full py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold transition-colors text-sm">
+                style={{ width: "100%", padding: "10px 20px", borderRadius: 10, background: "var(--cream2)", color: "var(--ink)", border: "2px solid var(--ink)", fontWeight: 700, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>
                 Annuler
               </button>
             </div>
@@ -782,86 +867,90 @@ export default function PiecesPage() {
         </div>
       )}
 
-      {/* ══════════════════════════════════════════════════════════════════════
-          MODAL COMMANDER
-      ══════════════════════════════════════════════════════════════════════ */}
+      {/* ── Modal Commander ── */}
       {isCommandeOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[80] flex items-center justify-center p-4">
-          <div className="bg-white rounded-[2.5rem] w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 80, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <div className="pop-card" style={{ background: "var(--white)", width: "100%", maxWidth: 640, maxHeight: "90vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
             {/* Header */}
-            <div className="flex items-center justify-between px-8 py-6 border-b border-slate-100 shrink-0">
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 24px", borderBottom: "2px solid var(--ink)", flexShrink: 0 }}>
               <div>
-                <h2 className="text-2xl font-black text-black">Commander les pièces</h2>
-                <p className="text-sm text-slate-400 font-medium mt-0.5">Groupé par éditeur</p>
+                <h2 className="bc" style={{ fontSize: 20, margin: 0, letterSpacing: "0.02em" }}>Commander les pièces</h2>
+                <p style={{ fontSize: 12, color: "rgba(0,0,0,0.4)", margin: "2px 0 0", fontWeight: 600 }}>Groupé par éditeur</p>
               </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => { chargerEditeurs(); setIsEditeursOpen(true); }}
-                  className="px-3 py-2 text-xs font-bold rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors"
-                >⚙️ Gérer éditeurs</button>
-                <button onClick={() => { setIsCommandeOpen(false); setEmailGroupeIdx(null); }} className="w-9 h-9 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 font-black text-slate-600 transition-colors">✕</button>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={() => { chargerEditeurs(); setIsEditeursOpen(true); }}
+                  style={{ padding: "6px 14px", fontSize: 11, fontWeight: 700, background: "var(--cream2)", border: "2px solid var(--ink)", borderRadius: 8, cursor: "pointer", fontFamily: "inherit", boxShadow: "2px 2px 0 var(--ink)" }}>
+                  ⚙️ Gérer éditeurs
+                </button>
+                <button onClick={() => { setIsCommandeOpen(false); setEmailGroupeIdx(null); }}
+                  style={{ width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--cream2)", border: "2px solid var(--ink)", borderRadius: 8, fontWeight: 900, cursor: "pointer", boxShadow: "2px 2px 0 var(--ink)", fontFamily: "inherit" }}>
+                  ✕
+                </button>
               </div>
             </div>
 
             {/* Corps */}
-            <div className="overflow-y-auto custom-scroll flex-1 p-6 flex flex-col gap-4">
+            <div style={{ overflowY: "auto", flex: 1, padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
               {commandeLoading ? (
-                <div className="flex flex-col items-center gap-3 py-12">
-                  <div className="w-8 h-8 border-4 border-slate-200 border-t-black rounded-full animate-spin" />
-                  <p className="text-sm text-slate-400 font-medium">Recherche des éditeurs…</p>
-                </div>
+                <p style={{ textAlign: "center", color: "rgba(0,0,0,0.35)", padding: "48px 0", fontWeight: 700 }}>Recherche des éditeurs…</p>
               ) : commandeGroupes.length === 0 ? (
-                <p className="text-center text-slate-400 py-8">Aucune pièce à commander.</p>
+                <p style={{ textAlign: "center", color: "rgba(0,0,0,0.35)", padding: "48px 0", fontWeight: 700 }}>Aucune pièce à commander.</p>
               ) : (
                 commandeGroupes.map((groupe, idx) => {
                   const tc = groupe.editeur?.type_commande ?? "inconnu";
                   const toutCommande = groupe.pieces.every(p => p.statut === "Commandé");
+                  const tcBg: Record<string, string> = { formulaire: "var(--bleu)", email: "var(--purple)", inconnu: "var(--cream2)", impossible: "var(--rouge)" };
+                  const tcColor: Record<string, string> = { formulaire: "var(--white)", email: "var(--white)", inconnu: "var(--ink)", impossible: "var(--white)" };
                   return (
-                    <div key={idx} className={`rounded-2xl border-2 transition-all ${toutCommande ? "opacity-50 border-slate-100" : "border-slate-200"}`}>
+                    <div key={idx} style={{ border: `2px solid ${toutCommande ? "var(--cream2)" : "var(--ink)"}`, borderRadius: 12, overflow: "hidden", opacity: toutCommande ? 0.6 : 1, boxShadow: toutCommande ? "none" : "3px 3px 0 var(--ink)" }}>
                       {/* En-tête groupe */}
-                      <div className="flex items-center justify-between px-5 py-3 bg-slate-50 border-b border-slate-100">
-                        <div className="flex items-center gap-2">
-                          <span className="font-black text-black text-sm">{groupe.nomEditeur}</span>
-                          <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${TYPE_COLORS[tc]}`}>{TYPE_LABELS[tc]}</span>
-                          {toutCommande && <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">✓ Commandé</span>}
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 16px", background: "var(--cream2)", borderBottom: "1.5px solid var(--ink)" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ fontWeight: 800, fontSize: 13 }}>{groupe.nomEditeur}</span>
+                          <span style={{ fontSize: 10, fontWeight: 800, background: tcBg[tc] ?? "var(--cream2)", color: tcColor[tc] ?? "var(--ink)", border: "1.5px solid var(--ink)", borderRadius: 20, padding: "1px 8px" }}>{TYPE_LABELS[tc]}</span>
+                          {toutCommande && <span style={{ fontSize: 10, fontWeight: 800, background: "var(--vert)", color: "var(--ink)", border: "1.5px solid var(--ink)", borderRadius: 20, padding: "1px 8px" }}>✓ Commandé</span>}
                         </div>
-                        <span className="text-xs text-slate-400 font-medium">{groupe.pieces.length} pièce{groupe.pieces.length > 1 ? "s" : ""}</span>
+                        <span style={{ fontSize: 11, color: "rgba(0,0,0,0.4)", fontWeight: 600 }}>{groupe.pieces.length} pièce{groupe.pieces.length > 1 ? "s" : ""}</span>
                       </div>
 
                       {/* Liste des pièces */}
-                      <ul className="px-5 py-3 flex flex-col gap-1">
+                      <ul style={{ padding: "10px 16px", display: "flex", flexDirection: "column", gap: 4, margin: 0, listStyle: "none" }}>
                         {groupe.pieces.map(p => (
-                          <li key={p.id} className="text-sm flex items-baseline gap-2">
-                            <span className="font-bold text-black truncate">{p.nom}</span>
-                            <span className="text-slate-400 shrink-0">→ {p.element_manquant}</span>
-                            {p.statut === "Commandé" && <span className="text-[10px] font-black text-orange-500 bg-orange-50 px-1.5 rounded shrink-0">Commandé</span>}
+                          <li key={p.id} style={{ fontSize: 13, display: "flex", alignItems: "baseline", gap: 8 }}>
+                            <span style={{ fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.nom}</span>
+                            <span style={{ color: "rgba(0,0,0,0.4)", flexShrink: 0 }}>→ {p.element_manquant}</span>
+                            {p.statut === "Commandé" && <span style={{ fontSize: 10, fontWeight: 800, background: "var(--orange)", color: "var(--ink)", border: "1.5px solid var(--ink)", borderRadius: 6, padding: "1px 6px", flexShrink: 0 }}>Commandé</span>}
                           </li>
                         ))}
                       </ul>
 
                       {/* Actions groupe */}
                       {!toutCommande && (
-                        <div className="px-5 pb-4 flex flex-wrap gap-2">
+                        <div style={{ padding: "0 16px 14px", display: "flex", flexWrap: "wrap", gap: 8 }}>
                           {tc === "formulaire" && groupe.editeur?.url_formulaire && (
                             <a href={groupe.editeur.url_formulaire} target="_blank" rel="noopener noreferrer"
-                              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-colors">
+                              style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 14px", borderRadius: 8, background: "var(--bleu)", color: "var(--white)", border: "2px solid var(--ink)", fontSize: 11, fontWeight: 700, textDecoration: "none", boxShadow: "2px 2px 0 var(--ink)" }}>
                               🔗 Ouvrir le formulaire ↗
                             </a>
                           )}
                           {tc === "email" && (
                             <button onClick={() => emailGroupeIdx === idx ? setEmailGroupeIdx(null) : ouvrirEmail(idx)}
-                              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold transition-colors">
+                              style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 14px", borderRadius: 8, background: "var(--purple)", color: "var(--white)", border: "2px solid var(--ink)", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", boxShadow: "2px 2px 0 var(--ink)" }}>
                               ✉️ {emailGroupeIdx === idx ? "Masquer l'email" : "Rédiger l'email"}
                             </button>
                           )}
                           {tc === "inconnu" && (
-                            <span className="text-xs text-slate-400 italic py-2">Éditeur non configuré — <button onClick={() => ouvrirConfigEditeur(groupe)} className="underline hover:text-black">Configurer ↗</button></span>
+                            <span style={{ fontSize: 11, color: "rgba(0,0,0,0.4)", fontStyle: "italic", alignSelf: "center" }}>
+                              Éditeur non configuré — <button onClick={() => ouvrirConfigEditeur(groupe)} style={{ background: "none", border: "none", cursor: "pointer", fontWeight: 700, textDecoration: "underline", fontFamily: "inherit", fontSize: 11 }}>Configurer ↗</button>
+                            </span>
                           )}
                           {tc === "impossible" && (
-                            <span className="text-xs text-red-400 italic py-2 flex items-center gap-1">🚫 Cet éditeur ne fournit plus de pièces — <button onClick={() => ouvrirConfigEditeur(groupe)} className="underline hover:text-red-600">Modifier ↗</button></span>
+                            <span style={{ fontSize: 11, color: "var(--rouge)", fontStyle: "italic", alignSelf: "center", display: "flex", gap: 4 }}>
+                              🚫 Cet éditeur ne fournit plus de pièces — <button onClick={() => ouvrirConfigEditeur(groupe)} style={{ background: "none", border: "none", cursor: "pointer", fontWeight: 700, textDecoration: "underline", fontFamily: "inherit", fontSize: 11, color: "var(--rouge)" }}>Modifier ↗</button>
+                            </span>
                           )}
                           <button onClick={() => marquerGroupeCommande(groupe)}
-                            className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold transition-colors ml-auto">
+                            style={{ marginLeft: "auto", padding: "6px 14px", borderRadius: 8, background: "var(--cream2)", border: "2px solid var(--ink)", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
                             Marquer commandé ✓
                           </button>
                         </div>
@@ -869,24 +958,27 @@ export default function PiecesPage() {
 
                       {/* Zone email dépliable */}
                       {emailGroupeIdx === idx && (
-                        <div className="border-t border-slate-100 px-5 pb-5 pt-4 flex flex-col gap-3 bg-violet-50/40">
+                        <div style={{ borderTop: "2px solid var(--ink)", padding: "14px 16px 16px", display: "flex", flexDirection: "column", gap: 12, background: "#f3f0ff" }}>
                           <div>
-                            <label className="text-xs font-black text-slate-500 uppercase tracking-wider mb-1 block">À</label>
-                            <input readOnly value={groupe.editeur?.email_contact ?? ""} className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white font-mono text-slate-600" />
+                            <label style={{ fontSize: 10, fontWeight: 800, color: "rgba(0,0,0,0.45)", letterSpacing: "0.08em", textTransform: "uppercase", display: "block", marginBottom: 4 }}>À</label>
+                            <input readOnly value={groupe.editeur?.email_contact ?? ""} style={{ ...inp, fontFamily: "monospace", color: "rgba(0,0,0,0.55)", background: "var(--cream2)" }} />
                           </div>
                           <div>
-                            <label className="text-xs font-black text-slate-500 uppercase tracking-wider mb-1 block">Objet</label>
-                            <input value={emailSujet} onChange={e => setEmailSujet(e.target.value)} className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:border-black" />
+                            <label style={{ fontSize: 10, fontWeight: 800, color: "rgba(0,0,0,0.45)", letterSpacing: "0.08em", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Objet</label>
+                            <input value={emailSujet} onChange={e => setEmailSujet(e.target.value)} style={inp} />
                           </div>
                           <div>
-                            <label className="text-xs font-black text-slate-500 uppercase tracking-wider mb-1 block">Corps</label>
-                            <textarea value={emailCorps} onChange={e => setEmailCorps(e.target.value)} rows={8} className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:border-black font-mono resize-y" />
+                            <label style={{ fontSize: 10, fontWeight: 800, color: "rgba(0,0,0,0.45)", letterSpacing: "0.08em", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Corps</label>
+                            <textarea value={emailCorps} onChange={e => setEmailCorps(e.target.value)} rows={8}
+                              style={{ ...inp, fontFamily: "monospace", resize: "vertical" }} />
                           </div>
-                          <div className="flex gap-2">
-                            <a href={buildMailto(groupe)} className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-sm font-bold transition-colors">
+                          <div style={{ display: "flex", gap: 8 }}>
+                            <a href={buildMailto(groupe)}
+                              style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 8, background: "var(--purple)", color: "var(--white)", border: "2px solid var(--ink)", fontSize: 12, fontWeight: 700, textDecoration: "none", boxShadow: "2px 2px 0 var(--ink)" }}>
                               ✉️ Ouvrir dans Outlook
                             </a>
-                            <button onClick={() => marquerGroupeCommande(groupe)} className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 text-sm font-bold transition-colors">
+                            <button onClick={() => marquerGroupeCommande(groupe)}
+                              style={{ padding: "8px 16px", borderRadius: 8, background: "var(--cream2)", border: "2px solid var(--ink)", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
                               Marquer commandé ✓
                             </button>
                           </div>
@@ -901,144 +993,171 @@ export default function PiecesPage() {
         </div>
       )}
 
-      {/* ══════════════════════════════════════════════════════════════════════
-          MODAL ÉDITEURS CRUD
-      ══════════════════════════════════════════════════════════════════════ */}
+      {/* ── Modal Éditeurs CRUD ── */}
       {isEditeursOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[90] flex items-center justify-center p-4">
-          <div className="bg-white rounded-[2.5rem] w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
-            <div className="flex flex-col gap-3 px-8 py-6 border-b border-slate-100 shrink-0">
-              <div className="flex items-center justify-between">
-                <h2 className="text-2xl font-black text-black">Éditeurs <span className="text-base font-normal text-slate-400">({editeurs.length})</span></h2>
-                <div className="flex gap-2">
-                  <button onClick={importerEditeursDepuisCatalogue} disabled={isImporting} className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold transition-colors disabled:opacity-50">
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 90, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <div className="pop-card" style={{ background: "var(--white)", width: "100%", maxWidth: 640, maxHeight: "90vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+            {/* Header */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: "18px 24px", borderBottom: "2px solid var(--ink)", flexShrink: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <h2 className="bc" style={{ fontSize: 20, margin: 0, letterSpacing: "0.02em" }}>
+                  Éditeurs <span style={{ fontSize: 14, fontWeight: 400, color: "rgba(0,0,0,0.35)" }}>({editeurs.length})</span>
+                </h2>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button onClick={importerEditeursDepuisCatalogue} disabled={isImporting}
+                    style={{ padding: "6px 14px", fontSize: 11, fontWeight: 700, background: "var(--cream2)", border: "2px solid var(--ink)", borderRadius: 8, cursor: "pointer", fontFamily: "inherit", boxShadow: "2px 2px 0 var(--ink)", opacity: isImporting ? 0.5 : 1 }}>
                     {isImporting ? "…" : "⬇ Importer catalogue"}
                   </button>
-                  <button onClick={() => setEditeurEdit({ type_commande: "inconnu" })} className="px-4 py-2 rounded-xl bg-black text-white text-sm font-bold hover:bg-slate-800 transition-colors">+ Ajouter</button>
-                  <button onClick={() => { setIsEditeursOpen(false); setEditeurEdit(null); setFiltreEditeur(""); }} className="w-9 h-9 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 font-black text-slate-600">✕</button>
+                  <button onClick={() => setEditeurEdit({ type_commande: "inconnu" })}
+                    style={{ padding: "6px 14px", fontSize: 11, fontWeight: 700, background: "var(--ink)", color: "var(--white)", border: "2px solid var(--ink)", borderRadius: 8, cursor: "pointer", fontFamily: "inherit", boxShadow: "2px 2px 0 rgba(0,0,0,0.3)" }}>
+                    + Ajouter
+                  </button>
+                  <button onClick={() => { setIsEditeursOpen(false); setEditeurEdit(null); setFiltreEditeur(""); }}
+                    style={{ width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--cream2)", border: "2px solid var(--ink)", borderRadius: 8, fontWeight: 900, cursor: "pointer", boxShadow: "2px 2px 0 var(--ink)", fontFamily: "inherit" }}>
+                    ✕
+                  </button>
                 </div>
               </div>
-              <input
-                placeholder="Rechercher un éditeur…"
-                value={filtreEditeur}
-                onChange={e => setFiltreEditeur(e.target.value)}
-                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-black transition-colors"
-              />
+              <input placeholder="Rechercher un éditeur…" value={filtreEditeur} onChange={e => setFiltreEditeur(e.target.value)} style={inp} />
             </div>
 
-            <div className="overflow-y-auto custom-scroll flex-1 p-6">
+            <div style={{ overflowY: "auto", flex: 1, padding: 20 }}>
 
-              {/* ── Mode édition : formulaire plein cadre ── */}
+              {/* Mode édition */}
               {editeurEdit ? (
-                <div className="flex flex-col gap-4">
-                  <div className="flex items-center gap-3 mb-1">
-                    <button onClick={() => setEditeurEdit(null)} className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 font-black text-sm transition-colors">←</button>
-                    <p className="text-base font-black text-black">{editeurEdit.id ? `Modifier : ${editeurEdit._nomOriginal}` : "Nouvel éditeur"}</p>
+                <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+                    <button onClick={() => setEditeurEdit(null)}
+                      style={{ width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--cream2)", border: "2px solid var(--ink)", borderRadius: 8, fontWeight: 900, cursor: "pointer", fontFamily: "inherit", boxShadow: "2px 2px 0 var(--ink)" }}>
+                      ←
+                    </button>
+                    <p style={{ fontSize: 14, fontWeight: 800, margin: 0 }}>{editeurEdit.id ? `Modifier : ${editeurEdit._nomOriginal}` : "Nouvel éditeur"}</p>
                   </div>
 
                   <div>
-                    <label className="text-xs font-black text-slate-500 uppercase tracking-wider mb-1 block">Nom *</label>
-                    <input placeholder="Nom de l'éditeur" value={editeurEdit.nom ?? ""} onChange={e => setEditeurEdit(p => ({ ...p, nom: e.target.value }))} className="w-full px-3 py-2.5 rounded-xl border-2 border-slate-200 focus:border-black focus:outline-none text-sm font-bold transition-colors" />
+                    <label style={{ fontSize: 10, fontWeight: 800, color: "rgba(0,0,0,0.45)", letterSpacing: "0.08em", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Nom *</label>
+                    <input placeholder="Nom de l'éditeur" value={editeurEdit.nom ?? ""} onChange={e => setEditeurEdit(p => ({ ...p, nom: e.target.value }))} style={{ ...inp, fontWeight: 700 }} />
                   </div>
 
                   <div>
-                    <label className="text-xs font-black text-slate-500 uppercase tracking-wider mb-2 block">Type de commande</label>
-                    <div className="flex flex-wrap gap-2">
-                      {(["formulaire", "email", "inconnu", "impossible"] as const).map(t => (
-                        <button key={t} onClick={() => setEditeurEdit(p => ({ ...p, type_commande: t }))}
-                          className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-colors min-w-[100px] ${editeurEdit.type_commande === t ? (t === "impossible" ? "bg-red-500 text-white" : "bg-black text-white") : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
-                          {TYPE_LABELS[t]}
-                        </button>
-                      ))}
+                    <label style={{ fontSize: 10, fontWeight: 800, color: "rgba(0,0,0,0.45)", letterSpacing: "0.08em", textTransform: "uppercase", display: "block", marginBottom: 8 }}>Type de commande</label>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                      {(["formulaire", "email", "inconnu", "impossible"] as const).map(t => {
+                        const isActive = editeurEdit.type_commande === t;
+                        const activeBg = t === "impossible" ? "var(--rouge)" : "var(--ink)";
+                        return (
+                          <button key={t} onClick={() => setEditeurEdit(p => ({ ...p, type_commande: t }))}
+                            style={{ flex: 1, minWidth: 90, padding: "10px 14px", borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", border: "2px solid var(--ink)", background: isActive ? activeBg : "var(--cream2)", color: isActive ? "var(--white)" : "var(--ink)", boxShadow: isActive ? "2px 2px 0 rgba(0,0,0,0.3)" : "none" }}>
+                            {TYPE_LABELS[t]}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
 
                   {editeurEdit.type_commande === "formulaire" && (
                     <div>
-                      <label className="text-xs font-black text-slate-500 uppercase tracking-wider mb-1 block">URL du formulaire</label>
-                      <input placeholder="https://…" value={editeurEdit.url_formulaire ?? ""} onChange={e => setEditeurEdit(p => ({ ...p, url_formulaire: e.target.value }))} className="w-full px-3 py-2.5 rounded-xl border-2 border-slate-200 focus:border-black focus:outline-none text-sm transition-colors" />
+                      <label style={{ fontSize: 10, fontWeight: 800, color: "rgba(0,0,0,0.45)", letterSpacing: "0.08em", textTransform: "uppercase", display: "block", marginBottom: 4 }}>URL du formulaire</label>
+                      <input placeholder="https://…" value={editeurEdit.url_formulaire ?? ""} onChange={e => setEditeurEdit(p => ({ ...p, url_formulaire: e.target.value }))} style={inp} />
                     </div>
                   )}
 
                   {editeurEdit.type_commande === "email" && (
                     <>
                       <div>
-                        <label className="text-xs font-black text-slate-500 uppercase tracking-wider mb-1 block">Email de contact</label>
-                        <input placeholder="sav@editeur.fr" value={editeurEdit.email_contact ?? ""} onChange={e => setEditeurEdit(p => ({ ...p, email_contact: e.target.value }))} className="w-full px-3 py-2.5 rounded-xl border-2 border-slate-200 focus:border-black focus:outline-none text-sm font-mono transition-colors" />
+                        <label style={{ fontSize: 10, fontWeight: 800, color: "rgba(0,0,0,0.45)", letterSpacing: "0.08em", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Email de contact</label>
+                        <input placeholder="sav@editeur.fr" value={editeurEdit.email_contact ?? ""} onChange={e => setEditeurEdit(p => ({ ...p, email_contact: e.target.value }))} style={{ ...inp, fontFamily: "monospace" }} />
                       </div>
                       <div>
-                        <label className="text-xs font-black text-slate-500 uppercase tracking-wider mb-1 block">Objet du mail <span className="text-slate-400 font-normal normal-case">(optionnel)</span></label>
-                        <input placeholder="Commande de pièces manquantes – {editeur}" value={editeurEdit.sujet_email ?? ""} onChange={e => setEditeurEdit(p => ({ ...p, sujet_email: e.target.value }))} className="w-full px-3 py-2.5 rounded-xl border-2 border-slate-200 focus:border-black focus:outline-none text-sm transition-colors" />
+                        <label style={{ fontSize: 10, fontWeight: 800, color: "rgba(0,0,0,0.45)", letterSpacing: "0.08em", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Objet du mail <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>(optionnel)</span></label>
+                        <input placeholder="Commande de pièces manquantes – {editeur}" value={editeurEdit.sujet_email ?? ""} onChange={e => setEditeurEdit(p => ({ ...p, sujet_email: e.target.value }))} style={inp} />
                       </div>
                       <div>
-                        <label className="text-xs font-black text-slate-500 uppercase tracking-wider mb-1 block">Corps du mail <span className="text-slate-400 font-normal normal-case">(optionnel — variables : <code className="bg-slate-100 px-1 rounded">{"{pieces_liste}"}</code> <code className="bg-slate-100 px-1 rounded">{"{date}"}</code> <code className="bg-slate-100 px-1 rounded">{"{editeur}"}</code>)</span></label>
-                        <textarea
-                          placeholder={CORPS_EMAIL_DEFAUT}
-                          value={editeurEdit.corps_email ?? ""}
-                          onChange={e => setEditeurEdit(p => ({ ...p, corps_email: e.target.value }))}
-                          rows={8}
-                          className="w-full px-3 py-2.5 rounded-xl border-2 border-slate-200 focus:border-black focus:outline-none text-sm font-mono resize-y transition-colors"
-                        />
+                        <label style={{ fontSize: 10, fontWeight: 800, color: "rgba(0,0,0,0.45)", letterSpacing: "0.08em", textTransform: "uppercase", display: "block", marginBottom: 4 }}>
+                          Corps du mail <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>(variables : {"{pieces_liste}"} {"{date}"} {"{editeur}"})</span>
+                        </label>
+                        <textarea placeholder={CORPS_EMAIL_DEFAUT} value={editeurEdit.corps_email ?? ""} onChange={e => setEditeurEdit(p => ({ ...p, corps_email: e.target.value }))} rows={8}
+                          style={{ ...inp, fontFamily: "monospace", resize: "vertical" }} />
                       </div>
                     </>
                   )}
 
                   <div>
-                    <label className="text-xs font-black text-slate-500 uppercase tracking-wider mb-1 block">Notes internes <span className="text-slate-400 font-normal normal-case">(optionnel)</span></label>
-                    <input placeholder="Ex : contacter le distributeur Asmodee" value={editeurEdit.notes ?? ""} onChange={e => setEditeurEdit(p => ({ ...p, notes: e.target.value }))} className="w-full px-3 py-2.5 rounded-xl border-2 border-slate-200 focus:border-black focus:outline-none text-sm transition-colors" />
+                    <label style={{ fontSize: 10, fontWeight: 800, color: "rgba(0,0,0,0.45)", letterSpacing: "0.08em", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Notes internes <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>(optionnel)</span></label>
+                    <input placeholder="Ex : contacter le distributeur Asmodee" value={editeurEdit.notes ?? ""} onChange={e => setEditeurEdit(p => ({ ...p, notes: e.target.value }))} style={inp} />
                   </div>
 
-                  <div className="flex gap-2 pt-2">
-                    <button onClick={() => setEditeurEdit(null)} className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-600 font-bold text-sm hover:bg-slate-200 transition-colors">Annuler</button>
-                    <button onClick={sauvegarderEditeur} disabled={!editeurEdit.nom?.trim() || isSavingEditeur} className="flex-1 py-2.5 rounded-xl bg-black text-white font-bold text-sm hover:bg-slate-800 disabled:opacity-40 transition-colors">
+                  <div style={{ display: "flex", gap: 10, paddingTop: 8 }}>
+                    <button onClick={() => setEditeurEdit(null)}
+                      style={{ flex: 1, padding: "10px 20px", borderRadius: 8, background: "var(--cream2)", color: "var(--ink)", border: "2px solid var(--ink)", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>
+                      Annuler
+                    </button>
+                    <button onClick={sauvegarderEditeur} disabled={!editeurEdit.nom?.trim() || isSavingEditeur}
+                      style={{ flex: 1, padding: "10px 20px", borderRadius: 8, background: "var(--ink)", color: "var(--white)", border: "2px solid var(--ink)", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "inherit", boxShadow: "2px 2px 0 rgba(0,0,0,0.3)", opacity: (!editeurEdit.nom?.trim() || isSavingEditeur) ? 0.4 : 1 }}>
                       {isSavingEditeur ? "…" : "Sauvegarder"}
                     </button>
                   </div>
                 </div>
 
               ) : (
-                /* ── Mode liste ── */
-                <div className="flex flex-col gap-3">
-                  {editeurs.length === 0 && <p className="text-center text-slate-400 py-8 text-sm">Aucun éditeur configuré.</p>}
+                /* Mode liste */
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {editeurs.length === 0 && <p style={{ textAlign: "center", color: "rgba(0,0,0,0.35)", fontWeight: 700, padding: "32px 0" }}>Aucun éditeur configuré.</p>}
 
-                  {editeurs.filter(e => !filtreEditeur || normaliserEditeur(e.nom).includes(normaliserEditeur(filtreEditeur))).map(e => (
-                    <div key={e.id} className="flex flex-col rounded-2xl border border-slate-200 bg-slate-50 hover:bg-white transition-colors group">
-                      <div className="flex items-center gap-3 p-4">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-black text-sm">{e.nom}</span>
-                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${TYPE_COLORS[e.type_commande]}`}>{TYPE_LABELS[e.type_commande]}</span>
+                  {editeurs.filter(e => !filtreEditeur || normaliserEditeur(e.nom).includes(normaliserEditeur(filtreEditeur))).map(e => {
+                    const tcBg2: Record<string, string> = { formulaire: "var(--bleu)", email: "var(--purple)", inconnu: "var(--cream2)", impossible: "var(--rouge)" };
+                    const tcCol2: Record<string, string> = { formulaire: "var(--white)", email: "var(--white)", inconnu: "var(--ink)", impossible: "var(--white)" };
+                    return (
+                      <div key={e.id} style={{ border: "2px solid var(--ink)", borderRadius: 10, background: "var(--white)", overflow: "hidden", boxShadow: "2px 2px 0 var(--ink)" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px" }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                              <span style={{ fontWeight: 800, fontSize: 13 }}>{e.nom}</span>
+                              <span style={{ fontSize: 10, fontWeight: 800, background: tcBg2[e.type_commande] ?? "var(--cream2)", color: tcCol2[e.type_commande] ?? "var(--ink)", border: "1.5px solid var(--ink)", borderRadius: 20, padding: "1px 8px" }}>{TYPE_LABELS[e.type_commande]}</span>
+                            </div>
+                            {e.type_commande === "email" && e.email_contact && <p style={{ fontSize: 11, color: "rgba(0,0,0,0.4)", margin: "2px 0 0", fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.email_contact}</p>}
+                            {e.type_commande === "formulaire" && e.url_formulaire && <p style={{ fontSize: 11, color: "rgba(0,0,0,0.4)", margin: "2px 0 0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.url_formulaire}</p>}
                           </div>
-                          {e.type_commande === "email" && e.email_contact && <p className="text-xs text-slate-400 font-mono mt-0.5 truncate">{e.email_contact}</p>}
-                          {e.type_commande === "formulaire" && e.url_formulaire && <p className="text-xs text-slate-400 mt-0.5 truncate">{e.url_formulaire}</p>}
+                          <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                            <button onClick={() => setFusionSourceId(fusionSourceId === e.id ? null : e.id)}
+                              style={{ padding: "5px 10px", borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", border: "2px solid var(--ink)", background: fusionSourceId === e.id ? "var(--orange)" : "var(--cream2)", boxShadow: fusionSourceId === e.id ? "2px 2px 0 var(--ink)" : "none" }}>
+                              ⇄
+                            </button>
+                            <button onClick={() => setEditeurEdit({ ...e, _nomOriginal: e.nom })}
+                              style={{ padding: "5px 10px", borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", border: "2px solid var(--ink)", background: "var(--cream2)" }}>
+                              ✏️
+                            </button>
+                            <button onClick={() => supprimerEditeur(e.id)}
+                              style={{ padding: "5px 10px", borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", border: "2px solid var(--rouge)", background: "#fff0f4", color: "var(--rouge)" }}>
+                              ✕
+                            </button>
+                          </div>
                         </div>
-                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                          <button onClick={() => setFusionSourceId(fusionSourceId === e.id ? null : e.id)} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${fusionSourceId === e.id ? "bg-orange-200 text-orange-700" : "bg-slate-200 hover:bg-slate-300 text-slate-600"}`}>⇄</button>
-                          <button onClick={() => setEditeurEdit({ ...e, _nomOriginal: e.nom })} className="px-3 py-1.5 rounded-lg bg-slate-200 hover:bg-slate-300 text-xs font-bold text-slate-600 transition-colors">✏️</button>
-                          <button onClick={() => supprimerEditeur(e.id)} className="px-3 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-xs font-bold text-red-500 transition-colors">✕</button>
-                        </div>
-                      </div>
 
-                      {/* Panneau fusion */}
-                      {fusionSourceId === e.id && (
-                        <div className="border-t border-orange-200 bg-orange-50 rounded-b-2xl px-4 py-3 flex items-center gap-2">
-                          <span className="text-xs font-black text-orange-700 shrink-0">Fusionner vers →</span>
-                          <select value={fusionCibleId} onChange={ev => setFusionCibleId(ev.target.value)}
-                            className="flex-1 px-2 py-1.5 rounded-lg border border-orange-200 text-xs bg-white focus:outline-none focus:border-orange-400">
-                            <option value="">Choisir l&apos;éditeur cible…</option>
-                            {editeurs.filter(x => x.id !== e.id).map(x => (
-                              <option key={x.id} value={x.id}>{x.nom}</option>
-                            ))}
-                          </select>
-                          <button onClick={fusionnerEditeur} disabled={!fusionCibleId || isFusioning}
-                            className="px-3 py-1.5 rounded-lg bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold disabled:opacity-40 transition-colors shrink-0">
-                            {isFusioning ? "…" : "Fusionner"}
-                          </button>
-                          <button onClick={() => { setFusionSourceId(null); setFusionCibleId(""); }} className="px-2 py-1.5 rounded-lg bg-slate-200 text-slate-600 text-xs font-bold">✕</button>
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                        {/* Panneau fusion */}
+                        {fusionSourceId === e.id && (
+                          <div style={{ borderTop: "2px solid var(--orange)", background: "#fff8f0", padding: "10px 14px", display: "flex", alignItems: "center", gap: 8 }}>
+                            <span style={{ fontSize: 11, fontWeight: 800, color: "var(--ink)", flexShrink: 0 }}>Fusionner vers →</span>
+                            <select value={fusionCibleId} onChange={ev => setFusionCibleId(ev.target.value)}
+                              style={{ flex: 1, padding: "6px 10px", borderRadius: 6, border: "2px solid var(--ink)", fontSize: 11, background: "var(--white)", fontFamily: "inherit" }}>
+                              <option value="">Choisir l&apos;éditeur cible…</option>
+                              {editeurs.filter(x => x.id !== e.id).map(x => (
+                                <option key={x.id} value={x.id}>{x.nom}</option>
+                              ))}
+                            </select>
+                            <button onClick={fusionnerEditeur} disabled={!fusionCibleId || isFusioning}
+                              style={{ padding: "6px 12px", borderRadius: 6, background: "var(--orange)", color: "var(--ink)", border: "2px solid var(--ink)", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", boxShadow: "2px 2px 0 var(--ink)", opacity: (!fusionCibleId || isFusioning) ? 0.4 : 1, flexShrink: 0 }}>
+                              {isFusioning ? "…" : "Fusionner"}
+                            </button>
+                            <button onClick={() => { setFusionSourceId(null); setFusionCibleId(""); }}
+                              style={{ padding: "6px 10px", borderRadius: 6, background: "var(--cream2)", border: "2px solid var(--ink)", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+                              ✕
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>

@@ -19,31 +19,25 @@ export default function ReparationsPage() {
   const [typeRep, setTypeRep] = useState("Boîte");
   const [customType, setCustomType] = useState("");
   const [desc, setDesc] = useState("");
-  
+
   const [typesDispos, setTypesDispos] = useState(["Boîte", "Plateau", "Cartes", "Autre"]);
-  const [suggestionsNom, setSuggestionsNom] = useState<{nom: string, code_syracuse: string, ean: string}[]>([]);
+  const [suggestionsNom, setSuggestionsNom] = useState<{ nom: string; code_syracuse: string; ean: string }[]>([]);
 
   useEffect(() => { chargerReparations(); }, []);
 
   const chargerReparations = async () => {
-    const { data } = await supabase.from('reparations').select('*').order('id', { ascending: false });
+    const { data } = await supabase.from("reparations").select("*").order("id", { ascending: false });
     if (data) setReparations(data);
   };
 
   const appliquerFiltresTypes = async (ean: string | undefined) => {
-    if (!ean) {
-      setTypesDispos(["Boîte", "Plateau", "Cartes", "Autre"]);
-      setTypeRep("Boîte");
-      return;
-    }
-    const { data: catData } = await supabase.from('catalogue').select('contenu').eq('ean', ean).limit(1).maybeSingle();
-    let contenuTexte = catData?.contenu ? catData.contenu.toLowerCase() : "";
-    
+    if (!ean) { setTypesDispos(["Boîte", "Plateau", "Cartes", "Autre"]); setTypeRep("Boîte"); return; }
+    const { data: catData } = await supabase.from("catalogue").select("contenu").eq("ean", ean).limit(1).maybeSingle();
+    const contenuTexte = catData?.contenu ? catData.contenu.toLowerCase() : "";
     const nouveauxTypes = ["Boîte"];
     if (contenuTexte.includes("plateau")) nouveauxTypes.push("Plateau");
     if (contenuTexte.includes("carte")) nouveauxTypes.push("Cartes");
     nouveauxTypes.push("Autre");
-    
     setTypesDispos(nouveauxTypes);
     setTypeRep("Boîte");
   };
@@ -51,50 +45,31 @@ export default function ReparationsPage() {
   const chercherJeuViaEan = async (code: string) => {
     if (!code || code.trim() === "") return;
     let codeFormate = code.trim();
-    if (/^\d+$/.test(codeFormate) && codeFormate.length < 8) {
-      codeFormate = codeFormate.padStart(8, '0');
-      setEanJeu(codeFormate); 
-    }
-
-    const { data: jeuData } = await supabase.from('jeux').select('nom, ean').eq('code_syracuse', codeFormate).limit(1).maybeSingle();
-    
-    if (jeuData && jeuData.nom) {
-      setNomJeu(jeuData.nom);
-      appliquerFiltresTypes(jeuData.ean);
-    } else {
-      setTypesDispos(["Boîte", "Plateau", "Cartes", "Autre"]);
-    }
+    if (/^\d+$/.test(codeFormate) && codeFormate.length < 8) { codeFormate = codeFormate.padStart(8, "0"); setEanJeu(codeFormate); }
+    const { data: jeuData } = await supabase.from("jeux").select("nom, ean").eq("code_syracuse", codeFormate).limit(1).maybeSingle();
+    if (jeuData?.nom) { setNomJeu(jeuData.nom); appliquerFiltresTypes(jeuData.ean); }
+    else { setTypesDispos(["Boîte", "Plateau", "Cartes", "Autre"]); }
   };
 
   const handleRechercheNom = async (text: string) => {
     setNomJeu(text);
     if (text.length > 2) {
-      const { data } = await supabase.from('jeux').select('nom, code_syracuse, ean').ilike('nom', `%${text}%`).limit(5);
-      if (data) setSuggestionsNom(data.filter((v, i, a) => a.findIndex(t => (t.nom === v.nom)) === i));
-    } else {
-      setSuggestionsNom([]);
-    }
+      const { data } = await supabase.from("jeux").select("nom, code_syracuse, ean").ilike("nom", `%${text}%`).limit(5);
+      if (data) setSuggestionsNom(data.filter((v, i, a) => a.findIndex(t => t.nom === v.nom) === i));
+    } else setSuggestionsNom([]);
   };
 
-  const selectionnerSuggestion = (jeu: {nom: string, code_syracuse: string, ean: string}) => {
+  const selectionnerSuggestion = (jeu: { nom: string; code_syracuse: string; ean: string }) => {
     setNomJeu(jeu.nom);
     if (jeu.code_syracuse) setEanJeu(jeu.code_syracuse);
     setSuggestionsNom([]);
     appliquerFiltresTypes(jeu.ean);
   };
 
-  const gererEanKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      chercherJeuViaEan(eanJeu);
-    }
-  };
-
   const ajouterReparation = async () => {
     if (!nomJeu && !eanJeu) return;
     const typeFinal = typeRep === "Autre" && customType ? customType : typeRep;
-    await supabase.from('reparations').insert([{ ean: eanJeu, nom: nomJeu, type_reparation: typeFinal, description: desc }]);
-    
+    await supabase.from("reparations").insert([{ ean: eanJeu, nom: nomJeu, type_reparation: typeFinal, description: desc }]);
     setEanJeu(""); setNomJeu(""); setDesc(""); setCustomType(""); setTypeRep("Boîte");
     setTypesDispos(["Boîte", "Plateau", "Cartes", "Autre"]);
     setSuggestionsNom([]);
@@ -102,97 +77,215 @@ export default function ReparationsPage() {
   };
 
   const changerStatut = async (id: number, statutActuel: string) => {
-    const nouveauStatut = statutActuel === 'À faire' ? 'Terminé' : 'À faire';
-    await supabase.from('reparations').update({ statut: nouveauStatut }).eq('id', id);
+    const nouveauStatut = statutActuel === "À faire" ? "Terminé" : "À faire";
+    await supabase.from("reparations").update({ statut: nouveauStatut }).eq("id", id);
     chargerReparations();
   };
 
   const supprimer = async (id: number) => {
-    await supabase.from('reparations').delete().eq('id', id);
+    await supabase.from("reparations").delete().eq("id", id);
     chargerReparations();
   };
 
+  const aFaire = reparations.filter(r => r.statut === "À faire");
+  const termines = reparations.filter(r => r.statut !== "À faire");
+
+  const inp: React.CSSProperties = {
+    border: "2px solid var(--ink)", borderRadius: 8, padding: "9px 14px",
+    background: "var(--white)", outline: "none", fontSize: 13,
+    fontFamily: "inherit", width: "100%", boxSizing: "border-box",
+  };
+
   return (
-    <div className="min-h-screen p-4 sm:p-8 bg-[#e5e5e5] font-sans">
-      <header className="flex justify-between items-center mb-6 w-full max-w-screen-xl mx-auto">
-        <div className="w-10 h-10 bg-black rounded flex items-center justify-center text-white font-black text-xl italic">+</div>
-        <nav className="bg-[#2d2d2d] text-white p-1.5 rounded-full flex items-center text-sm font-bold shadow-lg">
-          <Link href="/atelier" className="px-6 py-2.5 rounded-full hover:bg-white/10 transition">Retour Atelier</Link>
-        </nav>
-        <div className="w-10"></div>
+    <div style={{ minHeight: "100vh", background: "var(--cream)", display: "flex", flexDirection: "column" }}>
+
+      {/* Mini sticky header */}
+      <header style={{
+        position: "sticky", top: 0, zIndex: 200, height: 56,
+        background: "var(--cream)", borderBottom: "2.5px solid var(--ink)",
+        display: "flex", alignItems: "center", padding: "0 24px", gap: 16,
+      }}>
+        <Link href="/atelier" style={{
+          display: "inline-flex", alignItems: "center", gap: 6,
+          background: "var(--ink)", color: "var(--cream)",
+          border: "2px solid var(--ink)", borderRadius: 6,
+          padding: "4px 12px", fontWeight: 700, fontSize: 12,
+          textDecoration: "none", boxShadow: "2px 2px 0 rgba(0,0,0,0.3)",
+          fontFamily: "inherit",
+        }}>← Atelier</Link>
+        <h1 className="bc" style={{
+          fontSize: 22, letterSpacing: "0.03em", margin: 0,
+          background: "linear-gradient(90deg, var(--orange), var(--rouge))",
+          WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
+        }}>Réparations</h1>
+        <span style={{
+          marginLeft: "auto", background: "var(--orange)", color: "var(--ink)",
+          border: "2px solid var(--ink)", borderRadius: 20, padding: "2px 12px",
+          fontSize: 12, fontWeight: 700, boxShadow: "2px 2px 0 var(--ink)",
+        }}>{aFaire.length} à faire</span>
       </header>
 
-      <main className="bg-white rounded-[3rem] p-8 lg:p-10 w-full max-w-screen-xl mx-auto shadow-md">
-        <h1 className="text-4xl font-black text-black mb-8">🛠️ Réparations</h1>
+      <div style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: 20, maxWidth: 900, width: "100%" }}>
 
-        <div className="bg-slate-50 border-2 border-slate-100 p-6 rounded-3xl mb-8 flex flex-wrap gap-4 items-end">
-          <div className="w-40">
-            <label className="block text-sm font-bold text-slate-500 mb-2">Code Syracuse</label>
-            <input type="text" placeholder="Scan..." value={eanJeu} onChange={e => setEanJeu(e.target.value)} onBlur={() => chercherJeuViaEan(eanJeu)} onKeyDown={gererEanKeyDown} className="w-full border-2 border-slate-200 p-3 rounded-xl outline-none focus:border-black transition-colors" />
+        {/* Formulaire ajout */}
+        <div className="pop-card" style={{ padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
+          <p className="bc" style={{ fontSize: 15, margin: 0, letterSpacing: "0.03em" }}>Signaler une réparation</p>
+
+          <div style={{ display: "flex", gap: 12 }}>
+            {/* Code Syracuse */}
+            <input
+              type="text" placeholder="Code Syracuse..." value={eanJeu}
+              onChange={e => setEanJeu(e.target.value)}
+              onBlur={() => chercherJeuViaEan(eanJeu)}
+              onKeyDown={e => e.key === "Enter" && chercherJeuViaEan(eanJeu)}
+              style={{ ...inp, width: 160, flexShrink: 0 }}
+            />
+            {/* Nom — avec autocomplétion */}
+            <div style={{ flex: 1, position: "relative" }}>
+              <input
+                type="text" placeholder="Nom du jeu..." value={nomJeu}
+                onChange={e => handleRechercheNom(e.target.value)}
+                style={{ ...inp, fontWeight: 700 }}
+              />
+              {suggestionsNom.length > 0 && (
+                <div style={{
+                  position: "absolute", top: "100%", left: 0, right: 0, zIndex: 50,
+                  background: "var(--white)", border: "2px solid var(--ink)",
+                  borderRadius: 8, boxShadow: "4px 4px 0 var(--ink)", marginTop: 4,
+                  overflow: "hidden",
+                }}>
+                  {suggestionsNom.map((jeu, i) => (
+                    <div key={i} onClick={() => selectionnerSuggestion(jeu)}
+                      style={{
+                        padding: "10px 14px", cursor: "pointer", fontWeight: 700,
+                        fontSize: 13, borderBottom: "1px solid var(--cream2)",
+                        display: "flex", justifyContent: "space-between", alignItems: "center",
+                      }}
+                      onMouseEnter={e => (e.currentTarget.style.background = "var(--cream2)")}
+                      onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+                    >
+                      <span>{jeu.nom}</span>
+                      {jeu.code_syracuse && <span style={{ fontSize: 10, color: "rgba(0,0,0,0.4)", fontWeight: 400 }}>{jeu.code_syracuse}</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-          
-          <div className="flex-1 min-w-[200px] relative">
-            <label className="block text-sm font-bold text-slate-500 mb-2">Jeu à réparer</label>
-            <input type="text" placeholder="Nom du jeu..." value={nomJeu} onChange={e => handleRechercheNom(e.target.value)} className="w-full border-2 border-slate-200 p-3 rounded-xl outline-none focus:border-black transition-colors font-bold" />
-            
-            {/* AUTOCOMPLÉTION */}
-            {suggestionsNom.length > 0 && (
-              <div className="absolute top-full left-0 w-full mt-1 bg-white border-2 border-slate-200 rounded-xl shadow-lg z-10 overflow-hidden">
-                {suggestionsNom.map((jeu, i) => (
-                  <div key={i} onClick={() => selectionnerSuggestion(jeu)} className="p-3 hover:bg-slate-50 cursor-pointer font-bold border-b border-slate-100 last:border-none flex justify-between items-center">
-                    <span>{jeu.nom}</span>
-                    {jeu.code_syracuse && <span className="text-xs font-normal text-slate-400">{jeu.code_syracuse}</span>}
+
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+            {/* Type */}
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {typesDispos.map(t => (
+                <button key={t} onClick={() => setTypeRep(t)}
+                  style={{
+                    padding: "7px 14px", borderRadius: 20, fontSize: 12, fontWeight: 700,
+                    border: "2px solid var(--ink)", cursor: "pointer", fontFamily: "inherit",
+                    background: typeRep === t ? "var(--orange)" : "var(--white)",
+                    color: "var(--ink)", boxShadow: typeRep === t ? "2px 2px 0 var(--ink)" : "none",
+                    transition: "all 0.1s",
+                  }}>
+                  {t}
+                </button>
+              ))}
+              {typeRep === "Autre" && (
+                <input type="text" placeholder="Préciser..." value={customType}
+                  onChange={e => setCustomType(e.target.value)}
+                  style={{ ...inp, width: 140 }}
+                />
+              )}
+            </div>
+
+            {/* Description */}
+            <input
+              type="text" placeholder="Coin déchiré, scotch à remettre..."
+              value={desc} onChange={e => setDesc(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && ajouterReparation()}
+              style={{ ...inp, flex: 1, minWidth: 180 }}
+            />
+
+            <button
+              onClick={ajouterReparation}
+              disabled={!nomJeu && !eanJeu}
+              className="pop-btn pop-btn-dark"
+              style={{ padding: "9px 20px", fontSize: 13, opacity: (!nomJeu && !eanJeu) ? 0.4 : 1, cursor: (!nomJeu && !eanJeu) ? "not-allowed" : "pointer" }}
+            >
+              <span className="bc" style={{ fontSize: 14 }}>Ajouter</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Liste — À faire */}
+        {aFaire.length === 0 && termines.length === 0 ? (
+          <p style={{ textAlign: "center", color: "rgba(0,0,0,0.35)", fontWeight: 700, padding: "40px 0" }}>Aucune réparation en cours !</p>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {aFaire.map(r => (
+              <div key={r.id} className="pop-card" style={{ padding: "16px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 4 }}>
+                    <span style={{ fontWeight: 800, fontSize: 15 }}>{r.nom || "Jeu inconnu"}</span>
+                    {r.ean && <span style={{ fontSize: 10, color: "rgba(0,0,0,0.35)", fontWeight: 500 }}>({r.ean})</span>}
+                    <span style={{
+                      fontSize: 10, fontWeight: 800, background: "var(--orange)", color: "var(--ink)",
+                      border: "1.5px solid var(--ink)", borderRadius: 6, padding: "2px 8px",
+                      boxShadow: "1px 1px 0 var(--ink)", textTransform: "uppercase", letterSpacing: "0.05em",
+                    }}>{r.type_reparation}</span>
+                  </div>
+                  {r.description && <p style={{ color: "rgba(0,0,0,0.55)", fontWeight: 500, fontSize: 13, margin: 0 }}>{r.description}</p>}
+                </div>
+                <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+                  <button onClick={() => changerStatut(r.id, r.statut)}
+                    className="pop-btn"
+                    style={{
+                      background: "var(--vert)", border: "2px solid var(--ink)",
+                      boxShadow: "2px 2px 0 var(--ink)", padding: "7px 16px",
+                      fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
+                    }}>
+                    Valider ✓
+                  </button>
+                  <button onClick={() => supprimer(r.id)}
+                    style={{
+                      background: "none", border: "2px solid var(--ink)", borderRadius: 8,
+                      padding: "7px 10px", cursor: "pointer", fontSize: 14,
+                      boxShadow: "2px 2px 0 var(--ink)",
+                    }}>🗑️</button>
+                </div>
+              </div>
+            ))}
+
+            {/* Terminées (repliées) */}
+            {termines.length > 0 && (
+              <div style={{ marginTop: 8 }}>
+                <p className="bc" style={{ fontSize: 13, color: "rgba(0,0,0,0.35)", letterSpacing: "0.05em", margin: "0 0 8px" }}>
+                  TERMINÉES ({termines.length})
+                </p>
+                {termines.map(r => (
+                  <div key={r.id} style={{
+                    padding: "12px 20px", marginBottom: 6, borderRadius: 8,
+                    border: "2px solid var(--cream2)", background: "var(--white)",
+                    display: "flex", justifyContent: "space-between", alignItems: "center",
+                    gap: 12, opacity: 0.55,
+                  }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ fontWeight: 700, fontSize: 13 }}>{r.nom}</span>
+                      {r.description && <span style={{ fontSize: 12, color: "rgba(0,0,0,0.4)", marginLeft: 8 }}>{r.description}</span>}
+                    </div>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <button onClick={() => changerStatut(r.id, r.statut)}
+                        style={{ background: "none", border: "1.5px solid var(--cream2)", borderRadius: 6, padding: "5px 12px", cursor: "pointer", fontSize: 11, fontWeight: 700, fontFamily: "inherit" }}>
+                        Rouvrir
+                      </button>
+                      <button onClick={() => supprimer(r.id)}
+                        style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14, padding: "4px 6px" }}>🗑️</button>
+                    </div>
                   </div>
                 ))}
               </div>
             )}
           </div>
-
-          <div className="min-w-[150px]">
-            <label className="block text-sm font-bold text-slate-500 mb-2">Type</label>
-            <div className="flex gap-2">
-              <select value={typeRep} onChange={e => setTypeRep(e.target.value)} className="border-2 border-slate-200 p-3 rounded-xl outline-none focus:border-black cursor-pointer font-bold">
-                {typesDispos.map(t => <option key={t} value={t}>{t}</option>)}
-              </select>
-              {typeRep === "Autre" && (
-                <input type="text" placeholder="Préciser..." value={customType} onChange={e => setCustomType(e.target.value)} className="w-32 border-2 border-slate-200 p-3 rounded-xl outline-none focus:border-black transition-colors" />
-              )}
-            </div>
-          </div>
-          <div className="flex-1 min-w-[200px]">
-            <label className="block text-sm font-bold text-slate-500 mb-2">Description</label>
-            <input type="text" placeholder="Coin déchiré, scotch à remettre..." value={desc} onChange={e => setDesc(e.target.value)} onKeyDown={(e) => e.key === "Enter" && ajouterReparation()} className="w-full border-2 border-slate-200 p-3 rounded-xl outline-none focus:border-black transition-colors" />
-          </div>
-          <button onClick={ajouterReparation} disabled={!nomJeu && !eanJeu} className="bg-[#ff9500] hover:bg-[#e68600] disabled:bg-slate-200 text-white font-black px-8 py-3 rounded-xl transition-colors h-[52px]">
-            Ajouter
-          </button>
-        </div>
-
-        <div className="grid gap-4">
-          {reparations.length === 0 ? (
-             <p className="text-center text-slate-400 py-10 font-medium">Aucune réparation en cours !</p>
-          ) : (
-            reparations.map(r => (
-              <div key={r.id} className={`p-5 rounded-2xl flex flex-col sm:flex-row justify-between sm:items-center gap-4 bg-white border-2 transition-opacity ${r.statut === 'À faire' ? 'border-slate-200 hover:border-slate-300' : 'border-emerald-100 opacity-60'}`}>
-                <div>
-                  <div className="flex items-center gap-3 mb-1">
-                    <h3 className="font-bold text-xl">{r.nom || "Jeu inconnu"}</h3>
-                    {r.ean && <span className="text-xs font-bold text-slate-400">({r.ean})</span>}
-                    <span className="text-xs font-black bg-slate-100 text-slate-500 px-2.5 py-1 rounded-md uppercase tracking-wide">{r.type_reparation}</span>
-                  </div>
-                  {r.description && <p className="text-slate-500 font-medium">{r.description}</p>}
-                </div>
-                <div className="flex gap-2 shrink-0">
-                  <button onClick={() => changerStatut(r.id, r.statut)} className={`px-5 py-2 rounded-xl font-bold transition-colors ${r.statut === 'À faire' ? 'bg-slate-100 hover:bg-slate-200 text-black' : 'bg-emerald-100 text-emerald-700'}`}>
-                    {r.statut === 'À faire' ? 'Valider ✓' : 'Annuler'}
-                  </button>
-                  <button onClick={() => supprimer(r.id)} className="px-4 py-2 text-red-500 bg-red-50 hover:bg-red-100 rounded-xl transition-colors">🗑️</button>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      </main>
+        )}
+      </div>
     </div>
   );
 }
