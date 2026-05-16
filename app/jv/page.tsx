@@ -62,6 +62,12 @@ type JvRotationConfig = {
   week_start: string;
 };
 
+type JoueurDetail = {
+  nom: string;
+  sexe: "H" | "F" | "N" | null;
+  age: "11-16" | "16-18" | "18+" | "parent" | null;
+};
+
 type JvReservation = {
   id: string;
   jeu_id: string;
@@ -71,6 +77,7 @@ type JvReservation = {
   creneau: string;
   adherent_nom: string;
   nb_joueurs: number;
+  joueurs_details: JoueurDetail[] | null;
   statut: "confirmee" | "annulee" | "terminee";
   notes: string | null;
   created_at: string;
@@ -606,6 +613,7 @@ function ModalRotation({
   slot,
   selections,
   jeux,
+  reservations,
   onClose,
   onAddToGroup,
   onRemoveSelection,
@@ -614,6 +622,7 @@ function ModalRotation({
   slot: SelectionSlot;
   selections: JvSelection[];
   jeux: JvJeu[];
+  reservations: JvReservation[];
   onClose: () => void;
   onAddToGroup: (jeuId: string, groupe: number) => void;
   onRemoveSelection: (selId: string) => void;
@@ -667,6 +676,38 @@ function ModalRotation({
         return q === "" || normalizeStr(j.titre).includes(q);
       })
     : [];
+
+  // Nombre de fois chaque jeu est apparu dans une sélection (tous slots, tous statuts)
+  const selectionCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    selections.forEach(s => { counts[s.jeu_id] = (counts[s.jeu_id] || 0) + 1; });
+    return counts;
+  }, [selections]);
+
+  // Popularité : nb de réservations non-annulées par jeu
+  const resaCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    reservations.filter(r => r.statut !== "annulee").forEach(r => {
+      counts[r.jeu_id] = (counts[r.jeu_id] || 0) + 1;
+      if (r.jeu2_id) counts[r.jeu2_id] = (counts[r.jeu2_id] || 0) + 1;
+    });
+    return counts;
+  }, [reservations]);
+
+  // Rang de popularité parmi tous les jeux de la même console
+  const popularityRank = useMemo(() => {
+    const byConsole: Record<string, { id: string; count: number }[]> = {};
+    jeux.forEach(j => {
+      if (!byConsole[j.console]) byConsole[j.console] = [];
+      byConsole[j.console].push({ id: j.id, count: resaCounts[j.id] || 0 });
+    });
+    const ranks: Record<string, { rank: number; total: number }> = {};
+    Object.values(byConsole).forEach(list => {
+      const sorted = [...list].sort((a, b) => b.count - a.count);
+      sorted.forEach((item, i) => { ranks[item.id] = { rank: i + 1, total: sorted.length }; });
+    });
+    return ranks;
+  }, [jeux, resaCounts]);
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-start justify-center p-4 pt-8 overflow-y-auto"
@@ -819,6 +860,50 @@ function ModalRotation({
                               : <span className="text-3xl">🎮</span>}
                           </div>
                           <p className="text-[11px] font-bold text-black text-center leading-tight line-clamp-2 w-full">{j.titre}</p>
+                          {/* Info pills */}
+                          <div className="flex flex-wrap justify-center gap-1 w-full mt-0.5">
+                            {/* Sélections */}
+                            {(() => {
+                              const n = selectionCounts[j.id] || 0;
+                              return (
+                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 leading-none">
+                                  {n === 0 ? "Inédit" : `${n}× sélec.`}
+                                </span>
+                              );
+                            })()}
+                            {/* Popularité */}
+                            {(() => {
+                              const pop = popularityRank[j.id];
+                              const count = resaCounts[j.id] || 0;
+                              if (!pop || count === 0) return (
+                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-400 leading-none">0 rés.</span>
+                              );
+                              const pct = pop.rank / pop.total;
+                              const cls = pct <= 0.2 ? "bg-orange-100 text-orange-600"
+                                : pct <= 0.5 ? "bg-yellow-100 text-yellow-700"
+                                : "bg-slate-100 text-slate-500";
+                              const icon = pct <= 0.2 ? "🔥" : pct <= 0.5 ? "⭐" : "";
+                              return (
+                                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full leading-none ${cls}`}>
+                                  {icon}{icon ? " " : ""}{count} rés.
+                                </span>
+                              );
+                            })()}
+                            {/* PEGI */}
+                            {j.pegi ? (() => {
+                              const cls = j.pegi <= 7 ? "bg-green-100 text-green-700"
+                                : j.pegi <= 12 ? "bg-yellow-100 text-yellow-700"
+                                : j.pegi <= 16 ? "bg-orange-100 text-orange-700"
+                                : "bg-red-100 text-red-700";
+                              return (
+                                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full leading-none ${cls}`}>
+                                  PEGI {j.pegi}
+                                </span>
+                              );
+                            })() : (
+                              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-400 leading-none">PEGI ?</span>
+                            )}
+                          </div>
                         </button>
                       );
                     })}
@@ -1095,8 +1180,8 @@ function ModalReservation({
   const [date, setDate] = useState(preDate ?? nextOpenDay());
   const [creneau, setCreneau] = useState("");
   const [jeuId, setJeuId] = useState("");
-  const [nom, setNom] = useState("");
   const [nbJoueurs, setNbJoueurs] = useState(1);
+  const [joueurs, setJoueurs] = useState<JoueurDetail[]>([{ nom: "", sexe: null, age: null }]);
   const [notes, setNotes] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
@@ -1120,14 +1205,29 @@ function ModalReservation({
     .filter(x => slot !== "Switch_Multi" || (x.jeu.nb_joueurs && x.jeu.nb_joueurs !== "1"));
 
   // Reset jeu + nb_joueurs quand le poste change
-  useEffect(() => { setJeuId(""); setNbJoueurs(1); }, [posteId]);
+  useEffect(() => { setJeuId(""); setNbJoueurs(1); setJoueurs([{ nom: "", sexe: null, age: null }]); }, [posteId]);
+
+  // Ajuste le tableau de joueurs quand nbJoueurs change
+  useEffect(() => {
+    setJoueurs(prev => {
+      if (nbJoueurs > prev.length) {
+        return [...prev, ...Array.from({ length: nbJoueurs - prev.length }, () => ({ nom: "", sexe: null, age: null } as JoueurDetail))];
+      }
+      return prev.slice(0, nbJoueurs);
+    });
+  }, [nbJoueurs]);
+
+  const updateJoueur = (i: number, patch: Partial<JoueurDetail>) =>
+    setJoueurs(prev => prev.map((j, idx) => idx === i ? { ...j, ...patch } : j));
 
   const save = async () => {
-    if (!jeuId || !nom.trim() || !creneau || !isJourOuvert || !posteId) return;
+    const nomPrincipal = joueurs[0]?.nom.trim() ?? "";
+    if (!jeuId || !nomPrincipal || !creneau || !isJourOuvert || !posteId) return;
     setIsSaving(true);
     const { data, error } = await supabase.from("jv_reservations").insert({
       jeu_id: jeuId, poste: posteId, date_creneau: date, creneau,
-      adherent_nom: nom.trim(), nb_joueurs: nbJoueurs,
+      adherent_nom: nomPrincipal, nb_joueurs: nbJoueurs,
+      joueurs_details: joueurs,
       notes: notes.trim() || null, statut: "confirmee",
     }).select().single();
     if (error) { alert("Erreur : " + error.message); setIsSaving(false); return; }
@@ -1227,14 +1327,6 @@ function ModalReservation({
             )}
           </div>
 
-          {/* Adhérent */}
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-black text-slate-400 uppercase tracking-widest">Nom adhérent *</label>
-            <input type="text" value={nom} onChange={e => setNom(e.target.value)}
-              placeholder="Prénom NOM…" autoFocus
-              className="bg-slate-50 border-2 border-slate-100 rounded-2xl px-4 py-3 text-sm font-medium outline-none focus:border-black transition-colors" />
-          </div>
-
           {/* Nb joueurs */}
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-black text-slate-400 uppercase tracking-widest">
@@ -1251,6 +1343,59 @@ function ModalReservation({
             </div>
           </div>
 
+          {/* Adhérents — un bloc par joueur */}
+          <div className="flex flex-col gap-3">
+            <label className="text-xs font-black text-slate-400 uppercase tracking-widest">
+              Adhérent{nbJoueurs > 1 ? "s" : ""} *
+            </label>
+            {joueurs.map((j, i) => (
+              <div key={i} className="flex flex-col gap-2 p-3 bg-slate-50 rounded-2xl border-2 border-slate-100">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                  {i === 0 ? "1er joueur" : `${i + 1}e joueur`}
+                </p>
+                <input
+                  type="text"
+                  value={j.nom}
+                  onChange={e => updateJoueur(i, { nom: e.target.value })}
+                  placeholder="Prénom NOM…"
+                  autoFocus={i === 0}
+                  className="bg-white border-2 border-slate-100 rounded-xl px-3 py-2.5 text-sm font-medium outline-none focus:border-black transition-colors"
+                />
+                {/* Sexe */}
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold text-slate-400 w-8 shrink-0">Sexe</span>
+                  <div className="flex gap-1.5">
+                    {(["H", "F", "N"] as const).map(s => (
+                      <button key={s} onClick={() => updateJoueur(i, { sexe: j.sexe === s ? null : s })}
+                        className={`px-3 py-1 rounded-full text-xs font-bold border-2 transition-colors ${
+                          j.sexe === s ? "bg-black text-white border-black" : "bg-white border-slate-200 text-slate-500 hover:border-slate-400"}`}>
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {/* Tranche d'âge */}
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold text-slate-400 w-8 shrink-0">Âge</span>
+                  <div className="flex gap-1.5 flex-wrap">
+                    {([
+                      { val: "11-16",  label: "11-16" },
+                      { val: "16-18",  label: "16-18" },
+                      { val: "18+",    label: "18+" },
+                      { val: "parent", label: "Parent / Adulte" },
+                    ] as const).map(({ val, label }) => (
+                      <button key={val} onClick={() => updateJoueur(i, { age: j.age === val ? null : val })}
+                        className={`px-3 py-1 rounded-full text-xs font-bold border-2 transition-colors ${
+                          j.age === val ? "bg-black text-white border-black" : "bg-white border-slate-200 text-slate-500 hover:border-slate-400"}`}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
           {/* Notes */}
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-black text-slate-400 uppercase tracking-widest">Notes</label>
@@ -1264,7 +1409,7 @@ function ModalReservation({
             className="flex-1 px-4 py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-sm transition-colors">
             Annuler
           </button>
-          <button onClick={save} disabled={isSaving || !jeuId || !nom.trim() || !creneau || !isJourOuvert}
+          <button onClick={save} disabled={isSaving || !jeuId || !joueurs[0]?.nom.trim() || !creneau || !isJourOuvert}
             className="flex-1 px-4 py-3 rounded-2xl bg-black text-white font-bold text-sm hover:bg-slate-800 disabled:opacity-50 transition-colors">
             {isSaving ? "Sauvegarde…" : "Confirmer"}
           </button>
@@ -1322,13 +1467,31 @@ function ModalReservationDetail({
   onSaved: (r: JvReservation) => void;
   onCancelled: (id: string) => void;
 }) {
-  const [nom, setNom] = useState(reservation.adherent_nom);
   const [nbJoueurs, setNbJoueurs] = useState(reservation.nb_joueurs);
+  const [joueurs, setJoueurs] = useState<JoueurDetail[]>(() => {
+    if (reservation.joueurs_details && reservation.joueurs_details.length > 0) return reservation.joueurs_details;
+    return Array.from({ length: reservation.nb_joueurs }, (_, i) => ({
+      nom: i === 0 ? reservation.adherent_nom : "",
+      sexe: null,
+      age: null,
+    } as JoueurDetail));
+  });
   const [notes, setNotes] = useState(reservation.notes ?? "");
   const [jeuId, setJeuId] = useState(reservation.jeu_id);
   const [jeu2Id, setJeu2Id] = useState<string | null>(reservation.jeu2_id ?? null);
   const [isSaving, setIsSaving] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
+
+  useEffect(() => {
+    setJoueurs(prev => {
+      if (nbJoueurs > prev.length)
+        return [...prev, ...Array.from({ length: nbJoueurs - prev.length }, () => ({ nom: "", sexe: null, age: null } as JoueurDetail))];
+      return prev.slice(0, nbJoueurs);
+    });
+  }, [nbJoueurs]);
+
+  const updateJoueur = (i: number, patch: Partial<JoueurDetail>) =>
+    setJoueurs(prev => prev.map((j, idx) => idx === i ? { ...j, ...patch } : j));
 
   const poste = POSTES.find(p => p.id === reservation.poste)!;
   const slot = POSTE_SLOT[reservation.poste] ?? "PS5";
@@ -1344,9 +1507,18 @@ function ModalReservationDetail({
   const jeu2DansSelection = jeu2Id ? activeJeux.some(j => j.id === jeu2Id) : true;
 
   const save = async () => {
+    const nomPrincipal = joueurs[0]?.nom.trim() ?? "";
+    if (!nomPrincipal) return;
     setIsSaving(true);
     const { data, error } = await supabase.from("jv_reservations")
-      .update({ adherent_nom: nom.trim(), nb_joueurs: nbJoueurs, notes: notes.trim() || null, jeu_id: jeuId, jeu2_id: jeu2Id })
+      .update({
+        adherent_nom: nomPrincipal,
+        nb_joueurs: nbJoueurs,
+        joueurs_details: joueurs,
+        notes: notes.trim() || null,
+        jeu_id: jeuId,
+        jeu2_id: jeu2Id,
+      })
       .eq("id", reservation.id).select().single();
     if (error) { alert("Erreur : " + error.message); setIsSaving(false); return; }
     onSaved(data as JvReservation);
@@ -1453,13 +1625,6 @@ function ModalReservationDetail({
             )}
           </div>
 
-          {/* Adhérent */}
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-black text-slate-400 uppercase tracking-widest">Adhérent</label>
-            <input type="text" value={nom} onChange={e => setNom(e.target.value)}
-              className="bg-slate-50 border-2 border-slate-100 rounded-2xl px-4 py-3 text-sm font-medium outline-none focus:border-black transition-colors" />
-          </div>
-
           {/* Nb joueurs */}
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-black text-slate-400 uppercase tracking-widest">
@@ -1475,6 +1640,56 @@ function ModalReservationDetail({
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* Adhérents — un bloc par joueur */}
+          <div className="flex flex-col gap-3">
+            <label className="text-xs font-black text-slate-400 uppercase tracking-widest">
+              Adhérent{nbJoueurs > 1 ? "s" : ""}
+            </label>
+            {joueurs.map((j, i) => (
+              <div key={i} className="flex flex-col gap-2 p-3 bg-slate-50 rounded-2xl border-2 border-slate-100">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                  {i === 0 ? "1er joueur" : `${i + 1}e joueur`}
+                </p>
+                <input
+                  type="text"
+                  value={j.nom}
+                  onChange={e => updateJoueur(i, { nom: e.target.value })}
+                  placeholder="Prénom NOM…"
+                  className="bg-white border-2 border-slate-100 rounded-xl px-3 py-2.5 text-sm font-medium outline-none focus:border-black transition-colors"
+                />
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold text-slate-400 w-8 shrink-0">Sexe</span>
+                  <div className="flex gap-1.5">
+                    {(["H", "F", "N"] as const).map(s => (
+                      <button key={s} onClick={() => updateJoueur(i, { sexe: j.sexe === s ? null : s })}
+                        className={`px-3 py-1 rounded-full text-xs font-bold border-2 transition-colors ${
+                          j.sexe === s ? "bg-black text-white border-black" : "bg-white border-slate-200 text-slate-500 hover:border-slate-400"}`}>
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold text-slate-400 w-8 shrink-0">Âge</span>
+                  <div className="flex gap-1.5 flex-wrap">
+                    {([
+                      { val: "11-16",  label: "11-16" },
+                      { val: "16-18",  label: "16-18" },
+                      { val: "18+",    label: "18+" },
+                      { val: "parent", label: "Parent / Adulte" },
+                    ] as const).map(({ val, label }) => (
+                      <button key={val} onClick={() => updateJoueur(i, { age: j.age === val ? null : val })}
+                        className={`px-3 py-1 rounded-full text-xs font-bold border-2 transition-colors ${
+                          j.age === val ? "bg-black text-white border-black" : "bg-white border-slate-200 text-slate-500 hover:border-slate-400"}`}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
 
           {/* Notes */}
@@ -1504,7 +1719,7 @@ function ModalReservationDetail({
             Fermer
           </button>
           {reservation.statut !== "annulee" && (
-            <button onClick={save} disabled={isSaving || !nom.trim() || !jeuId}
+            <button onClick={save} disabled={isSaving || !joueurs[0]?.nom.trim() || !jeuId}
               className="flex-1 px-4 py-3 rounded-2xl bg-black text-white font-bold text-sm hover:bg-slate-800 disabled:opacity-50 transition-colors">
               {isSaving ? "Sauvegarde…" : "Enregistrer"}
             </button>
@@ -2237,10 +2452,299 @@ function TabReservations({
   );
 }
 
+// ─── Onglet Stats ─────────────────────────────────────────────────────────────
+
+const MOIS_LABELS = ["Jan", "Fév", "Mar", "Avr", "Mai", "Jun", "Jul", "Aoû", "Sep", "Oct", "Nov", "Déc"];
+
+function TabStats({ reservations, jeux }: { reservations: JvReservation[]; jeux: JvJeu[] }) {
+  const actives = reservations.filter(r => r.statut !== "annulee");
+
+  const currentYear = new Date().getFullYear();
+  const [selectedYear, setSelectedYear] = useState(currentYear);
+  const [chronoView, setChronoView] = useState<"mois" | "annee">("mois");
+
+  // Collecte tous les joueurs détaillés
+  const allJoueurs = actives.flatMap(r =>
+    r.joueurs_details && r.joueurs_details.length > 0
+      ? r.joueurs_details
+      : Array.from({ length: r.nb_joueurs }, () => ({ nom: "", sexe: null, age: null } as JoueurDetail))
+  );
+
+  const totalJoueurs = allJoueurs.length;
+  const totalResas   = actives.length;
+
+  // ── Vue chronologique ──────────────────────────────────────────────────────
+
+  // Années présentes dans les données
+  const years = useMemo(() => {
+    const ys = new Set(actives.map(r => parseInt(r.date_creneau.slice(0, 4))));
+    return [...ys].sort();
+  }, [actives]);
+
+  // Données par mois pour l'année sélectionnée
+  const monthlyData = useMemo(() => {
+    const data = Array.from({ length: 12 }, (_, i) => ({ mois: i, resas: 0, joueurs: 0 }));
+    actives
+      .filter(r => parseInt(r.date_creneau.slice(0, 4)) === selectedYear)
+      .forEach(r => {
+        const m = parseInt(r.date_creneau.slice(5, 7)) - 1;
+        data[m].resas++;
+        data[m].joueurs += r.joueurs_details?.length || r.nb_joueurs;
+      });
+    return data;
+  }, [actives, selectedYear]);
+
+  // Données par année (vue globale)
+  const yearlyData = useMemo(() => {
+    const map: Record<number, { resas: number; joueurs: number }> = {};
+    actives.forEach(r => {
+      const y = parseInt(r.date_creneau.slice(0, 4));
+      if (!map[y]) map[y] = { resas: 0, joueurs: 0 };
+      map[y].resas++;
+      map[y].joueurs += r.joueurs_details?.length || r.nb_joueurs;
+    });
+    return Object.entries(map).map(([y, v]) => ({ annee: parseInt(y), ...v })).sort((a, b) => a.annee - b.annee);
+  }, [actives]);
+
+  // Répartition sexe
+  const sexeCounts = { H: 0, F: 0, N: 0, "?": 0 };
+  allJoueurs.forEach(j => {
+    if (j.sexe === "H" || j.sexe === "F" || j.sexe === "N") sexeCounts[j.sexe]++;
+    else sexeCounts["?"]++;
+  });
+
+  // Répartition âge
+  const ageCounts: Record<string, number> = { "11-16": 0, "16-18": 0, "18+": 0, "parent": 0, "?": 0 };
+  allJoueurs.forEach(j => {
+    if (j.age && ageCounts[j.age] !== undefined) ageCounts[j.age]++;
+    else ageCounts["?"]++;
+  });
+
+  // Jeux les + joués (top 10)
+  const jeuMap: Record<string, { titre: string; console: Console; image_url: string | null; count: number }> = {};
+  actives.forEach(r => {
+    const addJ = (id: string) => {
+      const jeu = jeux.find(j => j.id === id);
+      if (!jeu) return;
+      if (!jeuMap[id]) jeuMap[id] = { titre: jeu.titre, console: jeu.console, image_url: jeu.image_url, count: 0 };
+      jeuMap[id].count++;
+    };
+    addJ(r.jeu_id);
+    if (r.jeu2_id) addJ(r.jeu2_id);
+  });
+  const topJeux = Object.entries(jeuMap)
+    .map(([id, v]) => ({ id, ...v }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10);
+  const maxCount = topJeux[0]?.count || 1;
+
+  const StatBar = ({ label, count, total, color }: { label: string; count: number; total: number; color: string }) => (
+    <div className="flex items-center gap-3">
+      <span className="text-xs font-bold text-slate-600 w-24 shrink-0">{label}</span>
+      <div className="flex-1 bg-slate-100 rounded-full h-3 overflow-hidden">
+        <div className={`h-full rounded-full transition-all ${color}`} style={{ width: total > 0 ? `${(count / total) * 100}%` : "0%" }} />
+      </div>
+      <span className="text-xs font-black text-black w-8 text-right">{count}</span>
+      <span className="text-[10px] text-slate-400 w-8">{total > 0 ? `${Math.round((count / total) * 100)}%` : "—"}</span>
+    </div>
+  );
+
+  return (
+    <div className="flex flex-col gap-6">
+
+      {/* KPIs */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {[
+          { label: "Réservations", value: totalResas, bg: "bg-slate-50 border-slate-100" },
+          { label: "Joueurs total", value: totalJoueurs, bg: "bg-[#baff29]/20 border-[#baff29]/40" },
+          { label: "Avec profil", value: allJoueurs.filter(j => j.sexe || j.age).length, bg: "bg-blue-50 border-blue-100" },
+          { label: "Jeux distincts", value: Object.keys(jeuMap).length, bg: "bg-purple-50 border-purple-100" },
+        ].map(k => (
+          <div key={k.label} className={`rounded-2xl p-4 border-2 ${k.bg}`}>
+            <p className="text-3xl font-black text-black">{k.value}</p>
+            <p className="text-xs text-slate-500 font-bold mt-1">{k.label}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Vue chronologique */}
+      <div className="bg-white rounded-2xl border-2 border-slate-100 p-5 flex flex-col gap-4">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <h3 className="font-black text-sm text-black uppercase tracking-wider">Activité</h3>
+          <div className="flex items-center gap-2">
+            {/* Toggle mois / année */}
+            <div className="flex gap-0.5 p-0.5 bg-slate-100 rounded-xl">
+              {(["mois", "annee"] as const).map(v => (
+                <button key={v} onClick={() => setChronoView(v)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    chronoView === v ? "bg-white text-black shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>
+                  {v === "mois" ? "Par mois" : "Par année"}
+                </button>
+              ))}
+            </div>
+            {/* Sélecteur année (uniquement vue mois) */}
+            {chronoView === "mois" && years.length > 0 && (
+              <div className="flex items-center gap-1">
+                <button onClick={() => setSelectedYear(y => Math.max(years[0], y - 1))}
+                  disabled={selectedYear <= years[0]}
+                  className="w-7 h-7 flex items-center justify-center rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-sm disabled:opacity-30 transition-colors">‹</button>
+                <span className="text-sm font-black text-black w-12 text-center">{selectedYear}</span>
+                <button onClick={() => setSelectedYear(y => Math.min(currentYear, y + 1))}
+                  disabled={selectedYear >= currentYear}
+                  className="w-7 h-7 flex items-center justify-center rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-sm disabled:opacity-30 transition-colors">›</button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {chronoView === "mois" ? (() => {
+          const maxVal = Math.max(...monthlyData.map(d => d.resas), 1);
+          const totalAnnee = monthlyData.reduce((s, d) => s + d.resas, 0);
+          const joueursTotalAnnee = monthlyData.reduce((s, d) => s + d.joueurs, 0);
+          return (
+            <div className="flex flex-col gap-3">
+              <div className="flex items-end gap-1.5 h-32">
+                {monthlyData.map((d, i) => {
+                  const pct = (d.resas / maxVal) * 100;
+                  const isCurrentMonth = selectedYear === currentYear && i === new Date().getMonth();
+                  return (
+                    <div key={i} className="flex-1 flex flex-col items-center gap-1 group relative">
+                      {/* Tooltip */}
+                      <div className="absolute bottom-full mb-1 hidden group-hover:flex flex-col items-center z-10 pointer-events-none">
+                        <div className="bg-black text-white text-[10px] font-bold px-2 py-1 rounded-lg whitespace-nowrap">
+                          {d.resas} rés. · {d.joueurs} joueur{d.joueurs > 1 ? "s" : ""}
+                        </div>
+                        <div className="w-1.5 h-1.5 bg-black rotate-45 -mt-0.5" />
+                      </div>
+                      <div className="w-full flex items-end" style={{ height: "100px" }}>
+                        <div
+                          className={`w-full rounded-t-lg transition-all ${isCurrentMonth ? "bg-black" : "bg-slate-200 group-hover:bg-slate-400"}`}
+                          style={{ height: `${Math.max(pct, d.resas > 0 ? 4 : 0)}%` }}
+                        />
+                      </div>
+                      <span className={`text-[9px] font-bold ${isCurrentMonth ? "text-black" : "text-slate-400"}`}>{MOIS_LABELS[i]}</span>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="flex gap-4 pt-1 border-t border-slate-100">
+                <div><span className="text-lg font-black text-black">{totalAnnee}</span> <span className="text-xs text-slate-400 font-bold">réservations</span></div>
+                <div><span className="text-lg font-black text-black">{joueursTotalAnnee}</span> <span className="text-xs text-slate-400 font-bold">joueurs</span></div>
+                <div><span className="text-lg font-black text-black">{totalAnnee > 0 ? (joueursTotalAnnee / totalAnnee).toFixed(1) : "—"}</span> <span className="text-xs text-slate-400 font-bold">moy. joueurs/rés.</span></div>
+              </div>
+            </div>
+          );
+        })() : (() => {
+          const maxVal = Math.max(...yearlyData.map(d => d.resas), 1);
+          return yearlyData.length === 0 ? (
+            <p className="text-sm text-slate-400 font-medium">Aucune donnée</p>
+          ) : (
+            <div className="flex flex-col gap-3">
+              <div className="flex items-end gap-3 h-32">
+                {yearlyData.map(d => {
+                  const pct = (d.resas / maxVal) * 100;
+                  const isCurrent = d.annee === currentYear;
+                  return (
+                    <div key={d.annee} className="flex-1 flex flex-col items-center gap-1 group relative">
+                      <div className="absolute bottom-full mb-1 hidden group-hover:flex flex-col items-center z-10 pointer-events-none">
+                        <div className="bg-black text-white text-[10px] font-bold px-2 py-1 rounded-lg whitespace-nowrap">
+                          {d.resas} rés. · {d.joueurs} joueur{d.joueurs > 1 ? "s" : ""}
+                        </div>
+                        <div className="w-1.5 h-1.5 bg-black rotate-45 -mt-0.5" />
+                      </div>
+                      <div className="w-full flex items-end" style={{ height: "100px" }}>
+                        <div
+                          className={`w-full rounded-t-lg transition-all ${isCurrent ? "bg-black" : "bg-slate-200 group-hover:bg-slate-400"}`}
+                          style={{ height: `${Math.max(pct, d.resas > 0 ? 4 : 0)}%` }}
+                        />
+                      </div>
+                      <span className={`text-[10px] font-bold ${isCurrent ? "text-black" : "text-slate-400"}`}>{d.annee}</span>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="flex flex-col gap-1.5 pt-1 border-t border-slate-100">
+                {yearlyData.map(d => (
+                  <div key={d.annee} className="flex items-center gap-3 text-xs">
+                    <span className="font-black text-black w-10">{d.annee}</span>
+                    <span className="text-slate-600 font-bold">{d.resas} rés.</span>
+                    <span className="text-slate-400">·</span>
+                    <span className="text-slate-600 font-bold">{d.joueurs} joueurs</span>
+                    <span className="text-slate-400">·</span>
+                    <span className="text-slate-400">{d.resas > 0 ? (d.joueurs / d.resas).toFixed(1) : "—"} moy.</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+
+        {/* Démographie */}
+        <div className="flex flex-col gap-6">
+
+          {/* Sexe */}
+          <div className="bg-white rounded-2xl border-2 border-slate-100 p-5 flex flex-col gap-4">
+            <h3 className="font-black text-sm text-black uppercase tracking-wider">Répartition par sexe</h3>
+            <div className="flex flex-col gap-3">
+              <StatBar label="Homme (H)" count={sexeCounts.H} total={totalJoueurs} color="bg-blue-400" />
+              <StatBar label="Femme (F)" count={sexeCounts.F} total={totalJoueurs} color="bg-pink-400" />
+              <StatBar label="Non-binaire (N)" count={sexeCounts.N} total={totalJoueurs} color="bg-purple-400" />
+              <StatBar label="Non renseigné" count={sexeCounts["?"]} total={totalJoueurs} color="bg-slate-300" />
+            </div>
+          </div>
+
+          {/* Âge */}
+          <div className="bg-white rounded-2xl border-2 border-slate-100 p-5 flex flex-col gap-4">
+            <h3 className="font-black text-sm text-black uppercase tracking-wider">Tranche d&apos;âge</h3>
+            <div className="flex flex-col gap-3">
+              <StatBar label="11 – 16 ans" count={ageCounts["11-16"]} total={totalJoueurs} color="bg-green-400" />
+              <StatBar label="16 – 18 ans" count={ageCounts["16-18"]} total={totalJoueurs} color="bg-yellow-400" />
+              <StatBar label="18 ans +" count={ageCounts["18+"]} total={totalJoueurs} color="bg-orange-400" />
+              <StatBar label="Parent / Adulte" count={ageCounts["parent"]} total={totalJoueurs} color="bg-red-300" />
+              <StatBar label="Non renseigné" count={ageCounts["?"]} total={totalJoueurs} color="bg-slate-300" />
+            </div>
+          </div>
+        </div>
+
+        {/* Top jeux */}
+        <div className="bg-white rounded-2xl border-2 border-slate-100 p-5 flex flex-col gap-4">
+          <h3 className="font-black text-sm text-black uppercase tracking-wider">Jeux les + joués</h3>
+          {topJeux.length === 0 ? (
+            <p className="text-sm text-slate-400 font-medium">Aucune donnée</p>
+          ) : (
+            <div className="flex flex-col gap-2.5">
+              {topJeux.map((s, idx) => (
+                <div key={s.id} className="flex items-center gap-3">
+                  <span className="text-xs font-black text-slate-300 w-4 text-right shrink-0">{idx + 1}</span>
+                  <div className="w-7 h-7 rounded-lg overflow-hidden bg-slate-100 shrink-0">
+                    {s.image_url
+                      ? <img src={s.image_url} alt={s.titre} className="w-full h-full object-cover" />
+                      : <span className="w-full h-full flex items-center justify-center text-xs">🎮</span>}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold text-black truncate">{s.titre}</p>
+                    <div className="mt-1 bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                      <div className="h-full rounded-full bg-black transition-all" style={{ width: `${(s.count / maxCount) * 100}%` }} />
+                    </div>
+                  </div>
+                  <span className="text-sm font-black text-black shrink-0 w-6 text-right">{s.count}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Page principale ──────────────────────────────────────────────────────────
 
 export default function JvPage() {
-  const [onglet, setOnglet] = useState<"catalogue" | "selections" | "reservations">("catalogue");
+  const [onglet, setOnglet] = useState<"catalogue" | "selections" | "reservations" | "stats">("catalogue");
   const [jeux, setJeux] = useState<JvJeu[]>([]);
   const [selections, setSelections] = useState<JvSelection[]>([]);
   const [reservations, setReservations] = useState<JvReservation[]>([]);
@@ -2482,9 +2986,10 @@ export default function JvPage() {
         {/* Onglets */}
         <div className="flex gap-1 p-1 bg-slate-100 rounded-2xl w-fit">
           {([
-            { key: "catalogue", label: "🗂 Catalogue" },
-            { key: "selections", label: "⭐ Sélections" },
-            { key: "reservations", label: "📅 Réservations" },
+            { key: "catalogue",   label: "🗂 Catalogue" },
+            { key: "selections",  label: "⭐ Sélections" },
+            { key: "reservations",label: "📅 Réservations" },
+            { key: "stats",       label: "📊 Stats" },
           ] as const).map(t => (
             <button key={t.key} onClick={() => setOnglet(t.key)}
               className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-all ${
@@ -2528,6 +3033,9 @@ export default function JvPage() {
                 onOpenDetail={r => setModalResaDetail(r)}
               />
             )}
+            {onglet === "stats" && (
+              <TabStats reservations={reservations} jeux={jeux} />
+            )}
           </>
         )}
       </main>
@@ -2546,6 +3054,7 @@ export default function JvPage() {
           slot={modalRotation}
           selections={selections}
           jeux={jeux}
+          reservations={reservations}
           onClose={() => setModalRotation(null)}
           onAddToGroup={(jeuId, groupe) => handleAddToGroup(jeuId, modalRotation, groupe)}
           onRemoveSelection={handleRemoveSelection}
