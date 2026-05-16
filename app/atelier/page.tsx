@@ -45,11 +45,11 @@ const defaultEtapes = {
 };
 
 const COULEURS = [
-  { id: 'vert', bg: 'bg-[#baff29]' },
-  { id: 'rose', bg: 'bg-[#f45be0]' },
-  { id: 'bleu', bg: 'bg-[#6ba4ff]' },
-  { id: 'rouge', bg: 'bg-[#ff4d79]' },
-  { id: 'jaune', bg: 'bg-[#ffa600]' }
+  { id: 'vert',   hex: '#a8e063' },
+  { id: 'rose',   hex: '#f472b6' },
+  { id: 'bleu',   hex: '#60a5fa' },
+  { id: 'rouge',  hex: '#f87171' },
+  { id: 'orange', hex: '#fb923c' },
 ];
 
 export default function Home() {
@@ -141,13 +141,13 @@ export default function Home() {
   }, []);
 
   const etapesVisuelles = [
-    { nom: "Plastification", id: "etape_plastifier", color: "bg-[#baff29] text-white" }, 
-    { nom: "Contenu", id: "etape_contenu", color: "bg-[#6ba4ff] text-white" },       
-    { nom: "Étiquette", id: "etape_etiquette", color: "bg-[#9b51e0] text-white" },     
-    { nom: "Équiper", id: "etape_equiper", color: "bg-[#f45be0] text-white" },         
-    { nom: "Encoder", id: "etape_encoder", color: "bg-[#ff4d79] text-white" },         
-    { nom: "Notice", id: "etape_notice", color: "bg-[#ff5e00] text-white" },           
-    { nom: "Nouveauté", id: "etape_nouveaute", color: "bg-[#ffa600] text-white" }       
+    { nom: "Plastification", id: "etape_plastifier", hex: '#a8e063' },
+    { nom: "Contenu",        id: "etape_contenu",    hex: '#60a5fa' },
+    { nom: "Étiquette",      id: "etape_etiquette",  hex: '#c084fc' },
+    { nom: "Équiper",        id: "etape_equiper",    hex: '#f472b6' },
+    { nom: "Encoder",        id: "etape_encoder",    hex: '#f87171' },
+    { nom: "Notice",         id: "etape_notice",     hex: '#fb923c' },
+    { nom: "Nouveauté",      id: "etape_nouveaute",  hex: '#facc15' },
   ];
 
   const formatNum = (num: number) => num < 10 ? `0${num}` : num;
@@ -364,201 +364,174 @@ export default function Home() {
     jeu.ean.includes(rechercheJeu)
   );
 
-  return (
-    <div className="min-h-screen flex flex-col bg-[#e5e5e5] font-sans p-4 sm:p-8 relative">
-      <style>{`
-        input[type="checkbox"].custom-cb { accent-color: black; width: 1.25rem; height: 1.25rem; cursor: pointer; }
-        input[type="checkbox"].custom-cb:disabled { cursor: default; opacity: 0.6; }
-      `}</style>
-      
-      <header className="flex justify-between items-center mb-6 relative w-full max-w-[96%] mx-auto shrink-0">
-        <div className="w-10 h-10 bg-black rounded flex items-center justify-center text-white font-black text-xl italic cursor-pointer">+</div>
-        <NavBar current="atelier" />
-        <div className="w-10"></div>
-      </header>
+  const S = {
+    modal: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 } as React.CSSProperties,
+    modalBox: { background: 'var(--cream)', border: '3px solid var(--ink)', borderRadius: 12, boxShadow: '8px 8px 0 var(--ink)', width: '100%', display: 'flex', flexDirection: 'column', maxHeight: '90vh' } as React.CSSProperties,
+    closeBtn: { width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--ink)', color: 'var(--white)', border: '2px solid var(--ink)', borderRadius: 6, boxShadow: '2px 2px 0 rgba(0,0,0,0.3)', fontWeight: 700, fontSize: 14, cursor: 'pointer', flexShrink: 0 } as React.CSSProperties,
+  };
 
-      <main className="bg-white rounded-[3rem] p-8 lg:p-10 w-full max-w-[96%] mx-auto flex-1 shadow-md flex flex-col gap-6">
-        
-        <div className="flex justify-end w-full">
-          <button onClick={() => setIsModalOpen(true)} className="bg-black hover:bg-gray-800 text-white px-8 py-3 rounded-full font-bold transition-colors shadow-sm">
-            + Ajouter un jeu
-          </button>
+  return (
+    <div style={{ minHeight: '100vh' }}>
+      <style>{`
+        input[type="checkbox"].custom-cb { accent-color: #0d0d0d; width: 1.1rem; height: 1.1rem; cursor: pointer; }
+        input[type="checkbox"].custom-cb:disabled { cursor: default; opacity: 0.5; }
+      `}</style>
+
+      <NavBar current="atelier" />
+
+      <div className="pop-page">
+
+        {/* ── PAGE HEADER ── */}
+        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 28 }}>
+          <div>
+            <div className="bc" style={{ fontSize: 80, lineHeight: 0.9, textTransform: 'uppercase', letterSpacing: '-1px', background: 'linear-gradient(135deg, #0d0d0d 40%, #a8e063)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+              Atelier
+            </div>
+            <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.4)', marginTop: 6 }}>{totalEnPrepa} jeux en préparation</div>
+          </div>
+          <button onClick={() => setIsModalOpen(true)} className="pop-btn pop-btn-dark">+ Ajouter un jeu</button>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div 
-            onClick={() => { setIsListeOpen(true); setRechercheJeu(""); }}
-            className="group bg-white border-2 border-slate-100 rounded-[2.5rem] p-10 flex flex-col items-center justify-center shadow-sm relative cursor-pointer hover:border-[#baff29] transition-colors"
-          >
-            <div className="absolute top-6 right-8 text-slate-300 group-hover:text-[#baff29] transition-colors">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
-            </div>
-            <h1 className="text-[10rem] leading-none font-black text-[#baff29] tracking-tighter group-hover:scale-105 transition-transform">
-              {formatNum(totalEnPrepa)}
-            </h1>
-            <p className="text-3xl font-bold text-black mt-2 mb-6">Jeux en préparation</p>
+        {/* ── MAIN 3-COL GRID ── */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14, marginBottom: 20 }}>
 
-            {/* Barre de recherche sur la carte */}
-            <div className="w-full relative z-20" onClick={(e) => e.stopPropagation()}>
-              <div className="relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 opacity-50">🔍</span>
-                <input 
-                  type="text" 
-                  placeholder="Rechercher un jeu précis..." 
+          {/* Compteur — sticker style */}
+          <div
+            onClick={() => { setIsListeOpen(true); setRechercheJeu(""); }}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 300, position: 'relative', overflow: 'visible', cursor: 'pointer' }}
+            onMouseEnter={e => { const s = e.currentTarget.querySelector<HTMLElement>('.sticker-main'); if (s) s.style.transform = 'rotate(-3deg) scale(1.04)'; }}
+            onMouseLeave={e => { const s = e.currentTarget.querySelector<HTMLElement>('.sticker-main'); if (s) s.style.transform = 'rotate(-4deg) scale(1)'; }}
+          >
+            <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(circle,rgba(0,0,0,0.06) 1.5px,transparent 1.5px)', backgroundSize: '14px 14px', borderRadius: 10, pointerEvents: 'none' }} />
+            <div className="sticker-main" style={{ background: 'var(--yellow)', border: '3.5px solid var(--ink)', borderRadius: 16, padding: '20px 32px', transform: 'rotate(-4deg) scale(1)', boxShadow: '7px 7px 0 var(--ink)', transition: 'transform .15s ease', textAlign: 'center', position: 'relative', zIndex: 1, userSelect: 'none' }}>
+              <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(circle,rgba(0,0,0,0.07) 1.2px,transparent 1.2px)', backgroundSize: '10px 10px', borderRadius: 13, pointerEvents: 'none' }} />
+              <div style={{ position: 'absolute', top: -14, left: '50%', transform: 'translateX(-50%)', background: 'var(--ink)', color: 'var(--white)', border: '2.5px solid var(--ink)', borderRadius: 20, padding: '3px 14px', fontWeight: 700, fontSize: 10, textTransform: 'uppercase', letterSpacing: '.1em', boxShadow: '2px 2px 0 rgba(0,0,0,0.3)', whiteSpace: 'nowrap' }}>En préparation</div>
+              <div className="bc" style={{ fontSize: 110, lineHeight: 0.9, letterSpacing: '-5px', color: 'var(--ink)', position: 'relative', zIndex: 1, marginTop: 12 }}>{formatNum(totalEnPrepa)}</div>
+              <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.1em', color: 'rgba(0,0,0,0.5)', marginTop: 6, position: 'relative', zIndex: 1 }}>Jeux en préparation</div>
+              {/* Recherche */}
+              <div style={{ marginTop: 14, position: 'relative', zIndex: 1 }} onClick={e => e.stopPropagation()}>
+                <input
+                  type="text"
+                  placeholder="Rechercher un jeu…"
                   value={rechercheJeu}
-                  onChange={(e) => {
-                    setRechercheJeu(e.target.value);
-                    setIsSearchDropdownOpen(true);
-                  }}
+                  onChange={e => { setRechercheJeu(e.target.value); setIsSearchDropdownOpen(true); }}
                   onFocus={() => setIsSearchDropdownOpen(true)}
-                  className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl pl-12 pr-4 py-3 text-black outline-none focus:border-[#baff29] transition-colors font-medium shadow-sm"
+                  style={{ width: '100%', background: 'rgba(255,255,255,0.55)', border: '2px solid rgba(0,0,0,0.18)', borderRadius: 20, padding: '6px 14px', fontSize: 11, outline: 'none', fontFamily: 'inherit' }}
                 />
-                
-                {/* Menu déroulant des résultats rapides */}
                 {rechercheJeu && isSearchDropdownOpen && (
-                  <div className="absolute top-full left-0 w-full bg-white border border-slate-200 rounded-xl shadow-xl mt-2 max-h-48 overflow-y-auto z-30">
+                  <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'var(--white)', border: '2.5px solid var(--ink)', borderRadius: 8, boxShadow: '4px 4px 0 var(--ink)', marginTop: 6, maxHeight: 180, overflowY: 'auto', zIndex: 30, textAlign: 'left' }}>
                     {jeuxEnPrepaFiltres.length === 0 ? (
-                      <div className="p-4 text-center text-slate-500 text-sm font-medium">Aucun jeu trouvé</div>
-                    ) : (
-                      jeuxEnPrepaFiltres.map(jeu => (
-                        <div 
-                          key={jeu.id} 
-                          onClick={() => { 
-                            setRechercheJeu(jeu.nom); 
-                            setIsSearchDropdownOpen(false); 
-                            setIsListeOpen(true); 
-                          }}
-                          className="p-3 hover:bg-[#baff29]/20 cursor-pointer border-b border-slate-100 last:border-0 flex flex-col transition-colors"
-                        >
-                          <span className="font-bold text-black text-left">{jeu.nom}</span>
-                          <span className="text-xs font-medium text-slate-400 text-left">EAN: {jeu.ean}</span>
-                        </div>
-                      ))
-                    )}
+                      <div style={{ padding: '12px 14px', fontSize: 12, color: 'rgba(0,0,0,0.4)' }}>Aucun jeu trouvé</div>
+                    ) : jeuxEnPrepaFiltres.map(jeu => (
+                      <div key={jeu.id} onClick={() => { setRechercheJeu(jeu.nom); setIsSearchDropdownOpen(false); setIsListeOpen(true); }} style={{ padding: '10px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer', borderBottom: '1.5px solid var(--cream2)' }}
+                        onMouseEnter={e => (e.currentTarget.style.background = 'var(--cream2)')} onMouseLeave={e => (e.currentTarget.style.background = '')}>
+                        {jeu.nom}<span style={{ display: 'block', fontSize: 10, fontWeight: 400, color: 'rgba(0,0,0,0.4)' }}>EAN: {jeu.ean}</span>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
             </div>
           </div>
 
-          <div className="bg-[#cdff66] rounded-[2.5rem] p-10 flex flex-col items-start justify-center shadow-sm">
-            <h2 className="text-3xl font-bold text-black mb-8">Impression</h2>
-            <div className="flex flex-col gap-4">
-              <Link href="/etiquettes">
-               <button className="bg-[#4d4d4d] hover:bg-[#333] transition-colors text-white py-3 px-8 rounded-full font-bold text-lg w-max shadow-sm text-center">
-                Etiquettes
-                </button>
-              </Link>
-              <Link href="/contenu">
-              <button className="bg-[#4d4d4d] hover:bg-[#333] transition-colors text-white py-3 px-8 rounded-full font-bold text-lg w-max shadow-sm text-center">
-                Contenu
-              </button>
-              </Link>
-            </div>
-          </div>
-
-          <div className="bg-gradient-to-br from-[#ffaa00] to-[#ff7b00] rounded-[2.5rem] p-8 flex flex-col shadow-sm">
-            <h2 className="text-3xl font-bold text-black/90 mb-6">Réparation</h2>
-            <div className="flex flex-col gap-3 w-full">
-              <Link href="/reparations" className="bg-black/10 hover:bg-black/20 transition-colors p-4 rounded-2xl flex justify-between items-center text-black">
-                <span className="font-bold text-lg">🛠️ À réparer</span>
-                <span className="bg-white text-[#ff7b00] px-3 py-1 rounded-full text-sm font-black shadow-sm">{nbReparations}</span>
-              </Link>
-              <Link href="/pieces" className="bg-black/10 hover:bg-black/20 transition-colors p-4 rounded-2xl flex justify-between items-center text-black">
-                <span className="font-bold text-lg">🧩 Jeux incomplets</span>
-                <span className="bg-white text-[#ff7b00] px-3 py-1 rounded-full text-sm font-black shadow-sm">{nbManquants}</span>
-              </Link>
-              <Link href="/pieces" className="bg-black/10 hover:bg-black/20 transition-colors p-4 rounded-2xl flex justify-between items-center text-black">
-                <span className="font-bold text-lg">🔍 Pièces trouvées</span>
-                <span className="bg-white text-[#ff7b00] px-3 py-1 rounded-full text-sm font-black shadow-sm">{nbOrphelines}</span>
-              </Link>
-            </div>
-          </div>
-
-        </div>
-
-        <div className="bg-[#4d4d4d] border-2 border-slate-100 rounded-[2.5rem] p-8 lg:p-10 shadow-sm w-full mt-4">
-          <h2 className="text-3xl font-bold text-white mb-8">Préparations à faire</h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
-            {etapesVisuelles.map((etape) => (
-              <div 
-                key={etape.id} 
-                onClick={() => {
-                  setEtapeActive(etape.id); setRechercheEtape("");
-                  setJeuxSelectionnes([]); 
-                }}
-                className={`${etape.color} rounded-[2rem] p-5 flex flex-col justify-between aspect-square shadow-sm cursor-pointer hover:scale-105 hover:shadow-md transition-all`}
-              >
-               <span className="text-base font-bold">{etape.nom}</span>
-                <span className="text-6xl font-black self-start mt-auto">{formatNum(comptesEtapes[etape.id] || 0)}</span>
+          {/* Impression */}
+          <div className="pop-card" style={{ background: 'var(--vert)', padding: 28, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', position: 'relative', overflow: 'hidden' }}>
+            <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(circle,rgba(0,0,0,0.09) 1.2px,transparent 1.2px)', backgroundSize: '12px 12px', pointerEvents: 'none' }} />
+            <div style={{ position: 'relative', zIndex: 1 }}>
+              <div className="bc" style={{ fontSize: 32, textTransform: 'uppercase', letterSpacing: '.02em', marginBottom: 20 }}>Impression</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <Link href="/etiquettes">
+                  <button className="pop-btn pop-btn-dark" style={{ width: '100%', justifyContent: 'center' }}>Étiquettes →</button>
+                </Link>
+                <Link href="/contenu">
+                  <button className="pop-btn" style={{ width: '100%', justifyContent: 'center', background: 'var(--white)' }}>Contenu →</button>
+                </Link>
               </div>
-            ))}
+            </div>
+          </div>
+
+          {/* Réparation */}
+          <div className="pop-card" style={{ background: 'var(--orange)', padding: 28, display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden' }}>
+            <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(circle,rgba(0,0,0,0.09) 1.2px,transparent 1.2px)', backgroundSize: '12px 12px', pointerEvents: 'none' }} />
+            <div style={{ position: 'relative', zIndex: 1 }}>
+              <div className="bc" style={{ fontSize: 32, textTransform: 'uppercase', letterSpacing: '.02em', marginBottom: 16 }}>Réparation</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {[
+                  { href: '/reparations', label: '🛠️ À réparer',      count: nbReparations },
+                  { href: '/pieces',      label: '🧩 Jeux incomplets', count: nbManquants   },
+                  { href: '/pieces',      label: '🔍 Pièces trouvées', count: nbOrphelines  },
+                ].map(item => (
+                  <Link key={item.href + item.label} href={item.href}>
+                    <div className="pop-card pop-card-hover" style={{ background: 'rgba(255,255,255,0.55)', padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}>
+                      <span style={{ fontWeight: 700, fontSize: 13 }}>{item.label}</span>
+                      <span className="pop-sticker" style={{ background: 'var(--white)', fontSize: 11 }}>{item.count}</span>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
-      </main>
 
-      {etapeActive && etapeActiveInfo && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-[2rem] p-8 w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl">
-            <div className="flex justify-between items-center mb-4">
-              <div className="flex items-center gap-4">
-                <div className={`${etapeActiveInfo.color} px-4 py-2 rounded-xl font-bold text-base`}>
-                  {etapeActiveInfo.nom}
+        {/* ── ÉTAPES ── */}
+        <div className="pop-card" style={{ background: 'var(--ink)', padding: '28px 32px', position: 'relative', overflow: 'hidden' }}>
+          <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(circle,rgba(255,255,255,0.05) 1px,transparent 1px)', backgroundSize: '16px 16px', pointerEvents: 'none' }} />
+          <div style={{ position: 'relative', zIndex: 1 }}>
+            <div className="bc" style={{ fontSize: 22, textTransform: 'uppercase', letterSpacing: '.04em', color: 'rgba(255,255,255,0.55)', marginBottom: 18, borderBottom: '3px solid rgba(255,255,255,0.1)', paddingBottom: 10 }}>Préparations à faire</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 10 }}>
+              {etapesVisuelles.map(etape => (
+                <div
+                  key={etape.id}
+                  onClick={() => { setEtapeActive(etape.id); setRechercheEtape(""); setJeuxSelectionnes([]); }}
+                  style={{ background: etape.hex, border: '2.5px solid var(--ink)', borderRadius: 10, boxShadow: '4px 4px 0 rgba(0,0,0,0.4)', padding: '16px 14px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', aspectRatio: '1', cursor: 'pointer', transition: 'transform .12s, box-shadow .12s', position: 'relative', overflow: 'hidden' }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'translate(-2px,-2px)'; (e.currentTarget as HTMLElement).style.boxShadow = '6px 6px 0 rgba(0,0,0,0.4)'; }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = ''; (e.currentTarget as HTMLElement).style.boxShadow = '4px 4px 0 rgba(0,0,0,0.4)'; }}
+                >
+                  <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(circle,rgba(0,0,0,0.07) 1px,transparent 1px)', backgroundSize: '10px 10px', pointerEvents: 'none' }} />
+                  <span style={{ fontWeight: 700, fontSize: 11, textTransform: 'uppercase', letterSpacing: '.04em', position: 'relative', zIndex: 1 }}>{etape.nom}</span>
+                  <span className="bc" style={{ fontSize: 52, lineHeight: 1, letterSpacing: '-2px', position: 'relative', zIndex: 1 }}>{formatNum(comptesEtapes[etape.id] || 0)}</span>
                 </div>
-                <h2 className="text-2xl font-black text-slate-800">
-                  {jeuxPourEtapeActive.length} jeu(x) en attente
-                </h2>
-              </div>
-              <button onClick={() => { setEtapeActive(null); setRechercheEtape(""); }} className="text-slate-400 hover:text-black font-bold text-xl px-4 py-2 bg-slate-100 rounded-full">✕ Fermer</button>
+              ))}
             </div>
+          </div>
+        </div>
+      </div>
 
-            <input
-              type="text"
-              placeholder="Rechercher par nom ou EAN…"
-              value={rechercheEtape}
-              onChange={e => setRechercheEtape(e.target.value)}
-              className="w-full px-4 py-2.5 rounded-xl border-2 border-slate-200 focus:border-black focus:outline-none text-sm mb-4 transition-colors"
-            />
-
-            <div className="flex-1 overflow-y-auto bg-slate-50 rounded-2xl p-4 border border-slate-100 mb-6">
+      {/* ══ MODAL ÉTAPE ══ */}
+      {etapeActive && etapeActiveInfo && (
+        <div style={S.modal}>
+          <div style={{ ...S.modalBox, maxWidth: 860 }}>
+            <div style={{ padding: '20px 24px', borderBottom: '3px solid var(--ink)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: etapeActiveInfo.hex }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <span className="bc" style={{ fontSize: 24, textTransform: 'uppercase' }}>{etapeActiveInfo.nom}</span>
+                <span className="pop-sticker" style={{ background: 'var(--ink)', color: 'var(--white)', fontSize: 11 }}>{jeuxPourEtapeActive.length} jeu(x)</span>
+              </div>
+              <button style={S.closeBtn} onClick={() => { setEtapeActive(null); setRechercheEtape(""); }}>✕</button>
+            </div>
+            <div style={{ padding: '16px 24px', borderBottom: '2px solid var(--cream2)' }}>
+              <input type="text" placeholder="Rechercher par nom ou EAN…" value={rechercheEtape} onChange={e => setRechercheEtape(e.target.value)} className="pop-input" style={{ width: '100%' }} />
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 6 }}>
               {jeuxPourEtapeActive.length === 0 ? (
-                <p className="text-center text-slate-400 mt-10 font-medium">Tous les jeux ont validé cette étape ! 🎉</p>
-              ) : (
-                jeuxPourEtapeActive
-                  .filter(j => !rechercheEtape || j.nom.toLowerCase().includes(rechercheEtape.toLowerCase()) || j.ean.includes(rechercheEtape))
-                  .map((jeu) => (
-                  <label key={jeu.id} className={`flex items-center gap-4 bg-white p-5 rounded-xl shadow-sm mb-3 border cursor-pointer transition-colors ${jeuxSelectionnes.includes(jeu.id) ? 'border-black' : 'border-slate-100 hover:border-slate-300'}`}>
-                    <input 
-                      type="checkbox" 
-                      className="custom-cb"
-                      checked={jeuxSelectionnes.includes(jeu.id)}
-                      onChange={() => toggleSelection(jeu.id)}
-                    />
-                    <div className="flex-1">
-                      <span className="font-bold text-lg text-black block">{jeu.nom}</span>
-                      <span className="text-sm font-medium text-slate-400 block mt-0.5">EAN: {jeu.ean}</span>
+                <p style={{ textAlign: 'center', color: 'rgba(0,0,0,0.4)', padding: '40px 0', fontSize: 13 }}>Tous les jeux ont validé cette étape !</p>
+              ) : jeuxPourEtapeActive
+                .filter(j => !rechercheEtape || j.nom.toLowerCase().includes(rechercheEtape.toLowerCase()) || j.ean.includes(rechercheEtape))
+                .map(jeu => (
+                  <label key={jeu.id} className="pop-card" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', cursor: 'pointer', background: jeuxSelectionnes.includes(jeu.id) ? 'var(--cream2)' : 'var(--white)', boxShadow: jeuxSelectionnes.includes(jeu.id) ? '4px 4px 0 var(--ink)' : '2px 2px 0 var(--ink)' }}>
+                    <input type="checkbox" className="custom-cb" checked={jeuxSelectionnes.includes(jeu.id)} onChange={() => toggleSelection(jeu.id)} />
+                    <div style={{ flex: 1 }}>
+                      <span style={{ fontWeight: 700, fontSize: 14, display: 'block' }}>{jeu.nom}</span>
+                      <span style={{ fontSize: 11, color: 'rgba(0,0,0,0.4)' }}>EAN: {jeu.ean}</span>
                     </div>
                   </label>
                 ))
-              )}
-              {jeuxPourEtapeActive.length > 0 && rechercheEtape && !jeuxPourEtapeActive.some(j => j.nom.toLowerCase().includes(rechercheEtape.toLowerCase()) || j.ean.includes(rechercheEtape)) && (
-                <p className="text-center text-slate-400 mt-10 font-medium">Aucun résultat pour "{rechercheEtape}"</p>
-              )}
+              }
             </div>
-
-            <div className="flex justify-between items-center gap-4">
-              <button 
-                onClick={() => setJeuxSelectionnes(jeuxPourEtapeActive.length === jeuxSelectionnes.length ? [] : jeuxPourEtapeActive.map(j => j.id))}
-                className="font-bold text-slate-500 hover:text-black transition-colors"
-              >
+            <div style={{ padding: '16px 24px', borderTop: '3px solid var(--ink)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+              <button style={{ fontWeight: 700, fontSize: 13, background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(0,0,0,0.5)', textDecoration: 'underline' }} onClick={() => setJeuxSelectionnes(jeuxPourEtapeActive.length === jeuxSelectionnes.length ? [] : jeuxPourEtapeActive.map(j => j.id))}>
                 {jeuxPourEtapeActive.length === jeuxSelectionnes.length ? "Tout désélectionner" : "Tout sélectionner"}
               </button>
-              
-              <button 
-                onClick={validerSelectionEtape} 
-                disabled={jeuxSelectionnes.length === 0} 
-                className="bg-black hover:bg-gray-800 disabled:bg-slate-200 disabled:text-slate-400 text-white font-black py-4 px-8 rounded-xl transition-colors"
-              >
+              <button className="pop-btn pop-btn-dark" onClick={validerSelectionEtape} disabled={jeuxSelectionnes.length === 0} style={{ opacity: jeuxSelectionnes.length === 0 ? 0.4 : 1 }}>
                 ✓ Valider {jeuxSelectionnes.length > 0 ? `(${jeuxSelectionnes.length})` : ""}
               </button>
             </div>
@@ -568,324 +541,201 @@ export default function Home() {
 
       {/* ══ MODAL SCAN CODES SYRACUSE ══ */}
       {isScanOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
-          <div className="bg-white rounded-[2.5rem] w-full max-w-lg shadow-2xl flex flex-col overflow-hidden">
-
-            {/* Header */}
-            <div className="px-8 py-6 border-b border-slate-100 flex items-center justify-between">
+        <div style={{ ...S.modal, zIndex: 70 }}>
+          <div style={{ ...S.modalBox, maxWidth: 480 }}>
+            <div style={{ padding: '20px 24px', borderBottom: '3px solid var(--ink)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--rose)' }}>
               <div>
-                <h2 className="text-2xl font-black text-black">Scanner les codes Syracuse</h2>
-                <p className="text-sm text-slate-400 mt-0.5">
-                  {scanIdx < scanQueue.length
-                    ? `${scanIdx + 1} / ${scanQueue.length}`
-                    : `${scanDone.length} code${scanDone.length > 1 ? "s" : ""} enregistré${scanDone.length > 1 ? "s" : ""}`}
-                </p>
+                <div className="bc" style={{ fontSize: 22, textTransform: 'uppercase' }}>Codes Syracuse</div>
+                <div style={{ fontSize: 11, color: 'rgba(0,0,0,0.5)', marginTop: 2 }}>
+                  {scanIdx < scanQueue.length ? `${scanIdx + 1} / ${scanQueue.length}` : `${scanDone.length} code(s) enregistré(s)`}
+                </div>
               </div>
-              <button onClick={() => setIsScanOpen(false)} className="w-9 h-9 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 font-black text-slate-600">✕</button>
+              <button style={S.closeBtn} onClick={() => setIsScanOpen(false)}>✕</button>
             </div>
-
-            <div className="p-8 flex flex-col gap-6">
-              {scanIdx < scanQueue.length ? (
-                <>
-                  {/* Jeu courant */}
-                  <div className="bg-[#f45be0]/10 border-2 border-[#f45be0]/30 rounded-2xl px-6 py-5 text-center">
-                    <p className="text-xs font-black text-[#f45be0] uppercase tracking-widest mb-1">Jeu à équiper</p>
-                    <p className="text-xl font-black text-black">{scanQueue[scanIdx].nom}</p>
-                    <p className="text-xs text-slate-400 font-mono mt-1">EAN : {scanQueue[scanIdx].ean}</p>
+            <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {scanIdx < scanQueue.length ? (<>
+                <div className="pop-card" style={{ background: 'var(--cream2)', padding: '16px 20px', textAlign: 'center' }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.1em', color: 'rgba(0,0,0,0.4)', marginBottom: 4 }}>Jeu à équiper</div>
+                  <div style={{ fontWeight: 700, fontSize: 16 }}>{scanQueue[scanIdx].nom}</div>
+                  <div style={{ fontSize: 10, color: 'rgba(0,0,0,0.35)', fontFamily: 'monospace', marginTop: 2 }}>EAN: {scanQueue[scanIdx].ean}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: 'rgba(0,0,0,0.45)', marginBottom: 6 }}>Code Syracuse</div>
+                  <input ref={scanInputRef} autoFocus type="text" inputMode="numeric" placeholder="Scanner ou saisir le code…" value={scanInput} onChange={e => setScanInput(e.target.value)} onKeyDown={e => e.key === "Enter" && scannerCode()} className="pop-input" style={{ width: '100%', fontSize: 16, fontFamily: 'monospace' }} />
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button className="pop-btn pop-btn-outline" style={{ flex: 1, justifyContent: 'center' }} onClick={passerScan}>Passer →</button>
+                  <button className="pop-btn pop-btn-dark" style={{ flex: 1, justifyContent: 'center' }} onClick={scannerCode} disabled={!scanInput.trim()}>Valider ✓</button>
+                </div>
+                {scanDone.length > 0 && (
+                  <div style={{ borderTop: '2px solid var(--cream2)', paddingTop: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {scanDone.map((d, i) => (
+                      <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                        <span style={{ color: 'rgba(0,0,0,0.6)' }}>{d.nom}</span>
+                        <span style={{ fontFamily: 'monospace', color: 'rgba(0,0,0,0.35)' }}>{d.code}</span>
+                      </div>
+                    ))}
                   </div>
-
-                  {/* Input scan */}
-                  <div>
-                    <label className="text-xs font-black text-slate-500 uppercase tracking-wider mb-2 block">Code Syracuse</label>
-                    <input
-                      ref={scanInputRef}
-                      autoFocus
-                      type="text"
-                      inputMode="numeric"
-                      placeholder="Scanner ou saisir le code…"
-                      value={scanInput}
-                      onChange={e => setScanInput(e.target.value)}
-                      onKeyDown={e => e.key === "Enter" && scannerCode()}
-                      className="w-full px-4 py-3 rounded-xl border-2 border-slate-200 focus:border-[#f45be0] focus:outline-none text-lg font-mono font-bold transition-colors"
-                    />
-                  </div>
-
-                  <div className="flex gap-3">
-                    <button onClick={passerScan} className="flex-1 py-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold transition-colors">
-                      Passer →
-                    </button>
-                    <button onClick={scannerCode} disabled={!scanInput.trim()} className="flex-1 py-3 rounded-xl bg-black hover:bg-slate-800 text-white font-black disabled:opacity-40 transition-colors">
-                      Valider ✓
-                    </button>
-                  </div>
-
-                  {/* Jeux déjà scannés */}
-                  {scanDone.length > 0 && (
-                    <div className="border-t border-slate-100 pt-4 flex flex-col gap-1">
-                      {scanDone.map((d, i) => (
-                        <div key={i} className="flex justify-between items-center text-sm">
-                          <span className="text-slate-600 truncate">{d.nom}</span>
-                          <span className="font-mono text-slate-400 shrink-0 ml-2">{d.code}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </>
-              ) : (
-                /* Terminé */
-                <div className="flex flex-col items-center gap-4 py-4 text-center">
-                  <span className="text-5xl">🎉</span>
-                  <p className="text-xl font-black text-black">{scanDone.length} code{scanDone.length > 1 ? "s" : ""} enregistré{scanDone.length > 1 ? "s" : ""}</p>
-                  {scanQueue.length - scanDone.length > 0 && (
-                    <p className="text-sm text-slate-400">{scanQueue.length - scanDone.length} jeu(x) passé(s) sans code</p>
-                  )}
-                  <button onClick={() => setIsScanOpen(false)} className="mt-2 px-8 py-3 rounded-xl bg-black text-white font-black hover:bg-slate-800 transition-colors">
-                    Fermer
-                  </button>
+                )}
+              </>) : (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, padding: '20px 0', textAlign: 'center' }}>
+                  <span style={{ fontSize: 48 }}>🎉</span>
+                  <div className="bc" style={{ fontSize: 24 }}>{scanDone.length} code(s) enregistré(s)</div>
+                  {scanQueue.length - scanDone.length > 0 && <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.4)' }}>{scanQueue.length - scanDone.length} jeu(x) passé(s) sans code</div>}
+                  <button className="pop-btn pop-btn-dark" style={{ marginTop: 8 }} onClick={() => setIsScanOpen(false)}>Fermer</button>
                 </div>
               )}
             </div>
-
-            {/* Barre de progression */}
-            <div className="h-1.5 bg-slate-100">
-              <div className="h-full bg-[#f45be0] transition-all" style={{ width: `${(Math.min(scanIdx, scanQueue.length) / scanQueue.length) * 100}%` }} />
+            <div style={{ height: 4, background: 'var(--cream2)', borderTop: '2px solid var(--ink)' }}>
+              <div style={{ height: '100%', background: 'var(--rose)', transition: 'width .2s', width: `${(Math.min(scanIdx, scanQueue.length) / scanQueue.length) * 100}%` }} />
             </div>
           </div>
         </div>
       )}
 
+      {/* ══ MODAL LISTE JEUX EN PRÉPA ══ */}
       {isListeOpen && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-[2rem] p-8 w-full max-w-6xl max-h-[90vh] flex flex-col shadow-2xl">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-3xl font-black text-slate-800">📋 Jeux en préparation</h2>
-              <button onClick={() => { setIsListeOpen(false); setRechercheJeu(""); }} className="text-slate-400 hover:text-black font-bold text-xl px-4 py-2 bg-slate-100 rounded-full">✕ Fermer</button>
+        <div style={S.modal}>
+          <div style={{ ...S.modalBox, maxWidth: 1000 }}>
+            <div style={{ padding: '20px 24px', borderBottom: '3px solid var(--ink)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--yellow)' }}>
+              <div className="bc" style={{ fontSize: 24, textTransform: 'uppercase' }}>Jeux en préparation</div>
+              <button style={S.closeBtn} onClick={() => { setIsListeOpen(false); setRechercheJeu(""); }}>✕</button>
             </div>
-
-            {/* Barre de recherche dans la modale */}
-            <div className="mb-4 relative">
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 opacity-50">🔍</span>
-              <input 
-                type="text" 
-                placeholder="Rechercher dans la liste..." 
-                value={rechercheJeu}
-                onChange={(e) => setRechercheJeu(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-12 pr-4 py-3 text-black outline-none focus:border-black transition-colors font-medium shadow-sm"
-              />
+            <div style={{ padding: '12px 24px', borderBottom: '2px solid var(--cream2)' }}>
+              <input type="text" placeholder="Rechercher dans la liste…" value={rechercheJeu} onChange={e => setRechercheJeu(e.target.value)} className="pop-input" style={{ width: '100%' }} />
             </div>
-            
-            <div className="flex-1 overflow-y-auto bg-slate-50 rounded-2xl p-4 border border-slate-100">
+            <div style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 6 }}>
               {jeuxEnPrepaFiltres.length === 0 ? (
-                <p className="text-center text-slate-400 mt-10 font-medium">Aucun jeu trouvé.</p>
-              ) : (
-                jeuxEnPrepaFiltres.map((jeu) => {
-                  const couleurObj = COULEURS.find(c => c.id === jeu.couleur);
-                  return (
-                    <div key={jeu.id} className="bg-white p-5 rounded-xl shadow-sm mb-3 border border-slate-100 flex flex-col lg:flex-row justify-between lg:items-center gap-4 hover:border-slate-300 transition-colors">
-                      <div className="flex-1 min-w-[200px]">
-                        <div className="flex items-center gap-3 mb-1">
-                          <span className="font-bold text-xl text-black block leading-tight">{jeu.nom}</span>
-                          
-                          <div className="flex gap-1 bg-slate-50 p-1 rounded-full border border-slate-200">
-                            {COULEURS.map(c => (
-                              <button
-                                key={c.id}
-                                type="button"
-                                onClick={() => changerCouleurJeu(jeu.id, jeu.ean, jeu.nom, jeu.couleur === c.id ? "" : c.id)}
-                                className={`w-4 h-4 rounded-full border transition-transform hover:scale-110 ${
-                                  jeu.couleur === c.id ? 'border-black scale-125 shadow-sm' : 'border-transparent opacity-60 hover:opacity-100'
-                                } ${c.bg}`}
-                                title={c.id}
-                              />
-                            ))}
-                          </div>
-                        </div>
-                        <div className="flex items-center text-sm font-medium text-slate-400">
-                          <BarcodeIcon /> EAN: {jeu.ean}
-                        </div>
-                      </div>
-                      
-                      <div className="flex flex-wrap gap-2">
-                        {etapesVisuelles.map((etape) => {
-                          const estFait = jeu[etape.id] === true;
-                          const isEtapeNouveaute = etape.id === 'etape_nouveaute';
-                          
-                          let labelText = estFait ? `✓ ${etape.nom}` : etape.nom;
-                          let btnStyle = estFait 
-                            ? `${etape.color} border-transparent shadow-sm scale-95 opacity-50 hover:opacity-100` 
-                            : `bg-white border-slate-200 text-slate-500 hover:border-slate-400 hover:text-black`;
-                          let isClickable = true;
-
-                          if (isEtapeNouveaute && jeu.is_double) {
-                            labelText = "🔄 Double";
-                            btnStyle = "bg-slate-100 border-transparent text-slate-400 cursor-not-allowed";
-                            isClickable = false; 
-                          }
-
-                          return (
-                            <button
-                              key={etape.id}
-                              onClick={() => isClickable && toggleEtapeUnique(jeu.id, etape.id, estFait)}
-                              className={`px-4 py-2 rounded-xl text-sm font-bold transition-all border-2 ${btnStyle}`}
-                              disabled={!isClickable}
-                            >
-                              {labelText}
-                            </button>
-                          );
-                        })}
+                <p style={{ textAlign: 'center', color: 'rgba(0,0,0,0.4)', padding: '40px 0', fontSize: 13 }}>Aucun jeu trouvé.</p>
+              ) : jeuxEnPrepaFiltres.map(jeu => (
+                <div key={jeu.id} className="pop-card" style={{ padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 14, background: 'var(--white)', flexWrap: 'wrap' }}>
+                  <div style={{ flex: 1, minWidth: 200 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                      <span style={{ fontWeight: 700, fontSize: 15 }}>{jeu.nom}</span>
+                      <div style={{ display: 'flex', gap: 4, background: 'var(--cream2)', padding: '3px 6px', borderRadius: 20, border: '1.5px solid var(--ink)' }}>
+                        {COULEURS.map(c => (
+                          <button key={c.id} type="button" onClick={() => changerCouleurJeu(jeu.id, jeu.ean, jeu.nom, jeu.couleur === c.id ? "" : c.id)}
+                            style={{ width: 14, height: 14, borderRadius: '50%', background: c.hex, border: jeu.couleur === c.id ? '2px solid var(--ink)' : '2px solid transparent', cursor: 'pointer', transition: 'transform .1s', transform: jeu.couleur === c.id ? 'scale(1.2)' : 'scale(1)' }} title={c.id} />
+                        ))}
                       </div>
                     </div>
-                  );
-                })
-              )}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'rgba(0,0,0,0.4)' }}>
+                      <BarcodeIcon />EAN: {jeu.ean}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                    {etapesVisuelles.map(etape => {
+                      const estFait = jeu[etape.id] === true;
+                      const isNouv = etape.id === 'etape_nouveaute';
+                      const isDouble = isNouv && jeu.is_double;
+                      return (
+                        <button key={etape.id} disabled={isDouble}
+                          onClick={() => !isDouble && toggleEtapeUnique(jeu.id, etape.id, estFait)}
+                          style={{ background: estFait ? etape.hex : 'var(--cream2)', border: '2px solid var(--ink)', borderRadius: 6, padding: '4px 10px', fontSize: 11, fontWeight: 700, cursor: isDouble ? 'not-allowed' : 'pointer', opacity: isDouble ? 0.4 : 1, boxShadow: estFait ? '2px 2px 0 var(--ink)' : 'none', transition: 'all .1s' }}>
+                          {isDouble ? '🔄 Double' : estFait ? `✓ ${etape.nom}` : etape.nom}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>
       )}
 
+      {/* ══ MODAL AJOUT JEUX ══ */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-[2rem] p-8 w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-bold text-slate-800">➕ Ajouter des jeux</h2>
-              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-black font-bold text-xl px-3 py-1 bg-slate-100 rounded-full">✕</button>
+        <div style={S.modal}>
+          <div style={{ ...S.modalBox, maxWidth: 720 }}>
+            <div style={{ padding: '20px 24px', borderBottom: '3px solid var(--ink)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bleu)' }}>
+              <div className="bc" style={{ fontSize: 24, textTransform: 'uppercase' }}>Ajouter des jeux</div>
+              <button style={S.closeBtn} onClick={() => setIsModalOpen(false)}>✕</button>
             </div>
-            <div className="grid grid-cols-2 gap-4 mb-6">
+            <div style={{ padding: '16px 24px', borderBottom: '2px solid var(--cream2)', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <div>
-                <label className="block text-sm font-bold text-slate-500 mb-2">🔫 Scanner un EAN</label>
-                <input type="text" value={eanInput} onChange={(e) => setEanInput(e.target.value)} onKeyDown={ajouterEan} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none focus:border-black transition-colors" placeholder="Ex: 3770001874241" autoFocus />
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: 'rgba(0,0,0,0.45)', marginBottom: 6 }}>Scanner un EAN</div>
+                <input type="text" value={eanInput} onChange={e => setEanInput(e.target.value)} onKeyDown={ajouterEan} className="pop-input" style={{ width: '100%' }} placeholder="Ex: 3770001874241" autoFocus />
               </div>
               <div>
-                <label className="block text-sm font-bold text-slate-500 mb-2">✍️ Taper un nom (EAN inconnu)</label>
-                <input type="text" value={manuelInput} onChange={(e) => setManuelInput(e.target.value)} onKeyDown={ajouterManuel} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none focus:border-black transition-colors" placeholder="Nom du jeu..." />
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: 'rgba(0,0,0,0.45)', marginBottom: 6 }}>Taper un nom (EAN inconnu)</div>
+                <input type="text" value={manuelInput} onChange={e => setManuelInput(e.target.value)} onKeyDown={ajouterManuel} className="pop-input" style={{ width: '100%' }} placeholder="Nom du jeu..." />
               </div>
             </div>
-            
-            <div className="flex-1 overflow-y-auto bg-slate-50 rounded-2xl p-4 border border-slate-100 mb-6 min-h-[200px]">
+            <div style={{ flex: 1, overflowY: 'auto', padding: 16, minHeight: 200, display: 'flex', flexDirection: 'column', gap: 6 }}>
               {jeuxAttente.length === 0 ? (
-                <p className="text-center text-slate-400 mt-10 font-medium">La liste d&apos;attente est vide.</p>
-              ) : (
-                jeuxAttente.map((jeu, index) => (
-                  <div key={index} className="group relative bg-white p-5 rounded-xl shadow-sm mb-3 border border-slate-100 hover:border-slate-300 transition-colors">
-                    
-                    <div className="flex justify-between items-start mb-2.5">
-                      <div className="flex-1 mr-12">
-                        
-                        <div className="flex items-center gap-4">
-                          {jeu.nom === "⏳ Recherche en cours..." ? (
-                            <span className="font-bold text-lg text-slate-400">{jeu.nom}</span>
-                          ) : editingIndex === index || jeu.nom === "" ? (
-                            <input type="text" value={jeu.nom} onChange={(e) => setJeuxAttente(prev => {const l = [...prev]; l[index].nom = e.target.value; return l;})} onBlur={() => setEditingIndex(null)} onKeyDown={(e) => e.key === "Enter" && setEditingIndex(null)} autoFocus className="font-bold text-lg w-full max-w-[200px] bg-transparent border-b border-black text-black outline-none pb-1" />
-                          ) : (
-                            <span className="font-bold text-lg text-black block leading-tight">{jeu.nom}</span>
-                          )}
-
-                          <div className="flex gap-1.5 bg-slate-50 p-1.5 rounded-full border border-slate-200">
-                            {COULEURS.map(c => (
-                              <button
-                                key={c.id}
-                                type="button"
-                                onClick={() => setJeuxAttente(prev => prev.map((j, i) => i === index ? { ...j, couleur: j.couleur === c.id ? "" : c.id } : j))}
-                                className={`w-5 h-5 rounded-full border-2 transition-transform hover:scale-110 shadow-sm ${
-                                  jeu.couleur === c.id ? 'border-black scale-110' : 'border-transparent'
-                                } ${c.bg}`}
-                                title={c.id}
-                              />
-                            ))}
-                          </div>
-                        </div>
-
-                        <div className="flex items-center text-sm font-medium text-black/80 mt-1">
-                          <BarcodeIcon />
-                          {editingEanIndex === index ? (
-                            <input type="text" value={jeu.ean === "Manuel" ? "" : jeu.ean} onChange={(e) => setJeuxAttente(prev => {const l = [...prev]; l[index].ean = e.target.value || "Manuel"; return l;})} onBlur={() => setEditingEanIndex(null)} onKeyDown={(e) => e.key === "Enter" && setEditingEanIndex(null)} autoFocus className="bg-transparent border-b border-black outline-none w-48 text-black" />
-                          ) : (
-                            <span>EAN: {jeu.ean}</span>
-                          )}
-                        </div>
-                      </div>
+                <p style={{ textAlign: 'center', color: 'rgba(0,0,0,0.4)', padding: '40px 0', fontSize: 13 }}>La liste d&apos;attente est vide.</p>
+              ) : jeuxAttente.map((jeu, index) => (
+                <div key={index} className="pop-card" style={{ background: 'var(--white)', padding: '14px 16px', position: 'relative' }}
+                  onMouseEnter={e => { const a = e.currentTarget.querySelector<HTMLElement>('.jeu-actions'); if (a) a.style.opacity = '1'; }}
+                  onMouseLeave={e => { const a = e.currentTarget.querySelector<HTMLElement>('.jeu-actions'); if (a) a.style.opacity = '0'; }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                    {jeu.nom === "⏳ Recherche en cours..." ? (
+                      <span style={{ fontWeight: 700, color: 'rgba(0,0,0,0.4)' }}>{jeu.nom}</span>
+                    ) : editingIndex === index || jeu.nom === "" ? (
+                      <input type="text" value={jeu.nom} onChange={e => setJeuxAttente(prev => { const l = [...prev]; l[index].nom = e.target.value; return l; })} onBlur={() => setEditingIndex(null)} onKeyDown={e => e.key === "Enter" && setEditingIndex(null)} autoFocus style={{ fontWeight: 700, fontSize: 15, background: 'transparent', borderBottom: '2px solid var(--ink)', outline: 'none', width: 200 }} />
+                    ) : (
+                      <span style={{ fontWeight: 700, fontSize: 15 }}>{jeu.nom}</span>
+                    )}
+                    <div style={{ display: 'flex', gap: 4, background: 'var(--cream2)', padding: '3px 6px', borderRadius: 20, border: '1.5px solid var(--ink)' }}>
+                      {COULEURS.map(c => (
+                        <button key={c.id} type="button" onClick={() => setJeuxAttente(prev => prev.map((j, i) => i === index ? { ...j, couleur: j.couleur === c.id ? "" : c.id } : j))}
+                          style={{ width: 14, height: 14, borderRadius: '50%', background: c.hex, border: jeu.couleur === c.id ? '2px solid var(--ink)' : '2px solid transparent', cursor: 'pointer', transform: jeu.couleur === c.id ? 'scale(1.2)' : 'scale(1)' }} title={c.id} />
+                      ))}
                     </div>
-
-                    <div className="flex items-center gap-2 mb-3 bg-slate-50 p-1.5 rounded-xl w-max border border-slate-200">
-                      <button 
-                        onClick={() => changerTypeAjout(index, 'nouveaute')}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${jeu.typeAjout === 'nouveaute' ? 'bg-[#ffa600] text-white shadow-sm scale-105' : 'text-slate-500 hover:text-black hover:bg-slate-200'}`}
-                      >
-                        🌟 Nouveauté
-                      </button>
-                      <button 
-                        onClick={() => changerTypeAjout(index, 'double')}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${jeu.typeAjout === 'double' ? 'bg-blue-500 text-white shadow-sm scale-105' : 'text-slate-500 hover:text-black hover:bg-slate-200'}`}
-                      >
-                        🔄 Double
-                      </button>
-                      <button 
-                        onClick={() => changerTypeAjout(index, 'existant')}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${jeu.typeAjout === 'existant' ? 'bg-emerald-500 text-white shadow-sm scale-105' : 'text-slate-500 hover:text-black hover:bg-slate-200'}`}
-                      >
-                        ✅ Existant
-                      </button>
+                    <div className="jeu-actions" style={{ opacity: 0, transition: 'opacity .15s', display: 'flex', gap: 4, marginLeft: 'auto' }}>
+                      <button onClick={() => setEditingEanIndex(index)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14 }} title="Modifier EAN">🏷️</button>
+                      <button onClick={() => setEditingIndex(index)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14 }} title="Modifier Nom">✏️</button>
+                      <button onClick={() => setJeuxAttente(prev => prev.filter((_, i) => i !== index))} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14 }} title="Supprimer">🗑️</button>
                     </div>
-
-                    <div className="flex gap-x-5 gap-y-1.5 flex-wrap border-t border-slate-100 pt-3">
-                      {etapesVisuelles.map((etape) => {
-                        const isExistant = jeu.typeAjout === 'existant';
-                        const isDouble = jeu.typeAjout === 'double';
-                        const isEtapeNouv = etape.id === 'etape_nouveaute';
-                        
-                        let disabled = isExistant || isEtapeNouv;
-                        let checked = jeu.etapes[etape.id];
-                        let label = etape.nom;
-
-                        if (isExistant) {
-                          checked = true;
-                          if (isEtapeNouv) {
-                             checked = false;
-                             label = "🚫 Pas une nouveauté";
-                          }
-                        } else if (isDouble) {
-                          if (isEtapeNouv) {
-                            checked = false;
-                            label = "🔄 Double";
-                          }
-                        } else {
-                          if (isEtapeNouv) {
-                            checked = false;
-                            label = "🌟 Nouveauté (Atelier)";
-                          }
-                        }
-
-                        return (
-                          <label key={etape.id} className={`flex items-center gap-1.5 ${disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
-                            <input 
-                              type="checkbox" 
-                              className="custom-cb" 
-                              disabled={disabled} 
-                              checked={checked} 
-                              onChange={() => toggleEtapeAttente(index, etape.id)}
-                            />
-                            <span className="text-sm font-semibold leading-none text-black">
-                              {label}
-                            </span>
-                          </label>
-                        );
-                      })}
-                    </div>
-
-                    <div className="absolute top-4 right-4 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity bg-white p-1 rounded-lg shadow-inner border border-slate-100">
-                      <button onClick={() => setEditingEanIndex(index)} title="Modifier EAN" className="text-emerald-600 hover:bg-emerald-50 p-1.5 rounded">🏷️</button>
-                      <button onClick={() => setEditingIndex(index)} title="Modifier Nom" className="text-blue-500 hover:bg-blue-50 p-1.5 rounded">✏️</button>
-                      <button onClick={() => setJeuxAttente(prev => prev.filter((_, i) => i !== index))} title="Supprimer" className="text-red-500 hover:bg-red-50 p-1.5 rounded">🗑️</button>
-                    </div>
-
                   </div>
-                ))
-              )}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'rgba(0,0,0,0.4)', marginBottom: 10 }}>
+                    <BarcodeIcon />
+                    {editingEanIndex === index ? (
+                      <input type="text" value={jeu.ean === "Manuel" ? "" : jeu.ean} onChange={e => setJeuxAttente(prev => { const l = [...prev]; l[index].ean = e.target.value || "Manuel"; return l; })} onBlur={() => setEditingEanIndex(null)} onKeyDown={e => e.key === "Enter" && setEditingEanIndex(null)} autoFocus style={{ background: 'transparent', borderBottom: '2px solid var(--ink)', outline: 'none', width: 160, fontSize: 11 }} />
+                    ) : <span>EAN: {jeu.ean}</span>}
+                  </div>
+                  <div style={{ display: 'flex', gap: 5, marginBottom: 10 }}>
+                    {(['nouveaute', 'double', 'existant'] as const).map(type => {
+                      const labels = { nouveaute: '🌟 Nouveauté', double: '🔄 Double', existant: '✅ Existant' };
+                      const colors = { nouveaute: 'var(--yellow)', double: 'var(--bleu)', existant: 'var(--vert)' };
+                      const active = jeu.typeAjout === type;
+                      return (
+                        <button key={type} onClick={() => changerTypeAjout(index, type)}
+                          style={{ background: active ? colors[type] : 'var(--cream2)', border: '2px solid var(--ink)', borderRadius: 6, padding: '4px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer', boxShadow: active ? '2px 2px 0 var(--ink)' : 'none' }}>
+                          {labels[type]}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 16px', borderTop: '2px solid var(--cream2)', paddingTop: 10 }}>
+                    {etapesVisuelles.map(etape => {
+                      const isExistant = jeu.typeAjout === 'existant';
+                      const isNouv = etape.id === 'etape_nouveaute';
+                      let disabled = isExistant || isNouv;
+                      let checked = jeu.etapes[etape.id];
+                      let label = etape.nom;
+                      if (isExistant) { checked = !isNouv; label = isNouv ? "🚫 Pas une nouveauté" : etape.nom; }
+                      else if (jeu.typeAjout === 'double' && isNouv) { checked = false; label = "🔄 Double"; }
+                      else if (isNouv) { checked = false; label = "🌟 Nouveauté (Atelier)"; }
+                      return (
+                        <label key={etape.id} style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : 1 }}>
+                          <input type="checkbox" className="custom-cb" disabled={disabled} checked={checked} onChange={() => toggleEtapeAttente(index, etape.id)} />
+                          <span style={{ fontSize: 12, fontWeight: 600 }}>{label}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
-            
-            <button onClick={validerEtEnvoyer} disabled={jeuxAttente.length === 0 || jeuxAttente.some(j => j.nom === "" || j.nom.includes("⏳"))} className="w-full bg-[#baff29] hover:bg-[#9de30b] disabled:bg-slate-200 text-black font-black py-4 rounded-xl transition-colors shadow-md">
-              💾 Valider et envoyer à l'Atelier
-            </button>
+            <div style={{ padding: '16px 24px', borderTop: '3px solid var(--ink)' }}>
+              <button className="pop-btn pop-btn-yellow" style={{ width: '100%', justifyContent: 'center', fontSize: 15 }}
+                onClick={validerEtEnvoyer}
+                disabled={jeuxAttente.length === 0 || jeuxAttente.some(j => j.nom === "" || j.nom.includes("⏳"))}>
+                Valider et envoyer à l&apos;Atelier →
+              </button>
+            </div>
           </div>
         </div>
       )}

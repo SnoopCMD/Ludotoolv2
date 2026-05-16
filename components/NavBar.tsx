@@ -152,27 +152,6 @@ export default function NavBar({ current }: { current?: Page }) {
         })}
       </div>
 
-      {/* Right — new game button + avatar */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
-        <button
-          className="pop-btn pop-btn-yellow"
-          style={{ padding: "6px 12px", fontSize: 18, lineHeight: 1 }}
-          onMouseEnter={e => (e.currentTarget.style.transform = "translate(-1px,-1px) rotate(-8deg)")}
-          onMouseLeave={e => (e.currentTarget.style.transform = "")}
-          title="Nouveau jeu"
-        >
-          +
-        </button>
-        <div style={{
-          width: 34, height: 34, borderRadius: "50%",
-          background: "var(--bleu)", border: "2.5px solid var(--ink)",
-          boxShadow: "2px 2px 0 var(--ink)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-        }}>
-          <span className="bc" style={{ fontSize: 14 }}>T</span>
-        </div>
-      </div>
-
       {/* Rainbow strip (style A) at bottom */}
       <div style={{
         position: "absolute",
