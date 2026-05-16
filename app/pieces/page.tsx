@@ -816,7 +816,7 @@ export default function PiecesPage() {
 
       {/* ── Popup confirmation liaison partielle/totale ── */}
       {lienConfirm && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 90, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 90, display: "flex", alignItems: "center", justifyContent: "center", padding: "80px 16px 16px" }}>
           <div className="pop-card" style={{ background: "var(--white)", width: "100%", maxWidth: 440, padding: 32, display: "flex", flexDirection: "column", gap: 20 }}>
             <div style={{ textAlign: "center" }}>
               <p className="bc" style={{ fontSize: 24, margin: "0 0 4px", letterSpacing: "0.02em" }}>Liaison des pièces</p>
@@ -869,8 +869,8 @@ export default function PiecesPage() {
 
       {/* ── Modal Commander ── */}
       {isCommandeOpen && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 80, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-          <div className="pop-card" style={{ background: "var(--white)", width: "100%", maxWidth: 640, maxHeight: "90vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 80, display: "flex", alignItems: "center", justifyContent: "center", padding: "80px 16px 16px" }}>
+          <div className="pop-card" style={{ background: "var(--white)", width: "100%", maxWidth: 640, maxHeight: "calc(100vh - 96px)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
             {/* Header */}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 24px", borderBottom: "2px solid var(--ink)", flexShrink: 0 }}>
               <div>
@@ -995,8 +995,8 @@ export default function PiecesPage() {
 
       {/* ── Modal Éditeurs CRUD ── */}
       {isEditeursOpen && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 90, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-          <div className="pop-card" style={{ background: "var(--white)", width: "100%", maxWidth: 640, maxHeight: "90vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 90, display: "flex", alignItems: "center", justifyContent: "center", padding: "80px 16px 16px" }}>
+          <div className="pop-card" style={{ background: "var(--white)", width: "100%", maxWidth: 640, maxHeight: "calc(100vh - 96px)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
             {/* Header */}
             <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: "18px 24px", borderBottom: "2px solid var(--ink)", flexShrink: 0 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
