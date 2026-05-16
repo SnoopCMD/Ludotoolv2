@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useMemo } from "react";
-import { supabase } from "../../lib/supabase"; 
+import { supabase } from "../../lib/supabase";
 import Link from "next/link";
 
 type JeuNouveaute = {
@@ -12,12 +12,12 @@ type JeuNouveaute = {
   date_sortie?: string | null;
 };
 
-const COULEURS = [
-  { id: 'vert', bg: 'bg-[#baff29]', text: 'text-black', border: 'border-[#baff29]' },
-  { id: 'rose', bg: 'bg-[#f45be0]', text: 'text-white', border: 'border-[#f45be0]' },
-  { id: 'bleu', bg: 'bg-[#6ba4ff]', text: 'text-white', border: 'border-[#6ba4ff]' },
-  { id: 'rouge', bg: 'bg-[#ff4d79]', text: 'text-white', border: 'border-[#ff4d79]' },
-  { id: 'jaune', bg: 'bg-[#ffa600]', text: 'text-black', border: 'border-[#ffa600]' }
+const COULEURS: { id: string; hex: string }[] = [
+  { id: 'vert',  hex: '#a8e063' },
+  { id: 'rose',  hex: '#f472b6' },
+  { id: 'bleu',  hex: '#60a5fa' },
+  { id: 'rouge', hex: '#f87171' },
+  { id: 'jaune', hex: '#fb923c' },
 ];
 
 const MAX_SALLE_JEUX = 12;
@@ -45,37 +45,26 @@ export default function NouveautesPage() {
 
   const fetchDatas = async () => {
     setIsLoading(true);
-    
     const { data: stockData, error } = await supabase
       .from('jeux')
       .select('id, nom, ean, etape_nouveaute, date_entree, date_sortie')
       .eq('statut', 'En stock')
       .order('id', { ascending: true });
 
-    if (error) {
-      console.error("Erreur:", error);
-      setIsLoading(false);
-      return;
-    }
+    if (error) { setIsLoading(false); return; }
 
     const bruts = stockData as any[];
-
-    // Charge tout le catalogue d'un coup (évite les requêtes .in() trop longues)
     let colorMap: Record<string, string> = {};
     const { data: catData } = await supabase.from('catalogue').select('ean, couleur');
     if (catData) catData.forEach(item => { if (item.couleur) colorMap[item.ean] = item.couleur; });
 
     const tousLesJeux = bruts.map(j => ({ ...j, couleur: colorMap[j.ean] || "" }));
-    
     setJeux(tousLesJeux.filter(j => j.etape_nouveaute));
     setJeuxDispos(tousLesJeux.filter(j => !j.etape_nouveaute));
-    
     setIsLoading(false);
   };
 
-  useEffect(() => {
-    fetchDatas();
-  }, []);
+  useEffect(() => { fetchDatas(); }, []);
 
   const mettreEnAttente = async (id: string | number) => {
     setRechercheAjout("");
@@ -88,11 +77,10 @@ export default function NouveautesPage() {
     const aujourdhui = new Date();
     const sortie = new Date();
     sortie.setDate(aujourdhui.getDate() + 14);
-
-    const dateEntreeStr = aujourdhui.toISOString().split('T')[0];
-    const dateSortieStr = sortie.toISOString().split('T')[0];
-
-    const { error } = await supabase.from('jeux').update({ date_entree: dateEntreeStr, date_sortie: dateSortieStr }).eq('id', id);
+    const { error } = await supabase.from('jeux').update({
+      date_entree: aujourdhui.toISOString().split('T')[0],
+      date_sortie: sortie.toISOString().split('T')[0],
+    }).eq('id', id);
     if (error) alert("Erreur lors de l'entrée en salle.");
     fetchDatas();
   };
@@ -104,240 +92,261 @@ export default function NouveautesPage() {
   };
 
   const premiersJeuxAttente = useMemo(() => jeux.filter(j => j.couleur === 'vert' && !j.date_entree), [jeux]);
-  const premiersJeuxEnSalle = useMemo(() => jeux.filter(j => j.couleur === 'vert' && j.date_entree).sort((a,b) => new Date(a.date_sortie!).getTime() - new Date(b.date_sortie!).getTime()), [jeux]);
-
+  const premiersJeuxEnSalle = useMemo(() => jeux.filter(j => j.couleur === 'vert' && j.date_entree).sort((a, b) => new Date(a.date_sortie!).getTime() - new Date(b.date_sortie!).getTime()), [jeux]);
   const salleJeuxAttente = useMemo(() => jeux.filter(j => j.couleur !== 'vert' && !j.date_entree), [jeux]);
-  const salleJeuxEnSalle = useMemo(() => jeux.filter(j => j.couleur !== 'vert' && j.date_entree).sort((a,b) => new Date(a.date_sortie!).getTime() - new Date(b.date_sortie!).getTime()), [jeux]);
+  const salleJeuxEnSalle = useMemo(() => jeux.filter(j => j.couleur !== 'vert' && j.date_entree).sort((a, b) => new Date(a.date_sortie!).getTime() - new Date(b.date_sortie!).getTime()), [jeux]);
 
-  // Filtre recherche amélioré (EAN + suppression des accents)
   const resultatsRecherche = useMemo(() => {
     if (!rechercheAjout) return [];
-    
-    // Normaliser la recherche (minuscules, sans accents)
-    const termNormalise = rechercheAjout.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-    
+    const termNormalise = rechercheAjout.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
     return jeuxDispos.filter(j => {
-      const nomNormalise = j.nom.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+      const nomNormalise = j.nom.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
       return nomNormalise.includes(termNormalise) || j.ean.includes(rechercheAjout);
     }).slice(0, 5);
   }, [rechercheAjout, jeuxDispos]);
 
+  const couleurHex = (id?: string) => COULEURS.find(c => c.id === id)?.hex ?? 'var(--cream2)';
+
+  const cardStyle: React.CSSProperties = {
+    background: 'var(--white)', border: '2.5px solid var(--ink)', borderRadius: 10,
+    padding: '12px 16px', display: 'flex', alignItems: 'center',
+    justifyContent: 'space-between', gap: 12, boxShadow: '4px 4px 0 var(--ink)',
+    marginBottom: 8,
+  };
+
+  const renderJeuCard = (
+    jeu: JeuNouveaute,
+    onRetirer: () => void,
+    onValider?: () => void,
+    isFull?: boolean,
+  ) => {
+    const hex = couleurHex(jeu.couleur);
+    const depasse = estDepassee(jeu.date_sortie);
+    return (
+      <div key={jeu.id} style={{ ...cardStyle, borderColor: depasse ? 'var(--rouge)' : 'var(--ink)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
+          <div style={{ width: 14, height: 14, borderRadius: '50%', background: hex, border: '2px solid var(--ink)', flexShrink: 0 }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <span style={{ fontWeight: 800, fontSize: 15 }}>{jeu.nom}</span>
+            {jeu.date_entree && (
+              <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', fontWeight: 500 }}>
+                Entré le {formaterDate(jeu.date_entree)}
+              </div>
+            )}
+          </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+          {jeu.date_sortie && (
+            <span className="pop-sticker" style={{
+              background: depasse ? 'var(--rouge)' : 'var(--cream2)',
+              color: depasse ? 'var(--white)' : 'var(--ink)',
+              fontSize: 11,
+            }}>
+              ↩ {formaterDate(jeu.date_sortie)}
+            </span>
+          )}
+          {onValider && (
+            <button
+              onClick={onValider}
+              disabled={isFull}
+              className="pop-btn pop-btn-green"
+              style={{ padding: '5px 14px', fontSize: 13, opacity: isFull ? 0.4 : 1, cursor: isFull ? 'not-allowed' : 'pointer' }}
+            >
+              {isFull ? 'Plein' : 'Valider ✓'}
+            </button>
+          )}
+          {depasse && !onValider && (
+            <button onClick={onRetirer} className="pop-btn pop-btn-dark" style={{ padding: '5px 14px', fontSize: 13, background: 'var(--rouge)' }}>
+              Terminer !
+            </button>
+          )}
+          {(!depasse || onValider) && (
+            <button onClick={onRetirer} style={{
+              background: 'none', border: '2px solid var(--ink)', borderRadius: 8,
+              padding: '5px 10px', cursor: 'pointer', fontSize: 14,
+              boxShadow: '2px 2px 0 var(--ink)',
+            }}>✕</button>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const renderEmptySlot = (key: string, isVert = false) => (
+    <div key={key} style={{
+      border: '2px dashed var(--cream2)', borderRadius: 10, padding: '14px 16px',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      background: isVert ? 'rgba(168,224,99,0.08)' : 'var(--cream)',
+      marginBottom: 8,
+    }}>
+      <span style={{ fontSize: 13, fontWeight: 600, color: 'rgba(0,0,0,0.3)', fontStyle: 'italic' }}>
+        Place disponible
+      </span>
+    </div>
+  );
+
   return (
-    <div className="min-h-screen flex flex-col bg-[#e5e5e5] font-sans p-4 sm:p-8 relative">
-      <style>{`
-        .custom-scroll::-webkit-scrollbar { width: 6px; }
-        .custom-scroll::-webkit-scrollbar-track { background: transparent; }
-        .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
-        .custom-scroll::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-      `}</style>
-      
-      <header className="flex justify-between items-center mb-6 relative w-full max-w-[96%] mx-auto shrink-0">
-        <div className="w-10 h-10 bg-black rounded flex items-center justify-center text-white font-black text-xl italic cursor-pointer">+</div>
-        <nav className="bg-[#2d2d2d] text-white p-1.5 rounded-full flex items-center text-sm font-bold shadow-lg gap-1">
-          <Link href="/inventaire" className="px-6 py-2.5 rounded-full hover:bg-white/10 transition">Retour Inventaire</Link>
-        </nav>
-        <div className="w-10"></div>
+    <div style={{ minHeight: '100vh', background: 'var(--cream)', display: 'flex', flexDirection: 'column' }}>
+
+      {/* Mini sticky header */}
+      <header style={{
+        position: 'sticky', top: 0, zIndex: 200, height: 56,
+        background: 'var(--cream)', borderBottom: '2.5px solid var(--ink)',
+        display: 'flex', alignItems: 'center', padding: '0 24px', gap: 16,
+      }}>
+        <Link href="/inventaire" style={{
+          display: 'inline-flex', alignItems: 'center', gap: 6,
+          background: 'var(--ink)', color: 'var(--cream)',
+          border: '2px solid var(--ink)', borderRadius: 6,
+          padding: '4px 12px', fontWeight: 700, fontSize: 14,
+          textDecoration: 'none', boxShadow: '2px 2px 0 rgba(0,0,0,0.3)',
+          fontFamily: 'inherit',
+        }}>← Inventaire</Link>
+        <h1 className="bc" style={{
+          fontSize: 24, letterSpacing: '0.03em', margin: 0,
+          background: 'linear-gradient(90deg, var(--vert), var(--bleu))',
+          WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+        }}>Nouveautés</h1>
       </header>
 
-      <main className="bg-white rounded-[3rem] p-8 lg:p-10 w-full max-w-[96%] mx-auto flex-1 shadow-md flex flex-col gap-8">
-        
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
-          <div>
-            <h1 className="text-4xl font-black text-black">🌟 Nouveautés</h1>
-            <p className="text-slate-500 font-medium mt-1">Gérez la file d'attente et la rotation des jeux exposés</p>
-          </div>
-          
-          <div className="relative w-full md:w-96 z-20">
-            <span className="absolute left-4 top-1/2 -translate-y-1/2 opacity-50">➕</span>
-            <input 
-              type="text" placeholder="Ajouter par nom ou EAN..." value={rechercheAjout} onChange={(e) => setRechercheAjout(e.target.value)}
-              className="w-full bg-slate-50 border-2 border-slate-200 rounded-2xl pl-10 pr-4 py-3 font-bold outline-none focus:border-black transition-colors"
+      <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 1200, width: '100%' }}>
+        {/* Titre + recherche */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+          <div />
+
+          {/* Barre de recherche */}
+          <div style={{ position: 'relative', width: 320, zIndex: 20 }}>
+            <input
+              type="text"
+              placeholder="Ajouter par nom ou EAN…"
+              value={rechercheAjout}
+              onChange={e => setRechercheAjout(e.target.value)}
+              className="pop-input"
+              style={{ width: '100%', paddingLeft: 36 }}
             />
+            <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', opacity: 0.4, pointerEvents: 'none' }}>➕</span>
             {rechercheAjout && (
-              <div className="absolute top-full mt-2 w-full bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden">
+              <div style={{
+                position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 50,
+                background: 'var(--white)', border: '2.5px solid var(--ink)',
+                borderRadius: 10, boxShadow: '4px 4px 0 var(--ink)', overflow: 'hidden',
+              }}>
                 {resultatsRecherche.length === 0 ? (
-                  <div className="p-4 text-sm text-slate-500 font-bold text-center">Aucun jeu disponible trouvé.</div>
-                ) : (
-                  resultatsRecherche.map(r => {
-                    const cObj = COULEURS.find(c => c.id === r.couleur);
-                    return (
-                      <button key={r.id} onClick={() => mettreEnAttente(r.id)} className="w-full flex items-center gap-3 p-3 hover:bg-slate-50 border-b border-slate-100 transition-colors text-left">
-                        <div className={`w-3 h-3 rounded-full shrink-0 ${cObj ? cObj.bg : 'bg-slate-200'}`}></div>
-                        <span className="font-bold text-sm truncate flex-1">{r.nom}</span>
-                        <span className="text-xs font-black bg-black text-white px-2 py-1 rounded-lg">Ajouter</span>
-                      </button>
-                    )
-                  })
-                )}
+                  <div style={{ padding: '12px 16px', fontSize: 14, color: 'rgba(0,0,0,0.4)', fontWeight: 600, textAlign: 'center' }}>
+                    Aucun jeu disponible trouvé
+                  </div>
+                ) : resultatsRecherche.map(r => (
+                  <button key={r.id} onClick={() => mettreEnAttente(r.id)} style={{
+                    width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                    padding: '10px 16px', cursor: 'pointer', background: 'none', border: 'none',
+                    borderBottom: '1px solid var(--cream2)', textAlign: 'left', fontFamily: 'inherit',
+                  }}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--cream)')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    <div style={{ width: 10, height: 10, borderRadius: '50%', background: couleurHex(r.couleur), border: '1.5px solid var(--ink)', flexShrink: 0 }} />
+                    <span style={{ fontWeight: 700, fontSize: 14, flex: 1 }}>{r.nom}</span>
+                    <span className="pop-sticker" style={{ background: 'var(--ink)', color: 'var(--cream)', fontSize: 10 }}>Ajouter</span>
+                  </button>
+                ))}
               </div>
             )}
           </div>
         </div>
 
         {isLoading ? (
-          <div className="flex-1 flex items-center justify-center">
-             <p className="font-bold text-slate-400 animate-pulse">Chargement des nouveautés...</p>
+          <div style={{ textAlign: 'center', padding: '60px 0', color: 'rgba(0,0,0,0.35)', fontWeight: 700, fontSize: 16 }}>
+            Chargement…
           </div>
         ) : (
-          <div className="flex flex-col gap-10">
-            
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
+
+            {/* ── Salle Jeux ── */}
             <section>
-              <h2 className="text-2xl font-black text-black mb-4 flex items-center gap-2">
-                🎲 Salle Jeux
-              </h2>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                
-                <div className="bg-slate-50 border-2 border-slate-100 rounded-[2rem] p-6 flex flex-col">
-                  <h3 className="text-lg font-black text-slate-700 mb-4 flex justify-between items-center">
-                    <span>⏳ File d'attente</span>
-                    <span className="bg-white px-2 py-1 rounded-md shadow-sm text-sm">{salleJeuxAttente.length}</span>
-                  </h3>
-                  <div className="space-y-3 flex-1 overflow-y-auto max-h-[500px] custom-scroll pr-2">
-                    {salleJeuxAttente.length === 0 && <p className="text-slate-400 text-sm font-medium text-center mt-10">La file est vide</p>}
-                    {salleJeuxAttente.map(jeu => {
-                      const cObj = COULEURS.find(c => c.id === jeu.couleur);
-                      const isFull = salleJeuxEnSalle.length >= MAX_SALLE_JEUX;
-                      return (
-                        <div key={jeu.id} className={`bg-white p-3 rounded-2xl border-2 shadow-sm flex items-center justify-between gap-3 ${cObj ? cObj.border : 'border-slate-100'}`}>
-                          <div className="flex items-center gap-3 overflow-hidden">
-                            <div className={`w-4 h-4 rounded-full shrink-0 shadow-inner ${cObj ? cObj.bg : 'bg-slate-200'}`}></div>
-                            <span className="font-bold text-sm truncate">{jeu.nom}</span>
-                          </div>
-                          <div className="flex gap-2 shrink-0">
-                            <button onClick={() => retirerDesNouveautes(jeu.id)} title="Retirer de la liste" className="text-slate-400 hover:text-rose-500 font-bold px-2 py-1 bg-slate-50 rounded-lg">✕</button>
-                            <button onClick={() => validerEntreeEnSalle(jeu.id)} disabled={isFull} className="bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-200 disabled:text-slate-400 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-colors shadow-sm">
-                              {isFull ? 'Plein 🔒' : 'Valider l\'entrée ✅'}
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
+              <div className="pop-sec-head">
+                <span>🎲 Salle Jeux</span>
+                <div />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+
+                {/* File d'attente */}
+                <div className="pop-card" style={{ padding: 20 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                    <span className="bc" style={{ fontSize: 16 }}>⏳ File d'attente</span>
+                    <span className="pop-sticker" style={{ background: 'var(--cream2)' }}>{salleJeuxAttente.length}</span>
+                  </div>
+                  <div style={{ overflow: 'auto', maxHeight: 480 }}>
+                    {salleJeuxAttente.length === 0 && (
+                      <p style={{ textAlign: 'center', color: 'rgba(0,0,0,0.3)', fontWeight: 600, padding: '30px 0', fontSize: 14 }}>La file est vide</p>
+                    )}
+                    {salleJeuxAttente.map(jeu =>
+                      renderJeuCard(jeu, () => retirerDesNouveautes(jeu.id), () => validerEntreeEnSalle(jeu.id), salleJeuxEnSalle.length >= MAX_SALLE_JEUX)
+                    )}
                   </div>
                 </div>
 
-                <div className="bg-emerald-50/50 border-2 border-emerald-100 rounded-[2rem] p-6 flex flex-col">
-                  <h3 className="text-lg font-black text-emerald-800 mb-4 flex justify-between items-center">
-                    <span>👁️ En salle (14 jours)</span>
-                    <span className="bg-white px-2 py-1 rounded-md shadow-sm text-sm">{salleJeuxEnSalle.length} / {MAX_SALLE_JEUX}</span>
-                  </h3>
-                  <div className="space-y-3 flex-1 overflow-y-auto max-h-[500px] custom-scroll pr-2">
+                {/* En salle */}
+                <div className="pop-card" style={{ padding: 20, background: 'rgba(168,224,99,0.06)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                    <span className="bc" style={{ fontSize: 16 }}>👁️ En salle (14 jours)</span>
+                    <span className="pop-sticker" style={{ background: 'var(--vert)' }}>{salleJeuxEnSalle.length} / {MAX_SALLE_JEUX}</span>
+                  </div>
+                  <div style={{ overflow: 'auto', maxHeight: 480 }}>
                     {Array.from({ length: MAX_SALLE_JEUX }).map((_, i) => {
                       const jeu = salleJeuxEnSalle[i];
-                      if (jeu) {
-                        const cObj = COULEURS.find(c => c.id === jeu.couleur);
-                        const depasse = estDepassee(jeu.date_sortie);
-                        return (
-                          <div key={jeu.id} className={`bg-white p-3 rounded-2xl border-2 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${depasse ? 'border-rose-400 bg-rose-50/30' : cObj ? cObj.border : 'border-slate-100'}`}>
-                            <div className="flex items-center gap-3 overflow-hidden">
-                              <div className={`w-4 h-4 rounded-full shrink-0 shadow-inner ${cObj ? cObj.bg : 'bg-slate-200'}`}></div>
-                              <div className="flex flex-col">
-                                <span className="font-bold text-sm truncate">{jeu.nom}</span>
-                                <span className="text-[10px] font-medium text-slate-500 mt-0.5">Entré le {formaterDate(jeu.date_entree)}</span>
-                              </div>
-                            </div>
-                            <div className="flex items-center justify-between sm:justify-end gap-3 w-full sm:w-auto">
-                              <div className={`text-xs font-black px-2 py-1 rounded-md ${depasse ? 'bg-rose-100 text-rose-600' : 'bg-slate-100 text-slate-600'}`}>
-                                Sortie: {formaterDate(jeu.date_sortie)}
-                              </div>
-                              <button onClick={() => retirerDesNouveautes(jeu.id)} className={`shrink-0 text-xs font-bold px-3 py-1.5 rounded-lg transition-colors shadow-sm ${depasse ? 'bg-rose-500 hover:bg-rose-600 text-white' : 'bg-white border border-slate-200 text-slate-600 hover:border-black hover:text-black'}`}>
-                                {depasse ? "Terminer !" : "Retirer"}
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      }
-                      return (
-                        <div key={`empty-${i}`} className="bg-white/50 p-4 rounded-2xl border-2 border-dashed border-emerald-200 flex items-center justify-center opacity-60">
-                          <span className="font-bold text-sm text-emerald-600/50 italic">Place disponible pour une nouveauté</span>
-                        </div>
-                      );
+                      if (jeu) return renderJeuCard(jeu, () => retirerDesNouveautes(jeu.id));
+                      return renderEmptySlot(`sj-empty-${i}`);
                     })}
                   </div>
                 </div>
-
               </div>
             </section>
 
-            <div className="h-0.5 bg-slate-100 w-full rounded-full"></div>
-
+            {/* ── Salle Premiers Jeux ── */}
             <section>
-              <h2 className="text-2xl font-black text-black mb-4 flex items-center gap-2">
-                🟢 Salle Premiers Jeux
-              </h2>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                
-                <div className="bg-slate-50 border-2 border-slate-100 rounded-[2rem] p-6 flex flex-col">
-                  <h3 className="text-lg font-black text-slate-700 mb-4 flex justify-between items-center">
-                    <span>⏳ File d'attente</span>
-                    <span className="bg-white px-2 py-1 rounded-md shadow-sm text-sm">{premiersJeuxAttente.length}</span>
-                  </h3>
-                  <div className="space-y-3 flex-1 overflow-y-auto max-h-[500px] custom-scroll pr-2">
-                    {premiersJeuxAttente.length === 0 && <p className="text-slate-400 text-sm font-medium text-center mt-10">La file est vide</p>}
-                    {premiersJeuxAttente.map(jeu => {
-                      const isFull = premiersJeuxEnSalle.length >= MAX_PREMIERS_JEUX;
-                      return (
-                        <div key={jeu.id} className="bg-white p-3 rounded-2xl border-2 border-[#baff29] shadow-sm flex items-center justify-between gap-3">
-                          <div className="flex items-center gap-3 overflow-hidden">
-                            <div className="w-4 h-4 rounded-full shrink-0 shadow-inner bg-[#baff29]"></div>
-                            <span className="font-bold text-sm truncate">{jeu.nom}</span>
-                          </div>
-                          <div className="flex gap-2 shrink-0">
-                            <button onClick={() => retirerDesNouveautes(jeu.id)} title="Retirer de la liste" className="text-slate-400 hover:text-rose-500 font-bold px-2 py-1 bg-slate-50 rounded-lg">✕</button>
-                            <button onClick={() => validerEntreeEnSalle(jeu.id)} disabled={isFull} className="bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-200 disabled:text-slate-400 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-colors shadow-sm">
-                              {isFull ? 'Plein 🔒' : 'Valider l\'entrée ✅'}
-                            </button>
-                          </div>
-                        </div>
-                      )
-                    })}
+              <div className="pop-sec-head">
+                <span>🟢 Salle Premiers Jeux</span>
+                <div />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+
+                {/* File d'attente */}
+                <div className="pop-card" style={{ padding: 20 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                    <span className="bc" style={{ fontSize: 16 }}>⏳ File d'attente</span>
+                    <span className="pop-sticker" style={{ background: 'var(--cream2)' }}>{premiersJeuxAttente.length}</span>
+                  </div>
+                  <div style={{ overflow: 'auto', maxHeight: 480 }}>
+                    {premiersJeuxAttente.length === 0 && (
+                      <p style={{ textAlign: 'center', color: 'rgba(0,0,0,0.3)', fontWeight: 600, padding: '30px 0', fontSize: 14 }}>La file est vide</p>
+                    )}
+                    {premiersJeuxAttente.map(jeu =>
+                      renderJeuCard(jeu, () => retirerDesNouveautes(jeu.id), () => validerEntreeEnSalle(jeu.id), premiersJeuxEnSalle.length >= MAX_PREMIERS_JEUX)
+                    )}
                   </div>
                 </div>
 
-                <div className="bg-emerald-50/50 border-2 border-emerald-100 rounded-[2rem] p-6 flex flex-col">
-                  <h3 className="text-lg font-black text-emerald-800 mb-4 flex justify-between items-center">
-                    <span>👁️ En salle (14 jours)</span>
-                    <span className="bg-white px-2 py-1 rounded-md shadow-sm text-sm">{premiersJeuxEnSalle.length} / {MAX_PREMIERS_JEUX}</span>
-                  </h3>
-                  <div className="space-y-3 flex-1 overflow-y-auto max-h-[500px] custom-scroll pr-2">
+                {/* En salle */}
+                <div className="pop-card" style={{ padding: 20, background: 'rgba(168,224,99,0.06)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                    <span className="bc" style={{ fontSize: 16 }}>👁️ En salle (14 jours)</span>
+                    <span className="pop-sticker" style={{ background: 'var(--vert)' }}>{premiersJeuxEnSalle.length} / {MAX_PREMIERS_JEUX}</span>
+                  </div>
+                  <div style={{ overflow: 'auto', maxHeight: 480 }}>
                     {Array.from({ length: MAX_PREMIERS_JEUX }).map((_, i) => {
                       const jeu = premiersJeuxEnSalle[i];
-                      if (jeu) {
-                        const depasse = estDepassee(jeu.date_sortie);
-                        return (
-                          <div key={jeu.id} className={`bg-white p-3 rounded-2xl border-2 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${depasse ? 'border-rose-400 bg-rose-50/30' : 'border-[#baff29]'}`}>
-                            <div className="flex items-center gap-3 overflow-hidden">
-                              <div className="w-4 h-4 rounded-full shrink-0 shadow-inner bg-[#baff29]"></div>
-                              <div className="flex flex-col">
-                                <span className="font-bold text-sm truncate">{jeu.nom}</span>
-                                <span className="text-[10px] font-medium text-slate-500 mt-0.5">Entré le {formaterDate(jeu.date_entree)}</span>
-                              </div>
-                            </div>
-                            <div className="flex items-center justify-between sm:justify-end gap-3 w-full sm:w-auto">
-                              <div className={`text-xs font-black px-2 py-1 rounded-md ${depasse ? 'bg-rose-100 text-rose-600' : 'bg-slate-100 text-slate-600'}`}>
-                                Sortie: {formaterDate(jeu.date_sortie)}
-                              </div>
-                              <button onClick={() => retirerDesNouveautes(jeu.id)} className={`shrink-0 text-xs font-bold px-3 py-1.5 rounded-lg transition-colors shadow-sm ${depasse ? 'bg-rose-500 hover:bg-rose-600 text-white' : 'bg-white border border-slate-200 text-slate-600 hover:border-black hover:text-black'}`}>
-                                {depasse ? "Terminer !" : "Retirer"}
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      }
-                      return (
-                        <div key={`empty-prem-${i}`} className="bg-white/50 p-4 rounded-2xl border-2 border-dashed border-[#baff29]/50 flex items-center justify-center opacity-60">
-                          <span className="font-bold text-sm text-[#8ca820] italic">Place disponible pour une nouveauté</span>
-                        </div>
-                      );
+                      if (jeu) return renderJeuCard(jeu, () => retirerDesNouveautes(jeu.id));
+                      return renderEmptySlot(`pj-empty-${i}`, true);
                     })}
                   </div>
                 </div>
-
               </div>
             </section>
 
           </div>
         )}
-      </main>
+      </div>
     </div>
   );
 }
+
