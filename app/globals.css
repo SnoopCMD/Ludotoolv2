@@ -43,7 +43,7 @@ html, body {
 
 body {
   font-family: var(--font-dm-sans), 'DM Sans', sans-serif;
-  font-size: 15px;
+  font-size: 16px;
 }
 
 /* Halftone dot pattern (fixed, full page) */

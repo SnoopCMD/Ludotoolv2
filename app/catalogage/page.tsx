@@ -552,6 +552,7 @@ function ModalCatalogage({ game: initGame, onClose, onSaved }: {
 function CataloguePageInner() {
   const searchParams = useSearchParams();
   const [catalogue, setCatalogue] = useState<CatalogueEntry[]>([]);
+  const [codesMap, setCodesMap] = useState<Record<string, string[]>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [recherche, setRecherche] = useState("");
   const [editGame, setEditGame] = useState<CatalogueEntry | null>(null);
@@ -573,22 +574,49 @@ function CataloguePageInner() {
 
   const loadCatalogue = async () => {
     setIsLoading(true);
-    const { data } = await supabase
-      .from("catalogue")
-      .select("ean, nom, auteurs, auteurs_json, editeur, description, resume, contenu, boite_format, couleur, mecanique, nb_de_joueurs, temps_de_jeu, etoiles, coop_versus, image_url")
-      .order("nom");
-    if (data) setCatalogue(data as CatalogueEntry[]);
+    const [{ data: catData }, { data: jeuxData }] = await Promise.all([
+      supabase
+        .from("catalogue")
+        .select("ean, nom, auteurs, auteurs_json, editeur, description, resume, contenu, boite_format, couleur, mecanique, nb_de_joueurs, temps_de_jeu, etoiles, coop_versus, image_url")
+        .order("nom"),
+      supabase
+        .from("jeux")
+        .select("ean, code_syracuse")
+        .not("code_syracuse", "is", null)
+        .neq("code_syracuse", ""),
+    ]);
+    if (catData) setCatalogue(catData as CatalogueEntry[]);
+    if (jeuxData) {
+      const map: Record<string, string[]> = {};
+      for (const j of jeuxData) {
+        if (!map[j.ean]) map[j.ean] = [];
+        map[j.ean].push(j.code_syracuse);
+      }
+      setCodesMap(map);
+    }
     setIsLoading(false);
   };
 
   const filtered = useMemo(() => {
     const q = normalizeStr(recherche);
-    return catalogue.filter(g => {
-      if (q && !normalizeStr(g.nom).includes(q) && !normalizeStr(g.editeur ?? "").includes(q)) return false;
+    const result = catalogue.filter(g => {
       if (filterComplet && completenessScore(g) < 7) return false;
-      return true;
+      if (!q) return true;
+      const codes = codesMap[g.ean] ?? [];
+      return (
+        normalizeStr(g.nom).includes(q) ||
+        normalizeStr(g.editeur ?? "").includes(q) ||
+        codes.some(c => normalizeStr(c).includes(q))
+      );
     });
-  }, [catalogue, recherche, filterComplet]);
+    // Jeux sélectionnés en tête, puis ordre alphabétique
+    return result.sort((a, b) => {
+      const aS = selected.has(a.ean) ? 0 : 1;
+      const bS = selected.has(b.ean) ? 0 : 1;
+      if (aS !== bS) return aS - bS;
+      return a.nom.localeCompare(b.nom);
+    });
+  }, [catalogue, recherche, filterComplet, codesMap, selected]);
 
   const handleSaved = useCallback((updated: CatalogueEntry) => {
     setCatalogue(prev => prev.map(g => g.ean === updated.ean ? { ...g, ...updated } : g));
@@ -665,14 +693,32 @@ function CataloguePageInner() {
           </div>
         </div>
 
-        {/* Sélection */}
+        {/* Sélection — résumé */}
         {selected.size > 0 && (
-          <div className="flex items-center gap-3 px-5 py-3 bg-slate-50 border border-slate-100 rounded-2xl flex-wrap">
-            <span className="text-sm font-bold text-black">{selected.size} sélectionné{selected.size > 1 ? "s" : ""}</span>
-            <button onClick={() => setSelected(new Set())}
-              className="ml-auto text-xs font-bold px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-500 hover:bg-slate-100 transition-colors">
-              Tout désélectionner
-            </button>
+          <div className="flex flex-col gap-2.5 px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl">
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-bold text-black">{selected.size} notice{selected.size > 1 ? "s" : ""} sélectionnée{selected.size > 1 ? "s" : ""}</span>
+              <button onClick={() => setSelected(new Set())}
+                className="ml-auto text-xs font-bold px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-500 hover:bg-slate-100 transition-colors">
+                Tout désélectionner
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {selectedGames.map(g => {
+                const codes = codesMap[g.ean] ?? [];
+                return (
+                  <span key={g.ean}
+                    className="flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 bg-white border border-slate-200 rounded-xl text-slate-700">
+                    {g.nom}
+                    {codes.length > 0 && (
+                      <span className="font-mono text-slate-400 font-normal">· {codes.join(", ")}</span>
+                    )}
+                    <button onClick={() => toggleSelect(g.ean)}
+                      className="text-slate-300 hover:text-rose-500 transition-colors ml-0.5 leading-none">✕</button>
+                  </span>
+                );
+              })}
+            </div>
           </div>
         )}
 
@@ -710,6 +756,7 @@ function CataloguePageInner() {
               const score = completenessScore(game);
               const auteurs = parseAuteurs(game.auteurs_json);
               const hasDesc = !!(game.description?.trim() || game.resume?.trim());
+              const codes = codesMap[game.ean] ?? [];
               return (
                 <div key={game.ean}
                   className={`flex items-center gap-3 p-3 rounded-2xl border-2 transition-all ${
@@ -737,6 +784,9 @@ function CataloguePageInner() {
                       {hasDesc && <span className="text-[10px] bg-emerald-50 text-emerald-600 font-bold px-1.5 py-0.5 rounded">Description ✓</span>}
                       {game.boite_format && <span className="text-[10px] bg-blue-50 text-blue-600 font-bold px-1.5 py-0.5 rounded">{game.boite_format}</span>}
                       {auteurs.length > 0 && <span className="text-[10px] bg-purple-50 text-purple-600 font-bold px-1.5 py-0.5 rounded">{auteurs.length} auteur{auteurs.length > 1 ? "s" : ""}</span>}
+                      {codes.map(c => (
+                        <span key={c} className="text-[10px] font-mono bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded">{c}</span>
+                      ))}
                     </div>
                   </div>
                   {/* Bouton cataloguer */}

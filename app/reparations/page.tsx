@@ -92,7 +92,7 @@ export default function ReparationsPage() {
 
   const inp: React.CSSProperties = {
     border: "2px solid var(--ink)", borderRadius: 8, padding: "9px 14px",
-    background: "var(--white)", outline: "none", fontSize: 14,
+    background: "var(--white)", outline: "none", fontSize: 15,
     fontFamily: "inherit", width: "100%", boxSizing: "border-box",
   };
 
@@ -109,7 +109,7 @@ export default function ReparationsPage() {
           display: "inline-flex", alignItems: "center", gap: 6,
           background: "var(--ink)", color: "var(--cream)",
           border: "2px solid var(--ink)", borderRadius: 6,
-          padding: "4px 12px", fontWeight: 700, fontSize: 13,
+          padding: "4px 12px", fontWeight: 700, fontSize: 14,
           textDecoration: "none", boxShadow: "2px 2px 0 rgba(0,0,0,0.3)",
           fontFamily: "inherit",
         }}>← Atelier</Link>
@@ -121,7 +121,7 @@ export default function ReparationsPage() {
         <span style={{
           marginLeft: "auto", background: "var(--orange)", color: "var(--ink)",
           border: "2px solid var(--ink)", borderRadius: 20, padding: "2px 12px",
-          fontSize: 13, fontWeight: 700, boxShadow: "2px 2px 0 var(--ink)",
+          fontSize: 14, fontWeight: 700, boxShadow: "2px 2px 0 var(--ink)",
         }}>{aFaire.length} à faire</span>
       </header>
 
@@ -129,7 +129,7 @@ export default function ReparationsPage() {
 
         {/* Formulaire ajout */}
         <div className="pop-card" style={{ padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
-          <p className="bc" style={{ fontSize: 16, margin: 0, letterSpacing: "0.03em" }}>Signaler une réparation</p>
+          <p className="bc" style={{ fontSize: 18, margin: 0, letterSpacing: "0.03em" }}>Signaler une réparation</p>
 
           <div style={{ display: "flex", gap: 12 }}>
             {/* Code Syracuse */}
@@ -158,14 +158,14 @@ export default function ReparationsPage() {
                     <div key={i} onClick={() => selectionnerSuggestion(jeu)}
                       style={{
                         padding: "10px 14px", cursor: "pointer", fontWeight: 700,
-                        fontSize: 14, borderBottom: "1px solid var(--cream2)",
+                        fontSize: 15, borderBottom: "1px solid var(--cream2)",
                         display: "flex", justifyContent: "space-between", alignItems: "center",
                       }}
                       onMouseEnter={e => (e.currentTarget.style.background = "var(--cream2)")}
                       onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
                     >
                       <span>{jeu.nom}</span>
-                      {jeu.code_syracuse && <span style={{ fontSize: 11, color: "rgba(0,0,0,0.4)", fontWeight: 400 }}>{jeu.code_syracuse}</span>}
+                      {jeu.code_syracuse && <span style={{ fontSize: 12, color: "rgba(0,0,0,0.4)", fontWeight: 400 }}>{jeu.code_syracuse}</span>}
                     </div>
                   ))}
                 </div>
@@ -179,7 +179,7 @@ export default function ReparationsPage() {
               {typesDispos.map(t => (
                 <button key={t} onClick={() => setTypeRep(t)}
                   style={{
-                    padding: "7px 14px", borderRadius: 20, fontSize: 13, fontWeight: 700,
+                    padding: "7px 14px", borderRadius: 20, fontSize: 14, fontWeight: 700,
                     border: "2px solid var(--ink)", cursor: "pointer", fontFamily: "inherit",
                     background: typeRep === t ? "var(--orange)" : "var(--white)",
                     color: "var(--ink)", boxShadow: typeRep === t ? "2px 2px 0 var(--ink)" : "none",
@@ -208,9 +208,9 @@ export default function ReparationsPage() {
               onClick={ajouterReparation}
               disabled={!nomJeu && !eanJeu}
               className="pop-btn pop-btn-dark"
-              style={{ padding: "9px 20px", fontSize: 14, opacity: (!nomJeu && !eanJeu) ? 0.4 : 1, cursor: (!nomJeu && !eanJeu) ? "not-allowed" : "pointer" }}
+              style={{ padding: "9px 20px", fontSize: 15, opacity: (!nomJeu && !eanJeu) ? 0.4 : 1, cursor: (!nomJeu && !eanJeu) ? "not-allowed" : "pointer" }}
             >
-              <span className="bc" style={{ fontSize: 15 }}>Ajouter</span>
+              <span className="bc" style={{ fontSize: 16 }}>Ajouter</span>
             </button>
           </div>
         </div>
@@ -224,15 +224,15 @@ export default function ReparationsPage() {
               <div key={r.id} className="pop-card" style={{ padding: "16px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16 }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 4 }}>
-                    <span style={{ fontWeight: 800, fontSize: 16 }}>{r.nom || "Jeu inconnu"}</span>
-                    {r.ean && <span style={{ fontSize: 11, color: "rgba(0,0,0,0.35)", fontWeight: 500 }}>({r.ean})</span>}
+                    <span style={{ fontWeight: 800, fontSize: 18 }}>{r.nom || "Jeu inconnu"}</span>
+                    {r.ean && <span style={{ fontSize: 12, color: "rgba(0,0,0,0.35)", fontWeight: 500 }}>({r.ean})</span>}
                     <span style={{
-                      fontSize: 11, fontWeight: 800, background: "var(--orange)", color: "var(--ink)",
+                      fontSize: 12, fontWeight: 800, background: "var(--orange)", color: "var(--ink)",
                       border: "1.5px solid var(--ink)", borderRadius: 6, padding: "2px 8px",
                       boxShadow: "1px 1px 0 var(--ink)", textTransform: "uppercase", letterSpacing: "0.05em",
                     }}>{r.type_reparation}</span>
                   </div>
-                  {r.description && <p style={{ color: "rgba(0,0,0,0.55)", fontWeight: 500, fontSize: 14, margin: 0 }}>{r.description}</p>}
+                  {r.description && <p style={{ color: "rgba(0,0,0,0.55)", fontWeight: 500, fontSize: 15, margin: 0 }}>{r.description}</p>}
                 </div>
                 <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
                   <button onClick={() => changerStatut(r.id, r.statut)}
@@ -240,14 +240,14 @@ export default function ReparationsPage() {
                     style={{
                       background: "var(--vert)", border: "2px solid var(--ink)",
                       boxShadow: "2px 2px 0 var(--ink)", padding: "7px 16px",
-                      fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
+                      fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
                     }}>
                     Valider ✓
                   </button>
                   <button onClick={() => supprimer(r.id)}
                     style={{
                       background: "none", border: "2px solid var(--ink)", borderRadius: 8,
-                      padding: "7px 10px", cursor: "pointer", fontSize: 15,
+                      padding: "7px 10px", cursor: "pointer", fontSize: 16,
                       boxShadow: "2px 2px 0 var(--ink)",
                     }}>🗑️</button>
                 </div>
@@ -257,7 +257,7 @@ export default function ReparationsPage() {
             {/* Terminées (repliées) */}
             {termines.length > 0 && (
               <div style={{ marginTop: 8 }}>
-                <p className="bc" style={{ fontSize: 14, color: "rgba(0,0,0,0.35)", letterSpacing: "0.05em", margin: "0 0 8px" }}>
+                <p className="bc" style={{ fontSize: 15, color: "rgba(0,0,0,0.35)", letterSpacing: "0.05em", margin: "0 0 8px" }}>
                   TERMINÉES ({termines.length})
                 </p>
                 {termines.map(r => (
@@ -268,16 +268,16 @@ export default function ReparationsPage() {
                     gap: 12, opacity: 0.55,
                   }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <span style={{ fontWeight: 700, fontSize: 14 }}>{r.nom}</span>
-                      {r.description && <span style={{ fontSize: 13, color: "rgba(0,0,0,0.4)", marginLeft: 8 }}>{r.description}</span>}
+                      <span style={{ fontWeight: 700, fontSize: 15 }}>{r.nom}</span>
+                      {r.description && <span style={{ fontSize: 14, color: "rgba(0,0,0,0.4)", marginLeft: 8 }}>{r.description}</span>}
                     </div>
                     <div style={{ display: "flex", gap: 6 }}>
                       <button onClick={() => changerStatut(r.id, r.statut)}
-                        style={{ background: "none", border: "1.5px solid var(--cream2)", borderRadius: 6, padding: "5px 12px", cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: "inherit" }}>
+                        style={{ background: "none", border: "1.5px solid var(--cream2)", borderRadius: 6, padding: "5px 12px", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "inherit" }}>
                         Rouvrir
                       </button>
                       <button onClick={() => supprimer(r.id)}
-                        style={{ background: "none", border: "none", cursor: "pointer", fontSize: 15, padding: "4px 6px" }}>🗑️</button>
+                        style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16, padding: "4px 6px" }}>🗑️</button>
                     </div>
                   </div>
                 ))}
