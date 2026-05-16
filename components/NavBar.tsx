@@ -83,7 +83,7 @@ export default function NavBar({ current }: { current?: Page }) {
           <rect x="4" y="5" width="8" height="2" rx="1" fill="#0d0d0d" />
           <rect x="4" y="9" width="5" height="2" rx="1" fill="#0d0d0d" />
         </svg>
-        <span className="bc" style={{ fontSize: 16, letterSpacing: "0.05em" }}>LUDOTOOL</span>
+        <span className="bc" style={{ fontSize: 18, letterSpacing: "0.05em" }}>LUDOTOOL</span>
       </Link>
 
       <div style={{ width: 2, height: 26, background: "rgba(0,0,0,0.1)", marginRight: 16, borderRadius: 1, flexShrink: 0 }} />
@@ -112,7 +112,7 @@ export default function NavBar({ current }: { current?: Page }) {
                 borderRadius: 6,
                 padding: "5px 12px",
                 fontWeight: isActive ? 700 : 500,
-                fontSize: 13,
+                fontSize: 14,
                 cursor: "pointer",
                 boxShadow: isActive ? "2px 2px 0 var(--ink)" : "none",
                 transform: isActive ? "rotate(-1deg) translateY(-1px)" : "none",

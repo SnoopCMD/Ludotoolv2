@@ -46,7 +46,7 @@ const S = {
     padding: "6px 10px",
     background: "var(--white)",
     outline: "none",
-    fontSize: 13,
+    fontSize: 14,
     fontFamily: "inherit",
     width: "100%",
   } as React.CSSProperties,
@@ -56,7 +56,7 @@ const S = {
     padding: "6px 8px",
     background: "var(--white)",
     outline: "none",
-    fontSize: 12,
+    fontSize: 13,
     fontFamily: "inherit",
     width: "100%",
     cursor: "pointer",
@@ -270,13 +270,13 @@ export default function EtiquettesPage() {
           display: "inline-flex", alignItems: "center", gap: 6,
           background: "var(--ink)", color: "var(--cream)",
           border: "2px solid var(--ink)", borderRadius: 6,
-          padding: "4px 12px", fontWeight: 700, fontSize: 12,
+          padding: "4px 12px", fontWeight: 700, fontSize: 13,
           textDecoration: "none", boxShadow: "2px 2px 0 rgba(0,0,0,0.3)",
           fontFamily: "inherit",
         }}>
           ← Atelier
         </Link>
-        <h1 className="bc" style={{ fontSize: 22, letterSpacing: "0.03em", margin: 0,
+        <h1 className="bc" style={{ fontSize: 24, letterSpacing: "0.03em", margin: 0,
           background: "linear-gradient(90deg, var(--rouge), var(--orange))",
           WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
         }}>
@@ -313,15 +313,15 @@ export default function EtiquettesPage() {
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <span className="bc" style={{ fontSize: 18, color: "var(--ink)", letterSpacing: "0.02em" }}>{cat.nom}</span>
+                    <span className="bc" style={{ fontSize: 20, color: "var(--ink)", letterSpacing: "0.02em" }}>{cat.nom}</span>
                     <span style={{
                       background: "rgba(0,0,0,0.12)", color: "var(--ink)",
-                      borderRadius: 20, padding: "2px 10px", fontSize: 11, fontWeight: 700,
+                      borderRadius: 20, padding: "2px 10px", fontSize: 12, fontWeight: 700,
                     }}>{etiquettes[cat.id].length} jeu(x)</span>
                     {nbIncomplets > 0 && (
                       <span style={{
                         background: "var(--rouge)", color: "var(--white)",
-                        borderRadius: 20, padding: "2px 10px", fontSize: 11, fontWeight: 700,
+                        borderRadius: 20, padding: "2px 10px", fontSize: 12, fontWeight: 700,
                         border: "1.5px solid var(--ink)", boxShadow: "1px 1px 0 var(--ink)",
                       }}>{nbIncomplets} incomplet(s)</span>
                     )}
@@ -334,12 +334,12 @@ export default function EtiquettesPage() {
                           width: 28, height: 28, borderRadius: "50%",
                           background: "rgba(0,0,0,0.15)", border: "1.5px solid rgba(0,0,0,0.2)",
                           display: "flex", alignItems: "center", justifyContent: "center",
-                          fontSize: 18, fontWeight: 900, cursor: "pointer", lineHeight: 1,
+                          fontSize: 20, fontWeight: 900, cursor: "pointer", lineHeight: 1,
                         }}
                         title="Ajouter une étiquette"
                       >+</button>
                     )}
-                    <span className="bc" style={{ fontSize: 20, width: 24, textAlign: "center" }}>{isOpen ? "−" : "+"}</span>
+                    <span className="bc" style={{ fontSize: 22, width: 24, textAlign: "center" }}>{isOpen ? "−" : "+"}</span>
                   </div>
                 </div>
 
@@ -391,7 +391,7 @@ export default function EtiquettesPage() {
                             {["Qte", "EAN", "Nom", "Mécanique", "Joueurs", "Coop/VS", "Temps", "Étoiles", ""].map((h, i) => (
                               <th key={i} className="bc" style={{
                                 padding: "10px 12px", textAlign: i === 0 || i >= 4 ? "center" : "left",
-                                fontSize: 12, letterSpacing: "0.05em", color: "var(--ink)",
+                                fontSize: 13, letterSpacing: "0.05em", color: "var(--ink)",
                                 whiteSpace: "nowrap",
                                 width: [64, 128, 180, 140, 90, 110, 90, 80, 48][i],
                               }}>{h}</th>
@@ -401,7 +401,7 @@ export default function EtiquettesPage() {
                         <tbody>
                           {etiquettes[cat.id].length === 0 ? (
                             <tr>
-                              <td colSpan={9} style={{ textAlign: "center", padding: "32px 0", color: "rgba(0,0,0,0.35)", fontWeight: 700, fontSize: 13 }}>
+                              <td colSpan={9} style={{ textAlign: "center", padding: "32px 0", color: "rgba(0,0,0,0.35)", fontWeight: 700, fontSize: 14 }}>
                                 Aucune étiquette — appuyez sur + dans l'en-tête.
                               </td>
                             </tr>
@@ -447,7 +447,7 @@ export default function EtiquettesPage() {
                                       onChange={(e) => mettreAJourLigne(cat.id, eti.id, "ean", e.target.value)}
                                       onBlur={(e) => chercherEan(cat.id, eti.id, e.target.value)}
                                       placeholder="Code-barres..."
-                                      style={{ ...S.inp, fontSize: 11 }}
+                                      style={{ ...S.inp, fontSize: 12 }}
                                     />
                                   </td>
                                   {/* Nom */}
@@ -510,7 +510,7 @@ export default function EtiquettesPage() {
                                     <select
                                       value={eti.etoiles}
                                       onChange={(e) => mettreAJourLigne(cat.id, eti.id, "etoiles", e.target.value === "" ? "" : Number(e.target.value))}
-                                      style={{ ...S.sel, textAlign: "center", fontWeight: 700, fontSize: 14, letterSpacing: 2, ...(eti.etoiles === "" ? S.inpErr : {}) }}
+                                      style={{ ...S.sel, textAlign: "center", fontWeight: 700, fontSize: 15, letterSpacing: 2, ...(eti.etoiles === "" ? S.inpErr : {}) }}
                                     >
                                       <option value="">-</option>
                                       <option value={1}>★</option>
@@ -525,7 +525,7 @@ export default function EtiquettesPage() {
                                       title="Supprimer la ligne"
                                       style={{
                                         background: "none", border: "none", cursor: "pointer",
-                                        fontSize: 16, padding: "4px 6px", borderRadius: 4,
+                                        fontSize: 18, padding: "4px 6px", borderRadius: 4,
                                         transition: "background 0.1s",
                                       }}
                                       onMouseEnter={e => (e.currentTarget.style.background = "#fff0f0")}
@@ -556,14 +556,14 @@ export default function EtiquettesPage() {
         }}>
           {/* Aside header */}
           <div style={{ padding: "16px 18px", borderBottom: "2.5px solid var(--ink)", background: "var(--cream2)" }}>
-            <h2 className="bc" style={{ fontSize: 16, margin: "0 0 12px", letterSpacing: "0.03em" }}>Générateur d&apos;étiquettes</h2>
+            <h2 className="bc" style={{ fontSize: 18, margin: "0 0 12px", letterSpacing: "0.03em" }}>Générateur d&apos;étiquettes</h2>
             <input
               type="text"
               placeholder="🔍  Rechercher un jeu..."
               value={recherche}
               onChange={(e) => setRecherche(e.target.value)}
               className="pop-input"
-              style={{ width: "100%", fontSize: 13, boxSizing: "border-box" }}
+              style={{ width: "100%", fontSize: 14, boxSizing: "border-box" }}
             />
           </div>
 
@@ -577,8 +577,8 @@ export default function EtiquettesPage() {
                   {/* Category label */}
                   <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 2px" }}>
                     <span style={{ width: 10, height: 10, borderRadius: "50%", background: cat.hex, border: "1.5px solid var(--ink)", flexShrink: 0 }} />
-                    <span style={{ fontSize: 10, fontWeight: 700, color: "rgba(0,0,0,0.5)", textTransform: "uppercase", letterSpacing: "0.06em" }}>{cat.nom}</span>
-                    <span style={{ fontSize: 10, color: "rgba(0,0,0,0.35)", fontWeight: 600 }}>({items.length})</span>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: "rgba(0,0,0,0.5)", textTransform: "uppercase", letterSpacing: "0.06em" }}>{cat.nom}</span>
+                    <span style={{ fontSize: 11, color: "rgba(0,0,0,0.35)", fontWeight: 600 }}>({items.length})</span>
                   </div>
                   {items.map(eti => (
                     <div key={`side-item-${eti.id}`} style={{
@@ -587,13 +587,13 @@ export default function EtiquettesPage() {
                       borderRadius: 7, border: "2px solid var(--ink)",
                       boxShadow: "2px 2px 0 var(--ink)",
                     }}>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: "var(--ink)", flex: 1, marginRight: 8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)", flex: 1, marginRight: 8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {eti.nom || <span style={{ fontStyle: "italic", color: "rgba(0,0,0,0.35)" }}>Sans nom</span>}
                       </span>
                       <div style={{ display: "flex", alignItems: "center", border: "2px solid var(--ink)", borderRadius: 6, background: "var(--white)", flexShrink: 0 }}>
-                        <button onClick={() => modifierQuantite(cat.id, eti.id, -1)} style={{ padding: "4px 8px", background: "none", border: "none", cursor: "pointer", fontWeight: 900, fontSize: 14, lineHeight: 1, borderRight: "1.5px solid var(--ink)" }}>−</button>
-                        <span style={{ width: 28, textAlign: "center", fontWeight: 700, fontSize: 13 }}>{eti.quantity}</span>
-                        <button onClick={() => modifierQuantite(cat.id, eti.id, 1)} style={{ padding: "4px 8px", background: "none", border: "none", cursor: "pointer", fontWeight: 900, fontSize: 14, lineHeight: 1, borderLeft: "1.5px solid var(--ink)" }}>+</button>
+                        <button onClick={() => modifierQuantite(cat.id, eti.id, -1)} style={{ padding: "4px 8px", background: "none", border: "none", cursor: "pointer", fontWeight: 900, fontSize: 15, lineHeight: 1, borderRight: "1.5px solid var(--ink)" }}>−</button>
+                        <span style={{ width: 28, textAlign: "center", fontWeight: 700, fontSize: 14 }}>{eti.quantity}</span>
+                        <button onClick={() => modifierQuantite(cat.id, eti.id, 1)} style={{ padding: "4px 8px", background: "none", border: "none", cursor: "pointer", fontWeight: 900, fontSize: 15, lineHeight: 1, borderLeft: "1.5px solid var(--ink)" }}>+</button>
                       </div>
                     </div>
                   ))}
@@ -604,7 +604,7 @@ export default function EtiquettesPage() {
 
           {/* PDF footer */}
           <div style={{ padding: "14px 16px", borderTop: "2.5px solid var(--ink)", background: "var(--cream2)" }}>
-            <p style={{ textAlign: "center", fontSize: 12, fontWeight: 700, color: "rgba(0,0,0,0.5)", margin: "0 0 10px" }}>
+            <p style={{ textAlign: "center", fontSize: 13, fontWeight: 700, color: "rgba(0,0,0,0.5)", margin: "0 0 10px" }}>
               {totalEtiquettes} étiquette(s)
             </p>
             {isClient ? (
@@ -616,12 +616,12 @@ export default function EtiquettesPage() {
                     className="pop-btn pop-btn-dark"
                     style={{
                       width: "100%", padding: "12px 0",
-                      fontSize: 13, letterSpacing: "0.04em",
+                      fontSize: 14, letterSpacing: "0.04em",
                       opacity: (totalEtiquettes === 0 || loading) ? 0.45 : 1,
                       cursor: (totalEtiquettes === 0 || loading) ? "not-allowed" : "pointer",
                     }}
                   >
-                    <span className="bc" style={{ fontSize: 14 }}>
+                    <span className="bc" style={{ fontSize: 15 }}>
                       {loading ? "PRÉPARATION PDF..." : "GÉNÉRER LES ÉTIQUETTES"}
                     </span>
                   </button>
@@ -629,7 +629,7 @@ export default function EtiquettesPage() {
               </PDFDownloadLink>
             ) : (
               <button disabled className="pop-btn pop-btn-dark" style={{ width: "100%", padding: "12px 0", opacity: 0.45, cursor: "not-allowed" }}>
-                <span className="bc" style={{ fontSize: 14 }}>CHARGEMENT...</span>
+                <span className="bc" style={{ fontSize: 15 }}>CHARGEMENT...</span>
               </button>
             )}
           </div>

@@ -545,12 +545,12 @@ export default function PiecesPage() {
 
   const inp: React.CSSProperties = {
     border: "2px solid var(--ink)", borderRadius: 8, padding: "9px 14px",
-    background: "var(--white)", outline: "none", fontSize: 13,
+    background: "var(--white)", outline: "none", fontSize: 14,
     fontFamily: "inherit", width: "100%", boxSizing: "border-box",
   };
 
   const pillBtn = (active: boolean, color: string): React.CSSProperties => ({
-    padding: "5px 12px", borderRadius: 20, fontSize: 11, fontWeight: 700,
+    padding: "5px 12px", borderRadius: 20, fontSize: 12, fontWeight: 700,
     border: "2px solid var(--ink)", cursor: "pointer", fontFamily: "inherit",
     whiteSpace: "nowrap",
     background: active ? color : "var(--white)",
@@ -571,26 +571,26 @@ export default function PiecesPage() {
           display: "inline-flex", alignItems: "center", gap: 6,
           background: "var(--ink)", color: "var(--cream)",
           border: "2px solid var(--ink)", borderRadius: 6, padding: "4px 12px",
-          fontWeight: 700, fontSize: 12, textDecoration: "none",
+          fontWeight: 700, fontSize: 13, textDecoration: "none",
           boxShadow: "2px 2px 0 rgba(0,0,0,0.3)", fontFamily: "inherit",
         }}>← Atelier</Link>
         <h1 className="bc" style={{
-          fontSize: 22, letterSpacing: "0.03em", margin: 0,
+          fontSize: 24, letterSpacing: "0.03em", margin: 0,
           background: "linear-gradient(90deg, var(--rouge), var(--vert))",
           WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
         }}>Pièces manquantes</h1>
         {nbManquant > 0 && (
           <button onClick={ouvrirCommande}
             className="pop-btn pop-btn-dark"
-            style={{ marginLeft: "auto", padding: "5px 14px", fontSize: 12, display: "flex", alignItems: "center", gap: 6 }}>
-            <span className="bc" style={{ fontSize: 13 }}>📬 Commander ({nbManquant})</span>
+            style={{ marginLeft: "auto", padding: "5px 14px", fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
+            <span className="bc" style={{ fontSize: 14 }}>📬 Commander ({nbManquant})</span>
           </button>
         )}
         <button onClick={() => { chargerEditeurs(); setIsEditeursOpen(true); }}
           style={{
             ...(nbManquant > 0 ? {} : { marginLeft: "auto" }),
             background: "var(--cream2)", border: "2px solid var(--ink)",
-            borderRadius: 6, padding: "5px 12px", fontSize: 12, fontWeight: 700,
+            borderRadius: 6, padding: "5px 12px", fontSize: 13, fontWeight: 700,
             cursor: "pointer", boxShadow: "2px 2px 0 var(--ink)", fontFamily: "inherit",
           }}>
           ⚙️ Éditeurs
@@ -604,7 +604,7 @@ export default function PiecesPage() {
           flex: 1, minWidth: 340, display: "flex", flexDirection: "column", gap: 16,
           borderTop: "4px solid var(--rouge)", padding: "20px 22px",
         }}>
-          <p className="bc" style={{ fontSize: 18, margin: 0, letterSpacing: "0.02em" }}>Jeux incomplets</p>
+          <p className="bc" style={{ fontSize: 20, margin: 0, letterSpacing: "0.02em" }}>Jeux incomplets</p>
 
           {/* Formulaire ajout */}
           <div style={{ background: "var(--cream2)", border: "2px solid var(--ink)", borderRadius: 10, padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
@@ -624,11 +624,11 @@ export default function PiecesPage() {
                   }}>
                     {suggestionsNom.map((jeu, i) => (
                       <div key={i} onClick={() => selectionnerSuggestion(jeu)}
-                        style={{ padding: "9px 14px", cursor: "pointer", fontWeight: 700, fontSize: 13, borderBottom: "1px solid var(--cream2)", display: "flex", justifyContent: "space-between" }}
+                        style={{ padding: "9px 14px", cursor: "pointer", fontWeight: 700, fontSize: 14, borderBottom: "1px solid var(--cream2)", display: "flex", justifyContent: "space-between" }}
                         onMouseEnter={e => (e.currentTarget.style.background = "var(--cream2)")}
                         onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
                         <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{jeu.nom}</span>
-                        {jeu.code_syracuse && <span style={{ fontSize: 10, color: "rgba(0,0,0,0.4)", flexShrink: 0, marginLeft: 8 }}>…{jeu.code_syracuse.slice(-4)}</span>}
+                        {jeu.code_syracuse && <span style={{ fontSize: 11, color: "rgba(0,0,0,0.4)", flexShrink: 0, marginLeft: 8 }}>…{jeu.code_syracuse.slice(-4)}</span>}
                       </div>
                     ))}
                   </div>
@@ -646,7 +646,7 @@ export default function PiecesPage() {
                     {contenuJeu.map((item, idx) => <option key={idx} value={item}>{item}</option>)}
                   </select>
                   <button onClick={() => setSaisieManuelle(true)}
-                    style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, fontWeight: 700, color: "rgba(0,0,0,0.4)", textDecoration: "underline", fontFamily: "inherit" }}>
+                    style={{ background: "none", border: "none", cursor: "pointer", fontSize: 12, fontWeight: 700, color: "rgba(0,0,0,0.4)", textDecoration: "underline", fontFamily: "inherit" }}>
                     Manuel
                   </button>
                 </>
@@ -659,7 +659,7 @@ export default function PiecesPage() {
               <button onClick={ajouterManquant}
                 disabled={!nomManq || (saisieManuelle ? !elemManqManuel : !qteManq)}
                 className="pop-btn"
-                style={{ background: "var(--rouge)", border: "2px solid var(--ink)", boxShadow: "2px 2px 0 var(--ink)", padding: "8px 18px", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", opacity: (!nomManq || (saisieManuelle ? !elemManqManuel : !qteManq)) ? 0.4 : 1 }}>
+                style={{ background: "var(--rouge)", border: "2px solid var(--ink)", boxShadow: "2px 2px 0 var(--ink)", padding: "8px 18px", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", opacity: (!nomManq || (saisieManuelle ? !elemManqManuel : !qteManq)) ? 0.4 : 1 }}>
                 Ajouter
               </button>
             </div>
@@ -686,35 +686,35 @@ export default function PiecesPage() {
                   }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
-                      <span style={{ fontWeight: 700, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.nom}</span>
-                      {m.ean && <span style={{ fontSize: 10, color: "rgba(0,0,0,0.35)" }}>{m.ean.slice(-4)}</span>}
-                      {isImpossible && <span style={{ fontSize: 10, fontWeight: 800, background: "#fff0f0", color: "var(--rouge)", border: "1.5px solid var(--rouge)", borderRadius: 6, padding: "1px 7px" }}>🚫 Indisponible</span>}
-                      {isCommande && <span style={{ fontSize: 10, fontWeight: 800, background: "var(--orange)", color: "var(--ink)", border: "1.5px solid var(--ink)", borderRadius: 6, padding: "1px 7px", boxShadow: "1px 1px 0 var(--ink)" }}>📦 Commandé</span>}
+                      <span style={{ fontWeight: 700, fontSize: 15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.nom}</span>
+                      {m.ean && <span style={{ fontSize: 11, color: "rgba(0,0,0,0.35)" }}>{m.ean.slice(-4)}</span>}
+                      {isImpossible && <span style={{ fontSize: 11, fontWeight: 800, background: "#fff0f0", color: "var(--rouge)", border: "1.5px solid var(--rouge)", borderRadius: 6, padding: "1px 7px" }}>🚫 Indisponible</span>}
+                      {isCommande && <span style={{ fontSize: 11, fontWeight: 800, background: "var(--orange)", color: "var(--ink)", border: "1.5px solid var(--ink)", borderRadius: 6, padding: "1px 7px", boxShadow: "1px 1px 0 var(--ink)" }}>📦 Commandé</span>}
                       {m.hasMatch && !isSuggestion && !isCommande && <span title="Une pièce correspondante a été trouvée !">💡</span>}
-                      {isSuggestion && !isCommande && <span style={{ fontSize: 10, fontWeight: 800, background: "var(--white)", color: "var(--rouge)", border: "1.5px solid var(--rouge)", borderRadius: 20, padding: "1px 8px" }}>✨ Suggestion</span>}
+                      {isSuggestion && !isCommande && <span style={{ fontSize: 11, fontWeight: 800, background: "var(--white)", color: "var(--rouge)", border: "1.5px solid var(--rouge)", borderRadius: 20, padding: "1px 8px" }}>✨ Suggestion</span>}
                     </div>
-                    <p style={{ color: isCommande ? "rgba(0,0,0,0.4)" : "var(--rouge)", fontWeight: 700, fontSize: 12, margin: 0 }}>{m.element_manquant}</p>
+                    <p style={{ color: isCommande ? "rgba(0,0,0,0.4)" : "var(--rouge)", fontWeight: 700, fontSize: 13, margin: 0 }}>{m.element_manquant}</p>
                   </div>
                   <div style={{ display: "flex", gap: 6, flexShrink: 0, flexWrap: "wrap" }}>
                     {pendingConfirmId === m.id ? (
                       <>
-                        <span style={{ fontSize: 11, fontWeight: 700, color: "rgba(0,0,0,0.5)", alignSelf: "center" }}>Commande envoyée ?</span>
-                        <button onClick={e => { e.stopPropagation(); confirmerCommande(m.id, true); }} style={{ background: "var(--vert)", border: "2px solid var(--ink)", borderRadius: 6, padding: "5px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Oui ✓</button>
-                        <button onClick={e => { e.stopPropagation(); confirmerCommande(m.id, false); }} style={{ background: "var(--cream2)", border: "2px solid var(--ink)", borderRadius: 6, padding: "5px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Non</button>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: "rgba(0,0,0,0.5)", alignSelf: "center" }}>Commande envoyée ?</span>
+                        <button onClick={e => { e.stopPropagation(); confirmerCommande(m.id, true); }} style={{ background: "var(--vert)", border: "2px solid var(--ink)", borderRadius: 6, padding: "5px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Oui ✓</button>
+                        <button onClick={e => { e.stopPropagation(); confirmerCommande(m.id, false); }} style={{ background: "var(--cream2)", border: "2px solid var(--ink)", borderRadius: 6, padding: "5px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Non</button>
                       </>
                     ) : isCommande ? (
                       <>
-                        <button onClick={e => { e.stopPropagation(); resoudreManquant(m.id); }} style={{ background: "var(--vert)", border: "2px solid var(--ink)", borderRadius: 6, padding: "5px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", boxShadow: "1px 1px 0 var(--ink)" }}>📦 Reçue ✓</button>
-                        <button onClick={e => { e.stopPropagation(); annulerCommande(m.id); }} style={{ background: "var(--cream2)", border: "2px solid var(--ink)", borderRadius: 6, padding: "5px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Annuler</button>
+                        <button onClick={e => { e.stopPropagation(); resoudreManquant(m.id); }} style={{ background: "var(--vert)", border: "2px solid var(--ink)", borderRadius: 6, padding: "5px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", boxShadow: "1px 1px 0 var(--ink)" }}>📦 Reçue ✓</button>
+                        <button onClick={e => { e.stopPropagation(); annulerCommande(m.id); }} style={{ background: "var(--cream2)", border: "2px solid var(--ink)", borderRadius: 6, padding: "5px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Annuler</button>
                       </>
                     ) : (
                       <>
                         <button onClick={e => { e.stopPropagation(); if (!isImpossible) commanderPieceDirecte(m); }}
                           disabled={isImpossible}
-                          style={{ background: isImpossible ? "var(--cream2)" : "var(--orange)", border: "2px solid var(--ink)", borderRadius: 6, padding: "5px 12px", fontSize: 11, fontWeight: 700, cursor: isImpossible ? "not-allowed" : "pointer", fontFamily: "inherit", boxShadow: isImpossible ? "none" : "1px 1px 0 var(--ink)", opacity: isImpossible ? 0.5 : 1 }}>
+                          style={{ background: isImpossible ? "var(--cream2)" : "var(--orange)", border: "2px solid var(--ink)", borderRadius: 6, padding: "5px 12px", fontSize: 12, fontWeight: 700, cursor: isImpossible ? "not-allowed" : "pointer", fontFamily: "inherit", boxShadow: isImpossible ? "none" : "1px 1px 0 var(--ink)", opacity: isImpossible ? 0.5 : 1 }}>
                           {isImpossible ? "🚫 Indisponible" : "🛒 Commander"}
                         </button>
-                        <button onClick={e => { e.stopPropagation(); resoudreManquant(m.id); }} style={{ background: "var(--cream2)", border: "2px solid var(--ink)", borderRadius: 6, padding: "5px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>✕</button>
+                        <button onClick={e => { e.stopPropagation(); resoudreManquant(m.id); }} style={{ background: "var(--cream2)", border: "2px solid var(--ink)", borderRadius: 6, padding: "5px 10px", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>✕</button>
                       </>
                     )}
                   </div>
@@ -730,7 +730,7 @@ export default function PiecesPage() {
           flex: 1, minWidth: 340, display: "flex", flexDirection: "column", gap: 16,
           borderTop: "4px solid var(--vert)", padding: "20px 22px",
         }}>
-          <p className="bc" style={{ fontSize: 18, margin: 0, letterSpacing: "0.02em" }}>Pièces orphelines</p>
+          <p className="bc" style={{ fontSize: 20, margin: 0, letterSpacing: "0.02em" }}>Pièces orphelines</p>
 
           {/* Formulaire ajout */}
           <div style={{ background: "var(--cream2)", border: "2px solid var(--ink)", borderRadius: 10, padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
@@ -743,7 +743,7 @@ export default function PiecesPage() {
                 style={{ ...inp, flex: 1 }} />
               <button onClick={ajouterTrouve} disabled={!descTrouvee}
                 className="pop-btn"
-                style={{ background: "var(--vert)", border: "2px solid var(--ink)", boxShadow: "2px 2px 0 var(--ink)", padding: "8px 18px", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", opacity: !descTrouvee ? 0.4 : 1 }}>
+                style={{ background: "var(--vert)", border: "2px solid var(--ink)", boxShadow: "2px 2px 0 var(--ink)", padding: "8px 18px", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", opacity: !descTrouvee ? 0.4 : 1 }}>
                 Ajouter
               </button>
             </div>
@@ -778,13 +778,13 @@ export default function PiecesPage() {
                   }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                      <span style={{ fontWeight: 700, fontSize: 14 }}>{t.description}</span>
-                      {isSuggestion && <span style={{ fontSize: 10, fontWeight: 800, background: "var(--white)", color: "var(--vert)", border: "1.5px solid var(--vert)", borderRadius: 20, padding: "1px 8px" }}>✨ Suggestion</span>}
+                      <span style={{ fontWeight: 700, fontSize: 15 }}>{t.description}</span>
+                      {isSuggestion && <span style={{ fontSize: 11, fontWeight: 800, background: "var(--white)", color: "var(--vert)", border: "1.5px solid var(--vert)", borderRadius: 20, padding: "1px 8px" }}>✨ Suggestion</span>}
                     </div>
-                    {t.nom_suppose && <p style={{ color: "rgba(0,0,0,0.45)", fontSize: 12, margin: "3px 0 0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Peut-être : <em>{t.nom_suppose}</em></p>}
+                    {t.nom_suppose && <p style={{ color: "rgba(0,0,0,0.45)", fontSize: 13, margin: "3px 0 0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Peut-être : <em>{t.nom_suppose}</em></p>}
                   </div>
                   <button onClick={e => { e.stopPropagation(); resoudreTrouve(t.id); }}
-                    style={{ background: "var(--cream2)", border: "2px solid var(--ink)", borderRadius: 6, padding: "5px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}>
+                    style={{ background: "var(--cream2)", border: "2px solid var(--ink)", borderRadius: 6, padding: "5px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}>
                     Retirer ✕
                   </button>
                 </div>
@@ -806,9 +806,9 @@ export default function PiecesPage() {
           display: "flex", alignItems: "center", gap: 20, zIndex: 50,
           border: "2.5px solid var(--ink)",
         }}>
-          <span style={{ fontWeight: 700, fontSize: 15, whiteSpace: "nowrap" }}>🔗 Lier 1 jeu et {selectedTrouvees.length} pièce(s) ?</span>
+          <span style={{ fontWeight: 700, fontSize: 16, whiteSpace: "nowrap" }}>🔗 Lier 1 jeu et {selectedTrouvees.length} pièce(s) ?</span>
           <button onClick={lierElements}
-            style={{ background: "var(--vert)", color: "var(--ink)", border: "2px solid var(--vert)", borderRadius: 10, padding: "8px 20px", fontWeight: 900, fontSize: 13, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>
+            style={{ background: "var(--vert)", color: "var(--ink)", border: "2px solid var(--vert)", borderRadius: 10, padding: "8px 20px", fontWeight: 900, fontSize: 14, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>
             Valider la fusion ✓
           </button>
         </div>
@@ -819,8 +819,8 @@ export default function PiecesPage() {
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 90, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
           <div className="pop-card" style={{ background: "var(--white)", width: "100%", maxWidth: 440, padding: 32, display: "flex", flexDirection: "column", gap: 20 }}>
             <div style={{ textAlign: "center" }}>
-              <p className="bc" style={{ fontSize: 22, margin: "0 0 4px", letterSpacing: "0.02em" }}>Liaison des pièces</p>
-              <p style={{ fontSize: 13, color: "rgba(0,0,0,0.45)", margin: 0 }}>
+              <p className="bc" style={{ fontSize: 24, margin: "0 0 4px", letterSpacing: "0.02em" }}>Liaison des pièces</p>
+              <p style={{ fontSize: 14, color: "rgba(0,0,0,0.45)", margin: 0 }}>
                 {lienConfirm.qteTrouvee} trouvée{lienConfirm.qteTrouvee > 1 ? "s" : ""} sur {lienConfirm.qteManquante} manquante{lienConfirm.qteManquante > 1 ? "s" : ""} · <strong>{lienConfirm.nomPiece}</strong>
               </p>
             </div>
@@ -829,19 +829,19 @@ export default function PiecesPage() {
             <div style={{ background: "var(--cream2)", border: "2px solid var(--ink)", borderRadius: 12, padding: 16, display: "flex", alignItems: "center", justifyContent: "center", gap: 16 }}>
               <div style={{ textAlign: "center" }}>
                 <p style={{ fontSize: 28, fontWeight: 900, color: "var(--vert)", margin: 0 }}>{lienConfirm.qteTrouvee}</p>
-                <p style={{ fontSize: 10, color: "rgba(0,0,0,0.4)", margin: 0, fontWeight: 700 }}>trouvée{lienConfirm.qteTrouvee > 1 ? "s" : ""}</p>
+                <p style={{ fontSize: 11, color: "rgba(0,0,0,0.4)", margin: 0, fontWeight: 700 }}>trouvée{lienConfirm.qteTrouvee > 1 ? "s" : ""}</p>
               </div>
               <span style={{ fontSize: 24, color: "rgba(0,0,0,0.2)", fontWeight: 900 }}>/</span>
               <div style={{ textAlign: "center" }}>
                 <p style={{ fontSize: 28, fontWeight: 900, color: "var(--ink)", margin: 0 }}>{lienConfirm.qteManquante}</p>
-                <p style={{ fontSize: 10, color: "rgba(0,0,0,0.4)", margin: 0, fontWeight: 700 }}>manquante{lienConfirm.qteManquante > 1 ? "s" : ""}</p>
+                <p style={{ fontSize: 11, color: "rgba(0,0,0,0.4)", margin: 0, fontWeight: 700 }}>manquante{lienConfirm.qteManquante > 1 ? "s" : ""}</p>
               </div>
               {lienConfirm.qteManquante - lienConfirm.qteTrouvee > 0 && (
                 <>
                   <span style={{ fontSize: 24, color: "rgba(0,0,0,0.2)", fontWeight: 900 }}>=</span>
                   <div style={{ textAlign: "center" }}>
                     <p style={{ fontSize: 28, fontWeight: 900, color: "var(--rouge)", margin: 0 }}>{lienConfirm.qteManquante - lienConfirm.qteTrouvee}</p>
-                    <p style={{ fontSize: 10, color: "rgba(0,0,0,0.4)", margin: 0, fontWeight: 700 }}>restante{lienConfirm.qteManquante - lienConfirm.qteTrouvee > 1 ? "s" : ""}</p>
+                    <p style={{ fontSize: 11, color: "rgba(0,0,0,0.4)", margin: 0, fontWeight: 700 }}>restante{lienConfirm.qteManquante - lienConfirm.qteTrouvee > 1 ? "s" : ""}</p>
                   </div>
                 </>
               )}
@@ -850,16 +850,16 @@ export default function PiecesPage() {
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {lienConfirm.qteManquante - lienConfirm.qteTrouvee > 0 && (
                 <button onClick={() => confirmerLien(false)}
-                  style={{ width: "100%", padding: "12px 20px", borderRadius: 10, background: "var(--rouge)", color: "var(--white)", border: "2.5px solid var(--ink)", boxShadow: "3px 3px 0 var(--ink)", fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>
+                  style={{ width: "100%", padding: "12px 20px", borderRadius: 10, background: "var(--rouge)", color: "var(--white)", border: "2.5px solid var(--ink)", boxShadow: "3px 3px 0 var(--ink)", fontWeight: 800, fontSize: 14, cursor: "pointer", fontFamily: "inherit" }}>
                   Résolution partielle — garder le jeu ({lienConfirm.qteManquante - lienConfirm.qteTrouvee} restante{lienConfirm.qteManquante - lienConfirm.qteTrouvee > 1 ? "s" : ""})
                 </button>
               )}
               <button onClick={() => confirmerLien(true)}
-                style={{ width: "100%", padding: "12px 20px", borderRadius: 10, background: "var(--ink)", color: "var(--white)", border: "2.5px solid var(--ink)", boxShadow: "3px 3px 0 rgba(0,0,0,0.3)", fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>
+                style={{ width: "100%", padding: "12px 20px", borderRadius: 10, background: "var(--ink)", color: "var(--white)", border: "2.5px solid var(--ink)", boxShadow: "3px 3px 0 rgba(0,0,0,0.3)", fontWeight: 800, fontSize: 14, cursor: "pointer", fontFamily: "inherit" }}>
                 Résolution totale — retirer le jeu ✓
               </button>
               <button onClick={() => setLienConfirm(null)}
-                style={{ width: "100%", padding: "10px 20px", borderRadius: 10, background: "var(--cream2)", color: "var(--ink)", border: "2px solid var(--ink)", fontWeight: 700, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>
+                style={{ width: "100%", padding: "10px 20px", borderRadius: 10, background: "var(--cream2)", color: "var(--ink)", border: "2px solid var(--ink)", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>
                 Annuler
               </button>
             </div>
@@ -874,12 +874,12 @@ export default function PiecesPage() {
             {/* Header */}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 24px", borderBottom: "2px solid var(--ink)", flexShrink: 0 }}>
               <div>
-                <h2 className="bc" style={{ fontSize: 20, margin: 0, letterSpacing: "0.02em" }}>Commander les pièces</h2>
-                <p style={{ fontSize: 12, color: "rgba(0,0,0,0.4)", margin: "2px 0 0", fontWeight: 600 }}>Groupé par éditeur</p>
+                <h2 className="bc" style={{ fontSize: 22, margin: 0, letterSpacing: "0.02em" }}>Commander les pièces</h2>
+                <p style={{ fontSize: 13, color: "rgba(0,0,0,0.4)", margin: "2px 0 0", fontWeight: 600 }}>Groupé par éditeur</p>
               </div>
               <div style={{ display: "flex", gap: 8 }}>
                 <button onClick={() => { chargerEditeurs(); setIsEditeursOpen(true); }}
-                  style={{ padding: "6px 14px", fontSize: 11, fontWeight: 700, background: "var(--cream2)", border: "2px solid var(--ink)", borderRadius: 8, cursor: "pointer", fontFamily: "inherit", boxShadow: "2px 2px 0 var(--ink)" }}>
+                  style={{ padding: "6px 14px", fontSize: 12, fontWeight: 700, background: "var(--cream2)", border: "2px solid var(--ink)", borderRadius: 8, cursor: "pointer", fontFamily: "inherit", boxShadow: "2px 2px 0 var(--ink)" }}>
                   ⚙️ Gérer éditeurs
                 </button>
                 <button onClick={() => { setIsCommandeOpen(false); setEmailGroupeIdx(null); }}
@@ -906,20 +906,20 @@ export default function PiecesPage() {
                       {/* En-tête groupe */}
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 16px", background: "var(--cream2)", borderBottom: "1.5px solid var(--ink)" }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <span style={{ fontWeight: 800, fontSize: 13 }}>{groupe.nomEditeur}</span>
-                          <span style={{ fontSize: 10, fontWeight: 800, background: tcBg[tc] ?? "var(--cream2)", color: tcColor[tc] ?? "var(--ink)", border: "1.5px solid var(--ink)", borderRadius: 20, padding: "1px 8px" }}>{TYPE_LABELS[tc]}</span>
-                          {toutCommande && <span style={{ fontSize: 10, fontWeight: 800, background: "var(--vert)", color: "var(--ink)", border: "1.5px solid var(--ink)", borderRadius: 20, padding: "1px 8px" }}>✓ Commandé</span>}
+                          <span style={{ fontWeight: 800, fontSize: 14 }}>{groupe.nomEditeur}</span>
+                          <span style={{ fontSize: 11, fontWeight: 800, background: tcBg[tc] ?? "var(--cream2)", color: tcColor[tc] ?? "var(--ink)", border: "1.5px solid var(--ink)", borderRadius: 20, padding: "1px 8px" }}>{TYPE_LABELS[tc]}</span>
+                          {toutCommande && <span style={{ fontSize: 11, fontWeight: 800, background: "var(--vert)", color: "var(--ink)", border: "1.5px solid var(--ink)", borderRadius: 20, padding: "1px 8px" }}>✓ Commandé</span>}
                         </div>
-                        <span style={{ fontSize: 11, color: "rgba(0,0,0,0.4)", fontWeight: 600 }}>{groupe.pieces.length} pièce{groupe.pieces.length > 1 ? "s" : ""}</span>
+                        <span style={{ fontSize: 12, color: "rgba(0,0,0,0.4)", fontWeight: 600 }}>{groupe.pieces.length} pièce{groupe.pieces.length > 1 ? "s" : ""}</span>
                       </div>
 
                       {/* Liste des pièces */}
                       <ul style={{ padding: "10px 16px", display: "flex", flexDirection: "column", gap: 4, margin: 0, listStyle: "none" }}>
                         {groupe.pieces.map(p => (
-                          <li key={p.id} style={{ fontSize: 13, display: "flex", alignItems: "baseline", gap: 8 }}>
+                          <li key={p.id} style={{ fontSize: 14, display: "flex", alignItems: "baseline", gap: 8 }}>
                             <span style={{ fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.nom}</span>
                             <span style={{ color: "rgba(0,0,0,0.4)", flexShrink: 0 }}>→ {p.element_manquant}</span>
-                            {p.statut === "Commandé" && <span style={{ fontSize: 10, fontWeight: 800, background: "var(--orange)", color: "var(--ink)", border: "1.5px solid var(--ink)", borderRadius: 6, padding: "1px 6px", flexShrink: 0 }}>Commandé</span>}
+                            {p.statut === "Commandé" && <span style={{ fontSize: 11, fontWeight: 800, background: "var(--orange)", color: "var(--ink)", border: "1.5px solid var(--ink)", borderRadius: 6, padding: "1px 6px", flexShrink: 0 }}>Commandé</span>}
                           </li>
                         ))}
                       </ul>
@@ -929,28 +929,28 @@ export default function PiecesPage() {
                         <div style={{ padding: "0 16px 14px", display: "flex", flexWrap: "wrap", gap: 8 }}>
                           {tc === "formulaire" && groupe.editeur?.url_formulaire && (
                             <a href={groupe.editeur.url_formulaire} target="_blank" rel="noopener noreferrer"
-                              style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 14px", borderRadius: 8, background: "var(--bleu)", color: "var(--white)", border: "2px solid var(--ink)", fontSize: 11, fontWeight: 700, textDecoration: "none", boxShadow: "2px 2px 0 var(--ink)" }}>
+                              style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 14px", borderRadius: 8, background: "var(--bleu)", color: "var(--white)", border: "2px solid var(--ink)", fontSize: 12, fontWeight: 700, textDecoration: "none", boxShadow: "2px 2px 0 var(--ink)" }}>
                               🔗 Ouvrir le formulaire ↗
                             </a>
                           )}
                           {tc === "email" && (
                             <button onClick={() => emailGroupeIdx === idx ? setEmailGroupeIdx(null) : ouvrirEmail(idx)}
-                              style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 14px", borderRadius: 8, background: "var(--purple)", color: "var(--white)", border: "2px solid var(--ink)", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", boxShadow: "2px 2px 0 var(--ink)" }}>
+                              style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 14px", borderRadius: 8, background: "var(--purple)", color: "var(--white)", border: "2px solid var(--ink)", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", boxShadow: "2px 2px 0 var(--ink)" }}>
                               ✉️ {emailGroupeIdx === idx ? "Masquer l'email" : "Rédiger l'email"}
                             </button>
                           )}
                           {tc === "inconnu" && (
-                            <span style={{ fontSize: 11, color: "rgba(0,0,0,0.4)", fontStyle: "italic", alignSelf: "center" }}>
-                              Éditeur non configuré — <button onClick={() => ouvrirConfigEditeur(groupe)} style={{ background: "none", border: "none", cursor: "pointer", fontWeight: 700, textDecoration: "underline", fontFamily: "inherit", fontSize: 11 }}>Configurer ↗</button>
+                            <span style={{ fontSize: 12, color: "rgba(0,0,0,0.4)", fontStyle: "italic", alignSelf: "center" }}>
+                              Éditeur non configuré — <button onClick={() => ouvrirConfigEditeur(groupe)} style={{ background: "none", border: "none", cursor: "pointer", fontWeight: 700, textDecoration: "underline", fontFamily: "inherit", fontSize: 12 }}>Configurer ↗</button>
                             </span>
                           )}
                           {tc === "impossible" && (
-                            <span style={{ fontSize: 11, color: "var(--rouge)", fontStyle: "italic", alignSelf: "center", display: "flex", gap: 4 }}>
-                              🚫 Cet éditeur ne fournit plus de pièces — <button onClick={() => ouvrirConfigEditeur(groupe)} style={{ background: "none", border: "none", cursor: "pointer", fontWeight: 700, textDecoration: "underline", fontFamily: "inherit", fontSize: 11, color: "var(--rouge)" }}>Modifier ↗</button>
+                            <span style={{ fontSize: 12, color: "var(--rouge)", fontStyle: "italic", alignSelf: "center", display: "flex", gap: 4 }}>
+                              🚫 Cet éditeur ne fournit plus de pièces — <button onClick={() => ouvrirConfigEditeur(groupe)} style={{ background: "none", border: "none", cursor: "pointer", fontWeight: 700, textDecoration: "underline", fontFamily: "inherit", fontSize: 12, color: "var(--rouge)" }}>Modifier ↗</button>
                             </span>
                           )}
                           <button onClick={() => marquerGroupeCommande(groupe)}
-                            style={{ marginLeft: "auto", padding: "6px 14px", borderRadius: 8, background: "var(--cream2)", border: "2px solid var(--ink)", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+                            style={{ marginLeft: "auto", padding: "6px 14px", borderRadius: 8, background: "var(--cream2)", border: "2px solid var(--ink)", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
                             Marquer commandé ✓
                           </button>
                         </div>
@@ -960,25 +960,25 @@ export default function PiecesPage() {
                       {emailGroupeIdx === idx && (
                         <div style={{ borderTop: "2px solid var(--ink)", padding: "14px 16px 16px", display: "flex", flexDirection: "column", gap: 12, background: "#f3f0ff" }}>
                           <div>
-                            <label style={{ fontSize: 10, fontWeight: 800, color: "rgba(0,0,0,0.45)", letterSpacing: "0.08em", textTransform: "uppercase", display: "block", marginBottom: 4 }}>À</label>
+                            <label style={{ fontSize: 11, fontWeight: 800, color: "rgba(0,0,0,0.45)", letterSpacing: "0.08em", textTransform: "uppercase", display: "block", marginBottom: 4 }}>À</label>
                             <input readOnly value={groupe.editeur?.email_contact ?? ""} style={{ ...inp, fontFamily: "monospace", color: "rgba(0,0,0,0.55)", background: "var(--cream2)" }} />
                           </div>
                           <div>
-                            <label style={{ fontSize: 10, fontWeight: 800, color: "rgba(0,0,0,0.45)", letterSpacing: "0.08em", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Objet</label>
+                            <label style={{ fontSize: 11, fontWeight: 800, color: "rgba(0,0,0,0.45)", letterSpacing: "0.08em", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Objet</label>
                             <input value={emailSujet} onChange={e => setEmailSujet(e.target.value)} style={inp} />
                           </div>
                           <div>
-                            <label style={{ fontSize: 10, fontWeight: 800, color: "rgba(0,0,0,0.45)", letterSpacing: "0.08em", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Corps</label>
+                            <label style={{ fontSize: 11, fontWeight: 800, color: "rgba(0,0,0,0.45)", letterSpacing: "0.08em", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Corps</label>
                             <textarea value={emailCorps} onChange={e => setEmailCorps(e.target.value)} rows={8}
                               style={{ ...inp, fontFamily: "monospace", resize: "vertical" }} />
                           </div>
                           <div style={{ display: "flex", gap: 8 }}>
                             <a href={buildMailto(groupe)}
-                              style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 8, background: "var(--purple)", color: "var(--white)", border: "2px solid var(--ink)", fontSize: 12, fontWeight: 700, textDecoration: "none", boxShadow: "2px 2px 0 var(--ink)" }}>
+                              style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 8, background: "var(--purple)", color: "var(--white)", border: "2px solid var(--ink)", fontSize: 13, fontWeight: 700, textDecoration: "none", boxShadow: "2px 2px 0 var(--ink)" }}>
                               ✉️ Ouvrir dans Outlook
                             </a>
                             <button onClick={() => marquerGroupeCommande(groupe)}
-                              style={{ padding: "8px 16px", borderRadius: 8, background: "var(--cream2)", border: "2px solid var(--ink)", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+                              style={{ padding: "8px 16px", borderRadius: 8, background: "var(--cream2)", border: "2px solid var(--ink)", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
                               Marquer commandé ✓
                             </button>
                           </div>
@@ -1000,16 +1000,16 @@ export default function PiecesPage() {
             {/* Header */}
             <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: "18px 24px", borderBottom: "2px solid var(--ink)", flexShrink: 0 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <h2 className="bc" style={{ fontSize: 20, margin: 0, letterSpacing: "0.02em" }}>
-                  Éditeurs <span style={{ fontSize: 14, fontWeight: 400, color: "rgba(0,0,0,0.35)" }}>({editeurs.length})</span>
+                <h2 className="bc" style={{ fontSize: 22, margin: 0, letterSpacing: "0.02em" }}>
+                  Éditeurs <span style={{ fontSize: 15, fontWeight: 400, color: "rgba(0,0,0,0.35)" }}>({editeurs.length})</span>
                 </h2>
                 <div style={{ display: "flex", gap: 8 }}>
                   <button onClick={importerEditeursDepuisCatalogue} disabled={isImporting}
-                    style={{ padding: "6px 14px", fontSize: 11, fontWeight: 700, background: "var(--cream2)", border: "2px solid var(--ink)", borderRadius: 8, cursor: "pointer", fontFamily: "inherit", boxShadow: "2px 2px 0 var(--ink)", opacity: isImporting ? 0.5 : 1 }}>
+                    style={{ padding: "6px 14px", fontSize: 12, fontWeight: 700, background: "var(--cream2)", border: "2px solid var(--ink)", borderRadius: 8, cursor: "pointer", fontFamily: "inherit", boxShadow: "2px 2px 0 var(--ink)", opacity: isImporting ? 0.5 : 1 }}>
                     {isImporting ? "…" : "⬇ Importer catalogue"}
                   </button>
                   <button onClick={() => setEditeurEdit({ type_commande: "inconnu" })}
-                    style={{ padding: "6px 14px", fontSize: 11, fontWeight: 700, background: "var(--ink)", color: "var(--white)", border: "2px solid var(--ink)", borderRadius: 8, cursor: "pointer", fontFamily: "inherit", boxShadow: "2px 2px 0 rgba(0,0,0,0.3)" }}>
+                    style={{ padding: "6px 14px", fontSize: 12, fontWeight: 700, background: "var(--ink)", color: "var(--white)", border: "2px solid var(--ink)", borderRadius: 8, cursor: "pointer", fontFamily: "inherit", boxShadow: "2px 2px 0 rgba(0,0,0,0.3)" }}>
                     + Ajouter
                   </button>
                   <button onClick={() => { setIsEditeursOpen(false); setEditeurEdit(null); setFiltreEditeur(""); }}
@@ -1031,23 +1031,23 @@ export default function PiecesPage() {
                       style={{ width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--cream2)", border: "2px solid var(--ink)", borderRadius: 8, fontWeight: 900, cursor: "pointer", fontFamily: "inherit", boxShadow: "2px 2px 0 var(--ink)" }}>
                       ←
                     </button>
-                    <p style={{ fontSize: 14, fontWeight: 800, margin: 0 }}>{editeurEdit.id ? `Modifier : ${editeurEdit._nomOriginal}` : "Nouvel éditeur"}</p>
+                    <p style={{ fontSize: 15, fontWeight: 800, margin: 0 }}>{editeurEdit.id ? `Modifier : ${editeurEdit._nomOriginal}` : "Nouvel éditeur"}</p>
                   </div>
 
                   <div>
-                    <label style={{ fontSize: 10, fontWeight: 800, color: "rgba(0,0,0,0.45)", letterSpacing: "0.08em", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Nom *</label>
+                    <label style={{ fontSize: 11, fontWeight: 800, color: "rgba(0,0,0,0.45)", letterSpacing: "0.08em", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Nom *</label>
                     <input placeholder="Nom de l'éditeur" value={editeurEdit.nom ?? ""} onChange={e => setEditeurEdit(p => ({ ...p, nom: e.target.value }))} style={{ ...inp, fontWeight: 700 }} />
                   </div>
 
                   <div>
-                    <label style={{ fontSize: 10, fontWeight: 800, color: "rgba(0,0,0,0.45)", letterSpacing: "0.08em", textTransform: "uppercase", display: "block", marginBottom: 8 }}>Type de commande</label>
+                    <label style={{ fontSize: 11, fontWeight: 800, color: "rgba(0,0,0,0.45)", letterSpacing: "0.08em", textTransform: "uppercase", display: "block", marginBottom: 8 }}>Type de commande</label>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                       {(["formulaire", "email", "inconnu", "impossible"] as const).map(t => {
                         const isActive = editeurEdit.type_commande === t;
                         const activeBg = t === "impossible" ? "var(--rouge)" : "var(--ink)";
                         return (
                           <button key={t} onClick={() => setEditeurEdit(p => ({ ...p, type_commande: t }))}
-                            style={{ flex: 1, minWidth: 90, padding: "10px 14px", borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", border: "2px solid var(--ink)", background: isActive ? activeBg : "var(--cream2)", color: isActive ? "var(--white)" : "var(--ink)", boxShadow: isActive ? "2px 2px 0 rgba(0,0,0,0.3)" : "none" }}>
+                            style={{ flex: 1, minWidth: 90, padding: "10px 14px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", border: "2px solid var(--ink)", background: isActive ? activeBg : "var(--cream2)", color: isActive ? "var(--white)" : "var(--ink)", boxShadow: isActive ? "2px 2px 0 rgba(0,0,0,0.3)" : "none" }}>
                             {TYPE_LABELS[t]}
                           </button>
                         );
@@ -1057,7 +1057,7 @@ export default function PiecesPage() {
 
                   {editeurEdit.type_commande === "formulaire" && (
                     <div>
-                      <label style={{ fontSize: 10, fontWeight: 800, color: "rgba(0,0,0,0.45)", letterSpacing: "0.08em", textTransform: "uppercase", display: "block", marginBottom: 4 }}>URL du formulaire</label>
+                      <label style={{ fontSize: 11, fontWeight: 800, color: "rgba(0,0,0,0.45)", letterSpacing: "0.08em", textTransform: "uppercase", display: "block", marginBottom: 4 }}>URL du formulaire</label>
                       <input placeholder="https://…" value={editeurEdit.url_formulaire ?? ""} onChange={e => setEditeurEdit(p => ({ ...p, url_formulaire: e.target.value }))} style={inp} />
                     </div>
                   )}
@@ -1065,15 +1065,15 @@ export default function PiecesPage() {
                   {editeurEdit.type_commande === "email" && (
                     <>
                       <div>
-                        <label style={{ fontSize: 10, fontWeight: 800, color: "rgba(0,0,0,0.45)", letterSpacing: "0.08em", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Email de contact</label>
+                        <label style={{ fontSize: 11, fontWeight: 800, color: "rgba(0,0,0,0.45)", letterSpacing: "0.08em", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Email de contact</label>
                         <input placeholder="sav@editeur.fr" value={editeurEdit.email_contact ?? ""} onChange={e => setEditeurEdit(p => ({ ...p, email_contact: e.target.value }))} style={{ ...inp, fontFamily: "monospace" }} />
                       </div>
                       <div>
-                        <label style={{ fontSize: 10, fontWeight: 800, color: "rgba(0,0,0,0.45)", letterSpacing: "0.08em", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Objet du mail <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>(optionnel)</span></label>
+                        <label style={{ fontSize: 11, fontWeight: 800, color: "rgba(0,0,0,0.45)", letterSpacing: "0.08em", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Objet du mail <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>(optionnel)</span></label>
                         <input placeholder="Commande de pièces manquantes – {editeur}" value={editeurEdit.sujet_email ?? ""} onChange={e => setEditeurEdit(p => ({ ...p, sujet_email: e.target.value }))} style={inp} />
                       </div>
                       <div>
-                        <label style={{ fontSize: 10, fontWeight: 800, color: "rgba(0,0,0,0.45)", letterSpacing: "0.08em", textTransform: "uppercase", display: "block", marginBottom: 4 }}>
+                        <label style={{ fontSize: 11, fontWeight: 800, color: "rgba(0,0,0,0.45)", letterSpacing: "0.08em", textTransform: "uppercase", display: "block", marginBottom: 4 }}>
                           Corps du mail <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>(variables : {"{pieces_liste}"} {"{date}"} {"{editeur}"})</span>
                         </label>
                         <textarea placeholder={CORPS_EMAIL_DEFAUT} value={editeurEdit.corps_email ?? ""} onChange={e => setEditeurEdit(p => ({ ...p, corps_email: e.target.value }))} rows={8}
@@ -1083,17 +1083,17 @@ export default function PiecesPage() {
                   )}
 
                   <div>
-                    <label style={{ fontSize: 10, fontWeight: 800, color: "rgba(0,0,0,0.45)", letterSpacing: "0.08em", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Notes internes <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>(optionnel)</span></label>
+                    <label style={{ fontSize: 11, fontWeight: 800, color: "rgba(0,0,0,0.45)", letterSpacing: "0.08em", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Notes internes <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>(optionnel)</span></label>
                     <input placeholder="Ex : contacter le distributeur Asmodee" value={editeurEdit.notes ?? ""} onChange={e => setEditeurEdit(p => ({ ...p, notes: e.target.value }))} style={inp} />
                   </div>
 
                   <div style={{ display: "flex", gap: 10, paddingTop: 8 }}>
                     <button onClick={() => setEditeurEdit(null)}
-                      style={{ flex: 1, padding: "10px 20px", borderRadius: 8, background: "var(--cream2)", color: "var(--ink)", border: "2px solid var(--ink)", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>
+                      style={{ flex: 1, padding: "10px 20px", borderRadius: 8, background: "var(--cream2)", color: "var(--ink)", border: "2px solid var(--ink)", fontWeight: 700, fontSize: 14, cursor: "pointer", fontFamily: "inherit" }}>
                       Annuler
                     </button>
                     <button onClick={sauvegarderEditeur} disabled={!editeurEdit.nom?.trim() || isSavingEditeur}
-                      style={{ flex: 1, padding: "10px 20px", borderRadius: 8, background: "var(--ink)", color: "var(--white)", border: "2px solid var(--ink)", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "inherit", boxShadow: "2px 2px 0 rgba(0,0,0,0.3)", opacity: (!editeurEdit.nom?.trim() || isSavingEditeur) ? 0.4 : 1 }}>
+                      style={{ flex: 1, padding: "10px 20px", borderRadius: 8, background: "var(--ink)", color: "var(--white)", border: "2px solid var(--ink)", fontWeight: 700, fontSize: 14, cursor: "pointer", fontFamily: "inherit", boxShadow: "2px 2px 0 rgba(0,0,0,0.3)", opacity: (!editeurEdit.nom?.trim() || isSavingEditeur) ? 0.4 : 1 }}>
                       {isSavingEditeur ? "…" : "Sauvegarder"}
                     </button>
                   </div>
@@ -1112,23 +1112,23 @@ export default function PiecesPage() {
                         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px" }}>
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                              <span style={{ fontWeight: 800, fontSize: 13 }}>{e.nom}</span>
-                              <span style={{ fontSize: 10, fontWeight: 800, background: tcBg2[e.type_commande] ?? "var(--cream2)", color: tcCol2[e.type_commande] ?? "var(--ink)", border: "1.5px solid var(--ink)", borderRadius: 20, padding: "1px 8px" }}>{TYPE_LABELS[e.type_commande]}</span>
+                              <span style={{ fontWeight: 800, fontSize: 14 }}>{e.nom}</span>
+                              <span style={{ fontSize: 11, fontWeight: 800, background: tcBg2[e.type_commande] ?? "var(--cream2)", color: tcCol2[e.type_commande] ?? "var(--ink)", border: "1.5px solid var(--ink)", borderRadius: 20, padding: "1px 8px" }}>{TYPE_LABELS[e.type_commande]}</span>
                             </div>
-                            {e.type_commande === "email" && e.email_contact && <p style={{ fontSize: 11, color: "rgba(0,0,0,0.4)", margin: "2px 0 0", fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.email_contact}</p>}
-                            {e.type_commande === "formulaire" && e.url_formulaire && <p style={{ fontSize: 11, color: "rgba(0,0,0,0.4)", margin: "2px 0 0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.url_formulaire}</p>}
+                            {e.type_commande === "email" && e.email_contact && <p style={{ fontSize: 12, color: "rgba(0,0,0,0.4)", margin: "2px 0 0", fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.email_contact}</p>}
+                            {e.type_commande === "formulaire" && e.url_formulaire && <p style={{ fontSize: 12, color: "rgba(0,0,0,0.4)", margin: "2px 0 0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.url_formulaire}</p>}
                           </div>
                           <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
                             <button onClick={() => setFusionSourceId(fusionSourceId === e.id ? null : e.id)}
-                              style={{ padding: "5px 10px", borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", border: "2px solid var(--ink)", background: fusionSourceId === e.id ? "var(--orange)" : "var(--cream2)", boxShadow: fusionSourceId === e.id ? "2px 2px 0 var(--ink)" : "none" }}>
+                              style={{ padding: "5px 10px", borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", border: "2px solid var(--ink)", background: fusionSourceId === e.id ? "var(--orange)" : "var(--cream2)", boxShadow: fusionSourceId === e.id ? "2px 2px 0 var(--ink)" : "none" }}>
                               ⇄
                             </button>
                             <button onClick={() => setEditeurEdit({ ...e, _nomOriginal: e.nom })}
-                              style={{ padding: "5px 10px", borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", border: "2px solid var(--ink)", background: "var(--cream2)" }}>
+                              style={{ padding: "5px 10px", borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", border: "2px solid var(--ink)", background: "var(--cream2)" }}>
                               ✏️
                             </button>
                             <button onClick={() => supprimerEditeur(e.id)}
-                              style={{ padding: "5px 10px", borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", border: "2px solid var(--rouge)", background: "#fff0f4", color: "var(--rouge)" }}>
+                              style={{ padding: "5px 10px", borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", border: "2px solid var(--rouge)", background: "#fff0f4", color: "var(--rouge)" }}>
                               ✕
                             </button>
                           </div>
@@ -1137,20 +1137,20 @@ export default function PiecesPage() {
                         {/* Panneau fusion */}
                         {fusionSourceId === e.id && (
                           <div style={{ borderTop: "2px solid var(--orange)", background: "#fff8f0", padding: "10px 14px", display: "flex", alignItems: "center", gap: 8 }}>
-                            <span style={{ fontSize: 11, fontWeight: 800, color: "var(--ink)", flexShrink: 0 }}>Fusionner vers →</span>
+                            <span style={{ fontSize: 12, fontWeight: 800, color: "var(--ink)", flexShrink: 0 }}>Fusionner vers →</span>
                             <select value={fusionCibleId} onChange={ev => setFusionCibleId(ev.target.value)}
-                              style={{ flex: 1, padding: "6px 10px", borderRadius: 6, border: "2px solid var(--ink)", fontSize: 11, background: "var(--white)", fontFamily: "inherit" }}>
+                              style={{ flex: 1, padding: "6px 10px", borderRadius: 6, border: "2px solid var(--ink)", fontSize: 12, background: "var(--white)", fontFamily: "inherit" }}>
                               <option value="">Choisir l&apos;éditeur cible…</option>
                               {editeurs.filter(x => x.id !== e.id).map(x => (
                                 <option key={x.id} value={x.id}>{x.nom}</option>
                               ))}
                             </select>
                             <button onClick={fusionnerEditeur} disabled={!fusionCibleId || isFusioning}
-                              style={{ padding: "6px 12px", borderRadius: 6, background: "var(--orange)", color: "var(--ink)", border: "2px solid var(--ink)", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", boxShadow: "2px 2px 0 var(--ink)", opacity: (!fusionCibleId || isFusioning) ? 0.4 : 1, flexShrink: 0 }}>
+                              style={{ padding: "6px 12px", borderRadius: 6, background: "var(--orange)", color: "var(--ink)", border: "2px solid var(--ink)", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", boxShadow: "2px 2px 0 var(--ink)", opacity: (!fusionCibleId || isFusioning) ? 0.4 : 1, flexShrink: 0 }}>
                               {isFusioning ? "…" : "Fusionner"}
                             </button>
                             <button onClick={() => { setFusionSourceId(null); setFusionCibleId(""); }}
-                              style={{ padding: "6px 10px", borderRadius: 6, background: "var(--cream2)", border: "2px solid var(--ink)", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+                              style={{ padding: "6px 10px", borderRadius: 6, background: "var(--cream2)", border: "2px solid var(--ink)", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
                               ✕
                             </button>
                           </div>

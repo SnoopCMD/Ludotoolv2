@@ -367,7 +367,7 @@ export default function Home() {
   const S = {
     modal: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 } as React.CSSProperties,
     modalBox: { background: 'var(--cream)', border: '3px solid var(--ink)', borderRadius: 12, boxShadow: '8px 8px 0 var(--ink)', width: '100%', display: 'flex', flexDirection: 'column', maxHeight: '90vh' } as React.CSSProperties,
-    closeBtn: { width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--ink)', color: 'var(--white)', border: '2px solid var(--ink)', borderRadius: 6, boxShadow: '2px 2px 0 rgba(0,0,0,0.3)', fontWeight: 700, fontSize: 14, cursor: 'pointer', flexShrink: 0 } as React.CSSProperties,
+    closeBtn: { width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--ink)', color: 'var(--white)', border: '2px solid var(--ink)', borderRadius: 6, boxShadow: '2px 2px 0 rgba(0,0,0,0.3)', fontWeight: 700, fontSize: 15, cursor: 'pointer', flexShrink: 0 } as React.CSSProperties,
   };
 
   return (
@@ -387,7 +387,7 @@ export default function Home() {
             <div className="bc" style={{ fontSize: 80, lineHeight: 0.9, textTransform: 'uppercase', letterSpacing: '-1px', background: 'linear-gradient(135deg, #0d0d0d 40%, #a8e063)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
               Atelier
             </div>
-            <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.4)', marginTop: 6 }}>{totalEnPrepa} jeux en préparation</div>
+            <div style={{ fontSize: 13, color: 'rgba(0,0,0,0.4)', marginTop: 6 }}>{totalEnPrepa} jeux en préparation</div>
           </div>
           <button onClick={() => setIsModalOpen(true)} className="pop-btn pop-btn-dark">+ Ajouter un jeu</button>
         </div>
@@ -405,9 +405,9 @@ export default function Home() {
             <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(circle,rgba(0,0,0,0.06) 1.5px,transparent 1.5px)', backgroundSize: '14px 14px', borderRadius: 10, pointerEvents: 'none' }} />
             <div className="sticker-main" style={{ background: 'var(--yellow)', border: '3.5px solid var(--ink)', borderRadius: 16, padding: '20px 32px', transform: 'rotate(-4deg) scale(1)', boxShadow: '7px 7px 0 var(--ink)', transition: 'transform .15s ease', textAlign: 'center', position: 'relative', zIndex: 1, userSelect: 'none' }}>
               <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(circle,rgba(0,0,0,0.07) 1.2px,transparent 1.2px)', backgroundSize: '10px 10px', borderRadius: 13, pointerEvents: 'none' }} />
-              <div style={{ position: 'absolute', top: -14, left: '50%', transform: 'translateX(-50%)', background: 'var(--ink)', color: 'var(--white)', border: '2.5px solid var(--ink)', borderRadius: 20, padding: '3px 14px', fontWeight: 700, fontSize: 10, textTransform: 'uppercase', letterSpacing: '.1em', boxShadow: '2px 2px 0 rgba(0,0,0,0.3)', whiteSpace: 'nowrap' }}>En préparation</div>
+              <div style={{ position: 'absolute', top: -14, left: '50%', transform: 'translateX(-50%)', background: 'var(--ink)', color: 'var(--white)', border: '2.5px solid var(--ink)', borderRadius: 20, padding: '3px 14px', fontWeight: 700, fontSize: 11, textTransform: 'uppercase', letterSpacing: '.1em', boxShadow: '2px 2px 0 rgba(0,0,0,0.3)', whiteSpace: 'nowrap' }}>En préparation</div>
               <div className="bc" style={{ fontSize: 110, lineHeight: 0.9, letterSpacing: '-5px', color: 'var(--ink)', position: 'relative', zIndex: 1, marginTop: 12 }}>{formatNum(totalEnPrepa)}</div>
-              <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.1em', color: 'rgba(0,0,0,0.5)', marginTop: 6, position: 'relative', zIndex: 1 }}>Jeux en préparation</div>
+              <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.1em', color: 'rgba(0,0,0,0.5)', marginTop: 6, position: 'relative', zIndex: 1 }}>Jeux en préparation</div>
               {/* Recherche */}
               <div style={{ marginTop: 14, position: 'relative', zIndex: 1 }} onClick={e => e.stopPropagation()}>
                 <input
@@ -416,16 +416,16 @@ export default function Home() {
                   value={rechercheJeu}
                   onChange={e => { setRechercheJeu(e.target.value); setIsSearchDropdownOpen(true); }}
                   onFocus={() => setIsSearchDropdownOpen(true)}
-                  style={{ width: '100%', background: 'rgba(255,255,255,0.55)', border: '2px solid rgba(0,0,0,0.18)', borderRadius: 20, padding: '6px 14px', fontSize: 11, outline: 'none', fontFamily: 'inherit' }}
+                  style={{ width: '100%', background: 'rgba(255,255,255,0.55)', border: '2px solid rgba(0,0,0,0.18)', borderRadius: 20, padding: '6px 14px', fontSize: 12, outline: 'none', fontFamily: 'inherit' }}
                 />
                 {rechercheJeu && isSearchDropdownOpen && (
                   <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'var(--white)', border: '2.5px solid var(--ink)', borderRadius: 8, boxShadow: '4px 4px 0 var(--ink)', marginTop: 6, maxHeight: 180, overflowY: 'auto', zIndex: 30, textAlign: 'left' }}>
                     {jeuxEnPrepaFiltres.length === 0 ? (
-                      <div style={{ padding: '12px 14px', fontSize: 12, color: 'rgba(0,0,0,0.4)' }}>Aucun jeu trouvé</div>
+                      <div style={{ padding: '12px 14px', fontSize: 13, color: 'rgba(0,0,0,0.4)' }}>Aucun jeu trouvé</div>
                     ) : jeuxEnPrepaFiltres.map(jeu => (
-                      <div key={jeu.id} onClick={() => { setRechercheJeu(jeu.nom); setIsSearchDropdownOpen(false); setIsListeOpen(true); }} style={{ padding: '10px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer', borderBottom: '1.5px solid var(--cream2)' }}
+                      <div key={jeu.id} onClick={() => { setRechercheJeu(jeu.nom); setIsSearchDropdownOpen(false); setIsListeOpen(true); }} style={{ padding: '10px 14px', fontSize: 14, fontWeight: 600, cursor: 'pointer', borderBottom: '1.5px solid var(--cream2)' }}
                         onMouseEnter={e => (e.currentTarget.style.background = 'var(--cream2)')} onMouseLeave={e => (e.currentTarget.style.background = '')}>
-                        {jeu.nom}<span style={{ display: 'block', fontSize: 10, fontWeight: 400, color: 'rgba(0,0,0,0.4)' }}>EAN: {jeu.ean}</span>
+                        {jeu.nom}<span style={{ display: 'block', fontSize: 11, fontWeight: 400, color: 'rgba(0,0,0,0.4)' }}>EAN: {jeu.ean}</span>
                       </div>
                     ))}
                   </div>
@@ -463,8 +463,8 @@ export default function Home() {
                 ].map(item => (
                   <Link key={item.href + item.label} href={item.href}>
                     <div className="pop-card pop-card-hover" style={{ background: 'rgba(255,255,255,0.55)', padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}>
-                      <span style={{ fontWeight: 700, fontSize: 13 }}>{item.label}</span>
-                      <span className="pop-sticker" style={{ background: 'var(--white)', fontSize: 11 }}>{item.count}</span>
+                      <span style={{ fontWeight: 700, fontSize: 14 }}>{item.label}</span>
+                      <span className="pop-sticker" style={{ background: 'var(--white)', fontSize: 12 }}>{item.count}</span>
                     </div>
                   </Link>
                 ))}
@@ -477,7 +477,7 @@ export default function Home() {
         <div className="pop-card" style={{ background: 'var(--ink)', padding: '28px 32px', position: 'relative', overflow: 'hidden' }}>
           <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(circle,rgba(255,255,255,0.05) 1px,transparent 1px)', backgroundSize: '16px 16px', pointerEvents: 'none' }} />
           <div style={{ position: 'relative', zIndex: 1 }}>
-            <div className="bc" style={{ fontSize: 22, textTransform: 'uppercase', letterSpacing: '.04em', color: 'rgba(255,255,255,0.55)', marginBottom: 18, borderBottom: '3px solid rgba(255,255,255,0.1)', paddingBottom: 10 }}>Préparations à faire</div>
+            <div className="bc" style={{ fontSize: 24, textTransform: 'uppercase', letterSpacing: '.04em', color: 'rgba(255,255,255,0.55)', marginBottom: 18, borderBottom: '3px solid rgba(255,255,255,0.1)', paddingBottom: 10 }}>Préparations à faire</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 10 }}>
               {etapesVisuelles.map(etape => (
                 <div
@@ -488,7 +488,7 @@ export default function Home() {
                   onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = ''; (e.currentTarget as HTMLElement).style.boxShadow = '4px 4px 0 rgba(0,0,0,0.4)'; }}
                 >
                   <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(circle,rgba(0,0,0,0.07) 1px,transparent 1px)', backgroundSize: '10px 10px', pointerEvents: 'none' }} />
-                  <span style={{ fontWeight: 700, fontSize: 11, textTransform: 'uppercase', letterSpacing: '.04em', position: 'relative', zIndex: 1 }}>{etape.nom}</span>
+                  <span style={{ fontWeight: 700, fontSize: 12, textTransform: 'uppercase', letterSpacing: '.04em', position: 'relative', zIndex: 1 }}>{etape.nom}</span>
                   <span className="bc" style={{ fontSize: 52, lineHeight: 1, letterSpacing: '-2px', position: 'relative', zIndex: 1 }}>{formatNum(comptesEtapes[etape.id] || 0)}</span>
                 </div>
               ))}
@@ -504,7 +504,7 @@ export default function Home() {
             <div style={{ padding: '20px 24px', borderBottom: '3px solid var(--ink)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: etapeActiveInfo.hex }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <span className="bc" style={{ fontSize: 24, textTransform: 'uppercase' }}>{etapeActiveInfo.nom}</span>
-                <span className="pop-sticker" style={{ background: 'var(--ink)', color: 'var(--white)', fontSize: 11 }}>{jeuxPourEtapeActive.length} jeu(x)</span>
+                <span className="pop-sticker" style={{ background: 'var(--ink)', color: 'var(--white)', fontSize: 12 }}>{jeuxPourEtapeActive.length} jeu(x)</span>
               </div>
               <button style={S.closeBtn} onClick={() => { setEtapeActive(null); setRechercheEtape(""); }}>✕</button>
             </div>
@@ -513,22 +513,22 @@ export default function Home() {
             </div>
             <div style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 6 }}>
               {jeuxPourEtapeActive.length === 0 ? (
-                <p style={{ textAlign: 'center', color: 'rgba(0,0,0,0.4)', padding: '40px 0', fontSize: 13 }}>Tous les jeux ont validé cette étape !</p>
+                <p style={{ textAlign: 'center', color: 'rgba(0,0,0,0.4)', padding: '40px 0', fontSize: 14 }}>Tous les jeux ont validé cette étape !</p>
               ) : jeuxPourEtapeActive
                 .filter(j => !rechercheEtape || j.nom.toLowerCase().includes(rechercheEtape.toLowerCase()) || j.ean.includes(rechercheEtape))
                 .map(jeu => (
                   <label key={jeu.id} className="pop-card" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', cursor: 'pointer', background: jeuxSelectionnes.includes(jeu.id) ? 'var(--cream2)' : 'var(--white)', boxShadow: jeuxSelectionnes.includes(jeu.id) ? '4px 4px 0 var(--ink)' : '2px 2px 0 var(--ink)' }}>
                     <input type="checkbox" className="custom-cb" checked={jeuxSelectionnes.includes(jeu.id)} onChange={() => toggleSelection(jeu.id)} />
                     <div style={{ flex: 1 }}>
-                      <span style={{ fontWeight: 700, fontSize: 14, display: 'block' }}>{jeu.nom}</span>
-                      <span style={{ fontSize: 11, color: 'rgba(0,0,0,0.4)' }}>EAN: {jeu.ean}</span>
+                      <span style={{ fontWeight: 700, fontSize: 15, display: 'block' }}>{jeu.nom}</span>
+                      <span style={{ fontSize: 12, color: 'rgba(0,0,0,0.4)' }}>EAN: {jeu.ean}</span>
                     </div>
                   </label>
                 ))
               }
             </div>
             <div style={{ padding: '16px 24px', borderTop: '3px solid var(--ink)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-              <button style={{ fontWeight: 700, fontSize: 13, background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(0,0,0,0.5)', textDecoration: 'underline' }} onClick={() => setJeuxSelectionnes(jeuxPourEtapeActive.length === jeuxSelectionnes.length ? [] : jeuxPourEtapeActive.map(j => j.id))}>
+              <button style={{ fontWeight: 700, fontSize: 14, background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(0,0,0,0.5)', textDecoration: 'underline' }} onClick={() => setJeuxSelectionnes(jeuxPourEtapeActive.length === jeuxSelectionnes.length ? [] : jeuxPourEtapeActive.map(j => j.id))}>
                 {jeuxPourEtapeActive.length === jeuxSelectionnes.length ? "Tout désélectionner" : "Tout sélectionner"}
               </button>
               <button className="pop-btn pop-btn-dark" onClick={validerSelectionEtape} disabled={jeuxSelectionnes.length === 0} style={{ opacity: jeuxSelectionnes.length === 0 ? 0.4 : 1 }}>
@@ -545,8 +545,8 @@ export default function Home() {
           <div style={{ ...S.modalBox, maxWidth: 480 }}>
             <div style={{ padding: '20px 24px', borderBottom: '3px solid var(--ink)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--rose)' }}>
               <div>
-                <div className="bc" style={{ fontSize: 22, textTransform: 'uppercase' }}>Codes Syracuse</div>
-                <div style={{ fontSize: 11, color: 'rgba(0,0,0,0.5)', marginTop: 2 }}>
+                <div className="bc" style={{ fontSize: 24, textTransform: 'uppercase' }}>Codes Syracuse</div>
+                <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.5)', marginTop: 2 }}>
                   {scanIdx < scanQueue.length ? `${scanIdx + 1} / ${scanQueue.length}` : `${scanDone.length} code(s) enregistré(s)`}
                 </div>
               </div>
@@ -555,13 +555,13 @@ export default function Home() {
             <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
               {scanIdx < scanQueue.length ? (<>
                 <div className="pop-card" style={{ background: 'var(--cream2)', padding: '16px 20px', textAlign: 'center' }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.1em', color: 'rgba(0,0,0,0.4)', marginBottom: 4 }}>Jeu à équiper</div>
-                  <div style={{ fontWeight: 700, fontSize: 16 }}>{scanQueue[scanIdx].nom}</div>
-                  <div style={{ fontSize: 10, color: 'rgba(0,0,0,0.35)', fontFamily: 'monospace', marginTop: 2 }}>EAN: {scanQueue[scanIdx].ean}</div>
+                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.1em', color: 'rgba(0,0,0,0.4)', marginBottom: 4 }}>Jeu à équiper</div>
+                  <div style={{ fontWeight: 700, fontSize: 18 }}>{scanQueue[scanIdx].nom}</div>
+                  <div style={{ fontSize: 11, color: 'rgba(0,0,0,0.35)', fontFamily: 'monospace', marginTop: 2 }}>EAN: {scanQueue[scanIdx].ean}</div>
                 </div>
                 <div>
-                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: 'rgba(0,0,0,0.45)', marginBottom: 6 }}>Code Syracuse</div>
-                  <input ref={scanInputRef} autoFocus type="text" inputMode="numeric" placeholder="Scanner ou saisir le code…" value={scanInput} onChange={e => setScanInput(e.target.value)} onKeyDown={e => e.key === "Enter" && scannerCode()} className="pop-input" style={{ width: '100%', fontSize: 16, fontFamily: 'monospace' }} />
+                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: 'rgba(0,0,0,0.45)', marginBottom: 6 }}>Code Syracuse</div>
+                  <input ref={scanInputRef} autoFocus type="text" inputMode="numeric" placeholder="Scanner ou saisir le code…" value={scanInput} onChange={e => setScanInput(e.target.value)} onKeyDown={e => e.key === "Enter" && scannerCode()} className="pop-input" style={{ width: '100%', fontSize: 18, fontFamily: 'monospace' }} />
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button className="pop-btn pop-btn-outline" style={{ flex: 1, justifyContent: 'center' }} onClick={passerScan}>Passer →</button>
@@ -570,7 +570,7 @@ export default function Home() {
                 {scanDone.length > 0 && (
                   <div style={{ borderTop: '2px solid var(--cream2)', paddingTop: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
                     {scanDone.map((d, i) => (
-                      <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                      <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
                         <span style={{ color: 'rgba(0,0,0,0.6)' }}>{d.nom}</span>
                         <span style={{ fontFamily: 'monospace', color: 'rgba(0,0,0,0.35)' }}>{d.code}</span>
                       </div>
@@ -581,7 +581,7 @@ export default function Home() {
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, padding: '20px 0', textAlign: 'center' }}>
                   <span style={{ fontSize: 48 }}>🎉</span>
                   <div className="bc" style={{ fontSize: 24 }}>{scanDone.length} code(s) enregistré(s)</div>
-                  {scanQueue.length - scanDone.length > 0 && <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.4)' }}>{scanQueue.length - scanDone.length} jeu(x) passé(s) sans code</div>}
+                  {scanQueue.length - scanDone.length > 0 && <div style={{ fontSize: 13, color: 'rgba(0,0,0,0.4)' }}>{scanQueue.length - scanDone.length} jeu(x) passé(s) sans code</div>}
                   <button className="pop-btn pop-btn-dark" style={{ marginTop: 8 }} onClick={() => setIsScanOpen(false)}>Fermer</button>
                 </div>
               )}
@@ -606,12 +606,12 @@ export default function Home() {
             </div>
             <div style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 6 }}>
               {jeuxEnPrepaFiltres.length === 0 ? (
-                <p style={{ textAlign: 'center', color: 'rgba(0,0,0,0.4)', padding: '40px 0', fontSize: 13 }}>Aucun jeu trouvé.</p>
+                <p style={{ textAlign: 'center', color: 'rgba(0,0,0,0.4)', padding: '40px 0', fontSize: 14 }}>Aucun jeu trouvé.</p>
               ) : jeuxEnPrepaFiltres.map(jeu => (
                 <div key={jeu.id} className="pop-card" style={{ padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 14, background: 'var(--white)', flexWrap: 'wrap' }}>
                   <div style={{ flex: 1, minWidth: 200 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                      <span style={{ fontWeight: 700, fontSize: 15 }}>{jeu.nom}</span>
+                      <span style={{ fontWeight: 700, fontSize: 16 }}>{jeu.nom}</span>
                       <div style={{ display: 'flex', gap: 4, background: 'var(--cream2)', padding: '3px 6px', borderRadius: 20, border: '1.5px solid var(--ink)' }}>
                         {COULEURS.map(c => (
                           <button key={c.id} type="button" onClick={() => changerCouleurJeu(jeu.id, jeu.ean, jeu.nom, jeu.couleur === c.id ? "" : c.id)}
@@ -619,7 +619,7 @@ export default function Home() {
                         ))}
                       </div>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'rgba(0,0,0,0.4)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'rgba(0,0,0,0.4)' }}>
                       <BarcodeIcon />EAN: {jeu.ean}
                     </div>
                   </div>
@@ -631,7 +631,7 @@ export default function Home() {
                       return (
                         <button key={etape.id} disabled={isDouble}
                           onClick={() => !isDouble && toggleEtapeUnique(jeu.id, etape.id, estFait)}
-                          style={{ background: estFait ? etape.hex : 'var(--cream2)', border: '2px solid var(--ink)', borderRadius: 6, padding: '4px 10px', fontSize: 11, fontWeight: 700, cursor: isDouble ? 'not-allowed' : 'pointer', opacity: isDouble ? 0.4 : 1, boxShadow: estFait ? '2px 2px 0 var(--ink)' : 'none', transition: 'all .1s' }}>
+                          style={{ background: estFait ? etape.hex : 'var(--cream2)', border: '2px solid var(--ink)', borderRadius: 6, padding: '4px 10px', fontSize: 12, fontWeight: 700, cursor: isDouble ? 'not-allowed' : 'pointer', opacity: isDouble ? 0.4 : 1, boxShadow: estFait ? '2px 2px 0 var(--ink)' : 'none', transition: 'all .1s' }}>
                           {isDouble ? '🔄 Double' : estFait ? `✓ ${etape.nom}` : etape.nom}
                         </button>
                       );
@@ -654,17 +654,17 @@ export default function Home() {
             </div>
             <div style={{ padding: '16px 24px', borderBottom: '2px solid var(--cream2)', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <div>
-                <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: 'rgba(0,0,0,0.45)', marginBottom: 6 }}>Scanner un EAN</div>
+                <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: 'rgba(0,0,0,0.45)', marginBottom: 6 }}>Scanner un EAN</div>
                 <input type="text" value={eanInput} onChange={e => setEanInput(e.target.value)} onKeyDown={ajouterEan} className="pop-input" style={{ width: '100%' }} placeholder="Ex: 3770001874241" autoFocus />
               </div>
               <div>
-                <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: 'rgba(0,0,0,0.45)', marginBottom: 6 }}>Taper un nom (EAN inconnu)</div>
+                <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: 'rgba(0,0,0,0.45)', marginBottom: 6 }}>Taper un nom (EAN inconnu)</div>
                 <input type="text" value={manuelInput} onChange={e => setManuelInput(e.target.value)} onKeyDown={ajouterManuel} className="pop-input" style={{ width: '100%' }} placeholder="Nom du jeu..." />
               </div>
             </div>
             <div style={{ flex: 1, overflowY: 'auto', padding: 16, minHeight: 200, display: 'flex', flexDirection: 'column', gap: 6 }}>
               {jeuxAttente.length === 0 ? (
-                <p style={{ textAlign: 'center', color: 'rgba(0,0,0,0.4)', padding: '40px 0', fontSize: 13 }}>La liste d&apos;attente est vide.</p>
+                <p style={{ textAlign: 'center', color: 'rgba(0,0,0,0.4)', padding: '40px 0', fontSize: 14 }}>La liste d&apos;attente est vide.</p>
               ) : jeuxAttente.map((jeu, index) => (
                 <div key={index} className="pop-card" style={{ background: 'var(--white)', padding: '14px 16px', position: 'relative' }}
                   onMouseEnter={e => { const a = e.currentTarget.querySelector<HTMLElement>('.jeu-actions'); if (a) a.style.opacity = '1'; }}
@@ -673,9 +673,9 @@ export default function Home() {
                     {jeu.nom === "⏳ Recherche en cours..." ? (
                       <span style={{ fontWeight: 700, color: 'rgba(0,0,0,0.4)' }}>{jeu.nom}</span>
                     ) : editingIndex === index || jeu.nom === "" ? (
-                      <input type="text" value={jeu.nom} onChange={e => setJeuxAttente(prev => { const l = [...prev]; l[index].nom = e.target.value; return l; })} onBlur={() => setEditingIndex(null)} onKeyDown={e => e.key === "Enter" && setEditingIndex(null)} autoFocus style={{ fontWeight: 700, fontSize: 15, background: 'transparent', borderBottom: '2px solid var(--ink)', outline: 'none', width: 200 }} />
+                      <input type="text" value={jeu.nom} onChange={e => setJeuxAttente(prev => { const l = [...prev]; l[index].nom = e.target.value; return l; })} onBlur={() => setEditingIndex(null)} onKeyDown={e => e.key === "Enter" && setEditingIndex(null)} autoFocus style={{ fontWeight: 700, fontSize: 16, background: 'transparent', borderBottom: '2px solid var(--ink)', outline: 'none', width: 200 }} />
                     ) : (
-                      <span style={{ fontWeight: 700, fontSize: 15 }}>{jeu.nom}</span>
+                      <span style={{ fontWeight: 700, fontSize: 16 }}>{jeu.nom}</span>
                     )}
                     <div style={{ display: 'flex', gap: 4, background: 'var(--cream2)', padding: '3px 6px', borderRadius: 20, border: '1.5px solid var(--ink)' }}>
                       {COULEURS.map(c => (
@@ -684,15 +684,15 @@ export default function Home() {
                       ))}
                     </div>
                     <div className="jeu-actions" style={{ opacity: 0, transition: 'opacity .15s', display: 'flex', gap: 4, marginLeft: 'auto' }}>
-                      <button onClick={() => setEditingEanIndex(index)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14 }} title="Modifier EAN">🏷️</button>
-                      <button onClick={() => setEditingIndex(index)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14 }} title="Modifier Nom">✏️</button>
-                      <button onClick={() => setJeuxAttente(prev => prev.filter((_, i) => i !== index))} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14 }} title="Supprimer">🗑️</button>
+                      <button onClick={() => setEditingEanIndex(index)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 15 }} title="Modifier EAN">🏷️</button>
+                      <button onClick={() => setEditingIndex(index)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 15 }} title="Modifier Nom">✏️</button>
+                      <button onClick={() => setJeuxAttente(prev => prev.filter((_, i) => i !== index))} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 15 }} title="Supprimer">🗑️</button>
                     </div>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'rgba(0,0,0,0.4)', marginBottom: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'rgba(0,0,0,0.4)', marginBottom: 10 }}>
                     <BarcodeIcon />
                     {editingEanIndex === index ? (
-                      <input type="text" value={jeu.ean === "Manuel" ? "" : jeu.ean} onChange={e => setJeuxAttente(prev => { const l = [...prev]; l[index].ean = e.target.value || "Manuel"; return l; })} onBlur={() => setEditingEanIndex(null)} onKeyDown={e => e.key === "Enter" && setEditingEanIndex(null)} autoFocus style={{ background: 'transparent', borderBottom: '2px solid var(--ink)', outline: 'none', width: 160, fontSize: 11 }} />
+                      <input type="text" value={jeu.ean === "Manuel" ? "" : jeu.ean} onChange={e => setJeuxAttente(prev => { const l = [...prev]; l[index].ean = e.target.value || "Manuel"; return l; })} onBlur={() => setEditingEanIndex(null)} onKeyDown={e => e.key === "Enter" && setEditingEanIndex(null)} autoFocus style={{ background: 'transparent', borderBottom: '2px solid var(--ink)', outline: 'none', width: 160, fontSize: 12 }} />
                     ) : <span>EAN: {jeu.ean}</span>}
                   </div>
                   <div style={{ display: 'flex', gap: 5, marginBottom: 10 }}>
@@ -702,7 +702,7 @@ export default function Home() {
                       const active = jeu.typeAjout === type;
                       return (
                         <button key={type} onClick={() => changerTypeAjout(index, type)}
-                          style={{ background: active ? colors[type] : 'var(--cream2)', border: '2px solid var(--ink)', borderRadius: 6, padding: '4px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer', boxShadow: active ? '2px 2px 0 var(--ink)' : 'none' }}>
+                          style={{ background: active ? colors[type] : 'var(--cream2)', border: '2px solid var(--ink)', borderRadius: 6, padding: '4px 10px', fontSize: 12, fontWeight: 700, cursor: 'pointer', boxShadow: active ? '2px 2px 0 var(--ink)' : 'none' }}>
                           {labels[type]}
                         </button>
                       );
@@ -721,7 +721,7 @@ export default function Home() {
                       return (
                         <label key={etape.id} style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : 1 }}>
                           <input type="checkbox" className="custom-cb" disabled={disabled} checked={checked} onChange={() => toggleEtapeAttente(index, etape.id)} />
-                          <span style={{ fontSize: 12, fontWeight: 600 }}>{label}</span>
+                          <span style={{ fontSize: 13, fontWeight: 600 }}>{label}</span>
                         </label>
                       );
                     })}
@@ -730,7 +730,7 @@ export default function Home() {
               ))}
             </div>
             <div style={{ padding: '16px 24px', borderTop: '3px solid var(--ink)' }}>
-              <button className="pop-btn pop-btn-yellow" style={{ width: '100%', justifyContent: 'center', fontSize: 15 }}
+              <button className="pop-btn pop-btn-yellow" style={{ width: '100%', justifyContent: 'center', fontSize: 16 }}
                 onClick={validerEtEnvoyer}
                 disabled={jeuxAttente.length === 0 || jeuxAttente.some(j => j.nom === "" || j.nom.includes("⏳"))}>
                 Valider et envoyer à l&apos;Atelier →

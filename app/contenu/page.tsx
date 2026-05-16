@@ -174,8 +174,8 @@ function ContenuPageInner() {
     <div style={{ minHeight: '100vh' }}>
       {/* Mini header retour */}
       <div style={{ position: 'sticky', top: 0, zIndex: 100, background: 'var(--cream)', borderBottom: '3px solid var(--ink)', padding: '0 28px', height: 56, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Link href="/atelier" className="pop-sticker" style={{ background: 'var(--ink)', color: 'var(--white)', textDecoration: 'none', fontSize: 12 }}>← Atelier</Link>
-        <div className="bc" style={{ fontSize: 22, textTransform: 'uppercase', letterSpacing: '.04em', background: 'linear-gradient(135deg,#0d0d0d 40%,#60a5fa)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Impression contenu</div>
+        <Link href="/atelier" className="pop-sticker" style={{ background: 'var(--ink)', color: 'var(--white)', textDecoration: 'none', fontSize: 13 }}>← Atelier</Link>
+        <div className="bc" style={{ fontSize: 24, textTransform: 'uppercase', letterSpacing: '.04em', background: 'linear-gradient(135deg,#0d0d0d 40%,#60a5fa)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Impression contenu</div>
         <div style={{ width: 80 }} />
       </div>
 
@@ -192,13 +192,13 @@ function ContenuPageInner() {
                 {/* Accordion header */}
                 <div onClick={() => toggleSection(cat.id)} style={{ position: 'sticky', top: 56, zIndex: 40, background: cat.hex, borderBottom: isOpen ? '2.5px solid var(--ink)' : 'none', padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', userSelect: 'none' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <span className="bc" style={{ fontSize: 20, textTransform: 'uppercase' }}>{cat.nom}</span>
-                    <span className="pop-sticker" style={{ background: 'rgba(0,0,0,0.15)', border: '2px solid rgba(0,0,0,0.2)', boxShadow: 'none', fontSize: 10 }}>{contenus[cat.id].length} jeu(x)</span>
-                    {nbIncomplets > 0 && <span className="pop-sticker" style={{ background: 'var(--rouge)', color: 'var(--white)', boxShadow: 'none', fontSize: 10 }}>{nbIncomplets} incomplet(s)</span>}
+                    <span className="bc" style={{ fontSize: 22, textTransform: 'uppercase' }}>{cat.nom}</span>
+                    <span className="pop-sticker" style={{ background: 'rgba(0,0,0,0.15)', border: '2px solid rgba(0,0,0,0.2)', boxShadow: 'none', fontSize: 11 }}>{contenus[cat.id].length} jeu(x)</span>
+                    {nbIncomplets > 0 && <span className="pop-sticker" style={{ background: 'var(--rouge)', color: 'var(--white)', boxShadow: 'none', fontSize: 11 }}>{nbIncomplets} incomplet(s)</span>}
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    {isOpen && <button onClick={e => { e.stopPropagation(); ajouterLigne(cat.id); }} style={{ width: 28, height: 28, borderRadius: 6, background: 'rgba(0,0,0,0.15)', border: '2px solid rgba(0,0,0,0.2)', fontWeight: 900, fontSize: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>}
-                    <span style={{ fontWeight: 700, fontSize: 18, width: 20, textAlign: 'center' }}>{isOpen ? '−' : '+'}</span>
+                    {isOpen && <button onClick={e => { e.stopPropagation(); ajouterLigne(cat.id); }} style={{ width: 28, height: 28, borderRadius: 6, background: 'rgba(0,0,0,0.15)', border: '2px solid rgba(0,0,0,0.2)', fontWeight: 900, fontSize: 18, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>}
+                    <span style={{ fontWeight: 700, fontSize: 20, width: 20, textAlign: 'center' }}>{isOpen ? '−' : '+'}</span>
                   </div>
                 </div>
 
@@ -216,12 +216,12 @@ function ContenuPageInner() {
                     </div>
 
                     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
-                      <button onClick={() => ajouterLigne(cat.id)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 12, fontWeight: 700, color: 'rgba(0,0,0,0.45)', background: 'transparent', border: '2px dashed rgba(0,0,0,0.2)', borderRadius: 8, padding: '8px 16px', cursor: 'pointer', width: 'max-content', margin: '0 auto 4px' }}>
+                      <button onClick={() => ajouterLigne(cat.id)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 13, fontWeight: 700, color: 'rgba(0,0,0,0.45)', background: 'transparent', border: '2px dashed rgba(0,0,0,0.2)', borderRadius: 8, padding: '8px 16px', cursor: 'pointer', width: 'max-content', margin: '0 auto 4px' }}>
                         ➕ Ajouter une fiche {cat.nom}
                       </button>
 
                       {contenus[cat.id].length === 0 ? (
-                        <p style={{ textAlign: 'center', color: 'rgba(0,0,0,0.35)', padding: '20px 0', fontSize: 13 }}>Aucune fiche.</p>
+                        <p style={{ textAlign: 'center', color: 'rgba(0,0,0,0.35)', padding: '20px 0', fontSize: 14 }}>Aucune fiche.</p>
                       ) : contenus[cat.id].map(c => {
                         const estVide = !c.elements || c.elements.trim() === "";
                         const startLetter = c.nom ? c.nom.charAt(0).toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "") : "";
@@ -232,14 +232,14 @@ function ContenuPageInner() {
                               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, width: 52, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
                                 <span style={{ fontSize: 9, fontWeight: 700, color: 'rgba(0,0,0,0.35)', textTransform: 'uppercase', letterSpacing: '.06em' }}>QTE</span>
                                 <input type="number" min="0" value={c.quantity} onChange={e => mettreAJourLigne(cat.id, c.id, "quantity", parseInt(e.target.value) || 0)}
-                                  style={{ width: '100%', padding: '4px 6px', borderRadius: 6, border: '2px solid var(--ink)', fontWeight: 700, textAlign: 'center', fontSize: 13, background: c.quantity > 0 ? 'var(--ink)' : 'var(--cream2)', color: c.quantity > 0 ? 'var(--white)' : 'var(--ink)', outline: 'none' }} />
+                                  style={{ width: '100%', padding: '4px 6px', borderRadius: 6, border: '2px solid var(--ink)', fontWeight: 700, textAlign: 'center', fontSize: 14, background: c.quantity > 0 ? 'var(--ink)' : 'var(--cream2)', color: c.quantity > 0 ? 'var(--white)' : 'var(--ink)', outline: 'none' }} />
                               </div>
                               <div style={{ flex: 1, minWidth: 0 }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                  <span style={{ fontWeight: 700, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.nom || "Nouveau jeu..."}</span>
+                                  <span style={{ fontWeight: 700, fontSize: 15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.nom || "Nouveau jeu..."}</span>
                                   {estVide && <span className="pop-sticker" style={{ background: 'var(--orange)', fontSize: 9, boxShadow: 'none', flexShrink: 0 }}>À REMPLIR</span>}
                                 </div>
-                                {!c.isOpen && <p style={{ fontSize: 11, color: 'rgba(0,0,0,0.4)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{estVide ? "Aucun contenu renseigné..." : c.elements.replace(/\n/g, " / ")}</p>}
+                                {!c.isOpen && <p style={{ fontSize: 12, color: 'rgba(0,0,0,0.4)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{estVide ? "Aucun contenu renseigné..." : c.elements.replace(/\n/g, " / ")}</p>}
                               </div>
                               <span style={{ fontWeight: 700, color: 'rgba(0,0,0,0.35)', flexShrink: 0 }}>{c.isOpen ? '▲' : '▼'}</span>
                             </div>
@@ -248,17 +248,17 @@ function ContenuPageInner() {
                               <div style={{ padding: '12px 14px', borderTop: '2px solid var(--cream2)', background: 'var(--cream2)', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
                                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
                                   <div style={{ display: 'flex', gap: 8 }}>
-                                    <input type="text" value={c.ean} onChange={e => mettreAJourLigne(cat.id, c.id, "ean", e.target.value)} onBlur={() => sauvegarderJeuDansBDD(c, cat.id)} placeholder="EAN..." className="pop-input" style={{ width: '33%', fontSize: 12 }} />
+                                    <input type="text" value={c.ean} onChange={e => mettreAJourLigne(cat.id, c.id, "ean", e.target.value)} onBlur={() => sauvegarderJeuDansBDD(c, cat.id)} placeholder="EAN..." className="pop-input" style={{ width: '33%', fontSize: 13 }} />
                                     <input type="text" value={c.nom} onChange={e => mettreAJourLigne(cat.id, c.id, "nom", e.target.value)} onBlur={() => sauvegarderJeuDansBDD(c, cat.id)} placeholder="Nom du jeu..." className="pop-input" style={{ flex: 1, fontWeight: 700 }} />
                                   </div>
                                   <textarea value={c.elements} onChange={e => mettreAJourLigne(cat.id, c.id, "elements", e.target.value)} onBlur={() => gererBlur(cat.id, c)}
                                     placeholder={"EXTENSION :\n  - 1 plateau\n  - 50 cartes\n\n- 1 règle du jeu"}
-                                    style={{ lineHeight: '24px', backgroundImage: 'repeating-linear-gradient(transparent, transparent 23px, rgba(0,0,0,0.07) 23px, rgba(0,0,0,0.07) 24px)', backgroundAttachment: 'local', backgroundPosition: '0 12px', width: '100%', background: 'var(--white)', border: '2.5px solid var(--ink)', borderRadius: 8, padding: '10px 12px', outline: 'none', minHeight: 140, resize: 'vertical', fontFamily: 'monospace', fontSize: 13, boxShadow: '2px 2px 0 var(--ink)' }} />
+                                    style={{ lineHeight: '24px', backgroundImage: 'repeating-linear-gradient(transparent, transparent 23px, rgba(0,0,0,0.07) 23px, rgba(0,0,0,0.07) 24px)', backgroundAttachment: 'local', backgroundPosition: '0 12px', width: '100%', background: 'var(--white)', border: '2.5px solid var(--ink)', borderRadius: 8, padding: '10px 12px', outline: 'none', minHeight: 140, resize: 'vertical', fontFamily: 'monospace', fontSize: 14, boxShadow: '2px 2px 0 var(--ink)' }} />
                                 </div>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0 }}>
-                                  <button onClick={() => supprimerLigne(cat.id, c.id)} style={{ background: 'var(--white)', border: '2px solid var(--ink)', borderRadius: 6, padding: '8px 10px', cursor: 'pointer', fontSize: 14, boxShadow: '2px 2px 0 var(--ink)' }} title="Supprimer">🗑️</button>
+                                  <button onClick={() => supprimerLigne(cat.id, c.id)} style={{ background: 'var(--white)', border: '2px solid var(--ink)', borderRadius: 6, padding: '8px 10px', cursor: 'pointer', fontSize: 15, boxShadow: '2px 2px 0 var(--ink)' }} title="Supprimer">🗑️</button>
                                   <button onClick={() => { const v = !c.sansRegle; mettreAJourLigne(cat.id, c.id, "sansRegle", v); const t = formaterTexte(c.elements, v); mettreAJourLigne(cat.id, c.id, "elements", t); sauvegarderJeuDansBDD({ ...c, elements: t }, cat.id); }}
-                                    style={{ background: c.sansRegle ? '#fff7ed' : 'var(--white)', border: `2px solid ${c.sansRegle ? 'var(--orange)' : 'var(--ink)'}`, borderRadius: 6, padding: '8px 10px', cursor: 'pointer', fontSize: 14, boxShadow: '2px 2px 0 var(--ink)' }} title={c.sansRegle ? "Ajouter la règle" : "Retirer la règle"}>
+                                    style={{ background: c.sansRegle ? '#fff7ed' : 'var(--white)', border: `2px solid ${c.sansRegle ? 'var(--orange)' : 'var(--ink)'}`, borderRadius: 6, padding: '8px 10px', cursor: 'pointer', fontSize: 15, boxShadow: '2px 2px 0 var(--ink)' }} title={c.sansRegle ? "Ajouter la règle" : "Retirer la règle"}>
                                     {c.sansRegle ? '🚫' : '📖'}
                                   </button>
                                 </div>
@@ -278,8 +278,8 @@ function ContenuPageInner() {
         {/* ── ASIDE ── */}
         <aside style={{ width: 300, border: '2.5px solid var(--ink)', borderRadius: 10, boxShadow: '4px 4px 0 var(--ink)', display: 'flex', flexDirection: 'column', height: 'calc(100vh - 80px)', position: 'sticky', top: 68, flexShrink: 0, overflow: 'hidden', background: 'var(--white)' }}>
           <div style={{ padding: '16px 18px', borderBottom: '2.5px solid var(--ink)', background: 'var(--cream2)' }}>
-            <div className="bc" style={{ fontSize: 16, textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 10 }}>Générateur de fiches</div>
-            <input type="text" placeholder="🔍 Rechercher un jeu..." value={recherche} onChange={e => setRecherche(e.target.value)} className="pop-input" style={{ width: '100%', fontSize: 12 }} />
+            <div className="bc" style={{ fontSize: 18, textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 10 }}>Générateur de fiches</div>
+            <input type="text" placeholder="🔍 Rechercher un jeu..." value={recherche} onChange={e => setRecherche(e.target.value)} className="pop-input" style={{ width: '100%', fontSize: 13 }} />
           </div>
 
           <div style={{ flex: 1, overflowY: 'auto', padding: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -290,15 +290,15 @@ function ContenuPageInner() {
                 <div key={`side-${cat.id}`} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
                     <div style={{ width: 10, height: 10, borderRadius: '50%', background: cat.hex, border: '1.5px solid var(--ink)', flexShrink: 0 }} />
-                    <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: 'rgba(0,0,0,0.45)' }}>{cat.nom}</span>
+                    <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: 'rgba(0,0,0,0.45)' }}>{cat.nom}</span>
                   </div>
                   {items.map(c => (
                     <div key={`side-${c.id}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--cream2)', border: '2px solid var(--ink)', borderRadius: 6, padding: '6px 10px', boxShadow: '2px 2px 0 var(--ink)' }}>
-                      <span style={{ fontSize: 12, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, marginRight: 8 }}>{c.nom || "Sans nom"}</span>
+                      <span style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, marginRight: 8 }}>{c.nom || "Sans nom"}</span>
                       <div style={{ display: 'flex', alignItems: 'center', border: '2px solid var(--ink)', borderRadius: 6, overflow: 'hidden', flexShrink: 0 }}>
-                        <button onClick={() => modifierQuantite(cat.id, c.id, -1)} style={{ padding: '2px 8px', fontWeight: 700, fontSize: 14, background: 'var(--white)', border: 'none', borderRight: '1.5px solid var(--ink)', cursor: 'pointer' }}>−</button>
-                        <span style={{ width: 28, textAlign: 'center', fontWeight: 700, fontSize: 12 }}>{c.quantity}</span>
-                        <button onClick={() => modifierQuantite(cat.id, c.id, 1)} style={{ padding: '2px 8px', fontWeight: 700, fontSize: 14, background: 'var(--white)', border: 'none', borderLeft: '1.5px solid var(--ink)', cursor: 'pointer' }}>+</button>
+                        <button onClick={() => modifierQuantite(cat.id, c.id, -1)} style={{ padding: '2px 8px', fontWeight: 700, fontSize: 15, background: 'var(--white)', border: 'none', borderRight: '1.5px solid var(--ink)', cursor: 'pointer' }}>−</button>
+                        <span style={{ width: 28, textAlign: 'center', fontWeight: 700, fontSize: 13 }}>{c.quantity}</span>
+                        <button onClick={() => modifierQuantite(cat.id, c.id, 1)} style={{ padding: '2px 8px', fontWeight: 700, fontSize: 15, background: 'var(--white)', border: 'none', borderLeft: '1.5px solid var(--ink)', cursor: 'pointer' }}>+</button>
                       </div>
                     </div>
                   ))}
@@ -308,7 +308,7 @@ function ContenuPageInner() {
           </div>
 
           <div style={{ padding: '16px 18px', borderTop: '2.5px solid var(--ink)', background: 'var(--cream2)' }}>
-            <div style={{ textAlign: 'center', fontSize: 12, fontWeight: 700, color: 'rgba(0,0,0,0.45)', marginBottom: 10 }}>{totalContenus} fiche(s) sélectionnée(s)</div>
+            <div style={{ textAlign: 'center', fontSize: 13, fontWeight: 700, color: 'rgba(0,0,0,0.45)', marginBottom: 10 }}>{totalContenus} fiche(s) sélectionnée(s)</div>
             {isClient ? (
               <PDFDownloadLink document={<ContenuPDF contenus={contenus} />} fileName="contenu_ludo.pdf">
                 {({ loading }) => (
