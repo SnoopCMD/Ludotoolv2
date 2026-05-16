@@ -101,11 +101,11 @@ type TempEanItem = {
 };
 
 const COULEURS = [
-  { id: 'vert', bg: 'bg-[#baff29]', text: 'text-black', border: 'border-[#baff29]', shadow: 'shadow-[#baff29]/50', label: 'Vert' },
-  { id: 'rose', bg: 'bg-[#f45be0]', text: 'text-white', border: 'border-[#f45be0]', shadow: 'shadow-[#f45be0]/50', label: 'Rose' },
-  { id: 'bleu', bg: 'bg-[#6ba4ff]', text: 'text-white', border: 'border-[#6ba4ff]', shadow: 'shadow-[#6ba4ff]/50', label: 'Bleu' },
-  { id: 'rouge', bg: 'bg-[#ff4d79]', text: 'text-white', border: 'border-[#ff4d79]', shadow: 'shadow-[#ff4d79]/50', label: 'Rouge' },
-  { id: 'jaune', bg: 'bg-[#ffa600]', text: 'text-black', border: 'border-[#ffa600]', shadow: 'shadow-[#ffa600]/50', label: 'Jaune' }
+  { id: 'vert', bg: 'bg-[#baff29]', text: 'text-black', border: 'border-[#baff29]', shadow: 'shadow-[#baff29]/50', label: 'Vert', hex: '#a8e063' },
+  { id: 'rose', bg: 'bg-[#f45be0]', text: 'text-white', border: 'border-[#f45be0]', shadow: 'shadow-[#f45be0]/50', label: 'Rose', hex: '#f472b6' },
+  { id: 'bleu', bg: 'bg-[#6ba4ff]', text: 'text-white', border: 'border-[#6ba4ff]', shadow: 'shadow-[#6ba4ff]/50', label: 'Bleu', hex: '#60a5fa' },
+  { id: 'rouge', bg: 'bg-[#ff4d79]', text: 'text-white', border: 'border-[#ff4d79]', shadow: 'shadow-[#ff4d79]/50', label: 'Rouge', hex: '#f87171' },
+  { id: 'jaune', bg: 'bg-[#ffa600]', text: 'text-black', border: 'border-[#ffa600]', shadow: 'shadow-[#ffa600]/50', label: 'Jaune', hex: '#fb923c' }
 ];
 
 // LISTE OFFICIELLE DES MÉCANIQUES
@@ -135,13 +135,13 @@ const DureeGauge = ({ duree }: { duree?: string }) => {
   const { label, level } = getDuree(duree);
   if (level === 0) return null;
   return (
-    <div className="flex items-center gap-1.5 bg-slate-50 px-2 py-0.5 rounded border border-slate-100 shrink-0" title={`Durée: ${duree}`}>
-      <div className="flex items-end gap-[2px] h-3">
-        <div className={`w-1 rounded-sm ${level >= 1 ? 'bg-emerald-400 h-1.5' : 'bg-slate-200 h-1.5'}`}></div>
-        <div className={`w-1 rounded-sm ${level >= 2 ? 'bg-amber-400 h-2.5' : 'bg-slate-200 h-2.5'}`}></div>
-        <div className={`w-1 rounded-sm ${level >= 3 ? 'bg-rose-500 h-full' : 'bg-slate-200 h-full'}`}></div>
+    <div style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "var(--cream2)", padding: "2px 8px", borderRadius: 20, border: "1.5px solid var(--ink)", flexShrink: 0 }} title={`Durée: ${duree}`}>
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 2, height: 12 }}>
+        <div style={{ width: 4, borderRadius: 2, height: 6, background: level >= 1 ? "var(--vert)" : "rgba(0,0,0,0.12)" }}></div>
+        <div style={{ width: 4, borderRadius: 2, height: 9, background: level >= 2 ? "var(--yellow)" : "rgba(0,0,0,0.12)" }}></div>
+        <div style={{ width: 4, borderRadius: 2, height: 12, background: level >= 3 ? "var(--rouge)" : "rgba(0,0,0,0.12)" }}></div>
       </div>
-      <span className="text-[10px] font-bold text-slate-500 uppercase">{label}</span>
+      <span style={{ fontSize: 10, fontWeight: 800, color: "var(--ink)", textTransform: "uppercase", letterSpacing: "0.04em" }}>{label}</span>
     </div>
   );
 };
@@ -1295,140 +1295,218 @@ export default function InventairePage() {
     }
   };
 
-  return (
-    <div className="min-h-screen flex flex-col bg-[#e5e5e5] font-sans p-4 sm:p-8 relative">
-      <style>{`
-        .custom-scroll::-webkit-scrollbar { width: 6px; }
-        .custom-scroll::-webkit-scrollbar-track { background: transparent; }
-        .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
-        .custom-scroll::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-        .hide-scrollbar::-webkit-scrollbar { display: none; }
-        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-      `}</style>
-      
-      <header className="flex justify-between items-center mb-6 relative w-full max-w-[96%] mx-auto shrink-0">
-        <div className="w-10 h-10 bg-black rounded flex items-center justify-center text-white font-black text-xl italic cursor-pointer">+</div>
-        <NavBar current="inventaire" />
-        <div className="w-10"></div>
-      </header>
+  const inp: React.CSSProperties = {
+    border: "2px solid var(--ink)", borderRadius: 8, padding: "9px 14px",
+    background: "var(--white)", outline: "none", fontSize: 14,
+    fontFamily: "inherit", width: "100%", boxSizing: "border-box",
+  };
 
-      <main className="bg-white rounded-[3rem] p-8 lg:p-10 w-full max-w-[96%] mx-auto flex-1 shadow-md flex flex-col gap-6">
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-            <div>
-              <h1 className="text-4xl font-black text-black">📦 Inventaire</h1>
-              <p className="text-slate-500 font-medium mt-1">{jeuxEnStock.length} jeux actuellement en stock</p>
-            </div>
-            
-            <div className="flex gap-3 w-full md:w-auto items-center flex-wrap">
-              <div className="relative flex-1 min-w-[200px] md:w-80">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 opacity-50">🔍</span>
-                <input 
-                  type="text" placeholder="Chercher un jeu, code..." value={recherche} onChange={(e) => setRecherche(e.target.value)}
-                  className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl pl-10 pr-4 py-3.5 font-bold outline-none focus:border-black transition-colors"
-                />
-                {recherche && <button onClick={() => setRecherche("")} className="absolute right-4 top-1/2 -translate-y-1/2 w-6 h-6 bg-slate-200 text-slate-600 rounded-full font-bold text-xs hover:bg-slate-300">✕</button>}
-              </div>
-              <div className="relative">
-                <button onClick={() => setIsSettingsOpen(!isSettingsOpen)} className={`w-12 h-12 flex items-center justify-center rounded-2xl border-2 transition-colors ${isSettingsOpen ? 'bg-slate-100 border-slate-300' : 'bg-white border-slate-100 hover:border-slate-300'}`} title="Outils de maintenance">
-                  <span className={`text-xl transition-transform duration-300 ${isSettingsOpen ? 'rotate-90' : ''}`}>⚙️</span>
-                </button>
-                {isSettingsOpen && (
-                  <div className="absolute right-0 top-full mt-3 bg-white shadow-xl rounded-2xl border border-slate-100 p-2 flex flex-col gap-1 z-50 min-w-[240px] animate-fade-in">
-                    <span className="text-xs font-black text-slate-400 uppercase px-3 py-2">Maintenance</span>
-                    <button onClick={() => { setImportStep('upload'); setIsImportModalOpen(true); setIsSettingsOpen(false); }} className="text-left w-full px-4 py-3 hover:bg-slate-50 rounded-xl font-bold text-sm text-black transition-colors flex items-center gap-2">📥 Importer Syracuse</button>
-                    <button onClick={() => { nettoyerMecaniques(); }} className="text-left w-full px-4 py-3 hover:bg-slate-50 rounded-xl font-bold text-sm text-black transition-colors flex items-center gap-2">🧽 Nettoyer Mécaniques</button>
-                    <button onClick={() => { setIsColorFixOpen(true); setIsSettingsOpen(false); }} className="text-left w-full px-4 py-3 hover:bg-slate-50 rounded-xl font-bold text-sm text-black transition-colors flex items-center gap-2">🛠️ Corriger Couleurs (Scanner)</button>
-                    <button onClick={detecterDoublons} className="text-left w-full px-4 py-3 hover:bg-slate-50 rounded-xl font-bold text-sm text-black transition-colors flex items-center gap-2">🔍 Nettoyer les Doublons</button>
-                    <button onClick={detecterTempEans} className="text-left w-full px-4 py-3 hover:bg-slate-50 rounded-xl font-bold text-sm text-black transition-colors flex items-center gap-2">🔖 Nettoyer les EAN temporaires</button>
-                    <button onClick={ouvrirVignettes} className="text-left w-full px-4 py-3 hover:bg-slate-50 rounded-xl font-bold text-sm text-black transition-colors flex items-center gap-2">🖼️ Enrichir les Vignettes</button>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
+  return (
+    <div style={{ minHeight: "100vh", background: "var(--cream)", display: "flex", flexDirection: "column" }}>
+      <NavBar current="inventaire" />
+
+      {/* ── Sticky header ── */}
+      <header style={{
+        position: "sticky", top: 56, zIndex: 40, background: "var(--cream)",
+        borderBottom: "2.5px solid var(--ink)",
+        display: "flex", alignItems: "center", flexWrap: "wrap",
+        padding: "10px 24px", gap: 12,
+      }}>
+        {/* Titre */}
+        <div style={{ display: "flex", flexDirection: "column", marginRight: 8 }}>
+          <h1 className="bc" style={{
+            fontSize: 36, margin: 0, letterSpacing: "0.02em",
+            background: "linear-gradient(90deg, var(--bleu), var(--purple))",
+            WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
+          }}>Inventaire</h1>
+          <span style={{ fontSize: 13, color: "rgba(0,0,0,0.45)", fontWeight: 600, marginTop: -2 }}>
+            {jeuxEnStock.length} jeux en stock
+          </span>
         </div>
 
+        {/* Searchbar */}
+        <div style={{ position: "relative", flex: "1 1 200px", maxWidth: 360 }}>
+          <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", opacity: 0.4, fontSize: 14 }}>🔍</span>
+          <input
+            type="text" placeholder="Chercher un jeu, code..." value={recherche}
+            onChange={e => setRecherche(e.target.value)}
+            style={{ ...inp, paddingLeft: 36, paddingRight: recherche ? 36 : 14, width: "100%" }}
+          />
+          {recherche && (
+            <button onClick={() => setRecherche("")} style={{
+              position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)",
+              background: "var(--cream2)", border: "none", borderRadius: "50%",
+              width: 20, height: 20, fontSize: 11, fontWeight: 800, cursor: "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}>✕</button>
+          )}
+        </div>
+
+        {/* Settings button */}
+        <div style={{ position: "relative" }}>
+          <button
+            onClick={() => setIsSettingsOpen(!isSettingsOpen)}
+            className="pop-btn"
+            style={{
+              background: isSettingsOpen ? "var(--ink)" : "var(--white)",
+              color: isSettingsOpen ? "var(--white)" : "var(--ink)",
+              padding: "8px 14px", fontSize: 18,
+            }}
+            title="Outils de maintenance"
+          >
+            ⚙️
+          </button>
+          {isSettingsOpen && (
+            <div className="pop-card" style={{
+              position: "absolute", right: 0, top: "calc(100% + 8px)",
+              zIndex: 50, minWidth: 240, overflow: "hidden",
+            }}>
+              <div style={{ padding: "8px 14px 4px", borderBottom: "1.5px solid var(--cream2)" }}>
+                <span className="bc" style={{ fontSize: 11, letterSpacing: "0.08em", color: "rgba(0,0,0,0.4)", textTransform: "uppercase" }}>Maintenance</span>
+              </div>
+              {[
+                { icon: "📥", label: "Importer Syracuse", action: () => { setImportStep('upload'); setIsImportModalOpen(true); setIsSettingsOpen(false); } },
+                { icon: "🧽", label: "Nettoyer Mécaniques", action: () => { nettoyerMecaniques(); } },
+                { icon: "🛠️", label: "Corriger Couleurs", action: () => { setIsColorFixOpen(true); setIsSettingsOpen(false); } },
+                { icon: "🔍", label: "Nettoyer Doublons", action: () => detecterDoublons() },
+                { icon: "🔖", label: "EAN temporaires", action: () => detecterTempEans() },
+                { icon: "🖼️", label: "Enrichir Vignettes", action: () => ouvrirVignettes() },
+              ].map((item, i) => (
+                <button key={i} onClick={item.action}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 8,
+                    width: "100%", padding: "10px 16px", border: "none",
+                    background: "transparent", cursor: "pointer", fontFamily: "inherit",
+                    fontWeight: 700, fontSize: 13, textAlign: "left",
+                    borderBottom: i < 5 ? "1px solid var(--cream2)" : "none",
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.background = "var(--cream2)")}
+                  onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+                >
+                  <span>{item.icon}</span> {item.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </header>
+
+      <main style={{ padding: "24px 24px", display: "flex", flexDirection: "column", gap: 24, flex: 1, position: "relative", zIndex: 1 }}>
+
         {isLoading ? (
-           <div className="flex-1 flex items-center justify-center"><p className="font-bold text-slate-400 animate-pulse">Chargement de l'inventaire...</p></div>
+          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "80px 0" }}>
+            <p className="bc" style={{ fontSize: 22, color: "rgba(0,0,0,0.3)", letterSpacing: "0.04em" }}>Chargement de l'inventaire…</p>
+          </div>
         ) : !isListView ? (
-          <div className="animate-fade-in flex flex-col gap-8 flex-1 mt-2">
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+
+            {/* ── KPI Couleurs ── */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 14 }}>
               {COULEURS.map(c => {
                 const count = jeuxEnStock.filter(j => j.couleur === c.id).length;
                 return (
-                  <div key={c.id} onClick={() => setCouleurFiltre(c.id)} className={`${c.bg} ${c.text} rounded-[2rem] p-6 flex flex-col items-center justify-center shadow-sm hover:scale-105 hover:brightness-95 transition-all cursor-pointer`}>
-                    <span className="text-5xl font-black tracking-tighter">{count}</span>
-                    <span className="text-xs font-bold uppercase tracking-widest mt-1 opacity-90">En stock</span>
+                  <div key={c.id} onClick={() => setCouleurFiltre(c.id)}
+                    style={{
+                      background: c.hex, border: "2.5px solid var(--ink)",
+                      borderRadius: 10, boxShadow: "4px 4px 0 var(--ink)",
+                      padding: "20px 12px", display: "flex", flexDirection: "column",
+                      alignItems: "center", justifyContent: "center", cursor: "pointer",
+                      transition: "transform 0.12s, box-shadow 0.12s",
+                    }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = "translate(-2px,-2px)"; (e.currentTarget as HTMLElement).style.boxShadow = "6px 6px 0 var(--ink)"; }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = ""; (e.currentTarget as HTMLElement).style.boxShadow = "4px 4px 0 var(--ink)"; }}
+                  >
+                    <span className="bc" style={{ fontSize: 48, lineHeight: 1, color: c.id === 'vert' || c.id === 'jaune' ? "var(--ink)" : "var(--white)" }}>{count}</span>
+                    <span style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: c.id === 'vert' || c.id === 'jaune' ? "var(--ink)" : "var(--white)", marginTop: 4, opacity: 0.8 }}>{c.label}</span>
                   </div>
                 );
               })}
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 min-h-[400px]">
-              
-              <div className="bg-slate-50 border-2 border-slate-100 rounded-[2rem] p-6 flex flex-col max-h-[500px]">
-                <div className="flex justify-between items-center mb-6 shrink-0">
-                  <h3 className="text-2xl font-black text-black flex items-center gap-2">🌟 Nouveautés</h3>
-                  <div className="flex items-center gap-2">
+            {/* ── 3 colonnes ── */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 20 }}>
+
+              {/* Nouveautés */}
+              <div className="pop-card" style={{ display: "flex", flexDirection: "column", borderTop: "4px solid var(--yellow)", maxHeight: 520, overflow: "hidden" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 20px 12px", borderBottom: "2px solid var(--cream2)", flexShrink: 0 }}>
+                  <span className="bc" style={{ fontSize: 20, letterSpacing: "0.02em" }}>Nouveautés</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     {dateProchaineRotation && (
-                      <span className="text-[10px] font-black bg-rose-100 text-rose-600 px-2 py-1.5 rounded-md uppercase shadow-sm">⏳ {dateProchaineRotation}</span>
+                      <span style={{ fontSize: 11, fontWeight: 800, background: "var(--rose)", color: "var(--white)", border: "1.5px solid var(--ink)", borderRadius: 20, padding: "2px 8px", boxShadow: "1px 1px 0 var(--ink)" }}>⏳ {dateProchaineRotation}</span>
                     )}
-                    <Link href="/nouveautes" className="text-xs font-bold bg-white border border-slate-200 px-3 py-1.5 rounded-lg hover:border-black transition-colors">Gérer</Link>
+                    <Link href="/nouveautes" className="pop-btn" style={{ padding: "5px 12px", fontSize: 12, background: "var(--white)", boxShadow: "2px 2px 0 var(--ink)" }}>Gérer</Link>
                   </div>
                 </div>
-                
-                <div className="flex-1 overflow-y-auto custom-scroll pr-2 space-y-6">
+
+                <div style={{ flex: 1, overflowY: "auto", padding: "14px 16px", display: "flex", flexDirection: "column", gap: 16 }}>
                   {nouveautesEnSalle.length === 0 ? (
-                    <p className="text-slate-400 font-medium text-sm">Aucune nouveauté en salle.</p>
+                    <p style={{ color: "rgba(0,0,0,0.35)", fontWeight: 700, fontSize: 14, textAlign: "center", padding: "20px 0" }}>Aucune nouveauté en salle.</p>
                   ) : (
                     <>
+                      {/* Salle Jeux */}
                       <div>
-                        <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                          🎲 Salle Jeux <span className="bg-slate-200 text-slate-500 px-1.5 py-0.5 rounded">{nouveautesSalleJeux.length}/12</span>
-                        </h4>
-                        <div className="space-y-2.5">
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                          <span className="bc" style={{ fontSize: 13, letterSpacing: "0.05em", textTransform: "uppercase" }}>Salle Jeux</span>
+                          <span style={{ fontSize: 11, fontWeight: 800, background: "var(--cream2)", border: "1.5px solid var(--ink)", borderRadius: 20, padding: "1px 7px" }}>{nouveautesSalleJeux.length}/12</span>
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                           {Array.from({ length: 12 }).map((_, i) => {
                             const jeu = nouveautesSalleJeux[i];
                             if (jeu) {
                               const cObj = COULEURS.find(c => c.id === jeu.couleur);
                               return (
-                                <div key={jeu.id} onClick={() => ouvrirFicheJeu(jeu)} className={`bg-white p-3 rounded-xl border-2 shadow-sm flex items-center gap-3 cursor-pointer hover:shadow-md transition-shadow ${cObj ? cObj.border : 'border-slate-100'}`}>
-                                  <div className={`w-3.5 h-3.5 rounded-full shrink-0 ${cObj ? cObj.bg : 'bg-slate-200'}`}></div>
-                                  <span className="font-bold text-sm truncate flex-1">{jeu.nom}</span>
+                                <div key={jeu.id} onClick={() => ouvrirFicheJeu(jeu)}
+                                  style={{
+                                    display: "flex", alignItems: "center", gap: 10,
+                                    padding: "8px 12px", borderRadius: 8, cursor: "pointer",
+                                    border: `2px solid ${cObj ? cObj.hex : "var(--cream2)"}`,
+                                    background: "var(--white)", boxShadow: "2px 2px 0 var(--ink)",
+                                  }}
+                                >
+                                  <div style={{ width: 10, height: 10, borderRadius: "50%", background: cObj ? cObj.hex : "var(--cream2)", border: "1.5px solid var(--ink)", flexShrink: 0 }}></div>
+                                  <span style={{ fontWeight: 700, fontSize: 13, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{jeu.nom}</span>
                                 </div>
                               );
                             }
                             return (
-                              <div key={`empty-salle-${i}`} className="bg-slate-50 p-3 rounded-xl border-2 border-dashed border-slate-200 flex items-center gap-3 opacity-60">
-                                <div className="w-3.5 h-3.5 rounded-full shrink-0 bg-slate-200"></div>
-                                <span className="font-bold text-sm text-slate-400 italic">Place disponible</span>
+                              <div key={`empty-salle-${i}`} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderRadius: 8, border: "2px dashed var(--cream2)", opacity: 0.5 }}>
+                                <div style={{ width: 10, height: 10, borderRadius: "50%", background: "var(--cream2)", border: "1.5px solid var(--ink)", flexShrink: 0 }}></div>
+                                <span style={{ fontWeight: 700, fontSize: 13, color: "rgba(0,0,0,0.3)", fontStyle: "italic" }}>Place disponible</span>
                               </div>
                             );
                           })}
                         </div>
                       </div>
 
+                      {/* Premiers Jeux */}
                       <div>
-                        <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                          🟢 Premiers Jeux <span className="bg-slate-200 text-slate-500 px-1.5 py-0.5 rounded">{nouveautesPremiersJeux.length}/10</span>
-                        </h4>
-                        <div className="space-y-2.5">
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                          <span className="bc" style={{ fontSize: 13, letterSpacing: "0.05em", textTransform: "uppercase" }}>Premiers Jeux</span>
+                          <span style={{ fontSize: 11, fontWeight: 800, background: "var(--vert)", border: "1.5px solid var(--ink)", borderRadius: 20, padding: "1px 7px" }}>{nouveautesPremiersJeux.length}/10</span>
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                           {Array.from({ length: 10 }).map((_, i) => {
                             const jeu = nouveautesPremiersJeux[i];
                             if (jeu) {
                               const cObj = COULEURS.find(c => c.id === jeu.couleur);
                               return (
-                                <div key={jeu.id} onClick={() => ouvrirFicheJeu(jeu)} className={`bg-white p-3 rounded-xl border-2 shadow-sm flex items-center gap-3 cursor-pointer hover:shadow-md transition-shadow ${cObj ? cObj.border : 'border-slate-100'}`}>
-                                  <div className={`w-3.5 h-3.5 rounded-full shrink-0 ${cObj ? cObj.bg : 'bg-slate-200'}`}></div>
-                                  <span className="font-bold text-sm truncate flex-1">{jeu.nom}</span>
+                                <div key={jeu.id} onClick={() => ouvrirFicheJeu(jeu)}
+                                  style={{
+                                    display: "flex", alignItems: "center", gap: 10,
+                                    padding: "8px 12px", borderRadius: 8, cursor: "pointer",
+                                    border: `2px solid ${cObj ? cObj.hex : "var(--vert)"}`,
+                                    background: "var(--white)", boxShadow: "2px 2px 0 var(--ink)",
+                                  }}
+                                >
+                                  <div style={{ width: 10, height: 10, borderRadius: "50%", background: cObj ? cObj.hex : "var(--vert)", border: "1.5px solid var(--ink)", flexShrink: 0 }}></div>
+                                  <span style={{ fontWeight: 700, fontSize: 13, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{jeu.nom}</span>
                                 </div>
                               );
                             }
                             return (
-                              <div key={`empty-prem-${i}`} className="bg-slate-50 p-3 rounded-xl border-2 border-dashed border-[#baff29] flex items-center gap-3 opacity-60">
-                                <div className="w-3.5 h-3.5 rounded-full shrink-0 bg-[#baff29]"></div>
-                                <span className="font-bold text-sm text-slate-400 italic">Place disponible</span>
+                              <div key={`empty-prem-${i}`} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderRadius: 8, border: "2px dashed var(--vert)", opacity: 0.5 }}>
+                                <div style={{ width: 10, height: 10, borderRadius: "50%", background: "var(--vert)", border: "1.5px solid var(--ink)", flexShrink: 0 }}></div>
+                                <span style={{ fontWeight: 700, fontSize: 13, color: "rgba(0,0,0,0.3)", fontStyle: "italic" }}>Place disponible</span>
                               </div>
                             );
                           })}
@@ -1439,51 +1517,54 @@ export default function InventairePage() {
                 </div>
               </div>
 
-              <div className="bg-slate-50 border-2 border-slate-100 rounded-[2rem] p-6 flex flex-col max-h-[500px]">
-                <div className="flex justify-between items-center mb-6 shrink-0">
-                  <h3 className="text-2xl font-black text-black flex items-center gap-2">❤️ Sélection</h3>
-                  <div className="flex gap-2">
+              {/* Sélection */}
+              <div className="pop-card" style={{ display: "flex", flexDirection: "column", borderTop: "4px solid var(--rose)", maxHeight: 520, overflow: "hidden" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 20px 12px", borderBottom: "2px solid var(--cream2)", flexShrink: 0 }}>
+                  <span className="bc" style={{ fontSize: 20, letterSpacing: "0.02em" }}>Sélection</span>
+                  <div style={{ display: "flex", gap: 8 }}>
                     {selections.length > 0 && (
-                      <button onClick={() => setIsAgrandirOpen(true)} className="px-3 py-1.5 bg-white border border-slate-200 text-xs font-bold rounded-lg hover:border-black transition-colors shadow-sm">
-                        Agrandir
-                      </button>
+                      <button onClick={() => setIsAgrandirOpen(true)} className="pop-btn" style={{ padding: "5px 12px", fontSize: 12, background: "var(--white)", boxShadow: "2px 2px 0 var(--ink)" }}>Agrandir</button>
                     )}
-                    <button onClick={ouvrirCreationSelection} className="w-8 h-8 flex items-center justify-center rounded-full bg-white border border-slate-200 font-bold hover:border-black hover:bg-black hover:text-white transition-colors shadow-sm">
-                      +
-                    </button>
+                    <button onClick={ouvrirCreationSelection} className="pop-btn pop-btn-dark" style={{ padding: "5px 12px", fontSize: 12 }}>+</button>
                   </div>
                 </div>
-                
-                <div className="flex-1 flex flex-col gap-3 overflow-y-auto custom-scroll pr-1">
+                <div style={{ flex: 1, overflowY: "auto", padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
                   {selections.length === 0 ? (
-                    <div className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-slate-200 rounded-xl text-slate-400 font-medium text-sm p-6 text-center">
+                    <div style={{ display: "flex", flex: 1, alignItems: "center", justifyContent: "center", border: "2px dashed var(--cream2)", borderRadius: 10, padding: 24, textAlign: "center", color: "rgba(0,0,0,0.35)", fontWeight: 600, fontSize: 14 }}>
                       Créez des sélections thématiques
                     </div>
                   ) : (
                     selections.map(sel => (
-                      <div key={sel.id} onClick={() => ouvrirModificationSelection(sel)} className="bg-white border-2 border-slate-200 rounded-2xl p-3 flex flex-col flex-1 min-h-[140px] max-h-full shadow-sm hover:border-[#ff4d79] transition-colors cursor-pointer group">
-                        
-                        <div className="flex justify-between items-start mb-2 shrink-0">
-                          <div className="flex flex-col min-w-0 pr-2">
-                            <h4 className="font-black text-sm text-slate-800 truncate group-hover:text-[#ff4d79] transition-colors">{sel.titre}</h4>
-                            <span className="text-[9px] font-bold text-slate-400 uppercase">
-                              {sel.is_permanent ? 'Permanente' : `Jusqu'au ${sel.date_fin ? new Date(sel.date_fin).toLocaleDateString('fr-FR') : '?'}`}
+                      <div key={sel.id} onClick={() => ouvrirModificationSelection(sel)}
+                        style={{
+                          border: "2px solid var(--ink)", borderRadius: 10,
+                          background: "var(--white)", boxShadow: "3px 3px 0 var(--ink)",
+                          padding: "12px 14px", cursor: "pointer",
+                          display: "flex", flexDirection: "column", gap: 8,
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                          <div style={{ minWidth: 0 }}>
+                            <p style={{ fontWeight: 800, fontSize: 14, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sel.titre}</p>
+                            <span style={{ fontSize: 10, fontWeight: 700, color: "rgba(0,0,0,0.4)", textTransform: "uppercase" }}>
+                              {sel.is_permanent ? "Permanente" : `Jusqu'au ${sel.date_fin ? new Date(sel.date_fin).toLocaleDateString('fr-FR') : '?'}`}
                             </span>
                           </div>
-                          <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md shrink-0">{sel.jeux?.length || 0} jeux</span>
+                          <span style={{ fontSize: 11, fontWeight: 800, background: "var(--rose)", color: "var(--white)", border: "1.5px solid var(--ink)", borderRadius: 20, padding: "1px 8px", flexShrink: 0 }}>{sel.jeux?.length || 0}</span>
                         </div>
-                        
-                        <div className="flex-1 overflow-y-auto custom-scroll pr-1 space-y-1.5">
-                          {sel.jeux?.map(j => {
+                        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                          {sel.jeux?.slice(0, 4).map(j => {
                             const c = COULEURS.find(col => col.id === j.couleur);
                             return (
-                              <div key={j.id} onClick={(e) => { e.stopPropagation(); ouvrirFicheJeu(j); }} className="flex items-center gap-2 bg-slate-50 p-1.5 rounded-lg border border-slate-100 hover:border-slate-300 transition-colors">
-                                <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${c ? c.bg : 'bg-slate-300'}`}></div>
-                                <span className="font-bold text-[11px] text-slate-700 truncate flex-1">{j.nom}</span>
+                              <div key={j.id} onClick={e => { e.stopPropagation(); ouvrirFicheJeu(j); }}
+                                style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 8px", background: "var(--cream2)", borderRadius: 6 }}>
+                                <div style={{ width: 8, height: 8, borderRadius: "50%", background: c ? c.hex : "var(--cream2)", border: "1px solid var(--ink)", flexShrink: 0 }}></div>
+                                <span style={{ fontSize: 11, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{j.nom}</span>
                               </div>
-                            )
+                            );
                           })}
-                          {(!sel.jeux || sel.jeux.length === 0) && <span className="text-xs italic text-slate-400">Sélection vide</span>}
+                          {(sel.jeux?.length || 0) > 4 && <span style={{ fontSize: 10, color: "rgba(0,0,0,0.4)", fontWeight: 700, paddingLeft: 8 }}>+{(sel.jeux?.length || 0) - 4} autres</span>}
+                          {(!sel.jeux || sel.jeux.length === 0) && <span style={{ fontSize: 11, color: "rgba(0,0,0,0.35)", fontStyle: "italic" }}>Sélection vide</span>}
                         </div>
                       </div>
                     ))
@@ -1491,24 +1572,32 @@ export default function InventairePage() {
                 </div>
               </div>
 
-              <div className="bg-slate-50 border-2 border-slate-100 rounded-[2rem] p-6 flex flex-col max-h-[500px]">
-                <div className="flex justify-between items-center mb-6 shrink-0">
-                   <h3 className="text-2xl font-black text-black flex items-center gap-2">🛠️ Atelier</h3>
-                   <div className="flex items-center gap-2">
-                     <span className="text-[10px] font-black bg-slate-200 text-slate-600 px-2.5 py-1.5 rounded-md uppercase shadow-sm">Total: {totalAtelier}</span>
-                     <Link href="/atelier" className="text-xs font-bold bg-white border border-slate-200 px-3 py-1.5 rounded-lg hover:border-black transition-colors">Voir tout</Link>
-                   </div>
+              {/* Atelier */}
+              <div className="pop-card" style={{ display: "flex", flexDirection: "column", borderTop: "4px solid var(--orange)", maxHeight: 520, overflow: "hidden" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 20px 12px", borderBottom: "2px solid var(--cream2)", flexShrink: 0 }}>
+                  <span className="bc" style={{ fontSize: 20, letterSpacing: "0.02em" }}>Atelier</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 11, fontWeight: 800, background: "var(--orange)", color: "var(--ink)", border: "1.5px solid var(--ink)", borderRadius: 20, padding: "2px 10px", boxShadow: "1px 1px 0 var(--ink)" }}>Total: {totalAtelier}</span>
+                    <Link href="/atelier" className="pop-btn" style={{ padding: "5px 12px", fontSize: 12, background: "var(--white)", boxShadow: "2px 2px 0 var(--ink)" }}>Voir tout</Link>
+                  </div>
                 </div>
-                <div className="space-y-3 flex-1 overflow-y-auto custom-scroll pr-2">
-                  {atelierEnPrepa.length === 0 ? <p className="text-slate-400 font-medium text-sm">Aucun jeu en préparation.</p> : null}
+                <div style={{ flex: 1, overflowY: "auto", padding: "14px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
+                  {atelierEnPrepa.length === 0 && <p style={{ color: "rgba(0,0,0,0.35)", fontWeight: 700, fontSize: 14 }}>Aucun jeu en préparation.</p>}
                   {atelierEnPrepa.map(jeu => {
                     const cObj = COULEURS.find(c => c.id === jeu.couleur);
                     return (
-                      <div key={jeu.id} onClick={() => ouvrirFicheJeu(jeu)} className={`bg-white p-3.5 rounded-xl border-2 shadow-sm flex items-center gap-3 cursor-pointer hover:shadow-md transition-shadow ${cObj ? cObj.border : 'border-slate-100'}`}>
-                        <div className={`w-4 h-4 rounded-full shrink-0 ${cObj ? cObj.bg : 'bg-slate-200'}`}></div>
-                        <div className="flex flex-col overflow-hidden">
-                           <span className="font-bold text-sm truncate">{jeu.nom}</span>
-                           <span className="text-[10px] font-bold text-amber-500 uppercase mt-0.5">En prépa</span>
+                      <div key={jeu.id} onClick={() => ouvrirFicheJeu(jeu)}
+                        style={{
+                          display: "flex", alignItems: "center", gap: 10,
+                          padding: "10px 14px", borderRadius: 8, cursor: "pointer",
+                          border: `2px solid ${cObj ? cObj.hex : "var(--ink)"}`,
+                          background: "var(--white)", boxShadow: "2px 2px 0 var(--ink)",
+                        }}
+                      >
+                        <div style={{ width: 12, height: 12, borderRadius: "50%", background: cObj ? cObj.hex : "var(--cream2)", border: "1.5px solid var(--ink)", flexShrink: 0 }}></div>
+                        <div style={{ display: "flex", flexDirection: "column", overflow: "hidden", flex: 1 }}>
+                          <span style={{ fontWeight: 700, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{jeu.nom}</span>
+                          <span style={{ fontSize: 10, fontWeight: 800, color: "var(--orange)", textTransform: "uppercase", letterSpacing: "0.05em" }}>En prépa</span>
                         </div>
                       </div>
                     );
@@ -1516,55 +1605,60 @@ export default function InventairePage() {
                 </div>
               </div>
             </div>
-
           </div>
+
         ) : (
-          <div className={`flex-1 bg-slate-50 rounded-[2rem] border-[3px] overflow-hidden flex flex-col animate-fade-in mt-2 transition-colors ${couleurFiltre ? COULEURS.find(c => c.id === couleurFiltre)?.border : 'border-slate-100'}`}>
-            <div className="bg-white border-b-2 border-slate-100 flex flex-col p-4 gap-4">
+          /* ── LIST VIEW ── */
+          <div className="pop-card" style={{ overflow: "hidden", display: "flex", flexDirection: "column", borderTop: couleurFiltre ? `4px solid ${COULEURS.find(c => c.id === couleurFiltre)?.hex || "var(--ink)"}` : "4px solid var(--ink)" }}>
+
+            {/* Barre filtres */}
+            <div style={{ background: "var(--cream2)", borderBottom: "2.5px solid var(--ink)", padding: "12px 18px", display: "flex", flexDirection: "column", gap: 10 }}>
               {couleurFiltre && (
-                <div className="flex justify-between items-center mb-2">
-                  <div className="flex items-center gap-3">
-                    <span className="text-sm font-bold text-slate-500">Filtré par couleur :</span>
-                    <div className={`px-3 py-1.5 rounded-md text-xs font-black uppercase shadow-sm ${COULEURS.find(c => c.id === couleurFiltre)?.bg} ${COULEURS.find(c => c.id === couleurFiltre)?.text}`}>
-                      {couleurFiltre}
-                    </div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: "rgba(0,0,0,0.55)" }}>Filtré :</span>
+                    <span style={{
+                      fontSize: 12, fontWeight: 800, textTransform: "uppercase",
+                      background: COULEURS.find(c => c.id === couleurFiltre)?.hex || "var(--cream2)",
+                      color: couleurFiltre === 'vert' || couleurFiltre === 'jaune' ? "var(--ink)" : "var(--white)",
+                      border: "1.5px solid var(--ink)", borderRadius: 20, padding: "2px 10px", boxShadow: "1px 1px 0 var(--ink)",
+                    }}>{couleurFiltre}</span>
                   </div>
-                  <button onClick={() => setCouleurFiltre(null)} className="text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-600 px-4 py-2 rounded-xl transition-colors">✕ Retirer</button>
+                  <button onClick={() => setCouleurFiltre(null)} className="pop-btn" style={{ padding: "5px 12px", fontSize: 12 }}>✕ Retirer</button>
                 </div>
               )}
-              <div className="flex flex-wrap lg:flex-nowrap justify-between items-center gap-4">
-                <div className="flex items-center min-w-[200px]">
-                  <button onClick={() => setTri(tri === "A-Z" ? "Z-A" : "A-Z")} className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-black text-xs uppercase px-4 py-2.5 rounded-xl transition-colors">Nom du jeu<span className="text-base leading-none">{tri === "A-Z" ? "↓" : "↑"}</span></button>
-                </div>
-                <div className="flex items-center gap-2 flex-wrap flex-1 justify-end">
-                  <div className="relative flex items-center">
-                    <span className="absolute left-3 text-sm">👥</span>
-                    <input type="number" min="1" max="99" placeholder="Joueurs" value={filtreJoueurs} onChange={e => setFiltreJoueurs(e.target.value)} className="w-28 pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-700 outline-none focus:border-black shadow-sm" />
-                  </div>
-                  <select value={filtreType} onChange={e => setFiltreType(e.target.value)} className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 outline-none focus:border-black cursor-pointer shadow-sm w-36">
-                    <option value="">⚔️ Type</option><option value="Coop">🤝 Coop</option><option value="Versus">⚔️ Versus</option><option value="Solo">👤 Solo</option>
-                  </select>
-                  <select value={filtreMeca} onChange={e => setFiltreMeca(e.target.value)} className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 outline-none focus:border-black cursor-pointer shadow-sm w-44">
-                    <option value="">⚙️ Toutes méca.</option>
-                    {mecasDispos.map(m => <option key={m as string} value={m as string}>{m}</option>)}
-                  </select>
-                  <select value={filtreTemps} onChange={e => setFiltreTemps(e.target.value)} className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 outline-none focus:border-black cursor-pointer shadow-sm">
-                    <option value="">⏳ Durée</option><option value="Rapide">Rapide ({"<"} 30m)</option><option value="Moyen">Moyen (30-60m)</option><option value="Long">Long ({">"} 60m)</option>
-                  </select>
-                  <select value={filtreEtoiles} onChange={e => setFiltreEtoiles(e.target.value)} className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 outline-none focus:border-black cursor-pointer shadow-sm">
-                    <option value="">⭐ Étoiles</option><option value="1">1 Étoile</option><option value="2">2 Étoiles</option>
-                    {(!couleurFiltre || ['vert', 'jaune'].includes(couleurFiltre)) && <option value="3">3 Étoiles</option>}
-                  </select>
-                  {(filtreJoueurs || filtreMeca || filtreTemps || filtreEtoiles || filtreType) && (
-                    <button onClick={clearAllFilters} className="text-xs font-bold text-rose-500 bg-rose-50 hover:bg-rose-100 px-3 py-2 rounded-xl transition-colors ml-2" title="Réinitialiser les filtres">✕</button>
-                  )}
-                </div>
+              <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+                <button onClick={() => setTri(tri === "A-Z" ? "Z-A" : "A-Z")} className="pop-btn" style={{ padding: "6px 14px", fontSize: 13 }}>
+                  Nom {tri === "A-Z" ? "↓" : "↑"}
+                </button>
+                <input type="number" min="1" max="99" placeholder="👥 Joueurs" value={filtreJoueurs} onChange={e => setFiltreJoueurs(e.target.value)} style={{ ...inp, width: 110 }} />
+                <select value={filtreType} onChange={e => setFiltreType(e.target.value)} style={{ ...inp, width: "auto", cursor: "pointer" }}>
+                  <option value="">⚔️ Type</option><option value="Coop">🤝 Coop</option><option value="Versus">⚔️ Versus</option><option value="Solo">👤 Solo</option>
+                </select>
+                <select value={filtreMeca} onChange={e => setFiltreMeca(e.target.value)} style={{ ...inp, width: "auto", cursor: "pointer" }}>
+                  <option value="">⚙️ Méca.</option>
+                  {mecasDispos.map(m => <option key={m as string} value={m as string}>{m}</option>)}
+                </select>
+                <select value={filtreTemps} onChange={e => setFiltreTemps(e.target.value)} style={{ ...inp, width: "auto", cursor: "pointer" }}>
+                  <option value="">⏳ Durée</option><option value="Rapide">Rapide (&lt;30m)</option><option value="Moyen">Moyen (30-60m)</option><option value="Long">Long (&gt;60m)</option>
+                </select>
+                <select value={filtreEtoiles} onChange={e => setFiltreEtoiles(e.target.value)} style={{ ...inp, width: "auto", cursor: "pointer" }}>
+                  <option value="">⭐ Étoiles</option><option value="1">1 Étoile</option><option value="2">2 Étoiles</option><option value="3">3 Étoiles</option>
+                </select>
+                {(filtreJoueurs || filtreMeca || filtreTemps || filtreEtoiles || filtreType) && (
+                  <button onClick={clearAllFilters} className="pop-btn" style={{ padding: "6px 10px", fontSize: 12, background: "var(--rouge)", color: "var(--white)" }}>✕ Reset</button>
+                )}
+                <span style={{ marginLeft: "auto", fontWeight: 700, fontSize: 13, color: "rgba(0,0,0,0.45)" }}>{jeuxGroupes.length} résultat{jeuxGroupes.length !== 1 ? "s" : ""}</span>
               </div>
             </div>
-            
-            <div className="flex-1 overflow-y-auto p-4 custom-scroll">
+
+            {/* Rows */}
+            <div style={{ flex: 1, overflowY: "auto", padding: "14px 14px" }}>
               {jeuxGroupes.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full text-slate-400 mt-10"><span className="text-4xl mb-2">🤔</span><p className="font-bold">Aucun jeu ne correspond à vos filtres.</p></div>
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "60px 0", color: "rgba(0,0,0,0.3)" }}>
+                  <span style={{ fontSize: 40, marginBottom: 12 }}>🤔</span>
+                  <p style={{ fontWeight: 700, fontSize: 16 }}>Aucun jeu ne correspond à vos filtres.</p>
+                </div>
               ) : (
                 jeuxGroupes.map(groupe => {
                   const jeu = groupe[0];
@@ -1574,106 +1668,97 @@ export default function InventairePage() {
                   const hasNotes = groupe.some(j => j.notes && (j.notes as any[]).length > 0);
 
                   return (
-                    <div key={jeu.ean} className="mb-3 bg-white rounded-2xl border shadow-sm hover:shadow-md transition-all border-slate-100 overflow-hidden">
+                    <div key={jeu.ean} style={{ marginBottom: 10, border: "2.5px solid var(--ink)", borderRadius: 10, background: "var(--white)", boxShadow: "3px 3px 0 var(--ink)", overflow: "hidden" }}>
                       <div
                         onClick={() => ouvrirFicheJeu(jeu)}
-                        className="grid grid-cols-12 gap-4 p-4 items-center hover:bg-slate-50 cursor-pointer group relative"
+                        style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", cursor: "pointer" }}
+                        onMouseEnter={e => (e.currentTarget.style.background = "var(--cream2)")}
+                        onMouseLeave={e => (e.currentTarget.style.background = "var(--white)")}
                       >
-                        <div className="col-span-12 md:col-span-7 lg:col-span-6 font-bold text-black flex flex-col gap-1.5">
-                          <div className="flex items-center gap-3">
-                            {/* Vignette */}
-                            <div className="w-10 h-10 rounded-lg overflow-hidden shrink-0 bg-slate-100 border border-slate-200 flex items-center justify-center">
-                              {catalogueImages[jeu.ean]
-                                ? <img src={catalogueImages[jeu.ean]} alt={jeu.nom} className="w-full h-full object-cover" loading="lazy" />
-                                : <div className={`w-full h-full ${couleurObj ? couleurObj.bg : 'bg-slate-200'}`} title={jeu.couleur || 'Aucune couleur'} />
-                              }
-                            </div>
-                            <div className="flex items-center gap-2 min-w-0">
-                              <div className={`w-3 h-3 rounded-full shadow-inner shrink-0 ${couleurObj ? couleurObj.bg : 'bg-slate-200'}`} title={jeu.couleur || 'Aucune couleur'} />
-                              <span className="truncate text-base group-hover:text-blue-600 transition-colors">{jeu.nom}</span>
-                              {hasCopies && (
-                                <span className="bg-slate-100 text-slate-500 text-[10px] font-black px-2 py-0.5 rounded-md border border-slate-200 shrink-0">
-                                  {groupe.length} EX
-                                </span>
-                              )}
-                              {hasNotes && (
-                                <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" title="Commentaires sur cet exemplaire" />
-                              )}
-                            </div>
+                        {/* Vignette */}
+                        <div style={{ width: 40, height: 40, borderRadius: 8, overflow: "hidden", flexShrink: 0, border: "2px solid var(--ink)", background: couleurObj ? couleurObj.hex : "var(--cream2)" }}>
+                          {catalogueImages[jeu.ean]
+                            ? <img src={catalogueImages[jeu.ean]} alt={jeu.nom} style={{ width: "100%", height: "100%", objectFit: "cover" }} loading="lazy" />
+                            : null
+                          }
+                        </div>
+
+                        {/* Info principale */}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                            <div style={{ width: 10, height: 10, borderRadius: "50%", background: couleurObj ? couleurObj.hex : "var(--cream2)", border: "1.5px solid var(--ink)", flexShrink: 0 }}></div>
+                            <span style={{ fontWeight: 800, fontSize: 15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{jeu.nom}</span>
+                            {hasCopies && <span style={{ fontSize: 11, fontWeight: 800, background: "var(--cream2)", border: "1.5px solid var(--ink)", borderRadius: 20, padding: "1px 7px" }}>{groupe.length} EX</span>}
+                            {hasNotes && <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--yellow)", border: "1px solid var(--ink)", flexShrink: 0 }} title="Commentaires"></span>}
                           </div>
-                          <div className="flex items-center gap-2 ml-14 mt-0.5 flex-wrap">
-                            {jeu.mecanique && <span className="bg-slate-100 text-slate-500 text-[10px] font-bold px-2 py-0.5 rounded uppercase">{jeu.mecanique}</span>}
-                            {jeu.coop_versus && <span className="bg-blue-50 text-blue-600 border border-blue-100 text-[10px] font-bold px-2 py-0.5 rounded">{jeu.coop_versus === 'Coop' ? '🤝 Coop' : jeu.coop_versus === 'Solo' ? '👤 Solo' : '⚔️ Versus'}</span>}
-                            {jeu.nb_de_joueurs && <span className="bg-slate-100 text-slate-500 text-[10px] font-bold px-2 py-0.5 rounded">👥 {jeu.nb_de_joueurs}</span>}
-                            {jeu.etoiles && <span className="bg-amber-50 text-amber-600 border border-amber-200 text-[10px] font-bold px-2 py-0.5 rounded shadow-sm">⭐ {jeu.etoiles}</span>}
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
+                            {jeu.mecanique && <span className="pop-tag" style={{ background: "var(--cream2)" }}>{jeu.mecanique}</span>}
+                            {jeu.coop_versus && <span className="pop-tag" style={{ background: "var(--bleu)", color: "var(--white)" }}>{jeu.coop_versus === 'Coop' ? '🤝 Coop' : jeu.coop_versus === 'Solo' ? '👤 Solo' : '⚔️ Versus'}</span>}
+                            {jeu.nb_de_joueurs && <span className="pop-tag" style={{ background: "var(--cream2)" }}>👥 {jeu.nb_de_joueurs}</span>}
+                            {jeu.etoiles && <span className="pop-tag" style={{ background: "var(--yellow)" }}>⭐ {jeu.etoiles}</span>}
                             <DureeGauge duree={jeu.temps_de_jeu} />
                           </div>
                         </div>
-                        
-                        <div className="col-span-6 md:col-span-3 lg:col-span-3 font-medium text-slate-500 font-mono text-sm">
-                          {jeu.ean}
-                        </div>
-                        
-                        <div className="col-span-6 md:col-span-2 lg:col-span-2 flex flex-col gap-1.5 items-start">
+
+                        {/* EAN */}
+                        <span style={{ fontFamily: "monospace", fontSize: 12, color: "rgba(0,0,0,0.35)", flexShrink: 0 }}>{jeu.ean}</span>
+
+                        {/* Statut */}
+                        <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-end", flexShrink: 0 }}>
                           {!hasCopies ? (
                             <>
-                              <span className={`text-[10px] font-black px-2.5 py-1.5 rounded-md uppercase ${jeu.statut === 'En stock' ? 'bg-emerald-100 text-emerald-700' : jeu.statut === 'En préparation' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-700'}`}>
-                                {jeu.statut}
-                              </span>
+                              <span style={{
+                                fontSize: 11, fontWeight: 800, textTransform: "uppercase",
+                                background: jeu.statut === 'En stock' ? "var(--vert)" : jeu.statut === 'En préparation' ? "var(--orange)" : "var(--cream2)",
+                                color: "var(--ink)", border: "1.5px solid var(--ink)",
+                                borderRadius: 20, padding: "2px 8px", boxShadow: "1px 1px 0 var(--ink)",
+                              }}>{jeu.statut}</span>
                               {jeu.statut === 'En préparation' && (
-                                <div className="flex items-center gap-1.5 w-full max-w-[100px]" title={`${getProgression(jeu)}%`}>
-                                  <div className="w-full bg-slate-200 rounded-full h-1.5 overflow-hidden">
-                                    <div className="bg-amber-500 h-1.5 rounded-full" style={{ width: `${getProgression(jeu)}%` }}></div>
-                                  </div>
+                                <div style={{ width: 60, background: "var(--cream2)", borderRadius: 4, height: 5, overflow: "hidden", border: "1px solid var(--ink)" }}>
+                                  <div style={{ height: "100%", background: "var(--orange)", borderRadius: 4, width: `${getProgression(jeu)}%` }}></div>
                                 </div>
                               )}
                               {jeu.statut === 'En stock' && jeu.etape_nouveaute && (
-                                <span className="text-[9px] font-bold text-slate-500">🌟 Nouveauté</span>
+                                <span style={{ fontSize: 10, fontWeight: 800, color: "var(--ink)" }}>🌟 Nouveauté</span>
                               )}
                             </>
                           ) : (
-                            <div className="flex flex-col gap-1 text-xs font-bold">
-                              {groupe.filter(g => g.statut === 'En stock').length > 0 && <span className="text-emerald-600">{groupe.filter(g => g.statut === 'En stock').length} en stock</span>}
-                              {groupe.filter(g => g.statut === 'En préparation').length > 0 && <span className="text-amber-500">{groupe.filter(g => g.statut === 'En préparation').length} en prépa</span>}
+                            <div style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11, fontWeight: 800 }}>
+                              {groupe.filter(g => g.statut === 'En stock').length > 0 && <span style={{ color: "#16a34a" }}>{groupe.filter(g => g.statut === 'En stock').length} en stock</span>}
+                              {groupe.filter(g => g.statut === 'En préparation').length > 0 && <span style={{ color: "var(--orange)" }}>{groupe.filter(g => g.statut === 'En préparation').length} en prépa</span>}
                             </div>
                           )}
                         </div>
 
-                        <div className="col-span-12 lg:col-span-1 flex justify-end gap-2">
-                           {hasCopies ? (
-                             <button
-                               onClick={(e) => { e.stopPropagation(); toggleGroupe(jeu.ean); }}
-                               className="text-slate-500 hover:bg-slate-200 bg-slate-100 px-3 py-1.5 rounded-lg font-bold text-xs transition-colors flex items-center justify-center min-w-[40px] shadow-sm"
-                             >
-                               {estDeplie ? '▲' : '▼'}
-                             </button>
-                           ) : (
-                             <button onClick={(e) => { e.stopPropagation(); ouvrirFicheJeu(jeu); }} className="text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg font-bold text-xs transition-colors opacity-0 group-hover:opacity-100">✏️</button>
-                           )}
-                           <Link
-                             href={`/catalogage?ean=${jeu.ean}`}
-                             onClick={(e) => e.stopPropagation()}
-                             className="text-slate-600 bg-slate-100 hover:bg-[#baff29] hover:text-black px-3 py-1.5 rounded-lg font-bold text-xs transition-colors opacity-0 group-hover:opacity-100">
-                             📋
-                           </Link>
+                        {/* Actions */}
+                        <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                          {hasCopies && (
+                            <button onClick={e => { e.stopPropagation(); toggleGroupe(jeu.ean); }}
+                              style={{ padding: "5px 10px", borderRadius: 6, border: "2px solid var(--ink)", background: "var(--cream2)", fontWeight: 800, fontSize: 13, cursor: "pointer", boxShadow: "1px 1px 0 var(--ink)" }}>
+                              {estDeplie ? "▲" : "▼"}
+                            </button>
+                          )}
+                          <Link href={`/catalogage?ean=${jeu.ean}`} onClick={e => e.stopPropagation()}
+                            style={{ padding: "5px 10px", borderRadius: 6, border: "2px solid var(--ink)", background: "var(--cream2)", fontWeight: 800, fontSize: 13, cursor: "pointer", textDecoration: "none", color: "var(--ink)", boxShadow: "1px 1px 0 var(--ink)" }}>
+                            📋
+                          </Link>
                         </div>
                       </div>
 
                       {hasCopies && estDeplie && (
-                        <div className="bg-slate-50 border-t border-slate-100 p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                        <div style={{ background: "var(--cream2)", borderTop: "2px solid var(--ink)", padding: 12, display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 8 }}>
                           {groupe.map((copy, idx) => (
-                            <div key={copy.id} onClick={() => ouvrirFicheJeu(copy)} className="bg-white border border-slate-200 p-3 rounded-xl flex justify-between items-center cursor-pointer hover:border-slate-400 shadow-sm transition-colors">
-                              <div className="flex flex-col gap-1">
-                                <span className="font-bold text-sm text-slate-800">Ex. {idx + 1}</span>
-                                {copy.code_syracuse && <span className="text-[10px] font-mono text-slate-500">Syr: {copy.code_syracuse}</span>}
+                            <div key={copy.id} onClick={() => ouvrirFicheJeu(copy)}
+                              style={{ background: "var(--white)", border: "2px solid var(--ink)", borderRadius: 8, padding: "10px 12px", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", boxShadow: "2px 2px 0 var(--ink)" }}>
+                              <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                                <span style={{ fontWeight: 800, fontSize: 13 }}>Ex. {idx + 1}</span>
+                                {copy.code_syracuse && <span style={{ fontSize: 10, fontFamily: "monospace", color: "rgba(0,0,0,0.4)" }}>{copy.code_syracuse}</span>}
                               </div>
-                              <div className="flex flex-col items-end gap-1">
-                                <span className={`text-[10px] font-black px-2 py-0.5 rounded-md uppercase ${copy.statut === 'En stock' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-                                  {copy.statut}
-                                </span>
+                              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
+                                <span style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase", background: copy.statut === 'En stock' ? "var(--vert)" : "var(--orange)", border: "1.5px solid var(--ink)", borderRadius: 20, padding: "1px 7px" }}>{copy.statut}</span>
                                 {copy.statut === 'En préparation' && (
-                                  <div className="w-12 bg-slate-200 rounded-full h-1 mt-1 overflow-hidden">
-                                    <div className="bg-amber-500 h-1 rounded-full" style={{ width: `${getProgression(copy)}%` }}></div>
+                                  <div style={{ width: 40, background: "var(--cream2)", borderRadius: 4, height: 4, overflow: "hidden", border: "1px solid var(--ink)" }}>
+                                    <div style={{ height: "100%", background: "var(--orange)", width: `${getProgression(copy)}%` }}></div>
                                   </div>
                                 )}
                               </div>
@@ -1690,126 +1775,98 @@ export default function InventairePage() {
         )}
       </main>
 
-      {/* --- NOUVEAU: OUTIL DE SCAN CORRECTION RAPIDE --- */}
+      {/* --- MODAL COLORFIX --- */}
       {isColorFixOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 sm:p-8 animate-fade-in">
-          <div className="bg-white rounded-[2.5rem] w-full max-w-2xl flex flex-col shadow-2xl overflow-hidden border-2 border-slate-200">
-            <div className="p-6 md:p-8 border-b-2 border-slate-100 bg-slate-50 flex justify-between items-start shrink-0">
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", padding: "80px 16px 16px" }}>
+          <div className="pop-card" style={{ width: "100%", maxWidth: 560, maxHeight: "calc(100vh - 96px)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "18px 24px", borderBottom: "2px solid var(--ink)", flexShrink: 0 }}>
               <div>
-                <h2 className="text-2xl font-black text-slate-800">🚑 Scanner Correctif Couleurs</h2>
-                <p className="text-slate-500 font-bold mt-1 text-sm">Attribue rapidement une couleur à des EAN existants.</p>
+                <h2 className="bc" style={{ fontSize: 22, margin: 0, letterSpacing: "0.02em" }}>Scanner Correctif Couleurs</h2>
+                <p style={{ fontSize: 13, color: "rgba(0,0,0,0.4)", fontWeight: 600, margin: "3px 0 0" }}>Attribue rapidement une couleur à des EAN.</p>
               </div>
-              <button onClick={() => setIsColorFixOpen(false)} className="w-10 h-10 flex items-center justify-center rounded-full bg-slate-200 text-slate-600 hover:bg-slate-300 hover:text-black font-black transition-colors shrink-0">✕</button>
+              <button onClick={() => setIsColorFixOpen(false)} className="pop-btn" style={{ padding: "6px 10px", fontSize: 14 }}>✕</button>
             </div>
-
-            <div className="p-6 md:p-8 flex flex-col gap-6">
-              
+            <div style={{ overflowY: "auto", flex: 1, padding: 24, display: "flex", flexDirection: "column", gap: 20 }}>
               <div>
-                <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-3">1. Choisir la couleur à appliquer</h3>
-                <div className="flex gap-3 flex-wrap">
+                <p className="bc" style={{ fontSize: 14, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 10 }}>1. Choisir la couleur</p>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   {COULEURS.map(c => (
-                    <button 
-                      key={c.id}
+                    <button key={c.id}
                       onClick={() => { setColorFixSelected(c.id); document.getElementById('color-fix-scanner')?.focus(); }}
-                      className={`px-4 py-2.5 rounded-xl font-black uppercase text-sm border-2 transition-all ${colorFixSelected === c.id ? `${c.bg} ${c.text} border-transparent shadow-md scale-105` : 'bg-white border-slate-200 text-slate-500 hover:border-slate-400'}`}
-                    >
-                      {c.label}
-                    </button>
+                      style={{
+                        padding: "8px 16px", borderRadius: 8, fontWeight: 800, textTransform: "uppercase", fontSize: 13,
+                        border: "2.5px solid var(--ink)", cursor: "pointer", fontFamily: "inherit",
+                        background: colorFixSelected === c.id ? c.hex : "var(--white)",
+                        boxShadow: colorFixSelected === c.id ? "3px 3px 0 var(--ink)" : "none",
+                        transform: colorFixSelected === c.id ? "translate(-1px,-1px)" : "none",
+                        transition: "all 0.1s",
+                      }}>{c.label}</button>
                   ))}
                 </div>
               </div>
-
               <div>
-                <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-3">2. Scanner les EAN à la suite</h3>
-                <input 
-                  id="color-fix-scanner"
-                  type="text" 
-                  value={colorFixEan}
-                  onChange={(e) => setColorFixEan(e.target.value)}
-                  onKeyDown={handleColorFixScan}
-                  placeholder={colorFixSelected ? "Scannez un code-barres ici..." : "Veuillez choisir une couleur d'abord ☝️"}
-                  disabled={!colorFixSelected}
-                  autoFocus
-                  className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-4 text-lg font-mono font-bold outline-none focus:border-black disabled:opacity-50 transition-colors"
+                <p className="bc" style={{ fontSize: 14, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 10 }}>2. Scanner les EAN</p>
+                <input
+                  id="color-fix-scanner" type="text" value={colorFixEan}
+                  onChange={e => setColorFixEan(e.target.value)} onKeyDown={handleColorFixScan}
+                  placeholder={colorFixSelected ? "Scannez un code-barres..." : "Choisissez une couleur d'abord"}
+                  disabled={!colorFixSelected} autoFocus
+                  style={{ ...inp, fontSize: 16, fontFamily: "monospace", opacity: !colorFixSelected ? 0.5 : 1 }}
                 />
               </div>
-
-              <div className="bg-slate-100 rounded-xl p-4 min-h-[150px] max-h-[250px] overflow-y-auto flex flex-col gap-2 custom-scroll border border-slate-200 shadow-inner">
+              <div style={{ background: "var(--cream2)", border: "2px solid var(--ink)", borderRadius: 10, padding: 14, minHeight: 120, maxHeight: 220, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6 }}>
                 {colorFixLogs.length === 0 ? (
-                  <p className="text-slate-400 font-bold text-center mt-10 italic text-sm">Aucun scan effectué pour le moment.</p>
-                ) : (
-                  colorFixLogs.map((log, i) => (
-                    <div key={i} className={`p-2 rounded-lg text-sm font-bold border ${log.isError ? 'bg-red-50 border-red-200 text-red-700' : 'bg-white border-slate-200 text-slate-700'}`}>
-                      {log.msg}
-                    </div>
-                  ))
-                )}
+                  <p style={{ color: "rgba(0,0,0,0.35)", fontWeight: 700, fontStyle: "italic", textAlign: "center", paddingTop: 24, fontSize: 13 }}>Aucun scan effectué.</p>
+                ) : colorFixLogs.map((log, i) => (
+                  <div key={i} style={{ padding: "6px 10px", borderRadius: 6, fontSize: 13, fontWeight: 700, background: log.isError ? "#fff0f0" : "var(--white)", border: `1.5px solid ${log.isError ? "var(--rouge)" : "var(--ink)"}`, color: log.isError ? "var(--rouge)" : "var(--ink)" }}>
+                    {log.msg}
+                  </div>
+                ))}
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* --- NOUVEAU: OUTIL DE NETTOYAGE DES MÉCANIQUES --- */}
+      {/* --- MODAL MÉCANIQUES --- */}
       {isMecaFixModalOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[90] flex items-center justify-center p-4 sm:p-8 animate-fade-in">
-          <div className="bg-white rounded-[2.5rem] w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden border-2 border-slate-200">
-            <div className="p-6 md:p-8 border-b-2 border-slate-100 bg-slate-50 flex justify-between items-start shrink-0">
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 90, display: "flex", alignItems: "center", justifyContent: "center", padding: "80px 16px 16px" }}>
+          <div className="pop-card" style={{ width: "100%", maxWidth: 720, maxHeight: "calc(100vh - 96px)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "18px 24px", borderBottom: "2px solid var(--ink)", flexShrink: 0 }}>
               <div>
-                <h2 className="text-2xl font-black text-slate-800">🧽 Nettoyage des Mécaniques</h2>
-                <p className="text-slate-500 font-bold mt-1 text-sm">{jeuxMecaInvalides.length} jeux ont une mécanique vide ou non standard.</p>
+                <h2 className="bc" style={{ fontSize: 22, margin: 0, letterSpacing: "0.02em" }}>Nettoyage des Mécaniques</h2>
+                <p style={{ fontSize: 13, color: "rgba(0,0,0,0.4)", fontWeight: 600, margin: "3px 0 0" }}>{jeuxMecaInvalides.length} jeux à corriger</p>
               </div>
-              <button onClick={() => setIsMecaFixModalOpen(false)} className="w-10 h-10 flex items-center justify-center rounded-full bg-slate-200 text-slate-600 hover:bg-slate-300 hover:text-black font-black transition-colors shrink-0">✕</button>
+              <button onClick={() => setIsMecaFixModalOpen(false)} className="pop-btn" style={{ padding: "6px 10px", fontSize: 14 }}>✕</button>
             </div>
-
-            <div className="flex-1 overflow-y-auto p-6 md:p-8 bg-[#e5e5e5] custom-scroll flex flex-col gap-4">
+            <div style={{ overflowY: "auto", flex: 1, padding: 20, display: "flex", flexDirection: "column", gap: 10, background: "var(--cream2)" }}>
               {jeuxMecaInvalides.length === 0 ? (
-                <div className="text-center py-20 text-slate-400">
-                  <span className="text-5xl mb-4 block">✨</span>
-                  <p className="font-bold text-xl">Tout est parfait ! Aucune mécanique à nettoyer.</p>
+                <div style={{ textAlign: "center", padding: "60px 0", color: "rgba(0,0,0,0.35)" }}>
+                  <span style={{ fontSize: 40, display: "block", marginBottom: 12 }}>✨</span>
+                  <p style={{ fontWeight: 700, fontSize: 18 }}>Tout est parfait !</p>
                 </div>
-              ) : (
-                jeuxMecaInvalides.map((jeu) => (
-                  <div key={jeu.ean} className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 flex flex-col sm:flex-row justify-between sm:items-center gap-4">
-                    <div className="flex-1 min-w-0">
-                      <h4 className="font-black text-lg text-slate-800 truncate">{jeu.nom}</h4>
-                      <p className="text-xs font-bold text-slate-500 mt-1">
-                        Mécanique actuelle : <span className="text-red-500 bg-red-50 px-2 py-0.5 rounded border border-red-100">{jeu.mecanique || "Vide"}</span>
-                      </p>
-                    </div>
-                    
-                    <div className="shrink-0 w-full sm:w-64">
-                      <select 
-                        value={mecaUpdates[jeu.ean] !== undefined ? mecaUpdates[jeu.ean] : (jeu.mecanique || "")}
-                        onChange={(e) => setMecaUpdates({ ...mecaUpdates, [jeu.ean]: e.target.value })}
-                        className="w-full bg-slate-50 border-2 border-slate-200 font-bold text-slate-700 text-sm rounded-xl px-3 py-2 outline-none focus:border-black cursor-pointer shadow-sm"
-                      >
-                        <option value="">-- Conserver tel quel --</option>
-                        {MECANIQUES_OFFICIELLES.map(m => (
-                          <option key={m} value={m}>{m}</option>
-                        ))}
-                      </select>
-                    </div>
+              ) : jeuxMecaInvalides.map(jeu => (
+                <div key={jeu.ean} className="pop-card" style={{ padding: "14px 18px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ fontWeight: 800, fontSize: 15, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{jeu.nom}</p>
+                    <p style={{ fontSize: 12, color: "rgba(0,0,0,0.4)", margin: "3px 0 0" }}>
+                      Actuelle : <span style={{ fontWeight: 800, color: "var(--rouge)" }}>{jeu.mecanique || "Vide"}</span>
+                    </p>
                   </div>
-                ))
-              )}
+                  <select value={mecaUpdates[jeu.ean] !== undefined ? mecaUpdates[jeu.ean] : (jeu.mecanique || "")}
+                    onChange={e => setMecaUpdates({ ...mecaUpdates, [jeu.ean]: e.target.value })}
+                    style={{ ...inp, width: 220, cursor: "pointer" }}>
+                    <option value="">-- Conserver --</option>
+                    {MECANIQUES_OFFICIELLES.map(m => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                </div>
+              ))}
             </div>
-
             {jeuxMecaInvalides.length > 0 && (
-              <div className="p-6 border-t-2 border-slate-100 bg-slate-50 flex justify-between items-center shrink-0">
-                <button 
-                  onClick={() => setIsMecaFixModalOpen(false)} 
-                  disabled={isFixingMeca}
-                  className="px-6 py-3 bg-white hover:bg-slate-100 text-slate-600 font-bold rounded-xl transition-colors border border-slate-200 shadow-sm"
-                >
-                  Annuler
-                </button>
-                <button 
-                  onClick={validerCorrectionsMeca} 
-                  disabled={isFixingMeca || Object.keys(mecaUpdates).length === 0}
-                  className="bg-black hover:bg-slate-800 disabled:bg-slate-400 text-white font-black px-8 py-3 rounded-xl shadow-md transition-all flex items-center gap-2"
-                >
-                  {isFixingMeca ? "⏳ Mise à jour..." : `💾 Enregistrer (${Object.values(mecaUpdates).filter(v => v !== "").length})`}
+              <div style={{ padding: "14px 24px", borderTop: "2px solid var(--ink)", display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
+                <button onClick={() => setIsMecaFixModalOpen(false)} disabled={isFixingMeca} className="pop-btn" style={{ background: "var(--cream2)" }}>Annuler</button>
+                <button onClick={validerCorrectionsMeca} disabled={isFixingMeca || Object.keys(mecaUpdates).length === 0} className="pop-btn pop-btn-dark" style={{ opacity: (isFixingMeca || Object.keys(mecaUpdates).length === 0) ? 0.4 : 1 }}>
+                  <span className="bc" style={{ fontSize: 15 }}>{isFixingMeca ? "Mise à jour…" : `Enregistrer (${Object.values(mecaUpdates).filter(v => v !== "").length})`}</span>
                 </button>
               </div>
             )}
@@ -1817,94 +1874,70 @@ export default function InventairePage() {
         </div>
       )}
 
-      {/* --- OUTIL NETTOYAGE DOUBLONS --- */}
+      {/* --- MODAL DOUBLONS --- */}
       {isDoublonsModalOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[90] flex items-center justify-center p-2 sm:p-4 animate-fade-in">
-          <div className="bg-white rounded-[2.5rem] w-full max-w-6xl flex flex-col shadow-2xl overflow-hidden border-2 border-slate-200" style={{ height: '95vh' }}>
-            <div className="p-6 md:p-8 border-b-2 border-slate-100 bg-slate-50 flex justify-between items-start shrink-0">
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 90, display: "flex", alignItems: "center", justifyContent: "center", padding: "80px 16px 16px" }}>
+          <div className="pop-card" style={{ width: "100%", maxWidth: 800, maxHeight: "calc(100vh - 96px)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "18px 24px", borderBottom: "2px solid var(--ink)", flexShrink: 0 }}>
               <div>
-                <h2 className="text-2xl font-black text-slate-800">🔍 Nettoyage des Doublons</h2>
-                <p className="text-slate-500 font-bold mt-1 text-sm">
-                  {doublonGroupes.length === 0
-                    ? "Aucun doublon détecté."
-                    : `${doublonGroupes.length} jeu${doublonGroupes.length > 1 ? 'x' : ''} avec des exemplaires sans code Syracuse. ${doublonsSelectionnes.length} exemplaire${doublonsSelectionnes.length > 1 ? 's' : ''} sélectionné${doublonsSelectionnes.length > 1 ? 's' : ''} pour suppression.`}
+                <h2 className="bc" style={{ fontSize: 22, margin: 0, letterSpacing: "0.02em" }}>Nettoyage des Doublons</h2>
+                <p style={{ fontSize: 13, color: "rgba(0,0,0,0.4)", fontWeight: 600, margin: "3px 0 0" }}>
+                  {doublonGroupes.length === 0 ? "Aucun doublon détecté." : `${doublonGroupes.length} jeu(x) · ${doublonsSelectionnes.length} sélectionné(s) pour suppression`}
                 </p>
               </div>
-              <button onClick={() => setIsDoublonsModalOpen(false)} className="w-10 h-10 flex items-center justify-center rounded-full bg-slate-200 text-slate-600 hover:bg-slate-300 hover:text-black font-black transition-colors shrink-0">✕</button>
+              <button onClick={() => setIsDoublonsModalOpen(false)} className="pop-btn" style={{ padding: "6px 10px", fontSize: 14 }}>✕</button>
             </div>
-
-            <div className="overflow-y-auto p-6 bg-[#e5e5e5] custom-scroll" style={{flex: '1 1 0', minHeight: 0}}>
+            <div style={{ overflowY: "auto", flex: 1, padding: 16, background: "var(--cream2)", display: "flex", flexDirection: "column", gap: 12 }}>
               {doublonGroupes.length === 0 ? (
-                <div className="text-center py-20 text-slate-400">
-                  <span className="text-5xl mb-4 block">✨</span>
-                  <p className="font-bold text-xl">Aucun doublon trouvé. L&apos;inventaire est propre !</p>
+                <div style={{ textAlign: "center", padding: "60px 0", color: "rgba(0,0,0,0.35)" }}>
+                  <span style={{ fontSize: 40, display: "block", marginBottom: 12 }}>✨</span>
+                  <p style={{ fontWeight: 700, fontSize: 18 }}>Aucun doublon trouvé !</p>
                 </div>
-              ) : (
-                <div className="flex flex-col gap-4">
-                  {doublonGroupes.map((groupe) => {
-                    const tousSupprimes = groupe.exemplaires.every(ex => doublonsSelectionnes.includes(ex.id));
-                    return (
-                      <div key={groupe.ean} className="bg-white rounded-2xl border border-slate-200 shadow-sm">
-                        <div className="px-5 py-3 border-b border-slate-200 bg-slate-50 rounded-t-2xl">
-                          <p className="font-black text-slate-900 text-base">{groupe.nom}</p>
-                          <p className="text-xs text-slate-500 mt-0.5">{groupe.exemplaires.length} exemplaires · EAN {groupe.ean}</p>
-                          {tousSupprimes && <p className="text-xs text-red-500 font-bold mt-1">⚠️ Tous les exemplaires sélectionnés</p>}
-                        </div>
-                        {groupe.exemplaires.map((ex) => {
-                          const isSuggere = groupe.suggeresIds.includes(ex.id);
-                          const isChecked = doublonsSelectionnes.includes(ex.id);
-                          return (
-                            <div
-                              key={String(ex.id)}
-                              onClick={() => {
-                                if (isChecked) {
-                                  setDoublonsSelectionnes(prev => prev.filter(id => id !== ex.id));
-                                } else {
-                                  setDoublonsSelectionnes(prev => [...prev, ex.id]);
-                                }
-                              }}
-                              className={`flex items-start gap-3 px-5 py-3 cursor-pointer border-b border-slate-100 last:border-b-0 last:rounded-b-2xl ${isChecked ? 'bg-red-50' : 'hover:bg-slate-50'}`}
-                            >
-                              <input
-                                type="checkbox"
-                                checked={isChecked}
-                                readOnly
-                                className="mt-0.5 w-4 h-4 accent-red-500 shrink-0"
-                              />
-                              <div>
-                                <p className="text-sm font-bold text-slate-800">
-                                  {ex.nom} <span className="text-slate-400 font-normal">· #{ex.id}</span>
-                                </p>
-                                <div className="flex flex-wrap gap-1 mt-1">
-                                  {ex.code_syracuse
-                                    ? <span className="text-xs px-2 py-0.5 rounded bg-green-100 text-green-700 border border-green-200 font-bold">✓ {ex.code_syracuse}</span>
-                                    : <span className="text-xs px-2 py-0.5 rounded bg-red-100 text-red-600 border border-red-200 font-bold">✗ Pas de code Syracuse</span>
-                                  }
-                                  <span className="text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">{ex.statut}</span>
-                                  {isSuggere && <span className="text-xs px-2 py-0.5 rounded bg-orange-50 text-orange-600 border border-orange-200 font-bold">Suggéré</span>}
-                                </div>
-                              </div>
+              ) : doublonGroupes.map(groupe => {
+                const tousSupprimes = groupe.exemplaires.every(ex => doublonsSelectionnes.includes(ex.id));
+                return (
+                  <div key={groupe.ean} className="pop-card" style={{ overflow: "hidden" }}>
+                    <div style={{ padding: "10px 16px", borderBottom: "2px solid var(--ink)", background: "var(--cream2)" }}>
+                      <p style={{ fontWeight: 800, fontSize: 15, margin: 0 }}>{groupe.nom}</p>
+                      <p style={{ fontSize: 11, color: "rgba(0,0,0,0.4)", margin: "2px 0 0" }}>{groupe.exemplaires.length} exemplaires · EAN {groupe.ean}</p>
+                      {tousSupprimes && <p style={{ fontSize: 11, fontWeight: 800, color: "var(--rouge)", margin: "4px 0 0" }}>⚠️ Tous les exemplaires sélectionnés</p>}
+                    </div>
+                    {groupe.exemplaires.map(ex => {
+                      const isSuggere = groupe.suggeresIds.includes(ex.id);
+                      const isChecked = doublonsSelectionnes.includes(ex.id);
+                      return (
+                        <div key={String(ex.id)} onClick={() => {
+                          if (isChecked) setDoublonsSelectionnes(prev => prev.filter(id => id !== ex.id));
+                          else setDoublonsSelectionnes(prev => [...prev, ex.id]);
+                        }}
+                          style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 16px", cursor: "pointer", borderBottom: "1px solid var(--cream2)", background: isChecked ? "#fff0f0" : "var(--white)" }}
+                          onMouseEnter={e => { if (!isChecked) (e.currentTarget as HTMLElement).style.background = "var(--cream2)"; }}
+                          onMouseLeave={e => { if (!isChecked) (e.currentTarget as HTMLElement).style.background = "var(--white)"; }}
+                        >
+                          <input type="checkbox" checked={isChecked} readOnly style={{ marginTop: 2, flexShrink: 0, accentColor: "var(--rouge)" }} />
+                          <div>
+                            <p style={{ fontSize: 13, fontWeight: 700, margin: 0 }}>{ex.nom} <span style={{ color: "rgba(0,0,0,0.3)", fontWeight: 400 }}>· #{ex.id}</span></p>
+                            <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
+                              {ex.code_syracuse
+                                ? <span style={{ fontSize: 11, fontWeight: 800, background: "var(--vert)", border: "1.5px solid var(--ink)", borderRadius: 20, padding: "1px 8px" }}>✓ {ex.code_syracuse}</span>
+                                : <span style={{ fontSize: 11, fontWeight: 800, background: "var(--rouge)", color: "var(--white)", border: "1.5px solid var(--ink)", borderRadius: 20, padding: "1px 8px" }}>✗ Sans code Syracuse</span>
+                              }
+                              <span style={{ fontSize: 11, fontWeight: 700, background: "var(--cream2)", border: "1.5px solid var(--ink)", borderRadius: 20, padding: "1px 8px" }}>{ex.statut}</span>
+                              {isSuggere && <span style={{ fontSize: 11, fontWeight: 800, background: "var(--orange)", border: "1.5px solid var(--ink)", borderRadius: 20, padding: "1px 8px" }}>Suggéré</span>}
                             </div>
-                          );
-                        })}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
             </div>
-
             {doublonGroupes.length > 0 && (
-              <div className="p-6 border-t-2 border-slate-100 bg-slate-50 flex justify-between items-center shrink-0">
-                <button onClick={() => setIsDoublonsModalOpen(false)} disabled={isDeletingDoublons} className="px-6 py-3 bg-white hover:bg-slate-100 text-slate-600 font-bold rounded-xl transition-colors border border-slate-200 shadow-sm">
-                  Annuler
-                </button>
-                <button
-                  onClick={supprimerDoublonsSelectionnes}
-                  disabled={isDeletingDoublons || doublonsSelectionnes.length === 0}
-                  className="bg-red-500 hover:bg-red-600 disabled:bg-slate-400 text-white font-black px-8 py-3 rounded-xl shadow-md transition-all flex items-center gap-2"
-                >
-                  {isDeletingDoublons ? "⏳ Suppression..." : `🗑️ Supprimer (${doublonsSelectionnes.length})`}
+              <div style={{ padding: "14px 24px", borderTop: "2px solid var(--ink)", display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
+                <button onClick={() => setIsDoublonsModalOpen(false)} disabled={isDeletingDoublons} className="pop-btn" style={{ background: "var(--cream2)" }}>Annuler</button>
+                <button onClick={supprimerDoublonsSelectionnes} disabled={isDeletingDoublons || doublonsSelectionnes.length === 0} className="pop-btn" style={{ background: "var(--rouge)", color: "var(--white)", opacity: (isDeletingDoublons || doublonsSelectionnes.length === 0) ? 0.4 : 1 }}>
+                  <span className="bc" style={{ fontSize: 15 }}>{isDeletingDoublons ? "Suppression…" : `Supprimer (${doublonsSelectionnes.length})`}</span>
                 </button>
               </div>
             )}
@@ -1914,115 +1947,82 @@ export default function InventairePage() {
 
       {/* --- MODAL EAN TEMPORAIRES --- */}
       {isTempEanModalOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[90] flex items-center justify-center p-2 sm:p-4 animate-fade-in">
-          <div className="bg-white rounded-[2.5rem] w-full max-w-4xl flex flex-col shadow-2xl overflow-hidden border-2 border-slate-200" style={{ height: '90vh' }}>
-
-            {/* Header */}
-            <div className="p-6 md:p-8 border-b-2 border-slate-100 bg-slate-50 flex justify-between items-start shrink-0">
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 90, display: "flex", alignItems: "center", justifyContent: "center", padding: "80px 16px 16px" }}>
+          <div className="pop-card" style={{ width: "100%", maxWidth: 720, maxHeight: "calc(100vh - 96px)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "18px 24px", borderBottom: "2px solid var(--ink)", flexShrink: 0 }}>
               <div>
-                <h2 className="text-2xl font-black text-slate-800">🔖 Nettoyage EAN temporaires</h2>
-                <p className="text-slate-500 font-bold mt-1 text-sm">
-                  {isTempLoading ? "Analyse en cours…" : `${tempEanItems.filter(i => i.status === "pending").length} jeu(x) avec EAN TEMP/SYR à traiter`}
+                <h2 className="bc" style={{ fontSize: 22, margin: 0, letterSpacing: "0.02em" }}>EAN Temporaires</h2>
+                <p style={{ fontSize: 13, color: "rgba(0,0,0,0.4)", fontWeight: 600, margin: "3px 0 0" }}>
+                  {isTempLoading ? "Analyse en cours…" : `${tempEanItems.filter(i => i.status === "pending").length} jeu(x) à traiter`}
                 </p>
               </div>
-              <button onClick={() => setIsTempEanModalOpen(false)} className="w-10 h-10 flex items-center justify-center rounded-full bg-slate-200 text-slate-600 hover:bg-slate-300 hover:text-black font-black transition-colors shrink-0">✕</button>
+              <button onClick={() => setIsTempEanModalOpen(false)} className="pop-btn" style={{ padding: "6px 10px", fontSize: 14 }}>✕</button>
             </div>
-
-            {/* Corps */}
-            <div className="overflow-y-auto p-6 bg-[#e5e5e5] custom-scroll" style={{flex: '1 1 0', minHeight: 0}}>
+            <div style={{ overflowY: "auto", flex: 1, padding: 16, background: "var(--cream2)", display: "flex", flexDirection: "column", gap: 12 }}>
               {isTempLoading ? (
-                <div className="flex items-center justify-center py-20">
-                  <p className="font-bold text-slate-400 animate-pulse">Chargement…</p>
+                <div style={{ textAlign: "center", padding: "60px 0" }}>
+                  <p className="bc" style={{ fontSize: 18, color: "rgba(0,0,0,0.3)" }}>Chargement…</p>
                 </div>
               ) : tempEanItems.length === 0 ? (
-                <div className="text-center py-20 text-slate-400">
-                  <span className="text-5xl mb-4 block">✨</span>
-                  <p className="font-bold text-xl">Aucun EAN temporaire trouvé !</p>
+                <div style={{ textAlign: "center", padding: "60px 0", color: "rgba(0,0,0,0.35)" }}>
+                  <span style={{ fontSize: 40, display: "block", marginBottom: 12 }}>✨</span>
+                  <p style={{ fontWeight: 700, fontSize: 18 }}>Aucun EAN temporaire !</p>
                 </div>
-              ) : (
-                <div className="flex flex-col gap-4">
-                {tempEanItems.map(item => (
-                  <div key={item.tempEan} className={`bg-white rounded-2xl border shadow-sm overflow-hidden transition-opacity ${item.status !== "pending" ? "opacity-40" : ""}`}>
-                    {/* Titre */}
-                    <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between gap-3">
-                      <div>
-                        <p className="font-black text-slate-900">{item.nom}</p>
-                        <p className="text-xs font-mono text-slate-400 mt-0.5">{item.tempEan} · {item.copies.length} exemplaire{item.copies.length > 1 ? "s" : ""}</p>
-                      </div>
-                      {item.status === "done" && <span className="text-xs font-black text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200">✓ Traité</span>}
-                      {item.status === "skipped" && <span className="text-xs font-black text-slate-500 bg-slate-100 px-3 py-1 rounded-full">Ignoré</span>}
+              ) : tempEanItems.map(item => (
+                <div key={item.tempEan} className="pop-card" style={{ opacity: item.status !== "pending" ? 0.45 : 1, overflow: "hidden" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 16px", borderBottom: "2px solid var(--ink)", background: "var(--cream2)" }}>
+                    <div>
+                      <p style={{ fontWeight: 800, fontSize: 15, margin: 0 }}>{item.nom}</p>
+                      <p style={{ fontSize: 11, fontFamily: "monospace", color: "rgba(0,0,0,0.4)", margin: "2px 0 0" }}>{item.tempEan} · {item.copies.length} ex.</p>
                     </div>
-
-                    {item.status === "pending" && (
-                      <div className="p-4 flex flex-col gap-3">
-                        {/* Match automatique */}
-                        {item.match ? (
-                          <div className="flex items-center justify-between gap-3 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3">
-                            <div>
-                              <p className="text-xs font-black text-emerald-700 uppercase tracking-wider mb-1">Correspondance trouvée</p>
-                              <p className="font-bold text-slate-800">{item.match.nom as string}</p>
-                              <p className="text-xs font-mono text-slate-500">{item.match.ean as string}</p>
-                            </div>
-                            <button
-                              onClick={() => appliquerTempAction(item.tempEan, item.match!.ean as string)}
-                              disabled={item.processing}
-                              className="shrink-0 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white font-black text-sm rounded-xl transition-colors"
-                            >
-                              {item.processing ? "…" : "Fusionner"}
-                            </button>
-                          </div>
-                        ) : (
-                          <p className="text-xs text-amber-600 font-bold bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">⚠️ Aucune correspondance automatique — saisir l&apos;EAN manuellement</p>
-                        )}
-
-                        {/* Saisie EAN manuelle */}
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="text"
-                            value={item.newEan}
-                            onChange={e => setTempEanItems(prev => prev.map(i => i.tempEan === item.tempEan ? { ...i, newEan: e.target.value } : i))}
-                            placeholder="EAN réel (ex: 3760146642399)"
-                            className="flex-1 bg-slate-50 border-2 border-slate-200 rounded-xl px-3 py-2 text-sm font-mono outline-none focus:border-black transition-colors"
-                          />
-                          <button
-                            onClick={() => appliquerTempAction(item.tempEan, item.newEan)}
-                            disabled={item.processing || !item.newEan.trim()}
-                            className="px-4 py-2 bg-black hover:bg-slate-800 disabled:opacity-40 text-white font-black text-sm rounded-xl transition-colors shrink-0"
-                          >
-                            {item.processing ? "…" : "Réassigner"}
-                          </button>
-                          <button
-                            onClick={() => setTempEanItems(prev => prev.map(i => i.tempEan === item.tempEan ? { ...i, status: "skipped" } : i))}
-                            className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-500 font-bold text-sm rounded-xl transition-colors shrink-0"
-                          >
-                            Ignorer
-                          </button>
-                        </div>
-
-                        {/* Copies */}
-                        <div className="flex flex-wrap gap-2">
-                          {item.copies.map(c => (
-                            <span key={String(c.id)} className="text-[10px] font-bold px-2 py-1 rounded-lg bg-slate-100 text-slate-600">
-                              #{c.id} · {c.statut}{c.code_syracuse ? ` · ${c.code_syracuse}` : ""}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
+                    {item.status === "done" && <span style={{ fontSize: 11, fontWeight: 800, background: "var(--vert)", border: "1.5px solid var(--ink)", borderRadius: 20, padding: "2px 10px" }}>✓ Traité</span>}
+                    {item.status === "skipped" && <span style={{ fontSize: 11, fontWeight: 800, background: "var(--cream2)", border: "1.5px solid var(--ink)", borderRadius: 20, padding: "2px 10px" }}>Ignoré</span>}
                   </div>
-                ))}
+                  {item.status === "pending" && (
+                    <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+                      {item.match ? (
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, background: "#f0fff4", border: "2px solid var(--vert)", borderRadius: 8, padding: "10px 14px" }}>
+                          <div>
+                            <p style={{ fontSize: 11, fontWeight: 800, color: "var(--ink)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 3 }}>Correspondance</p>
+                            <p style={{ fontWeight: 700, fontSize: 14, margin: 0 }}>{item.match.nom as string}</p>
+                            <p style={{ fontSize: 11, fontFamily: "monospace", color: "rgba(0,0,0,0.4)", margin: "2px 0 0" }}>{item.match.ean as string}</p>
+                          </div>
+                          <button onClick={() => appliquerTempAction(item.tempEan, item.match!.ean as string)} disabled={item.processing} className="pop-btn pop-btn-dark" style={{ flexShrink: 0, opacity: item.processing ? 0.5 : 1 }}>
+                            {item.processing ? "…" : "Fusionner"}
+                          </button>
+                        </div>
+                      ) : (
+                        <p style={{ fontSize: 12, fontWeight: 700, background: "#fffbeb", border: "2px solid var(--yellow)", borderRadius: 8, padding: "8px 12px", color: "var(--ink)" }}>⚠️ Aucune correspondance — saisir l'EAN manuellement</p>
+                      )}
+                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        <input type="text" value={item.newEan}
+                          onChange={e => setTempEanItems(prev => prev.map(i => i.tempEan === item.tempEan ? { ...i, newEan: e.target.value } : i))}
+                          placeholder="EAN réel (ex: 3760146642399)"
+                          style={{ ...inp, flex: 1, fontFamily: "monospace" }} />
+                        <button onClick={() => appliquerTempAction(item.tempEan, item.newEan)} disabled={item.processing || !item.newEan.trim()} className="pop-btn pop-btn-dark" style={{ flexShrink: 0, opacity: (!item.newEan.trim() || item.processing) ? 0.4 : 1 }}>
+                          {item.processing ? "…" : "Réassigner"}
+                        </button>
+                        <button onClick={() => setTempEanItems(prev => prev.map(i => i.tempEan === item.tempEan ? { ...i, status: "skipped" } : i))} className="pop-btn" style={{ flexShrink: 0, background: "var(--cream2)" }}>
+                          Ignorer
+                        </button>
+                      </div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                        {item.copies.map(c => (
+                          <span key={String(c.id)} style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 20, background: "var(--cream2)", border: "1.5px solid var(--ink)" }}>
+                            #{c.id} · {c.statut}{c.code_syracuse ? ` · ${c.code_syracuse}` : ""}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
-              )}
+              ))}
             </div>
-
-            {/* Footer */}
-            <div className="p-5 border-t-2 border-slate-100 bg-slate-50 flex justify-between items-center shrink-0">
-              <p className="text-xs text-slate-400 font-medium">
+            <div style={{ padding: "12px 24px", borderTop: "2px solid var(--ink)", display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
+              <span style={{ fontSize: 12, color: "rgba(0,0,0,0.4)", fontWeight: 600 }}>
                 {tempEanItems.filter(i => i.status === "done").length} traité(s) · {tempEanItems.filter(i => i.status === "skipped").length} ignoré(s)
-              </p>
-              <button onClick={() => setIsTempEanModalOpen(false)} className="px-6 py-2.5 bg-white hover:bg-slate-100 text-slate-600 font-bold rounded-xl border border-slate-200 transition-colors">
-                Fermer
-              </button>
+              </span>
+              <button onClick={() => setIsTempEanModalOpen(false)} className="pop-btn" style={{ background: "var(--cream2)" }}>Fermer</button>
             </div>
           </div>
         </div>
@@ -2030,119 +2030,68 @@ export default function InventairePage() {
 
       {/* --- MODAL VIGNETTES --- */}
       {isVignettesOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[90] flex items-center justify-center p-4 animate-fade-in">
-          <div className="bg-white rounded-[2.5rem] w-full max-w-lg shadow-2xl flex flex-col overflow-hidden border-2 border-slate-200">
-            {/* Header */}
-            <div className="flex items-center justify-between px-8 py-6 border-b border-slate-200 shrink-0">
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 90, display: "flex", alignItems: "center", justifyContent: "center", padding: "80px 16px 16px" }}>
+          <div className="pop-card" style={{ width: "100%", maxWidth: 480, maxHeight: "calc(100vh - 96px)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "18px 24px", borderBottom: "2px solid var(--ink)", flexShrink: 0 }}>
               <div>
-                <h2 className="text-2xl font-black text-black">Enrichir les Vignettes</h2>
-                <p className="text-sm text-slate-400 font-medium mt-0.5">
+                <h2 className="bc" style={{ fontSize: 22, margin: 0, letterSpacing: "0.02em" }}>Enrichir les Vignettes</h2>
+                <p style={{ fontSize: 13, color: "rgba(0,0,0,0.4)", fontWeight: 600, margin: "3px 0 0" }}>
                   {vignettesIdx < vignettesQueue.length
-                    ? `${vignettesIdx + 1} / ${vignettesQueue.length} · ${vignettesDone} validée${vignettesDone > 1 ? "s" : ""}`
-                    : `Terminé · ${vignettesDone} vignette${vignettesDone > 1 ? "s" : ""} ajoutée${vignettesDone > 1 ? "s" : ""}`
-                  }
+                    ? `${vignettesIdx + 1} / ${vignettesQueue.length} · ${vignettesDone} validée(s)`
+                    : `Terminé · ${vignettesDone} vignette(s) ajoutée(s)`}
                 </p>
               </div>
-              <button
-                onClick={() => setIsVignettesOpen(false)}
-                className="w-10 h-10 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 font-black text-slate-600 transition-colors"
-              >✕</button>
+              <button onClick={() => setIsVignettesOpen(false)} className="pop-btn" style={{ padding: "6px 10px", fontSize: 14 }}>✕</button>
             </div>
-
-            {/* Corps */}
-            <div className="flex flex-col items-center gap-5 px-8 py-8 flex-1">
+            <div style={{ flex: 1, overflowY: "auto", padding: 24, display: "flex", flexDirection: "column", alignItems: "center", gap: 20 }}>
               {vignettesIdx >= vignettesQueue.length ? (
-                /* Terminé */
-                <div className="flex flex-col items-center gap-4 py-8 text-center">
-                  <span className="text-5xl">✅</span>
-                  <p className="font-black text-xl text-black">Enrichissement terminé</p>
-                  <p className="text-slate-400 font-medium text-sm">
-                    {vignettesDone} vignette{vignettesDone > 1 ? "s" : ""} ajoutée{vignettesDone > 1 ? "s" : ""}
-                    {" · "}{vignettesQueue.length - vignettesDone} ignorée{vignettesQueue.length - vignettesDone > 1 ? "s" : ""}
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, padding: "40px 0", textAlign: "center" }}>
+                  <span style={{ fontSize: 48 }}>✅</span>
+                  <p className="bc" style={{ fontSize: 24, margin: 0 }}>Enrichissement terminé</p>
+                  <p style={{ color: "rgba(0,0,0,0.4)", fontWeight: 600, fontSize: 14 }}>
+                    {vignettesDone} ajoutée(s) · {vignettesQueue.length - vignettesDone} ignorée(s)
                   </p>
-                  <button
-                    onClick={() => setIsVignettesOpen(false)}
-                    className="mt-2 px-6 py-3 bg-black text-white font-black rounded-2xl hover:bg-slate-800 transition-colors"
-                  >Fermer</button>
+                  <button onClick={() => setIsVignettesOpen(false)} className="pop-btn pop-btn-dark" style={{ marginTop: 8, padding: "10px 24px" }}>Fermer</button>
                 </div>
               ) : (
                 <>
-                  {/* Nom du jeu */}
-                  <div className="w-full text-center">
-                    <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">Jeu en cours</p>
-                    <p className="text-xl font-black text-black leading-snug">{vignettesQueue[vignettesIdx]?.nom}</p>
-                    <p className="text-xs text-slate-400 font-mono mt-0.5">{vignettesQueue[vignettesIdx]?.ean}</p>
+                  <div style={{ width: "100%", textAlign: "center" }}>
+                    <p style={{ fontSize: 11, fontWeight: 800, color: "rgba(0,0,0,0.4)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>Jeu en cours</p>
+                    <p style={{ fontWeight: 800, fontSize: 18, margin: 0 }}>{vignettesQueue[vignettesIdx]?.nom}</p>
+                    <p style={{ fontSize: 11, fontFamily: "monospace", color: "rgba(0,0,0,0.4)", marginTop: 3 }}>{vignettesQueue[vignettesIdx]?.ean}</p>
                   </div>
-
-                  {/* EAN + copier */}
-                  <button
-                    onClick={() => navigator.clipboard.writeText(vignettesQueue[vignettesIdx]?.ean ?? "")}
-                    className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm transition-colors border border-slate-200"
-                  >
-                    <span className="font-mono">{vignettesQueue[vignettesIdx]?.ean}</span>
-                    <span className="text-slate-400 text-xs">Copier</span>
+                  <button onClick={() => navigator.clipboard.writeText(vignettesQueue[vignettesIdx]?.ean ?? "")}
+                    style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 16px", borderRadius: 8, background: "var(--cream2)", border: "2px solid var(--ink)", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "inherit", boxShadow: "2px 2px 0 var(--ink)" }}>
+                    <span style={{ fontFamily: "monospace" }}>{vignettesQueue[vignettesIdx]?.ean}</span>
+                    <span style={{ fontSize: 11, color: "rgba(0,0,0,0.4)" }}>Copier</span>
                   </button>
-
-                  {/* Zone preview + input */}
-                  <div className="w-full flex flex-col items-center gap-3">
-                    {/* Preview */}
-                    <div className="w-[160px] h-[160px] rounded-2xl border-2 border-slate-200 bg-slate-50 flex items-center justify-center overflow-hidden shrink-0">
+                  <div style={{ width: "100%", display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
+                    <div style={{ width: 160, height: 160, borderRadius: 10, border: "2.5px solid var(--ink)", background: "var(--cream2)", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", boxShadow: "3px 3px 0 var(--ink)" }}>
                       {vignettesManualUrl.trim() ? (
-                        <img
-                          src={vignettesManualUrl.trim()}
-                          alt="Preview"
-                          className="w-full h-full object-contain"
-                          onError={e => { (e.target as HTMLImageElement).style.display = "none"; }}
-                        />
+                        <img src={vignettesManualUrl.trim()} alt="Preview" style={{ width: "100%", height: "100%", objectFit: "contain" }} onError={e => { (e.target as HTMLImageElement).style.display = "none"; }} />
                       ) : (
-                        <div className="flex flex-col items-center gap-2 text-center px-4">
-                          <span className="text-3xl opacity-30">🖼️</span>
-                          <p className="text-xs font-bold text-slate-300">Colle l&apos;URL ici</p>
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, opacity: 0.3 }}>
+                          <span style={{ fontSize: 32 }}>🖼️</span>
+                          <p style={{ fontSize: 11, fontWeight: 700 }}>Colle l'URL</p>
                         </div>
                       )}
                     </div>
-
-                    {/* Input URL */}
-                    <input
-                      type="url"
-                      placeholder="https://s.myludo.fr/images/jeux/…"
-                      value={vignettesManualUrl}
-                      onChange={e => setVignettesManualUrl(e.target.value)}
-                      className="w-full px-4 py-3 rounded-2xl border-2 border-slate-200 focus:border-black focus:outline-none text-sm font-mono text-slate-700 bg-white transition-colors"
-                    />
-                    <p className="text-[11px] text-slate-400 font-medium text-center">
-                      Sur MyLudo, clic droit sur la cover → <em>Copier le lien de l&apos;image</em>
+                    <input type="url" placeholder="https://s.myludo.fr/images/jeux/…" value={vignettesManualUrl} onChange={e => setVignettesManualUrl(e.target.value)} style={{ ...inp, fontFamily: "monospace" }} />
+                    <p style={{ fontSize: 11, color: "rgba(0,0,0,0.4)", fontWeight: 600, textAlign: "center" }}>
+                      Sur MyLudo, clic droit sur la cover → <em>Copier le lien de l'image</em>
                     </p>
                   </div>
-
-                  {/* Actions */}
-                  <div className="flex gap-3 w-full mt-auto">
-                    <button
-                      onClick={avancerVignette}
-                      className="flex-1 px-4 py-3 rounded-2xl font-bold text-sm bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors"
-                    >
-                      Ignorer →
-                    </button>
-                    <button
-                      onClick={validerVignette}
-                      disabled={!vignettesManualUrl.trim()}
-                      className="flex-1 px-4 py-3 rounded-2xl font-bold text-sm bg-black text-white hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                    >
-                      ✓ Valider
-                    </button>
+                  <div style={{ display: "flex", gap: 10, width: "100%" }}>
+                    <button onClick={avancerVignette} className="pop-btn" style={{ flex: 1, background: "var(--cream2)", justifyContent: "center" }}>Ignorer →</button>
+                    <button onClick={validerVignette} disabled={!vignettesManualUrl.trim()} className="pop-btn pop-btn-dark" style={{ flex: 1, justifyContent: "center", opacity: !vignettesManualUrl.trim() ? 0.4 : 1 }}>✓ Valider</button>
                   </div>
                 </>
               )}
             </div>
-
-            {/* Barre de progression */}
             {vignettesQueue.length > 0 && (
-              <div className="px-8 pb-6 shrink-0">
-                <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                  <div
-                    className="bg-black h-1.5 rounded-full transition-all duration-300"
-                    style={{ width: `${(vignettesIdx / vignettesQueue.length) * 100}%` }}
-                  />
+              <div style={{ padding: "0 24px 20px", flexShrink: 0 }}>
+                <div style={{ width: "100%", background: "var(--cream2)", borderRadius: 4, height: 6, overflow: "hidden", border: "1.5px solid var(--ink)" }}>
+                  <div style={{ height: "100%", background: "var(--ink)", borderRadius: 4, transition: "width 0.3s", width: `${(vignettesIdx / vignettesQueue.length) * 100}%` }} />
                 </div>
               </div>
             )}
@@ -2150,150 +2099,114 @@ export default function InventairePage() {
         </div>
       )}
 
-      {/* --- MODAL SMART IMPORT SYRACUSE --- */}
+      {/* --- MODAL IMPORT SYRACUSE --- */}
       {isImportModalOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[90] flex items-center justify-center p-4 sm:p-8 animate-fade-in">
-          <div className="bg-white rounded-[2.5rem] w-full max-w-5xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden border-2 border-slate-200">
-            
-            <div className="p-6 md:p-8 border-b-2 border-slate-100 bg-slate-50 flex justify-between items-start shrink-0">
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 90, display: "flex", alignItems: "center", justifyContent: "center", padding: "80px 16px 16px" }}>
+          <div className="pop-card" style={{ width: "100%", maxWidth: 860, maxHeight: "calc(100vh - 96px)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "18px 24px", borderBottom: "2px solid var(--ink)", flexShrink: 0 }}>
               <div>
-                <h2 className="text-3xl font-black text-slate-800">📥 Importation Syracuse</h2>
-                <p className="text-slate-500 font-bold mt-1">
-                  {importStep === 'upload' ? 'Mise à jour des étiquettes (UNIMARC) ou du catalogue.' : `${importData.length} jeux détectés.`}
+                <h2 className="bc" style={{ fontSize: 22, margin: 0, letterSpacing: "0.02em" }}>Importation Syracuse</h2>
+                <p style={{ fontSize: 13, color: "rgba(0,0,0,0.4)", fontWeight: 600, margin: "3px 0 0" }}>
+                  {importStep === 'upload' ? "Fichier UNIMARC ou CSV catalogue/cotes" : `${importData.length} jeux détectés`}
                 </p>
               </div>
-              <button onClick={() => { setIsImportModalOpen(false); setImportStep('upload'); setImportData([]); }} className="w-10 h-10 flex items-center justify-center rounded-full bg-slate-200 text-slate-600 hover:bg-slate-300 hover:text-black font-black transition-colors shrink-0">✕</button>
+              <button onClick={() => { setIsImportModalOpen(false); setImportStep('upload'); setImportData([]); }} className="pop-btn" style={{ padding: "6px 10px", fontSize: 14 }}>✕</button>
             </div>
-
-            <div className="flex-1 overflow-y-auto p-6 md:p-8 bg-[#e5e5e5] custom-scroll">
-              
+            <div style={{ flex: 1, overflowY: "auto", padding: 20, background: "var(--cream2)" }}>
               {importStep === 'upload' && (
-                <div 
-                  className="border-4 border-dashed border-slate-300 bg-white rounded-[2rem] p-10 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-blue-50 hover:border-blue-300 transition-colors h-full min-h-[300px]"
+                <div
                   onClick={() => document.getElementById('smart-import-file')?.click()}
+                  style={{
+                    border: "3px dashed var(--ink)", borderRadius: 10, background: "var(--white)",
+                    padding: "60px 20px", display: "flex", flexDirection: "column", alignItems: "center",
+                    justifyContent: "center", textAlign: "center", cursor: "pointer", minHeight: 280,
+                    transition: "background 0.1s",
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.background = "var(--cream2)")}
+                  onMouseLeave={e => (e.currentTarget.style.background = "var(--white)")}
                 >
-                  <span className="text-6xl mb-6">📂</span>
-                  <h3 className="text-2xl font-black text-slate-800 mb-2">Sélectionnez vos fichiers</h3>
-                  <p className="text-slate-500 font-medium max-w-md">
-                    Glissez le <b>Fichier UNIMARC (.mrc / .iso)</b> pour importer uniquement les données d'étiquettes (Mécanique, Joueurs, Temps...).<br/><br/>Ou les fichiers <b>Catalogue CSV</b> et/ou <b>Cotes CSV</b> pour un import standard.
+                  <span style={{ fontSize: 48, marginBottom: 16 }}>📂</span>
+                  <h3 className="bc" style={{ fontSize: 24, margin: "0 0 10px" }}>Sélectionnez vos fichiers</h3>
+                  <p style={{ color: "rgba(0,0,0,0.55)", fontWeight: 600, fontSize: 14, maxWidth: 420, lineHeight: 1.6 }}>
+                    <b>Fichier UNIMARC (.mrc / .iso)</b> pour les étiquettes.<br/>
+                    Ou <b>Catalogue CSV</b> + <b>Cotes CSV</b> pour un import standard.
                   </p>
-                  <button className="mt-8 bg-black text-white px-8 py-3 rounded-xl font-bold hover:bg-slate-800 transition-colors">
-                    Parcourir les fichiers
-                  </button>
-                  <input 
-                    id="smart-import-file" 
-                    type="file" 
-                    multiple 
-                    accept=".csv, .mrc, .iso, .txt" 
-                    className="hidden" 
-                    onChange={(e) => { if (e.target.files) handleSmartImport(e.target.files); }} 
-                  />
+                  <button className="pop-btn pop-btn-dark" style={{ marginTop: 24, padding: "10px 24px" }}>Parcourir les fichiers</button>
+                  <input id="smart-import-file" type="file" multiple accept=".csv,.mrc,.iso,.txt" style={{ display: "none" }} onChange={e => { if (e.target.files) handleSmartImport(e.target.files); }} />
                 </div>
               )}
-
               {importStep === 'preview' && (
-                <div className="flex flex-col gap-4">
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                   {importData.map((item, idx) => {
-                     const colorObj = COULEURS.find(c => c.id === item.couleur);
-                     
-                     let borderClass = 'border-slate-200';
-                     let bgClass = 'bg-white';
-                     if (item.matchType === 'conflict') { borderClass = 'border-orange-400'; bgClass = 'bg-orange-50'; }
-                     if (item.matchType === 'suggested_link') borderClass = 'border-blue-400';
-                     if (item.matchType === 'auto_fill') { borderClass = 'border-emerald-300'; bgClass = 'bg-emerald-50/50'; }
-
-                     return (
-                      <div key={idx} className={`${bgClass} rounded-2xl p-5 shadow-sm border-2 flex flex-col gap-4 ${borderClass}`}>
-                        
-                        <div className="flex flex-col sm:flex-row gap-4 sm:items-center">
-                          <div className="w-12 h-12 bg-slate-100 rounded-xl overflow-hidden shrink-0 border border-slate-200 flex items-center justify-center relative">
-                            {item.image_url ? <img src={item.image_url} alt="Cover" className="w-full h-full object-cover" /> : <span className="text-xl">🖼️</span>}
-                            {colorObj && <div className={`absolute -top-1 -right-1 w-4 h-4 rounded-full border-2 border-white ${colorObj.bg}`}></div>}
+                    const colorObj = COULEURS.find(c => c.id === item.couleur);
+                    const borderColor = item.matchType === 'conflict' ? "var(--orange)" : item.matchType === 'suggested_link' ? "var(--bleu)" : item.matchType === 'auto_fill' ? "var(--vert)" : "var(--ink)";
+                    const bgColor = item.matchType === 'conflict' ? "#fff8f0" : item.matchType === 'auto_fill' ? "#f0fff4" : "var(--white)";
+                    return (
+                      <div key={idx} style={{ background: bgColor, border: `2px solid ${borderColor}`, borderRadius: 10, padding: "14px 18px", display: "flex", flexDirection: "column", gap: 10, boxShadow: "2px 2px 0 var(--ink)" }}>
+                        <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                          <div style={{ width: 44, height: 44, borderRadius: 8, border: "2px solid var(--ink)", background: "var(--cream2)", overflow: "hidden", flexShrink: 0, position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                            {item.image_url ? <img src={item.image_url} alt="Cover" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ fontSize: 20 }}>🖼️</span>}
+                            {colorObj && <div style={{ position: "absolute", top: -3, right: -3, width: 12, height: 12, borderRadius: "50%", background: colorObj.hex, border: "1.5px solid var(--ink)" }}></div>}
                           </div>
-
-                          <div className="flex-1 min-w-0">
-                            <h4 className="font-black text-lg text-slate-800 truncate flex items-center gap-2">
-                              {item.titre}
-                              {item.matchType === 'new' && <span className="bg-slate-800 text-white text-[10px] uppercase px-2 py-0.5 rounded">Nouveau</span>}
-                              {item.matchType === 'auto_fill' && <span className="bg-emerald-100 text-emerald-700 text-[10px] uppercase px-2 py-0.5 rounded">Complété</span>}
-                            </h4>
-                            {!item.isUpdateOnly && <p className="text-xs font-bold text-slate-500 truncate mt-0.5">{item.editeur} • {item.auteurs}</p>}
-                          </div>
-
-                          <div className="flex gap-6 items-center shrink-0">
-                            <div className="flex flex-col items-end gap-1">
-                              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">EAN</span>
-                              <span className="font-mono font-bold bg-white px-2 py-1 rounded border border-slate-200 text-sm text-slate-700">{item.ean}</span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                              <span style={{ fontWeight: 800, fontSize: 15 }}>{item.titre}</span>
+                              {item.matchType === 'new' && <span style={{ fontSize: 10, fontWeight: 800, background: "var(--ink)", color: "var(--white)", borderRadius: 20, padding: "1px 7px", textTransform: "uppercase" }}>Nouveau</span>}
+                              {item.matchType === 'auto_fill' && <span style={{ fontSize: 10, fontWeight: 800, background: "var(--vert)", border: "1.5px solid var(--ink)", borderRadius: 20, padding: "1px 7px", textTransform: "uppercase" }}>Complété</span>}
                             </div>
-                            <div className="w-px h-8 bg-slate-200 hidden sm:block"></div>
-                            <div className="flex flex-col items-end gap-1 w-16">
-                              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Syracuse</span>
+                            {!item.isUpdateOnly && <p style={{ fontSize: 12, color: "rgba(0,0,0,0.45)", fontWeight: 600, margin: "2px 0 0" }}>{item.editeur} · {item.auteurs}</p>}
+                          </div>
+                          <div style={{ display: "flex", gap: 14, alignItems: "center", flexShrink: 0 }}>
+                            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
+                              <span style={{ fontSize: 9, fontWeight: 800, color: "rgba(0,0,0,0.4)", textTransform: "uppercase", letterSpacing: "0.08em" }}>EAN</span>
+                              <span style={{ fontFamily: "monospace", fontWeight: 700, fontSize: 12, background: "var(--cream2)", border: "1.5px solid var(--ink)", borderRadius: 6, padding: "1px 6px" }}>{item.ean}</span>
+                            </div>
+                            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
+                              <span style={{ fontSize: 9, fontWeight: 800, color: "rgba(0,0,0,0.4)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Syracuse</span>
                               {item.codes.length > 0 ? (
-                                <span className="font-black bg-blue-100 text-blue-700 px-2 py-1 rounded text-sm">{item.codes.length} Ex.</span>
-                              ) : <span className="font-bold text-slate-300 italic text-sm">Aucun</span>}
+                                <span style={{ fontSize: 12, fontWeight: 800, background: "var(--bleu)", color: "var(--white)", border: "1.5px solid var(--ink)", borderRadius: 20, padding: "1px 8px" }}>{item.codes.length} Ex.</span>
+                              ) : <span style={{ fontSize: 12, fontWeight: 700, color: "rgba(0,0,0,0.3)", fontStyle: "italic" }}>Aucun</span>}
                             </div>
                           </div>
                         </div>
-
                         {item.matchType === 'suggested_link' && (
-                          <div className="bg-blue-50 border border-blue-200 p-3 rounded-xl flex flex-col sm:flex-row justify-between sm:items-center gap-3">
-                            <div className="text-sm">
-                              <span className="text-blue-700 font-bold">💡 Suggestion :</span> Un jeu nommé <b>"{item.existingNom}"</b> existe. Lier le code Syracuse à ce jeu ?
+                          <div style={{ background: "#eff6ff", border: "2px solid var(--bleu)", borderRadius: 8, padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                            <div style={{ fontSize: 13, fontWeight: 600 }}>
+                              <span style={{ fontWeight: 800, color: "var(--bleu)" }}>Suggestion :</span> &quot;{item.existingNom}&quot; existe. Lier ?
                             </div>
-                            <select 
-                              value={item.userChoice} 
-                              onChange={(e) => toggleChoice(idx, e.target.value as any)}
-                              className="bg-white border border-blue-200 font-bold text-blue-800 text-sm rounded-lg px-3 py-1.5 outline-none cursor-pointer shadow-sm"
-                            >
+                            <select value={item.userChoice} onChange={e => toggleChoice(idx, e.target.value as any)}
+                              style={{ ...inp, width: "auto", cursor: "pointer", border: "2px solid var(--bleu)", fontSize: 13 }}>
                               <option value="link">Oui, lier (EAN: {item.existingEan})</option>
-                              <option value="create">Non, créer un nouveau jeu</option>
+                              <option value="create">Non, créer nouveau</option>
                             </select>
                           </div>
                         )}
-
                         {item.matchType === 'conflict' && (
-                          <div className="bg-orange-100 border border-orange-300 p-3 rounded-xl flex flex-col sm:flex-row justify-between sm:items-center gap-3">
-                            <div className="text-sm flex flex-col gap-1">
-                              <span className="text-orange-800 font-bold">⚠️ Conflit de données détecté :</span>
-                              <div className="flex flex-wrap gap-3 text-xs text-orange-700 mt-1">
-                                {item.diffs?.map(d => (
-                                  <span key={d.field}><b>{d.label} :</b> "{d.old}" ➔ "{d.new}"</span>
-                                ))}
+                          <div style={{ background: "#fff8f0", border: "2px solid var(--orange)", borderRadius: 8, padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+                            <div style={{ fontSize: 13 }}>
+                              <span style={{ fontWeight: 800, color: "var(--orange)" }}>⚠️ Conflit :</span>
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 5 }}>
+                                {item.diffs?.map(d => <span key={d.field} style={{ fontSize: 12, fontWeight: 600 }}><b>{d.label}</b> : &quot;{d.old}&quot; → &quot;{d.new}&quot;</span>)}
                               </div>
                             </div>
-                            <select 
-                              value={item.userChoice} 
-                              onChange={(e) => toggleChoice(idx, e.target.value as any)}
-                              className="bg-white border border-orange-300 font-bold text-orange-900 text-sm rounded-lg px-3 py-1.5 outline-none cursor-pointer shadow-sm"
-                            >
-                              <option value="keep_old">Garder les infos actuelles</option>
-                              <option value="overwrite">Écraser avec le fichier</option>
+                            <select value={item.userChoice} onChange={e => toggleChoice(idx, e.target.value as any)}
+                              style={{ ...inp, width: "auto", cursor: "pointer", border: "2px solid var(--orange)", fontSize: 13 }}>
+                              <option value="keep_old">Garder l'existant</option>
+                              <option value="overwrite">Écraser</option>
                             </select>
                           </div>
                         )}
-
                       </div>
                     );
                   })}
                 </div>
               )}
             </div>
-
             {importStep === 'preview' && (
-              <div className="p-6 border-t-2 border-slate-100 bg-slate-50 flex justify-between items-center shrink-0">
-                <button 
-                  onClick={() => { setImportStep('upload'); setImportData([]); }} 
-                  disabled={isImporting}
-                  className="px-6 py-3 bg-white hover:bg-slate-100 text-slate-600 font-bold rounded-xl transition-colors border border-slate-200 shadow-sm"
-                >
-                  Annuler
-                </button>
-                <button 
-                  onClick={validerImport} 
-                  disabled={isImporting}
-                  className="bg-[#baff29] hover:bg-[#a0dc1b] text-black font-black px-8 py-3 rounded-xl shadow-md transition-transform hover:scale-105 flex items-center gap-2"
-                >
-                  {isImporting ? "⏳ Importation..." : "💾 Valider l'importation"}
+              <div style={{ padding: "14px 24px", borderTop: "2px solid var(--ink)", display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
+                <button onClick={() => { setImportStep('upload'); setImportData([]); }} disabled={isImporting} className="pop-btn" style={{ background: "var(--cream2)" }}>Annuler</button>
+                <button onClick={validerImport} disabled={isImporting} className="pop-btn" style={{ background: "var(--yellow)", opacity: isImporting ? 0.5 : 1 }}>
+                  <span className="bc" style={{ fontSize: 15 }}>{isImporting ? "Importation…" : "Valider l'importation"}</span>
                 </button>
               </div>
             )}
@@ -2301,485 +2214,319 @@ export default function InventairePage() {
         </div>
       )}
 
-      {/* --- MODAL GESTIONNAIRE DE SÉLECTION --- */}
+      {/* --- MODAL SÉLECTION --- */}
       {isSelectionModalOpen && editSelection && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4 sm:p-8">
-          <div className="bg-white rounded-[2.5rem] w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
-            <div className="p-6 border-b-2 border-slate-100 flex justify-between items-center bg-slate-50 shrink-0">
-              <h2 className="text-2xl font-black text-slate-800">
-                {editSelection.titre ? '✏️ Modifier la sélection' : '✨ Nouvelle sélection'}
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 70, display: "flex", alignItems: "center", justifyContent: "center", padding: "80px 16px 16px" }}>
+          <div className="pop-card" style={{ width: "100%", maxWidth: 720, maxHeight: "calc(100vh - 96px)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "18px 24px", borderBottom: "2px solid var(--ink)", flexShrink: 0 }}>
+              <h2 className="bc" style={{ fontSize: 22, margin: 0, letterSpacing: "0.02em" }}>
+                {editSelection.titre ? "Modifier la sélection" : "Nouvelle sélection"}
               </h2>
-              <button onClick={() => setIsSelectionModalOpen(false)} className="text-slate-400 hover:text-black font-bold text-xl px-4 py-2 bg-white rounded-full border border-slate-200 shadow-sm hover:border-black transition-colors">✕ Fermer</button>
+              <button onClick={() => setIsSelectionModalOpen(false)} className="pop-btn" style={{ padding: "6px 12px", fontSize: 13 }}>✕ Fermer</button>
             </div>
-            
-            <div className="flex-1 overflow-y-auto p-6 md:p-8 flex flex-col gap-8 custom-scroll">
-              <div className="flex flex-col md:flex-row gap-6">
-                <div className="flex-1">
-                  <label className="block text-sm font-bold text-slate-600 mb-2">Titre de la sélection</label>
-                  <input 
-                    type="text" value={editSelection.titre} onChange={e => setEditSelection({...editSelection, titre: e.target.value})}
-                    placeholder="Ex: Soirée Frissons, Jeux Rapides..."
-                    className="w-full bg-slate-50 border-2 border-slate-200 p-3 rounded-xl outline-none focus:border-black font-bold text-lg"
-                  />
+            <div style={{ flex: 1, overflowY: "auto", padding: 24, display: "flex", flexDirection: "column", gap: 20 }}>
+              <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+                <div style={{ flex: 1, minWidth: 220 }}>
+                  <label style={{ fontSize: 12, fontWeight: 800, color: "rgba(0,0,0,0.5)", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>Titre</label>
+                  <input type="text" value={editSelection.titre} onChange={e => setEditSelection({ ...editSelection, titre: e.target.value })}
+                    placeholder="Ex: Soirée Frissons..." style={{ ...inp, fontWeight: 700, fontSize: 16 }} />
                 </div>
-                <div className="md:w-1/3 border-2 border-slate-100 rounded-xl p-4 bg-slate-50">
-                  <label className="flex items-center gap-3 cursor-pointer mb-3">
-                    <input 
-                      type="checkbox" checked={editSelection.is_permanent} 
-                      onChange={e => setEditSelection({...editSelection, is_permanent: e.target.checked, date_fin: e.target.checked ? null : editSelection.date_fin})}
-                      className="w-5 h-5 accent-black cursor-pointer"
-                    />
-                    <span className="font-bold text-slate-700">Sélection permanente</span>
+                <div style={{ background: "var(--cream2)", border: "2px solid var(--ink)", borderRadius: 10, padding: 14, minWidth: 200 }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", marginBottom: 8, fontWeight: 700 }}>
+                    <input type="checkbox" checked={editSelection.is_permanent} onChange={e => setEditSelection({ ...editSelection, is_permanent: e.target.checked, date_fin: e.target.checked ? null : editSelection.date_fin })} style={{ accentColor: "var(--ink)", width: 16, height: 16 }} />
+                    Permanente
                   </label>
                   {!editSelection.is_permanent && (
                     <div>
-                      <label className="block text-xs font-bold text-slate-500 mb-1">Date de fin</label>
-                      <input 
-                        type="date" value={editSelection.date_fin || ""} onChange={e => setEditSelection({...editSelection, date_fin: e.target.value})}
-                        className="w-full bg-white border border-slate-200 p-2 rounded-lg outline-none focus:border-black text-sm font-bold text-slate-600"
-                      />
+                      <label style={{ fontSize: 11, fontWeight: 800, color: "rgba(0,0,0,0.4)", display: "block", marginBottom: 4 }}>Date de fin</label>
+                      <input type="date" value={editSelection.date_fin || ""} onChange={e => setEditSelection({ ...editSelection, date_fin: e.target.value })} style={{ ...inp, fontSize: 13 }} />
                     </div>
                   )}
                 </div>
               </div>
 
-              <div className="h-0.5 bg-slate-100 w-full rounded-full"></div>
+              <div style={{ height: 2, background: "var(--cream2)", borderRadius: 1 }}></div>
 
               <div>
-                <h3 className="text-xl font-black text-black mb-4">Ajouter des jeux</h3>
-                <div className="flex flex-col sm:flex-row gap-4 mb-6">
-                  <div className="flex-1">
-                    <label className="block text-xs font-bold text-slate-500 mb-1">🔫 Scanner Syracuse / EAN</label>
-                    <input 
-                      type="text" placeholder="Scanner et appuyer sur Entrée..." value={scanInput} 
-                      onChange={e => setScanInput(e.target.value)} onKeyDown={handleScanSyracuseList}
-                      className="w-full bg-[#f4fce3] border-2 border-[#baff29] p-3 rounded-xl outline-none focus:border-black font-mono font-bold text-slate-700 placeholder:text-slate-400 placeholder:font-sans"
-                    />
+                <p className="bc" style={{ fontSize: 18, letterSpacing: "0.02em", marginBottom: 14 }}>Ajouter des jeux</p>
+                <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
+                  <div style={{ flex: 1, minWidth: 200 }}>
+                    <label style={{ fontSize: 11, fontWeight: 800, color: "rgba(0,0,0,0.4)", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 5 }}>Scanner Syracuse / EAN</label>
+                    <input type="text" placeholder="Scanner et Entrée…" value={scanInput} onChange={e => setScanInput(e.target.value)} onKeyDown={handleScanSyracuseList}
+                      style={{ ...inp, fontFamily: "monospace", background: "#f4fce3", border: "2px solid var(--vert)" }} />
                   </div>
-                  <div className="flex-1 relative">
-                    <label className="block text-xs font-bold text-slate-500 mb-1">🔍 Recherche manuelle</label>
-                    <input 
-                      type="text" placeholder="Chercher par nom..." value={rechercheAjout} onChange={e => setRechercheAjout(e.target.value)}
-                      className="w-full bg-slate-50 border-2 border-slate-200 p-3 rounded-xl outline-none focus:border-black font-bold"
-                    />
+                  <div style={{ flex: 1, minWidth: 200, position: "relative" }}>
+                    <label style={{ fontSize: 11, fontWeight: 800, color: "rgba(0,0,0,0.4)", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 5 }}>Recherche manuelle</label>
+                    <input type="text" placeholder="Chercher par nom…" value={rechercheAjout} onChange={e => setRechercheAjout(e.target.value)} style={inp} />
                     {rechercheAjout && (
-                      <div className="absolute top-full mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden z-20">
+                      <div className="pop-card" style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, zIndex: 20, overflow: "hidden" }}>
                         {resultatsRechercheAjout.map(j => (
-                          <div key={j.id} onClick={() => ajouterJeuSelection(j)} className="p-3 border-b border-slate-100 hover:bg-slate-50 cursor-pointer flex justify-between items-center">
-                            <span className="font-bold text-sm text-slate-800">{j.nom}</span>
-                            <span className="text-[10px] bg-black text-white px-2 py-1 rounded-md font-bold">Ajouter</span>
+                          <div key={j.id} onClick={() => ajouterJeuSelection(j)}
+                            style={{ padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--cream2)", cursor: "pointer" }}
+                            onMouseEnter={e => (e.currentTarget.style.background = "var(--cream2)")}
+                            onMouseLeave={e => (e.currentTarget.style.background = "var(--white)")}
+                          >
+                            <span style={{ fontWeight: 700, fontSize: 13 }}>{j.nom}</span>
+                            <span style={{ fontSize: 10, fontWeight: 800, background: "var(--ink)", color: "var(--white)", borderRadius: 4, padding: "2px 6px" }}>Ajouter</span>
                           </div>
                         ))}
-                        {resultatsRechercheAjout.length === 0 && <div className="p-3 text-sm text-slate-400 text-center font-bold">Aucun jeu trouvé</div>}
+                        {resultatsRechercheAjout.length === 0 && <div style={{ padding: "10px 14px", fontSize: 13, color: "rgba(0,0,0,0.35)", fontWeight: 700, textAlign: "center" }}>Aucun résultat</div>}
                       </div>
                     )}
                   </div>
                 </div>
 
-                <div className="bg-slate-50 border-2 border-slate-200 rounded-2xl p-4 min-h-[150px]">
-                  <h4 className="text-sm font-bold text-slate-500 mb-3">Dans la sélection ({editSelection.jeux?.length || 0})</h4>
-                  <div className="flex flex-col gap-2">
-                    {editSelection.jeux?.length === 0 ? (
-                      <p className="text-slate-400 italic text-center py-4">Scannez ou cherchez des jeux pour les ajouter.</p>
-                    ) : (
-                      editSelection.jeux?.map(j => {
-                        const c = COULEURS.find(col => col.id === j.couleur);
-                        return (
-                          <div key={j.id} className="flex justify-between items-center bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
-                            <div className="flex items-center gap-3">
-                              <div className={`w-3 h-3 rounded-full ${c ? c.bg : 'bg-slate-300'}`}></div>
-                              <span className="font-bold text-slate-800">{j.nom}</span>
-                              {j.code_syracuse && <span className="text-[10px] text-slate-400 font-mono">Syr: {j.code_syracuse}</span>}
-                            </div>
-                            <button onClick={() => retirerJeuSelection(j.id)} className="text-rose-500 hover:bg-rose-50 px-3 py-1.5 rounded-md font-bold text-sm transition-colors">
-                              ✕
-                            </button>
+                <div style={{ background: "var(--cream2)", border: "2px solid var(--ink)", borderRadius: 10, padding: 14, minHeight: 120 }}>
+                  <p style={{ fontSize: 12, fontWeight: 800, color: "rgba(0,0,0,0.4)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Dans la sélection ({editSelection.jeux?.length || 0})</p>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {(editSelection.jeux?.length || 0) === 0 ? (
+                      <p style={{ fontSize: 13, color: "rgba(0,0,0,0.35)", fontStyle: "italic", textAlign: "center", padding: "12px 0" }}>Scannez ou cherchez des jeux.</p>
+                    ) : editSelection.jeux?.map(j => {
+                      const c = COULEURS.find(col => col.id === j.couleur);
+                      return (
+                        <div key={j.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--white)", border: "2px solid var(--ink)", borderRadius: 8, padding: "8px 12px", boxShadow: "2px 2px 0 var(--ink)" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <div style={{ width: 10, height: 10, borderRadius: "50%", background: c ? c.hex : "var(--cream2)", border: "1.5px solid var(--ink)" }}></div>
+                            <span style={{ fontWeight: 700, fontSize: 13 }}>{j.nom}</span>
+                            {j.code_syracuse && <span style={{ fontSize: 10, fontFamily: "monospace", color: "rgba(0,0,0,0.4)" }}>Syr: {j.code_syracuse}</span>}
                           </div>
-                        )
-                      })
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="p-6 border-t-2 border-slate-100 bg-slate-50 flex justify-between items-center shrink-0">
-              {editSelection.titre && editSelection.id && editSelection.id.length > 30 ? (
-                <button onClick={() => editSelection.id && supprimerSelection(editSelection.id)} className="text-rose-500 font-bold hover:bg-rose-50 px-4 py-2 rounded-xl transition-colors">
-                  Supprimer la sélection
-                </button>
-              ) : <div></div>}
-              <button onClick={sauvegarderSelection} className="bg-[#baff29] hover:bg-[#a0dc1b] text-black font-black px-8 py-3 rounded-xl shadow-md transition-transform hover:scale-105">
-                💾 Sauvegarder
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* --- MODAL AGRANDIR (Vue détaillée des sélections) --- */}
-      {isAgrandirOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 sm:p-8 animate-fade-in">
-          <div className="bg-white rounded-[2.5rem] w-full max-w-6xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
-            <div className="p-6 border-b-2 border-slate-100 flex justify-between items-center bg-slate-50 shrink-0">
-              <div>
-                <h2 className="text-3xl font-black text-slate-800">🌟 Toutes les Sélections</h2>
-                <p className="text-slate-500 font-medium mt-1">{selections.length} sélections actives</p>
-              </div>
-              <button onClick={() => setIsAgrandirOpen(false)} className="text-slate-400 hover:text-black font-black text-xl px-5 py-2.5 bg-white rounded-full border-2 border-slate-200 shadow-sm hover:border-black transition-colors">
-                ✕ Fermer
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-6 md:p-8 bg-[#e5e5e5] custom-scroll">
-              <div className="flex flex-col gap-8">
-                {selections.length === 0 ? (
-                  <div className="text-center py-20 text-slate-400">
-                    <span className="text-5xl mb-4 block">📭</span>
-                    <p className="font-bold text-xl">Aucune sélection n'a été créée.</p>
-                  </div>
-                ) : (
-                  selections.map(sel => (
-                    <div key={sel.id} className="bg-white rounded-[2rem] p-6 md:p-8 shadow-sm border-2 border-slate-200 flex flex-col">
-                      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end border-b-2 border-slate-100 pb-4 mb-6 gap-4">
-                        <div>
-                          <div className="flex items-center gap-3 mb-2 flex-wrap">
-                            <h3 className="text-3xl font-black text-black">{sel.titre}</h3>
-                            {sel.is_permanent ? (
-                              <span className="bg-emerald-100 text-emerald-700 text-xs font-black px-3 py-1 rounded-lg uppercase">Permanente</span>
-                            ) : (
-                              <span className="bg-orange-100 text-orange-700 text-xs font-black px-3 py-1 rounded-lg uppercase border border-orange-200">
-                                Jusqu'au {sel.date_fin ? new Date(sel.date_fin).toLocaleDateString('fr-FR') : '?'}
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-slate-500 font-bold">{sel.jeux?.length || 0} jeux dans cette sélection</p>
+                          <button onClick={() => retirerJeuSelection(j.id)} style={{ background: "var(--rouge)", color: "var(--white)", border: "none", borderRadius: 6, padding: "3px 8px", fontSize: 12, fontWeight: 800, cursor: "pointer" }}>✕</button>
                         </div>
-                        <button onClick={() => {setIsAgrandirOpen(false); ouvrirModificationSelection(sel);}} className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-5 py-2.5 rounded-xl transition-colors shrink-0">
-                          ✏️ Modifier
-                        </button>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-                        {sel.jeux?.map(j => {
-                          const c = COULEURS.find(col => col.id === j.couleur);
-                          return (
-                            <div key={j.id} onClick={() => {setIsAgrandirOpen(false); ouvrirFicheJeu(j);}} className={`bg-slate-50 p-4 rounded-2xl border-2 flex items-start gap-3 shadow-sm hover:shadow-md transition-shadow cursor-pointer ${c ? c.border : 'border-slate-200'}`}>
-                              <div className={`w-4 h-4 rounded-full shrink-0 mt-0.5 shadow-inner ${c ? c.bg : 'bg-slate-300'}`}></div>
-                              <div className="flex flex-col min-w-0">
-                                <span className="font-bold text-sm text-slate-800 truncate">{j.nom}</span>
-                                {j.code_syracuse && <span className="text-[10px] font-mono text-slate-500 mt-1">Syr: {j.code_syracuse}</span>}
-                              </div>
-                            </div>
-                          )
-                        })}
-                        {(!sel.jeux || sel.jeux.length === 0) && <p className="text-slate-400 italic text-sm py-2">Sélection vide.</p>}
-                      </div>
-                    </div>
-                  ))
-                )}
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
+            </div>
+            <div style={{ padding: "14px 24px", borderTop: "2px solid var(--ink)", display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
+              {editSelection.titre && editSelection.id && editSelection.id.length > 30 ? (
+                <button onClick={() => editSelection.id && supprimerSelection(editSelection.id)} className="pop-btn" style={{ background: "var(--rouge)", color: "var(--white)" }}>Supprimer</button>
+              ) : <div></div>}
+              <button onClick={sauvegarderSelection} className="pop-btn" style={{ background: "var(--yellow)" }}>
+                <span className="bc" style={{ fontSize: 15 }}>Sauvegarder</span>
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* --- MODAL FICHE JEU DÉTAILLÉE --- */}
+      {/* --- MODAL AGRANDIR --- */}
+      {isAgrandirOpen && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", padding: "80px 16px 16px" }}>
+          <div className="pop-card" style={{ width: "100%", maxWidth: 900, maxHeight: "calc(100vh - 96px)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "18px 24px", borderBottom: "2px solid var(--ink)", flexShrink: 0 }}>
+              <div>
+                <h2 className="bc" style={{ fontSize: 26, margin: 0, letterSpacing: "0.02em" }}>Toutes les Sélections</h2>
+                <p style={{ fontSize: 13, color: "rgba(0,0,0,0.4)", fontWeight: 600, margin: "3px 0 0" }}>{selections.length} sélections actives</p>
+              </div>
+              <button onClick={() => setIsAgrandirOpen(false)} className="pop-btn" style={{ padding: "6px 12px", fontSize: 13 }}>✕ Fermer</button>
+            </div>
+            <div style={{ flex: 1, overflowY: "auto", padding: 20, background: "var(--cream2)", display: "flex", flexDirection: "column", gap: 20 }}>
+              {selections.length === 0 ? (
+                <div style={{ textAlign: "center", padding: "60px 0", color: "rgba(0,0,0,0.35)" }}>
+                  <span style={{ fontSize: 40, display: "block", marginBottom: 12 }}>📭</span>
+                  <p style={{ fontWeight: 700, fontSize: 18 }}>Aucune sélection.</p>
+                </div>
+              ) : selections.map(sel => (
+                <div key={sel.id} className="pop-card" style={{ padding: "20px 24px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, paddingBottom: 14, borderBottom: "2px solid var(--cream2)", flexWrap: "wrap", gap: 10 }}>
+                    <div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 4 }}>
+                        <h3 className="bc" style={{ fontSize: 26, margin: 0, letterSpacing: "0.02em" }}>{sel.titre}</h3>
+                        {sel.is_permanent ? (
+                          <span style={{ fontSize: 11, fontWeight: 800, background: "var(--vert)", border: "1.5px solid var(--ink)", borderRadius: 20, padding: "2px 10px" }}>Permanente</span>
+                        ) : (
+                          <span style={{ fontSize: 11, fontWeight: 800, background: "var(--orange)", border: "1.5px solid var(--ink)", borderRadius: 20, padding: "2px 10px" }}>
+                            Jusqu'au {sel.date_fin ? new Date(sel.date_fin).toLocaleDateString('fr-FR') : '?'}
+                          </span>
+                        )}
+                      </div>
+                      <p style={{ fontSize: 13, fontWeight: 600, color: "rgba(0,0,0,0.4)", margin: 0 }}>{sel.jeux?.length || 0} jeux</p>
+                    </div>
+                    <button onClick={() => { setIsAgrandirOpen(false); ouvrirModificationSelection(sel); }} className="pop-btn" style={{ background: "var(--cream2)" }}>✏️ Modifier</button>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 10 }}>
+                    {sel.jeux?.map(j => {
+                      const c = COULEURS.find(col => col.id === j.couleur);
+                      return (
+                        <div key={j.id} onClick={() => { setIsAgrandirOpen(false); ouvrirFicheJeu(j); }}
+                          style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "10px 12px", background: "var(--cream2)", border: `2px solid ${c ? c.hex : "var(--ink)"}`, borderRadius: 8, cursor: "pointer", boxShadow: "2px 2px 0 var(--ink)" }}>
+                          <div style={{ width: 10, height: 10, borderRadius: "50%", background: c ? c.hex : "var(--cream2)", border: "1.5px solid var(--ink)", flexShrink: 0, marginTop: 3 }}></div>
+                          <div style={{ minWidth: 0 }}>
+                            <span style={{ fontWeight: 700, fontSize: 12, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{j.nom}</span>
+                            {j.code_syracuse && <span style={{ fontSize: 10, fontFamily: "monospace", color: "rgba(0,0,0,0.4)" }}>{j.code_syracuse}</span>}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {(!sel.jeux || sel.jeux.length === 0) && <p style={{ fontSize: 12, color: "rgba(0,0,0,0.35)", fontStyle: "italic" }}>Vide.</p>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- MODAL FICHE JEU --- */}
       {ficheJeu && (() => {
         const activeCopy = ficheJeu.copies[ficheJeu.activeCopyIndex];
         const selectionsForCopy = selections.filter(s => s.jeux?.some(j => j.id === activeCopy?.id));
+        const couleurFiche = COULEURS.find(c => c.id === (isEditingFiche && editedFiche ? editedFiche.couleur : ficheJeu.couleur));
 
         return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[80] flex items-center justify-center p-4 sm:p-8 animate-fade-in overflow-hidden">
-          <div className="bg-[#e5e5e5] rounded-[2.5rem] w-full max-w-6xl max-h-[95vh] flex flex-col shadow-2xl overflow-hidden relative border border-slate-200">
-            
-            {/* Header de la Fiche */}
-            <div className="bg-white p-4 md:px-6 md:py-4 flex justify-between items-center border-b-2 border-slate-100 shrink-0 gap-4">
-              <div className="flex items-center gap-4 flex-1 min-w-0">
-                <div className={`w-7 h-7 rounded-full shadow-inner border-2 border-slate-100 shrink-0 ${COULEURS.find(c => c.id === (isEditingFiche && editedFiche ? editedFiche.couleur : ficheJeu.couleur))?.bg || 'bg-slate-300'}`}></div>
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 80, display: "flex", alignItems: "center", justifyContent: "center", padding: "80px 16px 16px", overflow: "hidden" }}>
+          <div style={{ background: "var(--cream)", width: "100%", maxWidth: 1000, maxHeight: "calc(100vh - 96px)", display: "flex", flexDirection: "column", border: "2.5px solid var(--ink)", borderRadius: 10, boxShadow: "6px 6px 0 var(--ink)", overflow: "hidden" }}>
+
+            {/* Header */}
+            <div style={{ background: couleurFiche ? couleurFiche.hex : "var(--bleu)", borderBottom: "2.5px solid var(--ink)", padding: "14px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0, gap: 12, flexWrap: "wrap" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, minWidth: 0 }}>
+                {isEditingFiche && editedFiche ? (
+                  <input type="text" value={editedFiche.nom} onChange={e => setEditedFiche({ ...editedFiche, nom: e.target.value })}
+                    style={{ ...inp, fontWeight: 800, fontSize: 20, flex: 1, maxWidth: 320, background: "rgba(255,255,255,0.9)" }} />
+                ) : (
+                  <h2 className="bc" style={{ fontSize: 26, margin: 0, letterSpacing: "0.02em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: couleurFiche?.id === 'vert' || couleurFiche?.id === 'jaune' ? "var(--ink)" : "var(--white)" }}>{ficheJeu.nom}</h2>
+                )}
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                   {isEditingFiche && editedFiche ? (
-                    <input 
-                      type="text" 
-                      value={editedFiche.nom} 
-                      onChange={e => setEditedFiche({...editedFiche, nom: e.target.value})} 
-                      className="text-2xl sm:text-3xl font-black text-slate-800 leading-none bg-slate-50 border-2 border-slate-200 rounded-xl px-3 py-1 outline-none focus:border-blue-500 w-full md:w-[300px]"
-                    />
-                  ) : (
-                    <h2 className="text-2xl sm:text-3xl font-black text-slate-800 leading-none truncate pr-4">{ficheJeu.nom}</h2>
-                  )}
-                  <div className="flex flex-wrap items-center gap-2 mt-1 shrink-0">
-                    {isEditingFiche && editedFiche ? (
-                      <select value={editedFiche.statut || ''} onChange={e => setEditedFiche({...editedFiche, statut: e.target.value})} className="text-xs font-bold bg-white border-2 border-slate-200 rounded-lg px-2 py-0.5 outline-none">
+                    <>
+                      <select value={editedFiche.statut || ''} onChange={e => setEditedFiche({ ...editedFiche, statut: e.target.value })} style={{ ...inp, width: "auto", fontSize: 12 }}>
                         <option value="En stock">En stock</option>
                         <option value="En préparation">En préparation</option>
                       </select>
-                    ) : (
-                      <span className={`text-[10px] font-black px-2 py-0.5 rounded uppercase tracking-wider ${activeCopy?.statut === 'En stock' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-                        {activeCopy?.statut}
-                      </span>
-                    )}
-
-                    {isEditingFiche && editedFiche ? (
-                      <label className="flex items-center gap-1 cursor-pointer bg-blue-50 px-2 py-0.5 rounded text-xs font-bold text-blue-700">
-                        <input type="checkbox" checked={editedFiche.is_double || false} onChange={e => setEditedFiche({...editedFiche, is_double: e.target.checked})} className="accent-blue-600"/> Double
-                      </label>
-                    ) : (
-                      activeCopy?.is_double && <span className="text-[10px] font-black px-2 py-0.5 bg-blue-100 text-blue-700 rounded uppercase tracking-wider">Double</span>
-                    )}
-
-                    {isEditingFiche && editedFiche ? (
-                      <label className="flex items-center gap-1 cursor-pointer bg-[#baff29]/30 px-2 py-0.5 rounded text-xs font-bold text-black">
-                        <input type="checkbox" checked={editedFiche.etape_nouveaute || false} onChange={e => setEditedFiche({...editedFiche, etape_nouveaute: e.target.checked})} className="accent-black"/> Nouveauté
-                      </label>
-                    ) : (
-                      activeCopy?.etape_nouveaute && <span className="text-[10px] font-black px-2 py-0.5 bg-[#baff29] text-black rounded uppercase tracking-wider shadow-sm">Nouveauté</span>
-                    )}
-                    
-                    {isEditingFiche && editedFiche && (
-                      <select 
-                        value={editedFiche.couleur || ''} 
-                        onChange={e => setEditedFiche({...editedFiche, couleur: e.target.value})}
-                        className="text-xs font-bold bg-white border-2 border-slate-200 rounded-lg px-2 py-0.5 outline-none ml-1"
-                      >
+                      <select value={editedFiche.couleur || ''} onChange={e => setEditedFiche({ ...editedFiche, couleur: e.target.value })} style={{ ...inp, width: "auto", fontSize: 12 }}>
                         <option value="">Couleur...</option>
                         {COULEURS.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
                       </select>
-                    )}
-                  </div>
+                      <label style={{ display: "flex", alignItems: "center", gap: 4, background: "rgba(255,255,255,0.8)", border: "1.5px solid var(--ink)", borderRadius: 6, padding: "3px 8px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                        <input type="checkbox" checked={editedFiche.is_double || false} onChange={e => setEditedFiche({ ...editedFiche, is_double: e.target.checked })} /> Double
+                      </label>
+                      <label style={{ display: "flex", alignItems: "center", gap: 4, background: "rgba(255,255,255,0.8)", border: "1.5px solid var(--ink)", borderRadius: 6, padding: "3px 8px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                        <input type="checkbox" checked={editedFiche.etape_nouveaute || false} onChange={e => setEditedFiche({ ...editedFiche, etape_nouveaute: e.target.checked })} /> Nouveauté
+                      </label>
+                    </>
+                  ) : (
+                    <>
+                      <span style={{ fontSize: 11, fontWeight: 800, background: activeCopy?.statut === 'En stock' ? "var(--vert)" : "var(--orange)", border: "1.5px solid var(--ink)", borderRadius: 20, padding: "2px 8px" }}>{activeCopy?.statut}</span>
+                      {activeCopy?.is_double && <span style={{ fontSize: 11, fontWeight: 800, background: "var(--bleu)", color: "var(--white)", border: "1.5px solid var(--ink)", borderRadius: 20, padding: "2px 8px" }}>Double</span>}
+                      {activeCopy?.etape_nouveaute && <span style={{ fontSize: 11, fontWeight: 800, background: "var(--yellow)", border: "1.5px solid var(--ink)", borderRadius: 20, padding: "2px 8px" }}>🌟 Nouveauté</span>}
+                    </>
+                  )}
                 </div>
               </div>
-
-              <div className="flex items-center gap-4 shrink-0">
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
                 {!isEditingFiche && (
-                  <div className="hidden md:flex items-center gap-2 overflow-x-auto hide-scrollbar max-w-[250px] lg:max-w-[400px] border-r-2 border-slate-100 pr-4">
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, overflowX: "auto", maxWidth: 340 }}>
                     {ficheJeu.copies.map((copy, index) => (
-                      <button 
-                        key={copy.id}
-                        onClick={() => changerExemplaire(index)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap shadow-sm border ${index === ficheJeu.activeCopyIndex ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-500 hover:bg-slate-100 border-slate-200'}`}
-                      >
+                      <button key={copy.id} onClick={() => changerExemplaire(index)}
+                        style={{ padding: "4px 10px", borderRadius: 6, fontSize: 11, fontWeight: 800, border: "1.5px solid var(--ink)", cursor: "pointer", whiteSpace: "nowrap", background: index === ficheJeu.activeCopyIndex ? "var(--ink)" : "rgba(255,255,255,0.8)", color: index === ficheJeu.activeCopyIndex ? "var(--white)" : "var(--ink)" }}>
                         Ex. {index + 1} {copy.code_syracuse ? `(${copy.code_syracuse})` : ''}
                       </button>
                     ))}
-                    <button 
-                      onClick={creerNouvelExemplaire}
-                      className="w-7 h-7 flex items-center justify-center rounded-full text-lg font-black bg-white border-2 border-dashed border-slate-300 text-slate-400 hover:border-black hover:text-black hover:bg-slate-50 transition-colors shrink-0"
-                      title="Ajouter un nouvel exemplaire"
-                    >
+                    <button onClick={creerNouvelExemplaire} title="Ajouter exemplaire"
+                      style={{ width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", border: "2px dashed rgba(0,0,0,0.4)", background: "rgba(255,255,255,0.6)", fontWeight: 800, cursor: "pointer", flexShrink: 0, fontSize: 16 }}>
                       +
                     </button>
                   </div>
                 )}
-                <button onClick={() => setFicheJeu(null)} className="text-slate-400 hover:text-black font-black text-xl w-10 h-10 flex items-center justify-center bg-slate-100 hover:bg-slate-200 rounded-full transition-colors shrink-0">✕</button>
+                <button onClick={() => setFicheJeu(null)}
+                  style={{ width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(255,255,255,0.8)", border: "2px solid var(--ink)", borderRadius: 8, fontWeight: 800, cursor: "pointer", flexShrink: 0 }}>
+                  ✕
+                </button>
               </div>
             </div>
 
-            {!isEditingFiche && (
-              <div className="md:hidden flex items-center gap-2 overflow-x-auto hide-scrollbar px-4 py-2 bg-white border-b border-slate-100 shrink-0">
-                {ficheJeu.copies.map((copy, index) => (
-                  <button 
-                    key={copy.id}
-                    onClick={() => changerExemplaire(index)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap shadow-sm border ${index === ficheJeu.activeCopyIndex ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-500 hover:bg-slate-100 border-slate-200'}`}
-                  >
-                    Ex. {index + 1} {copy.code_syracuse ? `(${copy.code_syracuse})` : ''}
-                  </button>
-                ))}
-                <button 
-                  onClick={creerNouvelExemplaire}
-                  className="w-7 h-7 flex items-center justify-center rounded-full text-lg font-black bg-white border-2 border-dashed border-slate-300 text-slate-400 hover:border-black hover:text-black hover:bg-slate-50 transition-colors shrink-0"
-                >
-                  +
-                </button>
-              </div>
-            )}
+            {/* Corps */}
+            <div style={{ flex: 1, overflowY: "auto", padding: "20px", display: "flex", gap: 20, flexWrap: "wrap", background: "var(--cream2)" }}>
 
-            <div className="flex-1 overflow-y-auto p-6 md:p-8 custom-scroll flex flex-col lg:flex-row gap-6 md:gap-8 bg-[#e5e5e5]">
-              
-              <div className="w-full lg:w-1/3 flex flex-col gap-6 shrink-0 lg:max-w-[340px]">
-                <div className="aspect-[3/4] bg-white rounded-[2rem] border-2 border-slate-100 shadow-sm flex flex-col items-center justify-center overflow-hidden relative group p-3">
+              {/* Colonne gauche : image */}
+              <div style={{ width: 220, flexShrink: 0, display: "flex", flexDirection: "column", gap: 12 }}>
+                <div style={{ aspectRatio: "3/4", background: "var(--white)", border: "2.5px solid var(--ink)", borderRadius: 10, boxShadow: "4px 4px 0 var(--ink)", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
                   {ficheJeu.image_url && !isEditingFiche ? (
-                    <img src={ficheJeu.image_url} alt={`Cover de ${ficheJeu.nom}`} className="w-full h-full object-contain" />
+                    <img src={ficheJeu.image_url} alt={ficheJeu.nom} style={{ width: "100%", height: "100%", objectFit: "contain" }} />
                   ) : (
-                    <div className="flex flex-col items-center justify-center text-slate-300 gap-4 p-6 text-center w-full h-full border-2 border-dashed border-slate-200 rounded-2xl">
-                      <span className="text-6xl">🖼️</span>
-                      {isEditingFiche && editedFiche ? (
-                        <div className="w-full mt-4">
-                          <label className="text-xs font-bold text-slate-500 mb-1 block">URL de l'image (MyLudo/BGG)</label>
-                          <input 
-                            type="text" 
-                            value={editedFiche.image_url || ''} 
-                            onChange={e => setEditedFiche({...editedFiche, image_url: e.target.value})} 
-                            className="w-full text-black bg-white border-2 border-slate-200 rounded-lg p-2 text-xs outline-none focus:border-blue-500 font-sans" 
-                            placeholder="https://..." 
-                          />
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, padding: 16, textAlign: "center", width: "100%" }}>
+                      <span style={{ fontSize: 40, opacity: 0.2 }}>🖼️</span>
+                      {isEditingFiche && editedFiche && (
+                        <div style={{ width: "100%" }}>
+                          <label style={{ fontSize: 10, fontWeight: 800, color: "rgba(0,0,0,0.4)", display: "block", marginBottom: 5 }}>URL Image</label>
+                          <input type="text" value={editedFiche.image_url || ''} onChange={e => setEditedFiche({ ...editedFiche, image_url: e.target.value })} placeholder="https://..." style={{ ...inp, fontSize: 12 }} />
                         </div>
-                      ) : (
-                        <p className="font-bold text-sm">Image à venir</p>
                       )}
                     </div>
                   )}
                 </div>
-                
-                <button onClick={() => alert("Récupération du PDF via API (BGG/Philibert) bientôt disponible !")} className="w-full py-3 bg-white border-2 border-slate-200 rounded-2xl font-bold text-slate-700 hover:border-black hover:text-black transition-colors shadow-sm flex items-center justify-center gap-3">
-                  <span className="text-xl">📖</span> Voir les règles (PDF)
-                </button>
+                <button onClick={() => alert("PDF bientôt disponible")} className="pop-btn" style={{ width: "100%", justifyContent: "center", background: "var(--white)" }}>📖 Règles (PDF)</button>
               </div>
 
-              <div className="w-full lg:w-2/3 flex flex-col gap-6 flex-1">
-                
-                <div className="bg-white rounded-[2rem] p-6 md:p-8 border-2 border-slate-100 shadow-sm">
-                  <h3 className="text-xl font-black text-slate-800 mb-6 flex items-center gap-2">📊 Informations</h3>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-y-6 gap-x-4">
-                    
-                    <div className="flex flex-col gap-1">
-                      <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">EAN</span>
-                      {isEditingFiche && editedFiche ? (
-                        <input type="text" value={editedFiche.ean} onChange={e => setEditedFiche({...editedFiche, ean: e.target.value})} className="font-mono font-bold text-slate-800 bg-slate-50 px-2 py-1 rounded border-2 border-slate-200 outline-none w-full" />
-                      ) : (
-                        <span className="font-mono font-bold text-slate-800 bg-slate-50 px-2 py-1 rounded w-max border border-slate-100">{ficheJeu.ean}</span>
-                      )}
-                    </div>
-                    
-                    <div className="flex flex-col gap-1">
-                      <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Syracuse</span>
-                      {isEditingFiche && editedFiche ? (
-                        <input type="text" value={editedFiche.code_syracuse || ''} onChange={e => setEditedFiche({...editedFiche, code_syracuse: e.target.value})} className="font-mono font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded border-2 border-blue-200 outline-none w-full" placeholder="Code..." />
-                      ) : (
-                        activeCopy?.code_syracuse ? <span className="font-mono font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded w-max border border-blue-100">{activeCopy.code_syracuse}</span> : <span className="text-slate-300 font-bold">—</span>
-                      )}
-                    </div>
+              {/* Colonne droite : infos */}
+              <div style={{ flex: 1, minWidth: 300, display: "flex", flexDirection: "column", gap: 16 }}>
 
-                    <div className="flex flex-col gap-1">
-                      <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Mécanique</span>
-                      {isEditingFiche && editedFiche ? (
-                        <select 
-                          value={editedFiche.mecanique || ''} 
-                          onChange={e => setEditedFiche({...editedFiche, mecanique: e.target.value})} 
-                          className="font-bold text-slate-700 bg-slate-50 px-2 py-1 rounded border-2 border-slate-200 outline-none w-full cursor-pointer"
-                        >
-                          <option value="">—</option>
-                          {MECANIQUES_OFFICIELLES.map(m => (
-                            <option key={m} value={m}>{m}</option>
-                          ))}
-                        </select>
-                      ) : (
-                        <span className="font-bold text-slate-700 truncate block" title={ficheJeu.mecanique || ""}>{ficheJeu.mecanique || "—"}</span>
-                      )}
+                {/* Infos grille */}
+                <div className="pop-card" style={{ padding: "18px 20px", borderTop: "4px solid var(--bleu)" }}>
+                  <p className="bc" style={{ fontSize: 16, letterSpacing: "0.04em", marginBottom: 14 }}>Informations</p>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: 12 }}>
+                    {[
+                      { label: "EAN", content: isEditingFiche && editedFiche ? <input type="text" value={editedFiche.ean} onChange={e => setEditedFiche({ ...editedFiche, ean: e.target.value })} style={{ ...inp, fontFamily: "monospace", fontSize: 12 }} /> : <span style={{ fontFamily: "monospace", fontSize: 12, fontWeight: 700 }}>{ficheJeu.ean}</span> },
+                      { label: "Syracuse", content: isEditingFiche && editedFiche ? <input type="text" value={editedFiche.code_syracuse || ''} onChange={e => setEditedFiche({ ...editedFiche, code_syracuse: e.target.value })} style={{ ...inp, fontFamily: "monospace", fontSize: 12 }} placeholder="Code..." /> : <span style={{ fontFamily: "monospace", fontSize: 12, fontWeight: 700, color: "var(--bleu)" }}>{activeCopy?.code_syracuse || "—"}</span> },
+                      { label: "Mécanique", content: isEditingFiche && editedFiche ? <select value={editedFiche.mecanique || ''} onChange={e => setEditedFiche({ ...editedFiche, mecanique: e.target.value })} style={{ ...inp, fontSize: 12, cursor: "pointer" }}><option value="">—</option>{MECANIQUES_OFFICIELLES.map(m => <option key={m} value={m}>{m}</option>)}</select> : <span style={{ fontSize: 12, fontWeight: 700 }}>{ficheJeu.mecanique || "—"}</span> },
+                      { label: "Type", content: isEditingFiche && editedFiche ? <select value={editedFiche.coop_versus || ''} onChange={e => setEditedFiche({ ...editedFiche, coop_versus: e.target.value })} style={{ ...inp, fontSize: 12, cursor: "pointer" }}><option value="">—</option><option>Coop</option><option>Versus</option><option>Solo</option></select> : <span style={{ fontSize: 12, fontWeight: 700 }}>{ficheJeu.coop_versus || "—"}</span> },
+                      { label: "Joueurs", content: isEditingFiche && editedFiche ? <input type="text" value={editedFiche.nb_de_joueurs || ''} onChange={e => setEditedFiche({ ...editedFiche, nb_de_joueurs: e.target.value })} style={{ ...inp, fontSize: 12 }} placeholder="2-4" /> : <span style={{ fontSize: 12, fontWeight: 700 }}>👥 {ficheJeu.nb_de_joueurs || "—"}</span> },
+                      { label: "Temps", content: isEditingFiche && editedFiche ? <input type="text" value={editedFiche.temps_de_jeu || ''} onChange={e => setEditedFiche({ ...editedFiche, temps_de_jeu: e.target.value })} style={{ ...inp, fontSize: 12 }} placeholder="30" /> : <span style={{ fontSize: 12, fontWeight: 700 }}>⏳ {ficheJeu.temps_de_jeu || "—"}</span> },
+                      { label: "Difficulté", content: isEditingFiche && editedFiche ? <select value={editedFiche.etoiles || ''} onChange={e => setEditedFiche({ ...editedFiche, etoiles: e.target.value })} style={{ ...inp, fontSize: 12, cursor: "pointer" }}><option value="">—</option><option>1</option><option>2</option><option>3</option></select> : <span style={{ fontSize: 12, fontWeight: 700, color: "var(--yellow)" }}>⭐ {ficheJeu.etoiles || "—"}</span> },
+                    ].map(({ label, content }) => (
+                      <div key={label} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                        <span style={{ fontSize: 10, fontWeight: 800, color: "rgba(0,0,0,0.4)", textTransform: "uppercase", letterSpacing: "0.07em" }}>{label}</span>
+                        {content}
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ height: 2, background: "var(--cream2)", margin: "14px 0" }}></div>
+                  <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+                    <div style={{ flex: 1, minWidth: 140 }}>
+                      <span style={{ fontSize: 10, fontWeight: 800, color: "rgba(0,0,0,0.4)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Auteurs</span>
+                      {isEditingFiche && editedFiche ? <input type="text" value={editedFiche.auteurs || ''} onChange={e => setEditedFiche({ ...editedFiche, auteurs: e.target.value })} style={{ ...inp, fontSize: 13 }} placeholder="Auteurs..." /> : <p style={{ fontSize: 13, fontWeight: 600, color: "rgba(0,0,0,0.55)", fontStyle: "italic", margin: 0 }}>{ficheJeu.auteurs || "Non renseigné"}</p>}
                     </div>
-
-                    <div className="flex flex-col gap-1">
-                      <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Type</span>
-                      {isEditingFiche && editedFiche ? (
-                        <select value={editedFiche.coop_versus || ''} onChange={e => setEditedFiche({...editedFiche, coop_versus: e.target.value})} className="font-bold text-slate-700 bg-slate-50 px-2 py-1 rounded border-2 border-slate-200 outline-none w-full">
-                          <option value="">—</option><option value="Coop">Coop</option><option value="Versus">Versus</option><option value="Solo">Solo</option>
-                        </select>
-                      ) : (
-                        <span className="font-bold text-slate-700">{ficheJeu.coop_versus || "—"}</span>
-                      )}
-                    </div>
-
-                    <div className="flex flex-col gap-1">
-                      <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Joueurs</span>
-                      {isEditingFiche && editedFiche ? (
-                        <input type="text" value={editedFiche.nb_de_joueurs || ''} onChange={e => setEditedFiche({...editedFiche, nb_de_joueurs: e.target.value})} className="font-bold text-slate-700 bg-slate-50 px-2 py-1 rounded border-2 border-slate-200 outline-none w-full" placeholder="Ex: 2-4" />
-                      ) : (
-                        <span className="font-bold text-slate-700">{ficheJeu.nb_de_joueurs ? `👥 ${ficheJeu.nb_de_joueurs}` : "—"}</span>
-                      )}
-                    </div>
-
-                    <div className="flex flex-col gap-1">
-                      <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Temps</span>
-                      {isEditingFiche && editedFiche ? (
-                        <input type="text" value={editedFiche.temps_de_jeu || ''} onChange={e => setEditedFiche({...editedFiche, temps_de_jeu: e.target.value})} className="font-bold text-slate-700 bg-slate-50 px-2 py-1 rounded border-2 border-slate-200 outline-none w-full" placeholder="Ex: 30" />
-                      ) : (
-                        <span className="font-bold text-slate-700">{ficheJeu.temps_de_jeu ? `⏳ ${ficheJeu.temps_de_jeu}` : "—"}</span>
-                      )}
-                    </div>
-
-                    <div className="flex flex-col gap-1">
-                      <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Difficulté</span>
-                      {isEditingFiche && editedFiche ? (
-                        <select value={editedFiche.etoiles || ''} onChange={e => setEditedFiche({...editedFiche, etoiles: e.target.value})} className="font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded border-2 border-amber-200 outline-none w-full">
-                          <option value="">—</option><option value="1">1</option><option value="2">2</option><option value="3">3</option>
-                        </select>
-                      ) : (
-                        <span className="font-bold text-amber-500">{ficheJeu.etoiles ? `⭐ ${ficheJeu.etoiles}` : "—"}</span>
-                      )}
+                    <div style={{ flex: 1, minWidth: 140 }}>
+                      <span style={{ fontSize: 10, fontWeight: 800, color: "rgba(0,0,0,0.4)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Éditeur</span>
+                      {isEditingFiche && editedFiche ? <input type="text" value={editedFiche.editeur || ''} onChange={e => setEditedFiche({ ...editedFiche, editeur: e.target.value })} style={{ ...inp, fontSize: 13 }} placeholder="Éditeur..." /> : <p style={{ fontSize: 13, fontWeight: 600, color: "rgba(0,0,0,0.55)", fontStyle: "italic", margin: 0 }}>{ficheJeu.editeur || "Non renseigné"}</p>}
                     </div>
                   </div>
-
-                  <div className="h-px bg-slate-100 w-full my-6"></div>
-
-                  <div className="flex flex-col sm:flex-row gap-6">
-                    <div className="flex-1">
-                      <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-1">Auteurs</span>
-                      {isEditingFiche && editedFiche ? (
-                        <input type="text" value={editedFiche.auteurs || ''} onChange={e => setEditedFiche({...editedFiche, auteurs: e.target.value})} className="w-full bg-slate-50 border-2 border-slate-200 rounded p-2 text-sm outline-none" placeholder="Auteurs..." />
-                      ) : (
-                        <p className="font-medium text-slate-600 italic">{ficheJeu.auteurs || "Non renseigné"}</p>
-                      )}
-                    </div>
-                    <div className="flex-1">
-                      <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-1">Éditeur</span>
-                      {isEditingFiche && editedFiche ? (
-                        <input type="text" value={editedFiche.editeur || ''} onChange={e => setEditedFiche({...editedFiche, editeur: e.target.value})} className="w-full bg-slate-50 border-2 border-slate-200 rounded p-2 text-sm outline-none" placeholder="Editeur..." />
-                      ) : (
-                        <p className="font-medium text-slate-600 italic">{ficheJeu.editeur || "Non renseigné"}</p>
-                      )}
-                    </div>
-                  </div>
-                  
-                  <div className="mt-6">
-                    <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2">Description courte</span>
+                  <div style={{ marginTop: 12 }}>
+                    <span style={{ fontSize: 10, fontWeight: 800, color: "rgba(0,0,0,0.4)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Description</span>
                     {isEditingFiche && editedFiche ? (
-                      <textarea value={editedFiche.description || ''} onChange={e => setEditedFiche({...editedFiche, description: e.target.value})} className="w-full bg-slate-50 border-2 border-slate-200 rounded-lg p-3 text-sm outline-none min-h-[100px] custom-scroll" placeholder="Description du jeu..." />
+                      <textarea value={editedFiche.description || ''} onChange={e => setEditedFiche({ ...editedFiche, description: e.target.value })} style={{ ...inp, minHeight: 80, resize: "vertical" }} placeholder="Description du jeu..." />
                     ) : (
-                      <p className="font-medium text-slate-600 text-sm leading-relaxed">
-                        {ficheJeu.description || "La description textuelle sera importée depuis la base de données Syracuse ou BGG."}
-                      </p>
+                      <p style={{ fontSize: 13, fontWeight: 500, color: "rgba(0,0,0,0.55)", lineHeight: 1.6, margin: 0 }}>{ficheJeu.description || "Description à venir."}</p>
                     )}
                   </div>
 
-                  <div className="mt-6">
+                  {/* Notes */}
+                  <div style={{ marginTop: 14 }}>
                     {(() => {
-                      const activeCopy = ficheJeu.copies[ficheJeu.activeCopyIndex];
                       const notes: JeuNote[] = (activeCopy?.notes as JeuNote[]) || [];
                       return (
                         <>
-                          <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2">Commentaires internes</span>
-                          <div className="flex flex-col gap-2">
-                            {notes.length > 0 ? notes.map((note, i) => (
-                              <div key={i} className={`flex items-center justify-between gap-2 px-3 py-2 rounded-xl border text-sm ${note.rappel ? "bg-amber-50 border-amber-200" : "bg-slate-50 border-slate-200"}`}>
-                                <div className="flex items-center gap-2 flex-1 min-w-0">
-                                  {note.rappel && <span className="text-amber-500 shrink-0 text-xs">🔔</span>}
-                                  <span className="text-slate-700 font-medium truncate">{note.texte}</span>
+                          <span style={{ fontSize: 10, fontWeight: 800, color: "rgba(0,0,0,0.4)", textTransform: "uppercase", display: "block", marginBottom: 6 }}>Commentaires</span>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                            {notes.map((note, i) => (
+                              <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "6px 10px", borderRadius: 6, border: `1.5px solid ${note.rappel ? "var(--yellow)" : "var(--ink)"}`, background: note.rappel ? "#fffbeb" : "var(--white)" }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 6, flex: 1, minWidth: 0 }}>
+                                  {note.rappel && <span style={{ fontSize: 12 }}>🔔</span>}
+                                  <span style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{note.texte}</span>
                                 </div>
-                                <button onClick={() => supprimerNote(i)} className="w-5 h-5 flex items-center justify-center rounded-full hover:bg-rose-100 text-slate-300 hover:text-rose-500 transition-colors shrink-0 text-xs">✕</button>
+                                <button onClick={() => supprimerNote(i)} style={{ width: 20, height: 20, display: "flex", alignItems: "center", justifyContent: "center", border: "none", background: "none", cursor: "pointer", fontWeight: 800, fontSize: 11, color: "rgba(0,0,0,0.4)", flexShrink: 0 }}>✕</button>
                               </div>
-                            )) : (
-                              <p className="text-slate-400 text-sm italic">Aucun commentaire.</p>
-                            )}
+                            ))}
+                            {notes.length === 0 && <p style={{ fontSize: 13, color: "rgba(0,0,0,0.35)", fontStyle: "italic" }}>Aucun commentaire.</p>}
                           </div>
-                          <div className="flex gap-2 mt-3">
-                            <input
-                              type="text"
-                              value={newNoteText}
-                              onChange={e => setNewNoteText(e.target.value)}
+                          <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                            <input type="text" value={newNoteText} onChange={e => setNewNoteText(e.target.value)}
                               onKeyDown={e => { if (e.key === 'Enter' && newNoteText.trim()) { ajouterNote(newNoteText, newNoteRappel); setNewNoteText(""); setNewNoteRappel(false); } }}
-                              placeholder="Ajouter un commentaire…"
-                              className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-black transition-colors"
-                            />
-                            <button
-                              onClick={() => setNewNoteRappel(r => !r)}
-                              title="Afficher sur l'accueil"
-                              className={`w-9 h-9 shrink-0 flex items-center justify-center rounded-xl border text-sm transition-colors ${newNoteRappel ? "bg-amber-100 border-amber-300 text-amber-600" : "bg-slate-100 border-slate-200 text-slate-400 hover:bg-slate-200"}`}
-                            >🔔</button>
-                            <button
-                              onClick={() => { if (newNoteText.trim()) { ajouterNote(newNoteText, newNoteRappel); setNewNoteText(""); setNewNoteRappel(false); } }}
-                              className="px-3 py-2 bg-black text-white text-xs font-bold rounded-xl hover:bg-slate-800 transition-colors shrink-0"
-                            >+ Ajouter</button>
+                              placeholder="Ajouter un commentaire…" style={{ ...inp, flex: 1, fontSize: 13 }} />
+                            <button onClick={() => setNewNoteRappel(r => !r)} title="Rappel"
+                              style={{ width: 36, height: 36, flexShrink: 0, border: "2px solid var(--ink)", borderRadius: 6, background: newNoteRappel ? "var(--yellow)" : "var(--cream2)", cursor: "pointer", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center" }}>🔔</button>
+                            <button onClick={() => { if (newNoteText.trim()) { ajouterNote(newNoteText, newNoteRappel); setNewNoteText(""); setNewNoteRappel(false); } }} className="pop-btn pop-btn-dark" style={{ padding: "6px 12px", fontSize: 12 }}>+ Ajouter</button>
                           </div>
                         </>
                       );
@@ -2787,188 +2534,150 @@ export default function InventairePage() {
                   </div>
                 </div>
 
+                {/* Alertes */}
                 {ficheAlertes.length > 0 && (
-                  <div className="bg-amber-50 rounded-[2rem] p-6 md:p-8 border-2 border-amber-200 shadow-sm">
-                    <h3 className="text-lg font-black text-amber-800 mb-4 flex items-center gap-2">
-                      🚨 Alertes actives sur ce jeu
-                      <span className="text-sm font-black bg-amber-200 text-amber-800 w-6 h-6 rounded-full flex items-center justify-center">{ficheAlertes.length}</span>
-                    </h3>
-                    <div className="flex flex-col gap-2">
+                  <div style={{ background: "#fffbeb", border: "2.5px solid var(--yellow)", borderRadius: 10, boxShadow: "4px 4px 0 var(--ink)", padding: "16px 18px" }}>
+                    <p className="bc" style={{ fontSize: 16, letterSpacing: "0.03em", marginBottom: 10 }}>🚨 Alertes actives ({ficheAlertes.length})</p>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                       {ficheAlertes.map(alerte => (
-                        <div key={alerte.id} className="bg-white rounded-xl p-3 border border-amber-200 flex flex-col gap-1">
-                          <div className="flex items-center gap-2">
-                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${alerte.type === 'urgent' ? 'bg-rose-100 text-rose-700' : alerte.type === 'jeu' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>
+                        <div key={alerte.id} style={{ background: "var(--white)", border: "1.5px solid var(--yellow)", borderRadius: 8, padding: "8px 12px" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
+                            <span style={{ fontSize: 10, fontWeight: 800, background: alerte.type === 'urgent' ? "var(--rouge)" : "var(--yellow)", color: alerte.type === 'urgent' ? "var(--white)" : "var(--ink)", border: "1px solid var(--ink)", borderRadius: 20, padding: "1px 7px" }}>
                               {alerte.type === 'urgent' ? '🚨 Urgent' : alerte.type === 'jeu' ? '🎲 Jeu' : '💡 Info'}
                             </span>
                           </div>
-                          <p className="font-bold text-sm text-slate-800">{alerte.titre}</p>
-                          {alerte.description && <p className="text-xs text-slate-500">{alerte.description}</p>}
+                          <p style={{ fontWeight: 700, fontSize: 13, margin: 0 }}>{alerte.titre}</p>
+                          {alerte.description && <p style={{ fontSize: 12, color: "rgba(0,0,0,0.5)", margin: "3px 0 0" }}>{alerte.description}</p>}
                         </div>
                       ))}
                     </div>
                   </div>
                 )}
 
-                <div className="bg-white rounded-[2rem] p-6 md:p-8 border-2 border-slate-100 shadow-sm flex flex-col max-h-[350px]">
-                  <div className="flex justify-between items-center mb-4 shrink-0">
-                    <h3 className="text-xl font-black text-slate-800 flex items-center gap-2">📦 Contenu de la boîte</h3>
-                    <Link href="/contenu" className="text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1.5 rounded-lg transition-colors">Modifier</Link>
+                {/* Contenu de la boîte */}
+                <div className="pop-card" style={{ padding: "16px 18px", maxHeight: 240, display: "flex", flexDirection: "column", borderTop: "4px solid var(--purple)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexShrink: 0 }}>
+                    <p className="bc" style={{ fontSize: 16, letterSpacing: "0.04em", margin: 0 }}>Contenu de la boîte</p>
+                    <Link href="/contenu" className="pop-btn" style={{ padding: "4px 10px", fontSize: 12, background: "var(--cream2)" }}>Modifier</Link>
                   </div>
-                  <div className="overflow-y-auto custom-scroll pr-4 bg-slate-50 border border-slate-100 p-4 rounded-xl flex-1">
-                    {isLoadingFiche ? (
-                       <p className="text-slate-400 font-bold animate-pulse">Chargement du contenu...</p>
-                    ) : ficheJeu.contenu_boite ? (
-                      <p className="font-mono text-sm text-slate-700 whitespace-pre-wrap leading-loose">
-                        {ficheJeu.contenu_boite}
-                      </p>
-                    ) : (
-                      <p className="text-slate-400 font-medium italic">Aucun contenu renseigné pour ce jeu.</p>
-                    )}
+                  <div style={{ overflowY: "auto", flex: 1, background: "var(--cream2)", border: "1.5px solid var(--ink)", borderRadius: 8, padding: "10px 12px" }}>
+                    {isLoadingFiche ? <p style={{ fontSize: 13, color: "rgba(0,0,0,0.35)", fontWeight: 700 }}>Chargement…</p>
+                    : ficheJeu.contenu_boite ? <p style={{ fontFamily: "monospace", fontSize: 12, whiteSpace: "pre-wrap", lineHeight: 1.8, margin: 0 }}>{ficheJeu.contenu_boite}</p>
+                    : <p style={{ fontSize: 13, color: "rgba(0,0,0,0.35)", fontStyle: "italic" }}>Aucun contenu renseigné.</p>}
                   </div>
                 </div>
 
-                <div className="bg-white rounded-[2rem] p-6 md:p-8 border-2 border-slate-100 shadow-sm">
-                  <h3 className="text-xl font-black text-slate-800 mb-6 flex items-center gap-2">📍 Localisation & Suivi</h3>
-
-                  <div className="flex flex-col md:flex-row gap-4 mb-6">
-                    <div className="flex-1 bg-slate-50 p-4 rounded-xl border border-slate-100">
-                      <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2">Emplacement actuel</span>
-                      {activeCopy?.statut === 'En préparation' ? (
-                        <div className="flex items-center gap-2 text-amber-600 font-black"><span className="text-xl">🛠️</span> Atelier</div>
-                      ) : activeCopy?.etape_nouveaute ? (
-                        <div className="flex items-center gap-2 text-black font-black"><span className="text-xl">🌟</span> Pôle Nouveautés</div>
-                      ) : (
-                        <div className="flex items-center gap-2 text-emerald-600 font-black"><span className="text-xl">🟢</span> Salle de jeux (Rayon)</div>
-                      )}
+                {/* Localisation */}
+                <div className="pop-card" style={{ padding: "16px 18px", borderTop: "4px solid var(--vert)" }}>
+                  <p className="bc" style={{ fontSize: 16, letterSpacing: "0.04em", marginBottom: 12 }}>Localisation & Suivi</p>
+                  <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
+                    <div style={{ flex: 1, minWidth: 140, background: "var(--cream2)", border: "1.5px solid var(--ink)", borderRadius: 8, padding: "10px 12px" }}>
+                      <span style={{ fontSize: 10, fontWeight: 800, color: "rgba(0,0,0,0.4)", textTransform: "uppercase", display: "block", marginBottom: 5 }}>Emplacement</span>
+                      <span style={{ fontWeight: 800, fontSize: 14 }}>
+                        {activeCopy?.statut === 'En préparation' ? "🛠️ Atelier"
+                         : activeCopy?.etape_nouveaute ? "🌟 Nouveautés"
+                         : "🟢 Salle de jeux"}
+                      </span>
                     </div>
-
-                    <div className="flex-1 bg-slate-50 p-4 rounded-xl border border-slate-100">
-                      <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2">Sélections actives</span>
+                    <div style={{ flex: 1, minWidth: 140, background: "var(--cream2)", border: "1.5px solid var(--ink)", borderRadius: 8, padding: "10px 12px" }}>
+                      <span style={{ fontSize: 10, fontWeight: 800, color: "rgba(0,0,0,0.4)", textTransform: "uppercase", display: "block", marginBottom: 5 }}>Sélections</span>
                       {selectionsForCopy.length > 0 ? (
-                        <div className="flex flex-wrap gap-2">
-                          {selectionsForCopy.map(s => <span key={s.id} className="bg-[#ff4d79] text-white text-[10px] uppercase font-black px-2 py-1 rounded shadow-sm">{s.titre}</span>)}
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                          {selectionsForCopy.map(s => <span key={s.id} style={{ fontSize: 10, fontWeight: 800, background: "var(--rose)", color: "var(--white)", border: "1.5px solid var(--ink)", borderRadius: 20, padding: "1px 7px" }}>{s.titre}</span>)}
                         </div>
-                      ) : (
-                        <span className="text-sm font-medium text-slate-400 italic">Aucune sélection</span>
-                      )}
+                      ) : <span style={{ fontSize: 13, fontStyle: "italic", color: "rgba(0,0,0,0.35)" }}>Aucune</span>}
                     </div>
                   </div>
 
                   {activeCopy?.statut === 'En préparation' && (
-                    <div className="mb-6 bg-slate-50 p-4 rounded-xl border border-slate-100">
-                       <div className="flex justify-between items-end mb-2">
-                         <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Avancement Préparation</span>
-                         <span className="text-sm font-black text-amber-600">{getProgression(activeCopy)}%</span>
-                       </div>
-                       <div className="w-full bg-slate-200 rounded-full h-2 mb-3 overflow-hidden">
-                         <div className="bg-amber-500 h-2 rounded-full transition-all duration-500" style={{ width: `${getProgression(activeCopy)}%` }}></div>
-                       </div>
-                       <div className="flex flex-wrap gap-2 mt-2">
-                         {[
-                           { id: 'etape_plastifier', label: 'Plastification' },
-                           { id: 'etape_contenu', label: 'Contenu' },
-                           { id: 'etape_etiquette', label: 'Étiquette' },
-                           { id: 'etape_equiper', label: 'Équiper' },
-                           { id: 'etape_encoder', label: 'Encoder' },
-                           { id: 'etape_notice', label: 'Notice' }
-                         ].map(step => (
-                           <span key={step.id} className={`text-[10px] font-bold px-2 py-0.5 rounded border ${activeCopy[step.id as keyof typeof activeCopy] ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'bg-white text-slate-400 border-slate-200'}`}>
-                             {activeCopy[step.id as keyof typeof activeCopy] ? '✓' : '○'} {step.label}
-                           </span>
-                         ))}
-                       </div>
+                    <div style={{ background: "var(--cream2)", border: "1.5px solid var(--ink)", borderRadius: 8, padding: "10px 12px", marginBottom: 12 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                        <span style={{ fontSize: 10, fontWeight: 800, color: "rgba(0,0,0,0.4)", textTransform: "uppercase" }}>Avancement</span>
+                        <span style={{ fontSize: 13, fontWeight: 800, color: "var(--orange)" }}>{getProgression(activeCopy)}%</span>
+                      </div>
+                      <div style={{ background: "var(--white)", borderRadius: 4, height: 6, overflow: "hidden", border: "1px solid var(--ink)", marginBottom: 8 }}>
+                        <div style={{ height: "100%", background: "var(--orange)", width: `${getProgression(activeCopy)}%`, transition: "width 0.3s" }}></div>
+                      </div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                        {[{ id: 'etape_plastifier', label: 'Plastification' }, { id: 'etape_contenu', label: 'Contenu' }, { id: 'etape_etiquette', label: 'Étiquette' }, { id: 'etape_equiper', label: 'Équiper' }, { id: 'etape_encoder', label: 'Encoder' }, { id: 'etape_notice', label: 'Notice' }].map(step => (
+                          <span key={step.id} style={{ fontSize: 10, fontWeight: 800, padding: "2px 7px", borderRadius: 20, border: "1.5px solid var(--ink)", background: activeCopy[step.id as keyof typeof activeCopy] ? "var(--vert)" : "var(--white)" }}>
+                            {activeCopy[step.id as keyof typeof activeCopy] ? '✓' : '○'} {step.label}
+                          </span>
+                        ))}
+                      </div>
                     </div>
                   )}
 
                   {activeCopy?.etape_nouveaute && (
-                    <div className="flex gap-4 mb-6 bg-[#baff29]/20 p-4 rounded-xl border border-[#baff29]/50">
-                      <div className="flex-1">
-                        <span className="text-xs font-bold text-slate-600 uppercase tracking-wider block mb-1">Entrée nouveauté</span>
-                        <span className="font-black text-black">{activeCopy.date_entree ? new Date(activeCopy.date_entree).toLocaleDateString('fr-FR') : "Non définie"}</span>
+                    <div style={{ display: "flex", gap: 12, background: "#f4fce3", border: "1.5px solid var(--vert)", borderRadius: 8, padding: "10px 14px", marginBottom: 12 }}>
+                      <div style={{ flex: 1 }}>
+                        <span style={{ fontSize: 10, fontWeight: 800, color: "rgba(0,0,0,0.4)", textTransform: "uppercase", display: "block", marginBottom: 3 }}>Entrée nouveauté</span>
+                        <span style={{ fontWeight: 800, fontSize: 13 }}>{activeCopy.date_entree ? new Date(activeCopy.date_entree).toLocaleDateString('fr-FR') : "Non définie"}</span>
                       </div>
-                      <div className="w-px bg-[#baff29]/50"></div>
-                      <div className="flex-1">
-                        <span className="text-xs font-bold text-slate-600 uppercase tracking-wider block mb-1">Sortie prévue</span>
-                        <span className="font-black text-rose-500">{activeCopy.date_sortie ? new Date(activeCopy.date_sortie).toLocaleDateString('fr-FR') : "Non définie"}</span>
+                      <div style={{ width: 1, background: "var(--vert)", opacity: 0.5 }}></div>
+                      <div style={{ flex: 1 }}>
+                        <span style={{ fontSize: 10, fontWeight: 800, color: "rgba(0,0,0,0.4)", textTransform: "uppercase", display: "block", marginBottom: 3 }}>Sortie prévue</span>
+                        <span style={{ fontWeight: 800, fontSize: 13, color: "var(--rouge)" }}>{activeCopy.date_sortie ? new Date(activeCopy.date_sortie).toLocaleDateString('fr-FR') : "Non définie"}</span>
                       </div>
                     </div>
                   )}
 
-                  <h4 className="text-lg font-black text-slate-800 mb-4 mt-2">🕰️ Historique d'incidents</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <p className="bc" style={{ fontSize: 15, letterSpacing: "0.03em", marginBottom: 10 }}>Historique incidents</p>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                     <div>
-                      <h4 className="text-sm font-bold text-slate-500 uppercase mb-3 flex justify-between items-center">
-                        Pièces Manquantes
-                        <span className="bg-rose-100 text-rose-600 px-2 py-0.5 rounded text-[10px]">{ficheJeu.historique_manquants?.length || 0}</span>
-                      </h4>
-                      <div className="space-y-2">
-                        {isLoadingFiche ? (
-                          <p className="text-xs text-slate-400">Chargement...</p>
-                        ) : !ficheJeu.historique_manquants || ficheJeu.historique_manquants.length === 0 ? (
-                          <p className="text-xs text-slate-400 italic">Aucun incident déclaré.</p>
-                        ) : (
-                          ficheJeu.historique_manquants.map((manq: any) => (
-                            <div key={manq.id} className="bg-rose-50 border border-rose-100 p-2 rounded-lg flex justify-between items-center hover:border-rose-300 cursor-pointer">
-                              <span className="text-sm font-bold text-rose-700 truncate">{manq.element_manquant}</span>
-                              <span className="text-[10px] font-black uppercase bg-white text-rose-500 px-1.5 py-0.5 rounded shadow-sm">{manq.statut}</span>
-                            </div>
-                          ))
-                        )}
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                        <span style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.05em" }}>Pièces manquantes</span>
+                        <span style={{ fontSize: 10, fontWeight: 800, background: "var(--rouge)", color: "var(--white)", border: "1.5px solid var(--ink)", borderRadius: 20, padding: "1px 7px" }}>{ficheJeu.historique_manquants?.length || 0}</span>
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                        {isLoadingFiche ? <p style={{ fontSize: 12, color: "rgba(0,0,0,0.35)" }}>Chargement…</p>
+                        : (ficheJeu.historique_manquants || []).length === 0 ? <p style={{ fontSize: 12, color: "rgba(0,0,0,0.35)", fontStyle: "italic" }}>Aucun incident.</p>
+                        : ficheJeu.historique_manquants!.map((manq: any) => (
+                          <div key={manq.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#fff0f4", border: "1.5px solid var(--rouge)", borderRadius: 6, padding: "5px 8px" }}>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: "var(--rouge)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{manq.element_manquant}</span>
+                            <span style={{ fontSize: 10, fontWeight: 800, background: "var(--white)", border: "1px solid var(--rouge)", borderRadius: 4, padding: "1px 6px", flexShrink: 0, marginLeft: 6 }}>{manq.statut}</span>
+                          </div>
+                        ))}
                       </div>
                     </div>
-
                     <div>
-                      <h4 className="text-sm font-bold text-slate-500 uppercase mb-3 flex justify-between items-center">
-                        Réparations
-                        <span className="bg-amber-100 text-amber-700 px-2 py-0.5 rounded text-[10px]">{ficheJeu.historique_reparations?.length || 0}</span>
-                      </h4>
-                      <div className="space-y-2">
-                        {isLoadingFiche ? (
-                          <p className="text-xs text-slate-400">Chargement...</p>
-                        ) : !ficheJeu.historique_reparations || ficheJeu.historique_reparations.length === 0 ? (
-                          <p className="text-xs text-slate-400 italic">Aucune réparation.</p>
-                        ) : (
-                          ficheJeu.historique_reparations.map((rep: any) => (
-                            <div key={rep.id} className="bg-amber-50 border border-amber-100 p-2 rounded-lg flex justify-between items-center hover:border-amber-300 cursor-pointer">
-                              <span className="text-sm font-bold text-amber-700 truncate pr-2">{rep.description}</span>
-                              <span className="text-[10px] font-black uppercase bg-white text-amber-600 px-1.5 py-0.5 rounded shadow-sm shrink-0">{rep.statut}</span>
-                            </div>
-                          ))
-                        )}
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                        <span style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.05em" }}>Réparations</span>
+                        <span style={{ fontSize: 10, fontWeight: 800, background: "var(--orange)", border: "1.5px solid var(--ink)", borderRadius: 20, padding: "1px 7px" }}>{ficheJeu.historique_reparations?.length || 0}</span>
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                        {isLoadingFiche ? <p style={{ fontSize: 12, color: "rgba(0,0,0,0.35)" }}>Chargement…</p>
+                        : (ficheJeu.historique_reparations || []).length === 0 ? <p style={{ fontSize: 12, color: "rgba(0,0,0,0.35)", fontStyle: "italic" }}>Aucune réparation.</p>
+                        : ficheJeu.historique_reparations!.map((rep: any) => (
+                          <div key={rep.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#fff8f0", border: "1.5px solid var(--orange)", borderRadius: 6, padding: "5px 8px" }}>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: "var(--orange)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", paddingRight: 6 }}>{rep.description}</span>
+                            <span style={{ fontSize: 10, fontWeight: 800, background: "var(--white)", border: "1px solid var(--orange)", borderRadius: 4, padding: "1px 6px", flexShrink: 0 }}>{rep.statut}</span>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   </div>
-
                 </div>
-
               </div>
             </div>
 
-            <div className="bg-white p-5 md:p-6 border-t-2 border-slate-100 flex justify-between items-center shrink-0">
+            {/* Footer */}
+            <div style={{ background: "var(--white)", borderTop: "2.5px solid var(--ink)", padding: "12px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
               {!isEditingFiche ? (
-                 <button onClick={() => supprimerExemplaire(activeCopy?.id)} className="text-red-500 hover:bg-red-50 px-4 py-2.5 rounded-xl font-bold text-sm transition-colors flex items-center gap-2">
-                   🗑️ <span className="hidden sm:inline">Supprimer cet exemplaire</span>
-                 </button>
+                <button onClick={() => supprimerExemplaire(activeCopy?.id)} className="pop-btn" style={{ background: "var(--rouge)", color: "var(--white)" }}>🗑️ Supprimer</button>
               ) : <div></div>}
-              
-              <div className="flex gap-3">
+              <div style={{ display: "flex", gap: 10 }}>
                 {isEditingFiche ? (
                   <>
-                    <button onClick={() => setIsEditingFiche(false)} className="px-6 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-colors shadow-sm">
-                      Annuler
-                    </button>
-                    <button onClick={sauvegarderFicheJeu} className="px-6 py-2.5 bg-[#baff29] hover:bg-[#a1e619] text-black font-black rounded-xl transition-colors shadow-md">
-                      💾 Enregistrer
+                    <button onClick={() => setIsEditingFiche(false)} className="pop-btn" style={{ background: "var(--cream2)" }}>Annuler</button>
+                    <button onClick={sauvegarderFicheJeu} className="pop-btn" style={{ background: "var(--vert)" }}>
+                      <span className="bc" style={{ fontSize: 15 }}>Enregistrer</span>
                     </button>
                   </>
                 ) : (
                   <>
-                    <button onClick={activerEditionFiche} className="px-6 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-colors shadow-sm">
-                      ✏️ Editer les infos
-                    </button>
-                    <button className="px-6 py-2.5 bg-black hover:bg-slate-800 text-white font-black rounded-xl transition-colors shadow-md">
-                      🖨️ Imprimer Étiquette
-                    </button>
+                    <button onClick={activerEditionFiche} className="pop-btn" style={{ background: "var(--cream2)" }}>✏️ Éditer</button>
+                    <button className="pop-btn pop-btn-dark">🖨️ Imprimer étiquette</button>
                   </>
                 )}
               </div>
