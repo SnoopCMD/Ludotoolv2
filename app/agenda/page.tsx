@@ -1057,11 +1057,12 @@ useEffect(() => {
 
         <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <h1 className="bc" style={{ fontSize: 36, margin: 0, lineHeight: 1.1 }}>
-              Agenda <span style={{ color: "rgba(0,0,0,0.35)", fontWeight: 900 }} className="capitalize">
+            <div>
+              <div className="bc" style={{ fontSize: 80, lineHeight: 0.9, textTransform: "uppercase", letterSpacing: "-1px", background: "linear-gradient(135deg, #0d0d0d 40%, var(--purple))", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>Agenda</div>
+              <div className="bc capitalize" style={{ fontSize: 20, color: "rgba(0,0,0,0.35)", marginTop: 6 }}>
                 {vue === "Mois" ? format(dateActuelle, 'MMMM yyyy', { locale: fr }) : `Sem. ${format(startOfWeek(dateActuelle, { weekStartsOn: 1 }), 'w', { locale: fr })}`}
-              </span>
-            </h1>
+              </div>
+            </div>
             <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
               <button onClick={() => setDateActuelle(vue === "Mois" ? subMonths(dateActuelle, 1) : subWeeks(dateActuelle, 1))} className="pop-btn pop-btn-outline" style={{ padding: "8px 12px", fontSize: 14 }}>◀</button>
               <div className="pop-card" style={{ display: "flex", padding: "4px 6px", gap: 0 }}>

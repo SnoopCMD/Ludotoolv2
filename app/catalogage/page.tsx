@@ -611,8 +611,8 @@ function CataloguePageInner() {
         {/* Titre + export */}
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
           <div>
-            <h1 className="bc" style={{ fontSize: 32, margin: 0 }}>Catalogage</h1>
-            <p style={{ color: "rgba(0,0,0,0.4)", fontWeight: 500, marginTop: 4, fontSize: 15 }}>Enrichis les notices et exporte-les pour Syracuse</p>
+            <div className="bc" style={{ fontSize: 80, lineHeight: 0.9, textTransform: "uppercase", letterSpacing: "-1px", background: "linear-gradient(135deg, #0d0d0d 40%, var(--orange))", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>Catalogage</div>
+            <p style={{ color: "rgba(0,0,0,0.4)", fontWeight: 500, marginTop: 6, fontSize: 15 }}>Enrichis les notices et exporte-les pour Syracuse</p>
           </div>
           <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, flexShrink: 0 }}>
             <button onClick={exportMrc} disabled={selected.size === 0 || isExporting}

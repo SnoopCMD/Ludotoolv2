@@ -232,8 +232,14 @@ export default function StorePage() {
 
       <div className="pop-page" style={{ display: "flex", flexDirection: "column", gap: 20 }}>
 
-        {/* Liens rapides */}
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+        {/* Titre */}
+        <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between" }}>
+          <div>
+            <div className="bc" style={{ fontSize: 80, lineHeight: 0.9, textTransform: "uppercase", letterSpacing: "-1px", background: "linear-gradient(135deg, #0d0d0d 40%, var(--rose))", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>Store</div>
+            <div style={{ fontSize: 14, color: "rgba(0,0,0,0.4)", fontWeight: 500, marginTop: 6 }}>Devis et recherche de jeux</div>
+          </div>
+          {/* Liens rapides */}
+          <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
           {[
             { href: "https://www.myludo.fr", label: "MyLudo" },
             { href: "https://www.espritjeu.com", label: "Esprit Jeu" },
@@ -243,6 +249,7 @@ export default function StorePage() {
               {label} ↗
             </a>
           ))}
+          </div>
         </div>
 
         {/* Layout principal */}
