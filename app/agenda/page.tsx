@@ -1038,7 +1038,7 @@ useEffect(() => {
         </div>
       )}
 
-      <div className="pop-page" style={{ display: "flex", flexDirection: "column", gap: 20, paddingTop: isDraftMode ? 100 : undefined }}>
+      <div className="pop-page" style={{ display: "flex", flexDirection: "column", gap: 20, paddingTop: isDraftMode ? 160 : undefined }}>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
 
@@ -1434,7 +1434,7 @@ useEffect(() => {
       )}
 
       {showEquipePanel && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 50, display: "flex", justifyContent: "flex-end", backdropFilter: "blur(4px)" }}>
+        <div style={{ position: "fixed", top: 64, bottom: 0, left: 0, right: 0, background: "rgba(0,0,0,0.5)", zIndex: 50, display: "flex", justifyContent: "flex-end", backdropFilter: "blur(4px)" }}>
           <div style={{ background: "var(--white)", width: "100%", maxWidth: 520, height: "100%", display: "flex", flexDirection: "column", border: "2.5px solid var(--ink)", borderRight: "none", boxShadow: "-6px 0 0 var(--ink)" }} className="animate-slide-in-right">
             <div style={{ padding: "20px 24px", borderBottom: "2px solid rgba(0,0,0,0.08)", display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--white)" }}>
               <div>
@@ -1758,7 +1758,7 @@ useEffect(() => {
       )}
 
       {showEventsListPanel && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 50, display: "flex", justifyContent: "flex-end", backdropFilter: "blur(4px)" }}>
+        <div style={{ position: "fixed", top: 64, bottom: 0, left: 0, right: 0, background: "rgba(0,0,0,0.5)", zIndex: 50, display: "flex", justifyContent: "flex-end", backdropFilter: "blur(4px)" }}>
           <div style={{ background: "var(--white)", width: "100%", maxWidth: 520, height: "100%", display: "flex", flexDirection: "column", border: "2.5px solid var(--ink)", borderRight: "none", boxShadow: "-6px 0 0 var(--ink)" }} className="animate-slide-in-right">
             <div style={{ padding: "20px 24px", borderBottom: "2px solid rgba(0,0,0,0.08)", display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--white)" }}>
               <div>

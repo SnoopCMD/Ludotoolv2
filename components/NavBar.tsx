@@ -47,8 +47,10 @@ export default function NavBar({ current }: { current?: Page }) {
   return (
     <nav
       style={{
-        position: "sticky",
+        position: "fixed",
         top: 0,
+        left: 0,
+        right: 0,
         zIndex: 100,
         background: "var(--cream)",
         borderBottom: "3px solid var(--ink)",

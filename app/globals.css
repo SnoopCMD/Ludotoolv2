@@ -154,6 +154,7 @@ body::before {
 .pop-page {
   min-height: calc(100vh - 64px);
   padding: 28px 32px;
+  padding-top: calc(64px + 28px);
   position: relative;
   z-index: 1;
 }
