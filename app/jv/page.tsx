@@ -2441,7 +2441,7 @@ export default function JvPage() {
   const totalResasVenir = reservations.filter(r => { const ds = getDisplayStatus(r); return ds === "a_venir" || ds === "en_cours"; }).length;
 
   return (
-    <div className="min-h-screen bg-[#e5e5e5] flex flex-col items-center p-4 sm:p-8 gap-6">
+    <div className="min-h-screen bg-[#e5e5e5] flex flex-col items-center p-4 sm:p-8 gap-6" style={{ paddingTop: 64 }}>
       <style>{`
         .custom-scroll::-webkit-scrollbar{width:4px}
         .custom-scroll::-webkit-scrollbar-track{background:transparent}

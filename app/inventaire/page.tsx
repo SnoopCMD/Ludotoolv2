@@ -1302,12 +1302,12 @@ export default function InventairePage() {
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: "var(--cream)", display: "flex", flexDirection: "column" }}>
+    <div style={{ minHeight: "100vh", background: "var(--cream)", display: "flex", flexDirection: "column", paddingTop: 64 }}>
       <NavBar current="inventaire" />
 
       {/* ── Sticky header ── */}
       <header style={{
-        position: "sticky", top: 56, zIndex: 40, background: "var(--cream)",
+        position: "sticky", top: 64, zIndex: 40, background: "var(--cream)",
         borderBottom: "2.5px solid var(--ink)",
         display: "flex", alignItems: "center", flexWrap: "wrap",
         padding: "10px 24px", gap: 12,
