@@ -85,26 +85,18 @@ const mergeIntervals = (intervals: {start: number, end: number}[]) => {
   return merged;
 };
 
-const getEventStyle = (type: string, isOverlay = false) => {
-  const base = isOverlay ? ' backdrop-blur-md bg-opacity-80 border-opacity-90' : '';
-  if (type.includes('RTT')) return 'bg-emerald-100 text-emerald-900 border-emerald-400' + base;
-  if (type.includes('Congé') || type.includes('Récupération')) return 'bg-rose-100 text-rose-900 border-rose-400' + base;
-  if (type === 'Réunion') return 'bg-indigo-200 text-indigo-900 border-indigo-400' + base;
-  if (type === 'Animation') return 'bg-amber-200 text-amber-900 border-amber-400' + base; 
-  if (type === 'Soirée Jeux') return 'bg-purple-200 text-purple-900 border-purple-400' + base;
-  if (type === 'Heures Exceptionnelles') return 'bg-teal-200 text-teal-900 border-teal-400' + base;
-  return 'bg-slate-200 text-slate-800 border-slate-300' + base;
+const getEventColor = (type: string): string => {
+  if (type.includes('RTT')) return 'var(--vert)';
+  if (type.includes('Congé') || type.includes('Récupération')) return 'var(--rose)';
+  if (type === 'Réunion') return 'var(--bleu)';
+  if (type === 'Animation') return 'var(--orange)';
+  if (type === 'Soirée Jeux') return 'var(--purple)';
+  if (type === 'Heures Exceptionnelles') return 'var(--yellow)';
+  return 'var(--cream2)';
 };
 
-const getEventDotColor = (type: string) => {
-  if (type.includes('RTT')) return 'bg-emerald-500';
-  if (type.includes('Congé') || type.includes('Récupération')) return 'bg-rose-500';
-  if (type === 'Réunion') return 'bg-indigo-500';
-  if (type === 'Animation') return 'bg-amber-500'; 
-  if (type === 'Soirée Jeux') return 'bg-purple-500';
-  if (type === 'Heures Exceptionnelles') return 'bg-teal-500';
-  return 'bg-slate-500';
-};
+const getEventStyle = (type: string, _isOverlay = false) => getEventColor(type);
+const getEventDotColor = (type: string) => getEventColor(type);
 
 const getEventIcon = (type: string) => {
   if (type.includes('Congé')) return '🏖️';
@@ -1104,13 +1096,24 @@ useEffect(() => {
         <div className="pop-card" style={{ display: "flex", flexDirection: "column", overflow: "hidden", flex: 1 }}>
           <div style={{ display: "grid", borderBottom: "2px solid var(--ink)", background: "var(--cream2)", borderRadius: "10px 10px 0 0", gridTemplateColumns: vue === "Semaine" ? "60px 1fr 1fr 1fr 1fr 1fr 1fr 1fr" : "repeat(7, 1fr)" }}>
             {vue === "Semaine" && <div style={{ padding: "10px 0" }}></div>}
-            {['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'].map(jour => (
-              <div key={jour} className="bc" style={{ padding: "10px 0", textAlign: "center", color: "rgba(0,0,0,0.45)", fontSize: 11, letterSpacing: "0.08em" }}>{jour}</div>
-            ))}
+            {vue === "Semaine"
+              ? joursAffiches.map((jour) => {
+                  const today = isToday(jour);
+                  return (
+                    <div key={format(jour, 'yyyy-MM-dd')} style={{ padding: "8px 0", textAlign: "center", background: today ? couleurs.accent : "transparent", borderBottom: today ? "2px solid var(--ink)" : "none", marginBottom: today ? -2 : 0, borderRadius: today ? "0" : "0" }}>
+                      <div className="bc" style={{ fontSize: 10, letterSpacing: "0.08em", color: today ? "var(--ink)" : "rgba(0,0,0,0.45)", textTransform: "uppercase" }}>{format(jour, 'EEE', { locale: fr })}</div>
+                      <div className="bc" style={{ fontSize: 22, lineHeight: 1, fontWeight: 900, color: "var(--ink)", marginTop: 1 }}>{format(jour, 'd')}</div>
+                    </div>
+                  );
+                })
+              : ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'].map(jour => (
+                  <div key={jour} className="bc" style={{ padding: "10px 0", textAlign: "center", color: "rgba(0,0,0,0.45)", fontSize: 11, letterSpacing: "0.08em" }}>{jour}</div>
+                ))
+            }
           </div>
 
           {vue === "Mois" ? (
-            <div className="flex-1 grid grid-cols-7 auto-rows-fr">
+            <div style={{ flex: 1, display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gridAutoRows: "1fr" }}>
               {joursAffiches.map((jour, i) => {
                 const dateKey = format(jour, 'yyyy-MM-dd');
                 const nomFerie = joursFeries[dateKey];
@@ -1155,99 +1158,73 @@ useEffect(() => {
                       else { setDateActuelle(jour); setVue("Semaine"); }
                     }}
                     style={{
-                      borderRight: "1.5px solid rgba(0,0,0,0.08)",
-                      borderBottom: "1.5px solid rgba(0,0,0,0.08)",
-                      background: isSelectedForSwap ? "rgba(96,165,250,0.15)" : isSameMonth(jour, dateActuelle) ? "var(--white)" : "rgba(0,0,0,0.02)",
+                      borderRight: "1.5px solid rgba(0,0,0,0.09)",
+                      borderBottom: "1.5px solid rgba(0,0,0,0.09)",
+                      background: isSelectedForSwap ? "rgba(96,165,250,0.12)" : isSameMonth(jour, dateActuelle) ? "var(--white)" : "rgba(0,0,0,0.025)",
                       outline: isSelectedForSwap ? "3px solid var(--bleu)" : "none",
                       outlineOffset: -3,
-                    }}
-                    className="transition-colors relative flex flex-col min-h-[120px] group cursor-pointer hover:bg-[#fafafa]">
-                    
-                    <div className="absolute top-0 left-0 right-0 flex h-1.5 z-20">
-                      {zonesVacances.includes("Zone A") && <div className="flex-1 opacity-30" style={{backgroundColor: couleurs.zoneA}}></div>}
-                      {zonesVacances.includes("Zone B") && <div className="flex-1 opacity-30" style={{backgroundColor: couleurs.zoneB}}></div>}
-                      {zonesVacances.includes("Zone C") && <div className="flex-1 opacity-80" style={{backgroundColor: couleurs.zoneC}}></div>}
-                    </div>
+                      position: "relative",
+                      display: "flex",
+                      flexDirection: "column",
+                      minHeight: 120,
+                      cursor: "pointer",
+                    }}>
 
-                    <div className="flex justify-between items-start pt-2 px-2 z-20 pointer-events-none">
-                      <div className="flex flex-col gap-1 w-full mr-2">
-                        {nomFerie && <span className="text-[10px] font-black text-rose-500 uppercase leading-none bg-white/90 px-1.5 py-0.5 rounded shadow-sm backdrop-blur-sm line-clamp-1">{nomFerie}</span>}
-                        <div className="flex flex-wrap gap-1 mt-0.5">
-                          {evenementsDuJour.filter(e => !['Soirée Jeux', 'Heures Exceptionnelles'].includes(e.type)).map((ev, idx) => (
-                            <div key={`dot-${idx}`} className={`w-2.5 h-2.5 rounded-full shadow-sm ${getEventDotColor(ev.type)}`}></div>
-                          ))}
-                        </div>
+                    {/* Vacation band */}
+                    {zonesVacances.length > 0 && (
+                      <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, display: "flex", zIndex: 20, pointerEvents: "none" }}>
+                        {zonesVacances.includes("Zone A") && <div style={{ flex: 1, opacity: 0.35, backgroundColor: couleurs.zoneA }}></div>}
+                        {zonesVacances.includes("Zone B") && <div style={{ flex: 1, opacity: 0.35, backgroundColor: couleurs.zoneB }}></div>}
+                        {zonesVacances.includes("Zone C") && <div style={{ flex: 1, opacity: 0.75, backgroundColor: couleurs.zoneC }}></div>}
                       </div>
-                      <span className={`font-bold flex items-center justify-center w-7 h-7 rounded-full shrink-0 shadow-sm backdrop-blur-sm ${isToday(jour) ? 'text-black' : nomFerie ? 'bg-white/90 text-rose-600' : 'bg-white/80 text-slate-700'}`} style={isToday(jour) ? {backgroundColor: couleurs.accent} : {}}>
+                    )}
+
+                    {/* Header row: event dots + day number */}
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "7px 7px 4px", zIndex: 20, pointerEvents: "none" }}>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 3, flex: 1, marginRight: 4, marginTop: 2 }}>
+                        {nomFerie && (
+                          <span style={{ fontSize: 9, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.05em", background: "var(--yellow)", color: "var(--ink)", border: "1.5px solid var(--ink)", borderRadius: 4, padding: "1px 5px", boxShadow: "1px 1px 0 var(--ink)", display: "block", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>{nomFerie}</span>
+                        )}
+                        {!nomFerie && evenementsDuJour.filter(e => !['Soirée Jeux', 'Heures Exceptionnelles'].includes(e.type)).map((ev, idx) => (
+                          <div key={`dot-${idx}`} style={{ width: 9, height: 9, borderRadius: "50%", backgroundColor: getEventColor(ev.type), border: "1.5px solid var(--ink)", flexShrink: 0 }}></div>
+                        ))}
+                      </div>
+                      <span style={{
+                        fontWeight: 900, fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center",
+                        width: 26, height: 26, borderRadius: "50%", flexShrink: 0,
+                        background: isToday(jour) ? couleurs.accent : "transparent",
+                        border: isToday(jour) ? "2px solid var(--ink)" : "none",
+                        boxShadow: isToday(jour) ? "1.5px 1.5px 0 var(--ink)" : "none",
+                        color: nomFerie && !isToday(jour) ? "var(--rouge)" : "var(--ink)",
+                      }}>
                         {format(jour, 'd')}
                       </span>
                     </div>
 
-                    <div className="flex-1 flex flex-col w-full h-full pt-2 pb-1 px-1 gap-1 z-10 overflow-y-auto hide-scrollbar pointer-events-none">
+                    {/* Event blocks */}
+                    <div style={{ flex: 1, display: "flex", flexDirection: "column", padding: "0 5px 5px", gap: 3, zIndex: 10, overflowY: "auto" }} className="hide-scrollbar">
                       {blocsHoraires.map((bloc: any, idx: number) => {
                         const bgColor = getBlocColor(bloc.membresInfos, activeEquipe);
                         const absInBloc = evenementsDuJour.filter(e => ABSENCE_TYPES.includes(e.type) && e.membres.some(mId => bloc.membresInfos.find((m:any) => m.id === mId)));
-                        
                         return (
-                          <div key={idx} className="flex-1 border-l-4 rounded p-1.5 flex flex-col justify-center min-h-[30px] hover:brightness-95 text-black" style={{ backgroundColor: bgColor, borderColor: bgColor }}>
-                            <span className="font-bold text-[10px] leading-tight line-clamp-1">{bloc.noms.join(', ')}</span>
-                            {absInBloc.length > 0 && (
-                                <div className="mt-0.5 flex flex-wrap gap-0.5">
-                                  {absInBloc.map((abs, aIdx) => (
-                                    <span key={`a-${aIdx}`} className="text-[8px] font-bold text-white bg-rose-500/90 px-1 py-0.5 rounded-sm leading-none">{abs.type.replace('Demi-', '1/2 ')} : {getNomsMembresEvent(abs.membres)}</span>
-                                  ))}
-                                </div>
-                            )}
-                            <span className="text-[9px] font-medium opacity-80 mt-auto">{bloc.debut}-{bloc.fin}</span>
+                          <div key={idx} style={{ background: bgColor, border: "1.5px solid var(--ink)", borderRadius: 6, padding: "3px 6px", display: "flex", flexDirection: "column", gap: 1 }}>
+                            <span style={{ fontWeight: 800, fontSize: 10, lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{bloc.noms.join(', ')}</span>
+                            {absInBloc.map((abs, aIdx) => (
+                              <span key={aIdx} style={{ fontSize: 8, fontWeight: 800, background: "var(--rose)", color: "var(--ink)", border: "1px solid var(--ink)", borderRadius: 3, padding: "0 3px" }}>{abs.type.replace('Demi-', '½ ')}</span>
+                            ))}
+                            <span style={{ fontSize: 9, fontWeight: 600, opacity: 0.65 }}>{bloc.debut}–{bloc.fin}</span>
                           </div>
-                        )
+                        );
                       })}
-
                       {evenementsDuJour.filter(e => ['Soirée Jeux', 'Heures Exceptionnelles'].includes(e.type)).map((ev, idx) => (
-                        <div key={`ev-m-${idx}`} onClick={(e) => { e.stopPropagation(); ouvrirEditionEvenement(ev, 'single'); }} className={`flex-1 border-l-4 rounded p-1.5 flex flex-col justify-center min-h-[30px] shadow-sm mt-1 cursor-pointer pointer-events-auto hover:scale-105 transition-transform ${getEventStyle(ev.type, false)}`}>
-                          <span className="font-bold text-[10px] leading-tight line-clamp-1 flex items-center gap-1">
-                            {getEventIcon(ev.type)} {ev.titre}
-                          </span>
-                          {ev.heure_debut && ev.heure_fin && (
-                            <span className="text-[9px] font-medium opacity-80">{ev.heure_debut} - {ev.heure_fin}</span>
-                          )}
+                        <div key={`ev-m-${idx}`}
+                          onClick={(e) => { e.stopPropagation(); ouvrirEditionEvenement(ev, 'single'); }}
+                          style={{ background: getEventColor(ev.type), border: "1.5px solid var(--ink)", borderRadius: 6, padding: "3px 6px", display: "flex", flexDirection: "column", gap: 1, cursor: "pointer", pointerEvents: "auto" }}>
+                          <span style={{ fontWeight: 800, fontSize: 10, lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{getEventIcon(ev.type)} {ev.titre}</span>
+                          {ev.heure_debut && <span style={{ fontSize: 9, fontWeight: 600, opacity: 0.65 }}>{ev.heure_debut}–{ev.heure_fin}</span>}
                         </div>
                       ))}
                     </div>
-
-                    {!swapSession.active && (
-                      <div className="absolute left-8 top-8 w-80 bg-white border border-slate-200 shadow-2xl rounded-3xl p-5 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-0 group-hover:duration-200 group-hover:delay-700 delay-0 z-[999] pointer-events-none flex flex-col gap-3">
-                        <p className="font-black text-sm capitalize border-b pb-2">{format(jour, 'EEEE d MMMM', { locale: fr })}</p>
-                        
-                        {evenementsDuJour.length > 0 && (
-                          <div className="space-y-1.5">
-                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Événements</p>
-                            {evenementsDuJour.map((e, i) => (
-                              <div key={i} className="text-xs font-bold flex flex-col gap-0.5">
-                                <span className="truncate">{getEventIcon(e.type)} {e.titre}</span>
-                                <span className="text-[9px] text-slate-500">{e.heure_debut ? `${e.heure_debut} - ${e.heure_fin}` : 'Journée entière'}</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-
-                        <div className="space-y-1.5">
-                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Présences confirmées</p>
-                          {nomFerie ? (
-                            <span className="text-xs text-rose-500 font-bold italic">Jour Férié</span>
-                          ) : blocsHoraires.length === 0 ? (
-                            <span className="text-xs text-slate-400 italic">Aucune présence prévue</span>
-                          ) : (
-                            blocsHoraires.map((c: any, i: number) => (
-                              <div key={i} className="text-xs flex justify-between border-b border-slate-50 pb-1">
-                                <span className="font-bold truncate pr-2">{c.noms.join(', ')}</span>
-                                <span className="text-slate-500 whitespace-nowrap">{c.debut} - {c.fin}</span>
-                              </div>
-                            ))
-                          )}
-                        </div>
-                      </div>
-                    )}
                   </div>
                 );
               })}
@@ -1313,63 +1290,69 @@ useEffect(() => {
                   const blocsHoraires = genererBlocsHoraires(presencesDuJour);
 
                   return (
-                    <div key={i} 
+                    <div key={i}
                          onClick={() => { if (swapSession.active && swapSession.step === 1) toggleSwapDate(dateKey); }}
-                         className={`relative bg-transparent z-10 overflow-hidden ${swapSession.active ? 'cursor-pointer' : ''} ${isSelectedForSwap ? 'ring-4 ring-inset ring-blue-500 bg-blue-50/30' : ''}`}>
-                      
-                      <div className="absolute top-0 left-0 right-0 flex h-1.5 z-20 pointer-events-none">
-                        {zonesVacances.includes("Zone A") && <div className="flex-1 opacity-30" style={{backgroundColor: couleurs.zoneA}}></div>}
-                        {zonesVacances.includes("Zone B") && <div className="flex-1 opacity-30" style={{backgroundColor: couleurs.zoneB}}></div>}
-                        {zonesVacances.includes("Zone C") && <div className="flex-1 opacity-80" style={{backgroundColor: couleurs.zoneC}}></div>}
-                      </div>
+                         style={{ position: "relative", background: isSelectedForSwap ? "rgba(96,165,250,0.06)" : "transparent", zIndex: 10, overflow: "hidden", cursor: swapSession.active ? "pointer" : "default", outline: isSelectedForSwap ? "3px solid var(--bleu)" : "none", outlineOffset: -3 }}>
 
-                      <div className="absolute top-2 left-2 right-2 flex justify-between items-start z-30 pointer-events-none">
-                        <div className="flex-1 mr-2 pointer-events-auto">
-                          {nomFerie && <span className="text-[10px] font-black text-rose-500 uppercase leading-none bg-white/90 px-1.5 py-0.5 rounded shadow-sm backdrop-blur-sm line-clamp-2">{nomFerie}</span>}
+                      {/* Vacation band */}
+                      {zonesVacances.length > 0 && (
+                        <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, display: "flex", zIndex: 20, pointerEvents: "none" }}>
+                          {zonesVacances.includes("Zone A") && <div style={{ flex: 1, opacity: 0.3, backgroundColor: couleurs.zoneA }}></div>}
+                          {zonesVacances.includes("Zone B") && <div style={{ flex: 1, opacity: 0.3, backgroundColor: couleurs.zoneB }}></div>}
+                          {zonesVacances.includes("Zone C") && <div style={{ flex: 1, opacity: 0.75, backgroundColor: couleurs.zoneC }}></div>}
                         </div>
-                        <span className={`font-bold flex items-center justify-center w-7 h-7 rounded-full shrink-0 shadow-sm backdrop-blur-sm pointer-events-auto ${isToday(jour) ? 'text-black' : nomFerie ? 'bg-white/90 text-rose-600' : 'bg-white/80 text-slate-700'}`} style={isToday(jour) ? {backgroundColor: couleurs.accent} : {}}>
-                          {format(jour, 'd')}
-                        </span>
-                      </div>
+                      )}
+
+                      {/* Ferie label */}
+                      {nomFerie && (
+                        <div style={{ position: "absolute", top: 8, left: 6, right: 6, zIndex: 30, pointerEvents: "none" }}>
+                          <span style={{ fontSize: 9, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.05em", background: "var(--yellow)", color: "var(--ink)", border: "1.5px solid var(--ink)", borderRadius: 4, padding: "2px 5px", boxShadow: "1px 1px 0 var(--ink)", display: "inline-block" }}>{nomFerie}</span>
+                        </div>
+                      )}
 
                       {blocsHoraires.map((bloc: any, idx: number) => {
                         const top = calculerPositionTop(bloc.debut);
                         const bottom = calculerPositionTop(bloc.fin, true);
                         const height = bottom - top;
-                        
                         const isDayFullTeam = bloc.noms.length === attendusDuJour && attendusDuJour > 0;
                         const bgColor = getBlocColor(bloc.membresInfos, activeEquipe);
-
                         const absencesDuBloc = absencesDay.filter(abs => {
                           if (!abs.heure_debut || !abs.heure_fin) return true;
                           return timeToMins(abs.heure_debut) < timeToMins(bloc.fin, true) && timeToMins(abs.heure_fin, true) > timeToMins(bloc.debut);
                         });
-
                         return (
-                          <div key={idx} className="absolute left-1.5 right-1.5 hover:z-[999] group/wrapper" style={{ top: `${top}%`, height: `${height}%`, zIndex: 10 + idx }}>
-                            <div className="absolute inset-x-0 top-0 h-full min-h-full group-hover/wrapper:h-max overflow-hidden group-hover/wrapper:overflow-visible border-l-4 rounded-md p-2 flex flex-col shadow-sm transition-all text-black group-hover/wrapper:z-[999] group-hover/wrapper:shadow-2xl" style={{ backgroundColor: bgColor, borderColor: bgColor, opacity: isDayFullTeam ? 1 : 0.8 }}>
-                              <span className="font-bold text-xs leading-tight break-words line-clamp-2 group-hover/wrapper:line-clamp-none">{bloc.noms.join(', ')}</span>
-                              
-                              {absencesDuBloc.length > 0 && (
-                                <div className="mt-1 flex flex-col gap-1 items-start">
-                                  {absencesDuBloc.map((abs, aIdx) => (
-                                    <span key={`abs-${aIdx}`} className="text-[9px] font-bold text-white bg-rose-500/90 px-2 py-0.5 rounded-full w-fit shadow-sm leading-none line-clamp-1 group-hover/wrapper:line-clamp-none">
-                                      {abs.type.replace('Demi-', '1/2 ')} : {getNomsMembresEvent(abs.membres)}
-                                    </span>
-                                  ))}
-                                </div>
-                              )}
-
-                              <span className="text-[10px] font-black opacity-60 mt-auto bg-white/40 rounded px-1.5 py-0.5 w-fit shrink-0 pt-0.5">{bloc.debut} - {bloc.fin}</span>
+                          <div key={idx} style={{ position: "absolute", left: 6, right: 6, top: `${top}%`, height: `${height}%`, zIndex: 10 + idx }}>
+                            <div style={{
+                              position: "absolute", inset: 0,
+                              backgroundColor: bgColor,
+                              border: "2px solid var(--ink)",
+                              borderRadius: 8,
+                              boxShadow: "2px 2px 0 var(--ink)",
+                              padding: "6px 8px",
+                              display: "flex", flexDirection: "column",
+                              overflow: "hidden",
+                              opacity: isDayFullTeam ? 1 : 0.82,
+                            }}>
+                              {/* Member dots */}
+                              <div style={{ display: "flex", gap: 3, flexWrap: "wrap", marginBottom: 4 }}>
+                                {bloc.membresInfos.map((m: any, mIdx: number) => (
+                                  <div key={mIdx} style={{ width: 10, height: 10, borderRadius: "50%", background: m.groupe === 'A' ? couleurs.equipeA : m.groupe === 'B' ? couleurs.equipeB : couleurs.accent, border: "1.5px solid var(--ink)", flexShrink: 0 }} />
+                                ))}
+                              </div>
+                              <span style={{ fontWeight: 800, fontSize: 11, lineHeight: 1.25, overflow: "hidden", textOverflow: "ellipsis" }}>{bloc.noms.join(', ')}</span>
+                              {absencesDuBloc.map((abs, aIdx) => (
+                                <span key={aIdx} style={{ marginTop: 2, fontSize: 9, fontWeight: 800, background: "var(--rose)", border: "1px solid var(--ink)", borderRadius: 3, padding: "1px 4px", width: "fit-content" }}>{abs.type.replace('Demi-', '½ ')} : {getNomsMembresEvent(abs.membres)}</span>
+                              ))}
+                              <span style={{ fontSize: 10, fontWeight: 700, opacity: 0.6, marginTop: "auto", paddingTop: 2 }}>{bloc.debut}–{bloc.fin}</span>
                             </div>
                           </div>
                         );
                       })}
 
                       {blocsHoraires.length === 0 && absencesDay.length > 0 && !nomFerie && (
-                        <div className="absolute top-12 left-1.5 right-1.5 flex flex-col gap-1 z-20 pointer-events-none">
+                        <div style={{ position: "absolute", top: 44, left: 6, right: 6, display: "flex", flexDirection: "column", gap: 4, zIndex: 20, pointerEvents: "none" }}>
                           {absencesDay.map((abs, aIdx) => (
-                            <span key={`abs-f-${aIdx}`} className="text-[9px] font-bold text-white bg-rose-500/90 px-2 py-1 rounded-full shadow-sm w-fit leading-tight text-center pointer-events-auto">
+                            <span key={`abs-f-${aIdx}`} style={{ fontSize: 9, fontWeight: 800, background: "var(--rose)", color: "var(--ink)", border: "1.5px solid var(--ink)", borderRadius: 4, padding: "2px 6px", boxShadow: "1px 1px 0 var(--ink)" }}>
                               {abs.type} : {getNomsMembresEvent(abs.membres)}
                             </span>
                           ))}
@@ -1381,21 +1364,23 @@ useEffect(() => {
                         const bottom = calculerPositionTop(ev.heure_fin, true);
                         const height = bottom - top;
                         return (
-                          <div key={`ev-h-${idx}`} onClick={(e) => { e.stopPropagation(); ouvrirEditionEvenement(ev, 'single'); }} className="absolute left-2 right-2 hover:z-[999] group/evwrapper pointer-events-auto cursor-pointer" style={{ top: `${top}%`, height: `${height}%`, zIndex: 40 + idx }}>
-                            <div className={`absolute inset-x-0 top-0 h-full min-h-full group-hover/evwrapper:h-max overflow-hidden group-hover/evwrapper:overflow-visible border-l-4 rounded-md p-1.5 flex flex-col shadow-md hover:shadow-2xl transition-all group-hover/evwrapper:z-[999] ${getEventStyle(ev.type, true)}`}>
-                              <span className="text-[10px] font-black opacity-90 truncate leading-tight mb-0.5 group-hover/evwrapper:line-clamp-none group-hover/evwrapper:whitespace-normal">{getNomsMembresEvent(ev.membres)}</span>
-                              <span className="font-bold text-xs leading-tight break-words line-clamp-1 group-hover/evwrapper:line-clamp-none">{getEventIcon(ev.type)} {ev.titre}</span>
-                              <span className="text-[10px] font-bold opacity-80 mt-auto shrink-0 pt-0.5">{ev.heure_debut} - {ev.heure_fin}</span>
+                          <div key={`ev-h-${idx}`} onClick={(e) => { e.stopPropagation(); ouvrirEditionEvenement(ev, 'single'); }}
+                            style={{ position: "absolute", left: 6, right: 6, top: `${top}%`, height: `${height}%`, zIndex: 40 + idx, cursor: "pointer", pointerEvents: "auto" }}>
+                            <div style={{ position: "absolute", inset: 0, backgroundColor: getEventColor(ev.type), border: "2px solid var(--ink)", borderRadius: 8, boxShadow: "2px 2px 0 var(--ink)", padding: "6px 8px", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+                              <span style={{ fontSize: 10, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{getNomsMembresEvent(ev.membres)}</span>
+                              <span style={{ fontWeight: 800, fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{getEventIcon(ev.type)} {ev.titre}</span>
+                              <span style={{ fontSize: 10, fontWeight: 700, opacity: 0.6, marginTop: "auto" }}>{ev.heure_debut}–{ev.heure_fin}</span>
                             </div>
                           </div>
                         );
                       })}
 
-                      <div className="absolute bottom-2 left-1 right-1 flex flex-col justify-end gap-1 z-50 pointer-events-auto">
+                      <div style={{ position: "absolute", bottom: 6, left: 4, right: 4, display: "flex", flexDirection: "column", gap: 3, zIndex: 50, pointerEvents: "auto" }}>
                         {eventsBottom.map((ev, idx) => (
-                           <div key={`ev-b-${idx}`} onClick={(e) => { e.stopPropagation(); ouvrirEditionEvenement(ev, 'single'); }} className={`text-[9px] font-bold px-1.5 py-1 rounded border shadow-sm flex flex-col leading-tight hover:scale-105 transition-transform cursor-pointer ${getEventStyle(ev.type)}`}>
-                             <span className="text-[9px] font-black opacity-90 truncate">{getNomsMembresEvent(ev.membres)}</span>
-                             <span className="truncate">{getEventIcon(ev.type)} {ev.titre}</span>
+                           <div key={`ev-b-${idx}`} onClick={(e) => { e.stopPropagation(); ouvrirEditionEvenement(ev, 'single'); }}
+                             style={{ fontSize: 9, fontWeight: 800, background: getEventColor(ev.type), border: "1.5px solid var(--ink)", borderRadius: 5, padding: "3px 6px", display: "flex", flexDirection: "column", cursor: "pointer", boxShadow: "1px 1px 0 var(--ink)" }}>
+                             <span style={{ fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{getNomsMembresEvent(ev.membres)}</span>
+                             <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{getEventIcon(ev.type)} {ev.titre}</span>
                            </div>
                         ))}
                       </div>
@@ -1795,7 +1780,7 @@ useEffect(() => {
                   <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 24 }}>
                     {eventsEnCours.length === 0 && <p style={{ fontSize: 13, color: "rgba(0,0,0,0.4)", fontStyle: "italic" }}>Rien de prévu en ce moment.</p>}
                     {eventsEnCours.map(ev => (
-                      <div key={ev.id} className={`pop-card pop-card-hover ${getEventStyle(ev.type)}`} style={{ padding: "12px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                      <div key={ev.id} className="pop-card pop-card-hover" style={{ padding: "12px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, background: getEventStyle(ev.type) }}>
                         <div style={{ flex: 1, cursor: "pointer" }} onClick={() => ouvrirEditionEvenement(ev, 'single')}>
                           <p style={{ fontWeight: 800, fontSize: 14, display: "flex", alignItems: "center", gap: 6 }}>{getEventIcon(ev.type)} {ev.titre}</p>
                           <p style={{ fontSize: 12, fontWeight: 500, marginTop: 3, opacity: 0.8 }}>
@@ -1856,7 +1841,7 @@ useEffect(() => {
                         {isExpanded && (
                           <div style={{ padding: 10, background: "var(--white)", borderTop: "1.5px solid rgba(0,0,0,0.08)", maxHeight: 280, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6 }} className="hide-scrollbar">
                             {evs.map(occ => (
-                              <div key={occ.id} className={`${getEventStyle(occ.type)}`} style={{ padding: "10px 12px", borderRadius: 8, border: "1.5px solid rgba(0,0,0,0.12)", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", opacity: occ.date_debut < todayStr ? 0.5 : 1 }} onClick={() => ouvrirEditionEvenement(occ, 'single')}>
+                              <div key={occ.id} style={{ padding: "10px 12px", borderRadius: 8, border: "1.5px solid rgba(0,0,0,0.12)", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", opacity: occ.date_debut < todayStr ? 0.5 : 1, background: getEventStyle(occ.type) }} onClick={() => ouvrirEditionEvenement(occ, 'single')}>
                                 <div>
                                   <p style={{ fontWeight: 700, fontSize: 13 }}>{format(new Date(occ.date_debut), 'dd MMM yyyy', {locale: fr})}</p>
                                   <p style={{ fontSize: 10, fontWeight: 500, opacity: 0.8, marginTop: 2 }}>{occ.heure_debut ? `${occ.heure_debut}-${occ.heure_fin}` : 'Journée entière'} • {getNomsMembresEvent(occ.membres)}</p>
@@ -1891,7 +1876,7 @@ useEffect(() => {
               </div>
               <button onClick={() => setShowEventModal(false)} className="pop-btn pop-btn-outline" style={{ width: 34, height: 34, padding: 0, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13 }}>✕</button>
             </div>
-            <div className="overflow-y-auto hide-scrollbar" style={{ flex: 1, padding: "18px 22px" }}>
+            <div className="hide-scrollbar" style={{ flex: 1, padding: "18px 22px", overflowY: "auto" }}>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
 
