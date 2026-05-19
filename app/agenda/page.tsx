@@ -973,22 +973,22 @@ useEffect(() => {
   const diffHeures = membreActif ? moyenneHeures - membreActif.heures_hebdo_base : 0;
 
   return (
-    <div className={`min-h-screen p-4 sm:p-8 bg-[#e5e5e5] font-sans relative ${isDraftMode ? 'pt-32' : ''}`}>
+    <div className={`min-h-screen p-4 sm:p-8 bg-[#e5e5e5] font-sans relative flex flex-col gap-6 ${isDraftMode ? 'pt-32' : ''}`}>
       
       {isDraftMode && (
-        <div className="fixed top-0 left-0 right-0 bg-orange-500 text-white z-[9999] px-6 py-3 flex flex-col shadow-xl animate-slide-in-down">
-          <div className="flex justify-between items-center">
-             <div className="flex items-center gap-4">
-               <span className="font-black text-lg flex items-center gap-2">🛠️ MODE PRÉVISION</span>
+        <div className="fixed top-0 left-0 right-0 bg-orange-500 text-white z-[9999] px-8 py-3 flex flex-col shadow-xl animate-slide-in-down">
+          <div className="flex justify-between items-center max-w-[96%] mx-auto w-full">
+             <div className="flex items-center gap-3">
+               <span className="font-black text-base flex items-center gap-2">🛠️ Mode Prévision</span>
                {(alertes.amplitude.length > 0 || alertes.heuresSupp.length > 0) && (
-                 <span className="bg-white/20 px-3 py-1 rounded text-sm font-bold shadow-sm">
-                   ⚠️ {alertes.amplitude.length + alertes.heuresSupp.length} Alerte(s) générée(s)
+                 <span className="bg-white/20 px-3 py-1 rounded-xl text-xs font-bold">
+                   ⚠️ {alertes.amplitude.length + alertes.heuresSupp.length} alerte(s)
                  </span>
                )}
              </div>
-             <div className="flex gap-3">
-               <button onClick={toggleDraftMode} className="px-4 py-1.5 bg-white/20 hover:bg-white/30 rounded font-bold transition-colors">Annuler</button>
-               <button onClick={appliquerDraft} className="px-4 py-1.5 bg-white text-orange-600 rounded font-black hover:scale-105 transition-transform shadow-sm">Enregistrer & Publier</button>
+             <div className="flex gap-2">
+               <button onClick={toggleDraftMode} className="px-4 py-1.5 bg-white/20 hover:bg-white/30 rounded-xl font-bold text-sm transition-colors">Annuler</button>
+               <button onClick={appliquerDraft} className="px-4 py-1.5 bg-white text-orange-600 rounded-xl font-black text-sm hover:bg-orange-50 transition-colors shadow-sm">Publier</button>
              </div>
           </div>
           
@@ -1013,13 +1013,9 @@ useEffect(() => {
         </div>
       )}
 
-      <button onClick={() => setShowSettings(!showSettings)} className="fixed bottom-6 right-6 w-12 h-12 bg-white rounded-full shadow-lg flex items-center justify-center text-xl hover:scale-110 transition-transform z-40 border border-slate-100">
-        ⚙️
-      </button>
-
       {showSettings && (
-        <div className="fixed bottom-20 right-6 w-64 bg-white rounded-2xl shadow-2xl p-5 z-50 animate-fade-in border border-slate-100">
-          <h3 className="font-black text-sm mb-4 uppercase text-slate-500">Couleurs du Planning</h3>
+        <div className="fixed bottom-6 right-6 w-64 bg-white rounded-2xl shadow-2xl p-5 z-50 animate-fade-in border-2 border-slate-100">
+          <h3 className="font-black text-sm mb-4 uppercase tracking-widest text-slate-400">Couleurs du Planning</h3>
           <div className="space-y-3">
             {[
               { label: 'Principale (Équipe)', key: 'accent' },
@@ -1042,61 +1038,64 @@ useEffect(() => {
         </div>
       )}
 
-      <header className="flex justify-between items-center mb-6 relative w-full max-w-[96%] mx-auto shrink-0">
+      <header className="flex justify-between items-center w-full max-w-[96%] mx-auto shrink-0 relative">
         <div className="w-10 h-10 bg-black rounded flex items-center justify-center text-white font-black text-xl italic">+</div>
         <NavBar current="agenda" />
         <div className="w-10"></div>
       </header>
 
-      <main className="w-full max-w-screen-2xl mx-auto bg-white rounded-[3rem] p-6 sm:p-10 shadow-md min-h-[80vh] flex flex-col">
-        
-        <div className="flex flex-col xl:flex-row xl:justify-between xl:items-end gap-6 mb-8">
-          <div className="flex flex-col gap-4">
-            <h1 className="text-3xl sm:text-4xl font-black text-black capitalize">
-              {vue === "Mois" ? format(dateActuelle, 'MMMM yyyy', { locale: fr }) : `Semaine ${format(startOfWeek(dateActuelle, { weekStartsOn: 1 }), 'w', { locale: fr })}`}
+      <main className="w-full max-w-[96%] mx-auto bg-white rounded-[3rem] p-6 lg:p-10 shadow-md flex-1 flex flex-col gap-6 border-2 border-slate-100">
+
+        <div className="flex flex-col xl:flex-row xl:justify-between xl:items-start gap-6">
+          <div className="flex flex-col gap-3">
+            <h1 className="text-4xl font-black text-black">
+              Agenda <span className="text-slate-400 font-black capitalize">
+                {vue === "Mois" ? format(dateActuelle, 'MMMM yyyy', { locale: fr }) : `Sem. ${format(startOfWeek(dateActuelle, { weekStartsOn: 1 }), 'w', { locale: fr })}`}
+              </span>
             </h1>
             <div className="flex flex-wrap items-center gap-2">
-              <button onClick={() => setDateActuelle(vue === "Mois" ? subMonths(dateActuelle, 1) : subWeeks(dateActuelle, 1))} className="p-3 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors font-black text-slate-500 hover:text-black">◀</button>
+              <button onClick={() => setDateActuelle(vue === "Mois" ? subMonths(dateActuelle, 1) : subWeeks(dateActuelle, 1))} className="p-3 bg-white border-2 border-slate-200 hover:border-black rounded-xl transition-colors font-black text-slate-500 hover:text-black">◀</button>
               <div className="flex bg-slate-100 p-1 rounded-2xl">
-                <select value={dateActuelle.getMonth()} onChange={e => setDateActuelle(setMonth(dateActuelle, parseInt(e.target.value)))} className="bg-transparent border-none pl-4 pr-2 py-2 font-bold text-sm text-black cursor-pointer outline-none hover:bg-slate-200 rounded-lg capitalize">
+                <select value={dateActuelle.getMonth()} onChange={e => setDateActuelle(setMonth(dateActuelle, parseInt(e.target.value)))} className="bg-transparent border-none pl-4 pr-2 py-2 font-bold text-sm text-black cursor-pointer outline-none hover:bg-white rounded-lg capitalize transition-colors">
                   {Array.from({ length: 12 }).map((_, i) => <option key={i} value={i}>{format(new Date(2000, i, 1), 'MMMM', { locale: fr })}</option>)}
                 </select>
-                <select value={dateActuelle.getFullYear()} onChange={e => setDateActuelle(setYear(dateActuelle, parseInt(e.target.value)))} className="bg-transparent border-none pr-4 pl-2 py-2 font-bold text-sm text-black cursor-pointer outline-none hover:bg-slate-200 rounded-lg">
+                <select value={dateActuelle.getFullYear()} onChange={e => setDateActuelle(setYear(dateActuelle, parseInt(e.target.value)))} className="bg-transparent border-none pr-4 pl-2 py-2 font-bold text-sm text-black cursor-pointer outline-none hover:bg-white rounded-lg transition-colors">
                   {Array.from({ length: 10 }).map((_, i) => <option key={i} value={new Date().getFullYear() - 2 + i}>{new Date().getFullYear() - 2 + i}</option>)}
                 </select>
               </div>
-              <button onClick={() => setDateActuelle(new Date())} className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 rounded-xl font-black text-sm text-slate-500 hover:text-black">Aujourd'hui</button>
-              <button onClick={() => setDateActuelle(vue === "Mois" ? addMonths(dateActuelle, 1) : addWeeks(dateActuelle, 1))} className="p-3 bg-slate-100 hover:bg-slate-200 rounded-xl font-black text-slate-500 hover:text-black">▶</button>
+              <button onClick={() => setDateActuelle(new Date())} className="px-5 py-2.5 bg-white border-2 border-slate-200 hover:border-black rounded-xl font-black text-sm text-slate-600 hover:text-black transition-colors">Aujourd'hui</button>
+              <button onClick={() => setDateActuelle(vue === "Mois" ? addMonths(dateActuelle, 1) : addWeeks(dateActuelle, 1))} className="p-3 bg-white border-2 border-slate-200 hover:border-black rounded-xl transition-colors font-black text-slate-500 hover:text-black">▶</button>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2">
             {!isDraftMode && (
-               <button onClick={toggleDraftMode} className="bg-orange-100 hover:bg-orange-200 text-orange-600 px-4 py-3 rounded-2xl font-black transition-colors shadow-sm flex items-center gap-2">
-                 🛠️ Mode Prévision
+               <button onClick={toggleDraftMode} className="bg-orange-50 border-2 border-orange-200 hover:border-orange-400 text-orange-600 px-4 py-2.5 rounded-2xl font-black transition-colors flex items-center gap-2 text-sm">
+                 🛠️ Prévision
                </button>
             )}
             <div className="bg-slate-100 p-1 rounded-2xl flex font-bold text-sm">
               <button onClick={() => setVue("Mois")} className={`px-5 py-2.5 rounded-xl transition-all ${vue === "Mois" ? "bg-white shadow-sm text-black" : "text-slate-500 hover:text-black"}`}>Mois</button>
               <button onClick={() => setVue("Semaine")} className={`px-5 py-2.5 rounded-xl transition-all ${vue === "Semaine" ? "bg-white shadow-sm text-black" : "text-slate-500 hover:text-black"}`}>Semaine</button>
             </div>
-            <button onClick={() => setShowEventsListPanel(true)} className="bg-slate-100 hover:bg-slate-200 text-black px-4 py-3 rounded-2xl font-black transition-colors shadow-sm">📅 Événements</button>
-            <button onClick={() => { setOngletMembre("profil"); setShowEquipePanel(true); }} className="bg-slate-100 hover:bg-slate-200 text-black px-4 py-3 rounded-2xl font-black transition-colors shadow-sm">👥 Équipe</button>
-            <button onClick={() => { 
+            <button onClick={() => setShowEventsListPanel(true)} className="bg-white border-2 border-slate-200 hover:border-black text-black px-4 py-2.5 rounded-2xl font-black transition-colors text-sm">📅 Événements</button>
+            <button onClick={() => { setOngletMembre("profil"); setShowEquipePanel(true); }} className="bg-white border-2 border-slate-200 hover:border-black text-black px-4 py-2.5 rounded-2xl font-black transition-colors text-sm">👥 Équipe</button>
+            <button onClick={() => setShowSettings(!showSettings)} className="bg-white border-2 border-slate-200 hover:border-black text-slate-500 hover:text-black w-10 h-10 rounded-2xl font-black transition-colors flex items-center justify-center text-lg">⚙️</button>
+            <button onClick={() => {
               const dStr = format(dateActuelle, 'yyyy-MM-dd');
-              setNouvelEvent({...eventParDefaut, date_debut: dStr, date_fin: dStr}); 
+              setNouvelEvent({...eventParDefaut, date_debut: dStr, date_fin: dStr});
               setEditMode('single');
               setRep({ active: false, interval: 1, period: 'weeks', date_limite: format(addMonths(new Date(), 1), 'yyyy-MM-dd'), rotation: false });
-              setShowEventModal(true); 
-            }} className="bg-black hover:bg-gray-800 text-white px-5 py-3 rounded-2xl font-black transition-colors shadow-md">+ Ajouter</button>
+              setShowEventModal(true);
+            }} className="bg-black hover:bg-slate-800 text-white px-5 py-2.5 rounded-2xl font-black transition-colors shadow-sm text-sm">+ Ajouter</button>
           </div>
         </div>
 
-        <div className="flex-1 border-2 border-slate-100 rounded-3xl flex flex-col relative z-0 bg-white">
-          <div className={`grid border-b-2 border-slate-100 bg-slate-50 rounded-t-3xl ${vue === "Semaine" ? "grid-cols-[60px_1fr_1fr_1fr_1fr_1fr_1fr_1fr]" : "grid-cols-7"}`}>
+        <div className="flex-1 border-2 border-slate-100 rounded-3xl flex flex-col relative z-0 bg-white overflow-hidden">
+          <div className={`grid border-b-2 border-slate-100 bg-[#e5e5e5] rounded-t-3xl ${vue === "Semaine" ? "grid-cols-[60px_1fr_1fr_1fr_1fr_1fr_1fr_1fr]" : "grid-cols-7"}`}>
             {vue === "Semaine" && <div className="py-3"></div>}
             {['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'].map(jour => (
-              <div key={jour} className="py-3 text-center font-black text-slate-400 uppercase text-sm">{jour}</div>
+              <div key={jour} className="py-3 text-center font-black text-slate-500 uppercase text-xs tracking-widest">{jour}</div>
             ))}
           </div>
 
@@ -1431,33 +1430,36 @@ useEffect(() => {
       )}
 
       {showEquipePanel && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex justify-end backdrop-blur-sm">
+        <div className="fixed inset-0 bg-black/50 z-50 flex justify-end backdrop-blur-sm">
           <div className="bg-white w-full max-w-lg h-full shadow-2xl flex flex-col animate-slide-in-right">
-            <div className="p-6 border-b-2 border-slate-100 flex justify-between items-center bg-slate-50">
-              <h2 className="text-2xl font-black">👥 Gestion de l'équipe</h2>
-              <button onClick={() => { setShowEquipePanel(false); setMembreActif(null); }} className="w-10 h-10 bg-slate-200 hover:bg-slate-300 rounded-full font-black text-slate-600 transition-colors">✕</button>
+            <div className="p-6 border-b-2 border-slate-100 flex justify-between items-center bg-white">
+              <div>
+                <h2 className="text-2xl font-black text-black">Équipe</h2>
+                <p className="text-xs text-slate-400 font-medium mt-0.5">Profils, horaires et suivi RH</p>
+              </div>
+              <button onClick={() => { setShowEquipePanel(false); setMembreActif(null); }} className="w-9 h-9 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 font-bold transition-colors">✕</button>
             </div>
             
             <div className="flex-1 overflow-y-auto p-6">
               {!membreActif ? (
                 <div className="space-y-4">
-                  <button onClick={() => { setShowEquipePanel(false); setSwapSession({active: true, step: 1, selectedDates: [], m1Id: '', m2Id: ''}); }} className="w-full bg-slate-100 text-slate-800 font-black py-4 rounded-2xl hover:bg-slate-200 transition-colors shadow-sm border border-slate-200 flex justify-center items-center gap-2">
+                  <button onClick={() => { setShowEquipePanel(false); setSwapSession({active: true, step: 1, selectedDates: [], m1Id: '', m2Id: ''}); }} className="w-full bg-white border-2 border-slate-200 hover:border-black text-black font-black py-3.5 rounded-2xl transition-colors flex justify-center items-center gap-2 text-sm">
                     🔄 Échanger des horaires
                   </button>
 
                   <div className="space-y-3 pt-4 border-t-2 border-slate-100">
                     {activeEquipe.map(membre => (
-                      <div key={membre.id} onClick={() => { setMembreActif(membre); setOngletMembre("profil"); }} className="p-4 border-2 border-slate-100 rounded-2xl hover:border-black cursor-pointer transition-colors flex justify-between items-center group">
+                      <div key={membre.id} onClick={() => { setMembreActif(membre); setOngletMembre("profil"); }} className="p-4 border-2 border-slate-100 hover:border-black rounded-2xl cursor-pointer transition-colors flex justify-between items-center group bg-white">
                         <div>
-                          <p className="font-bold text-lg flex items-center gap-2">
+                          <p className="font-black text-base flex items-center gap-2">
                             {membre.nom}
                             {membre.groupe && membre.groupe !== 'Aucun' && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded font-black text-black" style={{ backgroundColor: membre.groupe === 'A' ? couleurs.equipeA : couleurs.equipeB }}>Grp {membre.groupe}</span>
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-md font-black text-black" style={{ backgroundColor: membre.groupe === 'A' ? couleurs.equipeA : couleurs.equipeB }}>Grp {membre.groupe}</span>
                             )}
                           </p>
-                          <p className="text-sm text-slate-500 font-medium">{membre.role} • {membre.heures_hebdo_base}h/sem</p>
+                          <p className="text-sm text-slate-400 font-medium">{membre.role} · {membre.heures_hebdo_base}h/sem</p>
                         </div>
-                        <span className="text-slate-300 group-hover:text-black transition-colors">▶</span>
+                        <span className="text-slate-300 group-hover:text-black transition-colors font-black">›</span>
                       </div>
                     ))}
                     {activeEquipe.length === 0 && <p className="text-center text-slate-400 py-10 font-medium">L'équipe est vide.</p>}
@@ -1752,11 +1754,14 @@ useEffect(() => {
       )}
 
       {showEventsListPanel && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex justify-end backdrop-blur-sm">
+        <div className="fixed inset-0 bg-black/50 z-50 flex justify-end backdrop-blur-sm">
           <div className="bg-white w-full max-w-lg h-full shadow-2xl flex flex-col animate-slide-in-right">
-            <div className="p-6 border-b-2 border-slate-100 flex justify-between items-center bg-slate-50">
-              <h2 className="text-2xl font-black">📅 Événements</h2>
-              <button onClick={() => setShowEventsListPanel(false)} className="w-10 h-10 bg-slate-200 hover:bg-slate-300 rounded-full font-black text-slate-600 transition-colors">✕</button>
+            <div className="p-6 border-b-2 border-slate-100 flex justify-between items-center bg-white">
+              <div>
+                <h2 className="text-2xl font-black text-black">Événements</h2>
+                <p className="text-xs text-slate-400 font-medium mt-0.5">Ponctuels et séries récurrentes</p>
+              </div>
+              <button onClick={() => setShowEventsListPanel(false)} className="w-9 h-9 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 font-bold transition-colors">✕</button>
             </div>
             <div className="flex-1 overflow-y-auto p-6">
               
@@ -1864,19 +1869,20 @@ useEffect(() => {
       )}
 
       {showEventModal && (
-        <div className="fixed inset-0 bg-black/40 z-[9999] flex justify-center items-center backdrop-blur-sm p-4">
-          <div className="bg-white w-full max-w-md rounded-[2rem] shadow-2xl p-6 sm:p-8 animate-fade-in max-h-[95vh] overflow-y-auto hide-scrollbar flex flex-col">
-            <div className="flex justify-between items-center mb-6 shrink-0">
-              <div className="flex items-center">
-                 <h2 className="text-2xl font-black text-black">{nouvelEvent.id ? 'Modifier' : 'Nouvel Événement'}</h2>
-                 {nouvelEvent.id && (
-                    <button onClick={dupliquerEvenement} className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold px-3 py-1.5 rounded-lg ml-3 transition-colors flex items-center gap-1 shadow-sm">
-                       📄 Dupliquer
-                    </button>
-                 )}
+        <div className="fixed inset-0 bg-black/50 z-[9999] flex justify-center items-center backdrop-blur-sm p-4">
+          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-fade-in max-h-[95vh] flex flex-col">
+            <div className="flex justify-between items-center p-6 border-b border-slate-100 shrink-0">
+              <div className="flex items-center gap-3">
+                <h2 className="text-xl font-black text-black">{nouvelEvent.id ? 'Modifier' : 'Nouvel Événement'}</h2>
+                {nouvelEvent.id && (
+                  <button onClick={dupliquerEvenement} className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold px-3 py-1.5 rounded-xl transition-colors flex items-center gap-1">
+                    📄 Dupliquer
+                  </button>
+                )}
               </div>
-              <button onClick={() => setShowEventModal(false)} className="w-10 h-10 bg-slate-100 hover:bg-slate-200 rounded-full font-black text-slate-600 transition-colors">✕</button>
+              <button onClick={() => setShowEventModal(false)} className="w-9 h-9 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 font-bold transition-colors">✕</button>
             </div>
+            <div className="overflow-y-auto hide-scrollbar flex-1 p-6">
 
             <div className="space-y-4 flex-1">
               
@@ -2032,6 +2038,7 @@ useEffect(() => {
             </button>
           </div>
         </div>
+      </div>
       )}
 
       {/* Mini-modal modification absence (Fiche Perso RH) */}
