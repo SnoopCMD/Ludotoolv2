@@ -973,50 +973,50 @@ useEffect(() => {
   const diffHeures = membreActif ? moyenneHeures - membreActif.heures_hebdo_base : 0;
 
   return (
-    <div className={`min-h-screen p-4 sm:p-8 bg-[#e5e5e5] font-sans relative flex flex-col gap-6 ${isDraftMode ? 'pt-32' : ''}`}>
-      
+    <div style={{ minHeight: "100vh", background: "var(--cream)" }}>
+      <NavBar current="agenda" />
+
       {isDraftMode && (
-        <div className="fixed top-0 left-0 right-0 bg-orange-500 text-white z-[9999] px-8 py-3 flex flex-col shadow-xl animate-slide-in-down">
-          <div className="flex justify-between items-center max-w-[96%] mx-auto w-full">
-             <div className="flex items-center gap-3">
-               <span className="font-black text-base flex items-center gap-2">🛠️ Mode Prévision</span>
-               {(alertes.amplitude.length > 0 || alertes.heuresSupp.length > 0) && (
-                 <span className="bg-white/20 px-3 py-1 rounded-xl text-xs font-bold">
-                   ⚠️ {alertes.amplitude.length + alertes.heuresSupp.length} alerte(s)
-                 </span>
-               )}
-             </div>
-             <div className="flex gap-2">
-               <button onClick={toggleDraftMode} className="px-4 py-1.5 bg-white/20 hover:bg-white/30 rounded-xl font-bold text-sm transition-colors">Annuler</button>
-               <button onClick={appliquerDraft} className="px-4 py-1.5 bg-white text-orange-600 rounded-xl font-black text-sm hover:bg-orange-50 transition-colors shadow-sm">Publier</button>
-             </div>
+        <div style={{ position: "fixed", top: 64, left: 0, right: 0, background: "#f97316", color: "#fff", zIndex: 9999, padding: "12px 24px", display: "flex", flexDirection: "column", boxShadow: "0 4px 0 var(--ink)", borderBottom: "2.5px solid var(--ink)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", maxWidth: "96%", margin: "0 auto", width: "100%" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <span className="bc" style={{ fontSize: 15 }}>🛠️ Mode Prévision</span>
+              {(alertes.amplitude.length > 0 || alertes.heuresSupp.length > 0) && (
+                <span style={{ background: "rgba(255,255,255,0.2)", padding: "2px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700 }}>
+                  ⚠️ {alertes.amplitude.length + alertes.heuresSupp.length} alerte(s)
+                </span>
+              )}
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={toggleDraftMode} className="pop-btn pop-btn-outline" style={{ fontSize: 13, padding: "6px 14px", background: "rgba(255,255,255,0.15)", borderColor: "rgba(255,255,255,0.6)", color: "#fff" }}>Annuler</button>
+              <button onClick={appliquerDraft} className="pop-btn" style={{ fontSize: 13, padding: "6px 14px", background: "#fff", color: "#f97316", borderColor: "rgba(255,255,255,0.8)" }}>Publier</button>
+            </div>
           </div>
-          
           {(alertes.amplitude.length > 0 || alertes.heuresSupp.length > 0) && (
-            <div className="mt-4 flex flex-wrap gap-2 max-h-32 overflow-y-auto hide-scrollbar">
-              {alertes.amplitude.map((a, i) => <div key={`a-${i}`} className="bg-rose-50 text-rose-600 px-3 py-1 rounded text-xs font-bold border border-rose-200">{a}</div>)}
-              {alertes.heuresSupp.map((s, i) => <div key={`s-${i}`} className={`px-3 py-1 rounded text-xs font-bold border ${s.includes('🔄') ? 'bg-purple-50 text-purple-600 border-purple-200' : 'bg-blue-50 text-blue-600 border-blue-200'}`}>{s}</div>)}
+            <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 6, maxHeight: 120, overflowY: "auto" }} className="hide-scrollbar">
+              {alertes.amplitude.map((a, i) => <div key={`a-${i}`} style={{ background: "#fff1f2", color: "#e11d48", padding: "3px 10px", borderRadius: 6, fontSize: 11, fontWeight: 700, border: "1.5px solid #fda4af" }}>{a}</div>)}
+              {alertes.heuresSupp.map((s, i) => <div key={`s-${i}`} style={{ background: s.includes('🔄') ? "#f3e8ff" : "#eff6ff", color: s.includes('🔄') ? "#9333ea" : "#2563eb", padding: "3px 10px", borderRadius: 6, fontSize: 11, fontWeight: 700, border: `1.5px solid ${s.includes('🔄') ? '#d8b4fe' : '#93c5fd'}` }}>{s}</div>)}
             </div>
           )}
         </div>
       )}
 
       {swapSession.active && swapSession.step === 1 && (
-        <div className="fixed bottom-10 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white z-[100] px-8 py-4 rounded-full shadow-2xl flex items-center gap-6 animate-bounce-short">
-          <span className="font-black text-sm sm:text-lg">🔄 Sélectionnez le(s) jour(s) à échanger</span>
-          <div className="flex gap-2">
-            <button onClick={() => setSwapSession({ active: false, step: 1, selectedDates: [], m1Id: '', m2Id: '' })} className="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-xl font-bold transition-colors">Annuler</button>
+        <div style={{ position: "fixed", bottom: 40, left: "50%", transform: "translateX(-50%)", background: "var(--bleu)", color: "var(--ink)", zIndex: 100, padding: "14px 28px", borderRadius: 50, display: "flex", alignItems: "center", gap: 24, border: "2.5px solid var(--ink)", boxShadow: "4px 4px 0 var(--ink)" }}>
+          <span className="bc" style={{ fontSize: 15 }}>🔄 Sélectionnez le(s) jour(s) à échanger</span>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={() => setSwapSession({ active: false, step: 1, selectedDates: [], m1Id: '', m2Id: '' })} className="pop-btn pop-btn-outline" style={{ fontSize: 13, padding: "6px 14px" }}>Annuler</button>
             {swapSession.selectedDates.length > 0 && (
-              <button onClick={validerSelectionSwap} className="bg-white text-blue-600 px-6 py-2 rounded-xl font-black shadow-sm hover:scale-105 transition-transform">Valider ({swapSession.selectedDates.length})</button>
+              <button onClick={validerSelectionSwap} className="pop-btn pop-btn-dark" style={{ fontSize: 13, padding: "6px 16px" }}>Valider ({swapSession.selectedDates.length})</button>
             )}
           </div>
         </div>
       )}
 
       {showSettings && (
-        <div className="fixed bottom-6 right-6 w-64 bg-white rounded-2xl shadow-2xl p-5 z-50 animate-fade-in border-2 border-slate-100">
-          <h3 className="font-black text-sm mb-4 uppercase tracking-widest text-slate-400">Couleurs du Planning</h3>
-          <div className="space-y-3">
+        <div className="pop-card" style={{ position: "fixed", bottom: 24, right: 24, width: 260, padding: 20, zIndex: 50 }}>
+          <p className="bc" style={{ fontSize: 13, marginBottom: 14, textTransform: "uppercase", letterSpacing: "0.06em" }}>Couleurs du Planning</p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {[
               { label: 'Principale (Équipe)', key: 'accent' },
               { label: 'Sous-Équipe A', key: 'equipeA' },
@@ -1026,11 +1026,11 @@ useEffect(() => {
               { label: 'Vacances Zone B', key: 'zoneB' },
               { label: 'Vacances Zone C', key: 'zoneC' }
             ].map(c => (
-              <div key={c.key} className="flex items-center justify-between">
-                <label className="text-xs font-bold text-slate-700">{c.label}</label>
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-mono text-slate-400 uppercase">{couleurs[c.key as keyof typeof couleurs]}</span>
-                  <input type="color" value={couleurs[c.key as keyof typeof couleurs]} onChange={e => setCouleurs({...couleurs, [c.key]: e.target.value})} className="w-6 h-6 rounded cursor-pointer border-0 p-0" />
+              <div key={c.key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <label style={{ fontSize: 12, fontWeight: 700, color: "var(--ink)" }}>{c.label}</label>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ fontSize: 10, fontFamily: "monospace", color: "rgba(0,0,0,0.4)", textTransform: "uppercase" }}>{couleurs[c.key as keyof typeof couleurs]}</span>
+                  <input type="color" value={couleurs[c.key as keyof typeof couleurs]} onChange={e => setCouleurs({...couleurs, [c.key]: e.target.value})} style={{ width: 24, height: 24, borderRadius: 4, cursor: "pointer", border: "none", padding: 0 }} />
                 </div>
               </div>
             ))}
@@ -1038,64 +1038,60 @@ useEffect(() => {
         </div>
       )}
 
-      <header className="flex justify-between items-center w-full max-w-[96%] mx-auto shrink-0 relative">
-        <div className="w-10 h-10 bg-black rounded flex items-center justify-center text-white font-black text-xl italic">+</div>
-        <NavBar current="agenda" />
-        <div className="w-10"></div>
-      </header>
+      <div className="pop-page" style={{ display: "flex", flexDirection: "column", gap: 20, paddingTop: isDraftMode ? 100 : undefined }}>
 
-      <main className="w-full max-w-[96%] mx-auto bg-white rounded-[3rem] p-6 lg:p-10 shadow-md flex-1 flex flex-col gap-6 border-2 border-slate-100">
+      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
 
-        <div className="flex flex-col xl:flex-row xl:justify-between xl:items-start gap-6">
-          <div className="flex flex-col gap-3">
-            <h1 className="text-4xl font-black text-black">
-              Agenda <span className="text-slate-400 font-black capitalize">
+        <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <h1 className="bc" style={{ fontSize: 36, margin: 0, lineHeight: 1.1 }}>
+              Agenda <span style={{ color: "rgba(0,0,0,0.35)", fontWeight: 900 }} className="capitalize">
                 {vue === "Mois" ? format(dateActuelle, 'MMMM yyyy', { locale: fr }) : `Sem. ${format(startOfWeek(dateActuelle, { weekStartsOn: 1 }), 'w', { locale: fr })}`}
               </span>
             </h1>
-            <div className="flex flex-wrap items-center gap-2">
-              <button onClick={() => setDateActuelle(vue === "Mois" ? subMonths(dateActuelle, 1) : subWeeks(dateActuelle, 1))} className="p-3 bg-white border-2 border-slate-200 hover:border-black rounded-xl transition-colors font-black text-slate-500 hover:text-black">◀</button>
-              <div className="flex bg-slate-100 p-1 rounded-2xl">
-                <select value={dateActuelle.getMonth()} onChange={e => setDateActuelle(setMonth(dateActuelle, parseInt(e.target.value)))} className="bg-transparent border-none pl-4 pr-2 py-2 font-bold text-sm text-black cursor-pointer outline-none hover:bg-white rounded-lg capitalize transition-colors">
+            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
+              <button onClick={() => setDateActuelle(vue === "Mois" ? subMonths(dateActuelle, 1) : subWeeks(dateActuelle, 1))} className="pop-btn pop-btn-outline" style={{ padding: "8px 12px", fontSize: 14 }}>◀</button>
+              <div className="pop-card" style={{ display: "flex", padding: "4px 6px", gap: 0 }}>
+                <select value={dateActuelle.getMonth()} onChange={e => setDateActuelle(setMonth(dateActuelle, parseInt(e.target.value)))} style={{ background: "transparent", border: "none", padding: "6px 8px", fontWeight: 700, fontSize: 13, color: "var(--ink)", cursor: "pointer", outline: "none", fontFamily: "inherit" }} className="capitalize">
                   {Array.from({ length: 12 }).map((_, i) => <option key={i} value={i}>{format(new Date(2000, i, 1), 'MMMM', { locale: fr })}</option>)}
                 </select>
-                <select value={dateActuelle.getFullYear()} onChange={e => setDateActuelle(setYear(dateActuelle, parseInt(e.target.value)))} className="bg-transparent border-none pr-4 pl-2 py-2 font-bold text-sm text-black cursor-pointer outline-none hover:bg-white rounded-lg transition-colors">
+                <select value={dateActuelle.getFullYear()} onChange={e => setDateActuelle(setYear(dateActuelle, parseInt(e.target.value)))} style={{ background: "transparent", border: "none", padding: "6px 8px", fontWeight: 700, fontSize: 13, color: "var(--ink)", cursor: "pointer", outline: "none", fontFamily: "inherit" }}>
                   {Array.from({ length: 10 }).map((_, i) => <option key={i} value={new Date().getFullYear() - 2 + i}>{new Date().getFullYear() - 2 + i}</option>)}
                 </select>
               </div>
-              <button onClick={() => setDateActuelle(new Date())} className="px-5 py-2.5 bg-white border-2 border-slate-200 hover:border-black rounded-xl font-black text-sm text-slate-600 hover:text-black transition-colors">Aujourd'hui</button>
-              <button onClick={() => setDateActuelle(vue === "Mois" ? addMonths(dateActuelle, 1) : addWeeks(dateActuelle, 1))} className="p-3 bg-white border-2 border-slate-200 hover:border-black rounded-xl transition-colors font-black text-slate-500 hover:text-black">▶</button>
+              <button onClick={() => setDateActuelle(new Date())} className="pop-btn pop-btn-outline" style={{ fontSize: 13, padding: "8px 14px" }}>Aujourd'hui</button>
+              <button onClick={() => setDateActuelle(vue === "Mois" ? addMonths(dateActuelle, 1) : addWeeks(dateActuelle, 1))} className="pop-btn pop-btn-outline" style={{ padding: "8px 12px", fontSize: 14 }}>▶</button>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
             {!isDraftMode && (
-               <button onClick={toggleDraftMode} className="bg-orange-50 border-2 border-orange-200 hover:border-orange-400 text-orange-600 px-4 py-2.5 rounded-2xl font-black transition-colors flex items-center gap-2 text-sm">
-                 🛠️ Prévision
-               </button>
+              <button onClick={toggleDraftMode} className="pop-btn pop-btn-outline" style={{ fontSize: 13, background: "#fff7ed", borderColor: "#fb923c", color: "#ea580c" }}>
+                🛠️ Prévision
+              </button>
             )}
-            <div className="bg-slate-100 p-1 rounded-2xl flex font-bold text-sm">
-              <button onClick={() => setVue("Mois")} className={`px-5 py-2.5 rounded-xl transition-all ${vue === "Mois" ? "bg-white shadow-sm text-black" : "text-slate-500 hover:text-black"}`}>Mois</button>
-              <button onClick={() => setVue("Semaine")} className={`px-5 py-2.5 rounded-xl transition-all ${vue === "Semaine" ? "bg-white shadow-sm text-black" : "text-slate-500 hover:text-black"}`}>Semaine</button>
+            <div className="pop-card" style={{ display: "flex", padding: 4, gap: 0 }}>
+              <button onClick={() => setVue("Mois")} className="pop-btn" style={{ fontSize: 13, padding: "6px 16px", background: vue === "Mois" ? "var(--yellow)" : "transparent", boxShadow: vue === "Mois" ? "2px 2px 0 var(--ink)" : "none", border: vue === "Mois" ? "2px solid var(--ink)" : "2px solid transparent" }}>Mois</button>
+              <button onClick={() => setVue("Semaine")} className="pop-btn" style={{ fontSize: 13, padding: "6px 16px", background: vue === "Semaine" ? "var(--yellow)" : "transparent", boxShadow: vue === "Semaine" ? "2px 2px 0 var(--ink)" : "none", border: vue === "Semaine" ? "2px solid var(--ink)" : "2px solid transparent" }}>Semaine</button>
             </div>
-            <button onClick={() => setShowEventsListPanel(true)} className="bg-white border-2 border-slate-200 hover:border-black text-black px-4 py-2.5 rounded-2xl font-black transition-colors text-sm">📅 Événements</button>
-            <button onClick={() => { setOngletMembre("profil"); setShowEquipePanel(true); }} className="bg-white border-2 border-slate-200 hover:border-black text-black px-4 py-2.5 rounded-2xl font-black transition-colors text-sm">👥 Équipe</button>
-            <button onClick={() => setShowSettings(!showSettings)} className="bg-white border-2 border-slate-200 hover:border-black text-slate-500 hover:text-black w-10 h-10 rounded-2xl font-black transition-colors flex items-center justify-center text-lg">⚙️</button>
+            <button onClick={() => setShowEventsListPanel(true)} className="pop-btn pop-btn-outline" style={{ fontSize: 13 }}>📅 Événements</button>
+            <button onClick={() => { setOngletMembre("profil"); setShowEquipePanel(true); }} className="pop-btn pop-btn-outline" style={{ fontSize: 13 }}>👥 Équipe</button>
+            <button onClick={() => setShowSettings(!showSettings)} className="pop-btn pop-btn-outline" style={{ fontSize: 18, padding: "6px 10px" }}>⚙️</button>
             <button onClick={() => {
               const dStr = format(dateActuelle, 'yyyy-MM-dd');
               setNouvelEvent({...eventParDefaut, date_debut: dStr, date_fin: dStr});
               setEditMode('single');
               setRep({ active: false, interval: 1, period: 'weeks', date_limite: format(addMonths(new Date(), 1), 'yyyy-MM-dd'), rotation: false });
               setShowEventModal(true);
-            }} className="bg-black hover:bg-slate-800 text-white px-5 py-2.5 rounded-2xl font-black transition-colors shadow-sm text-sm">+ Ajouter</button>
+            }} className="pop-btn pop-btn-dark" style={{ fontSize: 13 }}>+ Ajouter</button>
           </div>
         </div>
 
-        <div className="flex-1 border-2 border-slate-100 rounded-3xl flex flex-col relative z-0 bg-white overflow-hidden">
-          <div className={`grid border-b-2 border-slate-100 bg-[#e5e5e5] rounded-t-3xl ${vue === "Semaine" ? "grid-cols-[60px_1fr_1fr_1fr_1fr_1fr_1fr_1fr]" : "grid-cols-7"}`}>
-            {vue === "Semaine" && <div className="py-3"></div>}
+        <div className="pop-card" style={{ display: "flex", flexDirection: "column", overflow: "hidden", flex: 1 }}>
+          <div style={{ display: "grid", borderBottom: "2px solid var(--ink)", background: "var(--cream2)", borderRadius: "10px 10px 0 0", gridTemplateColumns: vue === "Semaine" ? "60px 1fr 1fr 1fr 1fr 1fr 1fr 1fr" : "repeat(7, 1fr)" }}>
+            {vue === "Semaine" && <div style={{ padding: "10px 0" }}></div>}
             {['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'].map(jour => (
-              <div key={jour} className="py-3 text-center font-black text-slate-500 uppercase text-xs tracking-widest">{jour}</div>
+              <div key={jour} className="bc" style={{ padding: "10px 0", textAlign: "center", color: "rgba(0,0,0,0.45)", fontSize: 11, letterSpacing: "0.08em" }}>{jour}</div>
             ))}
           </div>
 
@@ -1139,12 +1135,19 @@ useEffect(() => {
                 const blocsHoraires = genererBlocsMensuels(presencesDuJour);
 
                 return (
-                  <div key={i} 
-                    onClick={() => { 
+                  <div key={i}
+                    onClick={() => {
                       if (swapSession.active && swapSession.step === 1) toggleSwapDate(dateKey);
                       else { setDateActuelle(jour); setVue("Semaine"); }
                     }}
-                    className={`border-r-2 border-b-2 border-slate-100 transition-colors relative flex flex-col min-h-[120px] group cursor-pointer hover:bg-slate-50 ${isSameMonth(jour, dateActuelle) ? 'bg-white' : 'bg-slate-50/50'} ${isSelectedForSwap ? 'ring-4 ring-inset ring-blue-500 bg-blue-50/30' : ''}`}>
+                    style={{
+                      borderRight: "1.5px solid rgba(0,0,0,0.08)",
+                      borderBottom: "1.5px solid rgba(0,0,0,0.08)",
+                      background: isSelectedForSwap ? "rgba(96,165,250,0.15)" : isSameMonth(jour, dateActuelle) ? "var(--white)" : "rgba(0,0,0,0.02)",
+                      outline: isSelectedForSwap ? "3px solid var(--bleu)" : "none",
+                      outlineOffset: -3,
+                    }}
+                    className="transition-colors relative flex flex-col min-h-[120px] group cursor-pointer hover:bg-[#fafafa]">
                     
                     <div className="absolute top-0 left-0 right-0 flex h-1.5 z-20">
                       {zonesVacances.includes("Zone A") && <div className="flex-1 opacity-30" style={{backgroundColor: couleurs.zoneA}}></div>}
@@ -1236,23 +1239,23 @@ useEffect(() => {
               })}
             </div>
           ) : (
-            <div className="flex-1 flex relative min-h-[900px] overflow-hidden bg-slate-50/30">
-              <div className="absolute inset-0 z-0 pointer-events-none ml-[60px]">
+            <div style={{ flex: 1, display: "flex", position: "relative", minHeight: 900, overflow: "hidden", background: "rgba(0,0,0,0.01)" }}>
+              <div style={{ position: "absolute", inset: 0, zIndex: 0, pointerEvents: "none", marginLeft: 60 }}>
                 {HEURES_GRILLE.map((heure, i) => (
-                  <div key={i} className="absolute w-full border-t border-slate-200" style={{ top: `${calculerPositionTop(heure + ':00')}%` }}></div>
+                  <div key={i} style={{ position: "absolute", width: "100%", borderTop: "1px solid rgba(0,0,0,0.07)", top: `${calculerPositionTop(heure + ':00')}%` }}></div>
                 ))}
               </div>
-              <div className="w-[60px] border-r-2 border-slate-100 flex flex-col bg-white z-10 relative">
+              <div style={{ width: 60, borderRight: "1.5px solid rgba(0,0,0,0.1)", display: "flex", flexDirection: "column", background: "var(--white)", zIndex: 10, position: "relative" }}>
                 {HEURES_GRILLE.map((heure, i) => (
-                  <div key={i} className="absolute w-full text-xs font-bold text-slate-400 text-center" style={{ top: `${calculerPositionTop(heure + ':00')}%`, marginTop: '-8px' }}>
+                  <div key={i} style={{ position: "absolute", width: "100%", fontSize: 11, fontWeight: 700, color: "rgba(0,0,0,0.35)", textAlign: "center", top: `${calculerPositionTop(heure + ':00')}%`, marginTop: -7 }}>
                     {heure}:00
                   </div>
                 ))}
               </div>
-              <div className="flex-1 grid grid-cols-7 relative">
-                <div className="absolute inset-0 grid grid-cols-7 pointer-events-none">
+              <div style={{ flex: 1, display: "grid", gridTemplateColumns: "repeat(7, 1fr)", position: "relative" }}>
+                <div style={{ position: "absolute", inset: 0, display: "grid", gridTemplateColumns: "repeat(7, 1fr)", pointerEvents: "none" }}>
                   {Array.from({ length: 7 }).map((_, i) => (
-                    <div key={i} className="border-r border-slate-100"></div>
+                    <div key={i} style={{ borderRight: "1px solid rgba(0,0,0,0.07)" }}></div>
                   ))}
                 </div>
 
@@ -1390,39 +1393,40 @@ useEffect(() => {
             </div>
           )}
         </div>
-      </main>
+      </div>
+      </div>
 
       {swapSession.active && swapSession.step === 2 && (
-        <div className="fixed inset-0 bg-black/40 z-[9999] flex justify-center items-center backdrop-blur-sm p-4">
-          <div className="bg-white w-full max-w-md rounded-[2rem] shadow-2xl p-6 sm:p-8 animate-fade-in max-h-[95vh] overflow-y-auto hide-scrollbar flex flex-col">
-            <div className="flex justify-between items-center mb-6 shrink-0">
-              <h2 className="text-2xl font-black text-black">🔄 Échange d'horaires</h2>
-              <button onClick={() => setSwapSession({ active: false, step: 1, selectedDates: [], m1Id: '', m2Id: '' })} className="w-10 h-10 bg-slate-100 hover:bg-slate-200 rounded-full font-black text-slate-600 transition-colors">✕</button>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 9999, display: "flex", justifyContent: "center", alignItems: "center", backdropFilter: "blur(4px)", padding: 16 }}>
+          <div className="pop-card animate-fade-in" style={{ width: "100%", maxWidth: 440, padding: "28px 32px", maxHeight: "95vh", overflowY: "auto", display: "flex", flexDirection: "column", gap: 20 }} >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <h2 className="bc" style={{ fontSize: 24, margin: 0 }}>🔄 Échange d'horaires</h2>
+              <button onClick={() => setSwapSession({ active: false, step: 1, selectedDates: [], m1Id: '', m2Id: '' })} className="pop-btn pop-btn-outline" style={{ width: 36, height: 36, padding: 0, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
             </div>
 
-            <p className="text-sm text-slate-500 font-medium mb-6 shrink-0">Vous allez échanger les horaires des personnes suivantes pour {swapSession.selectedDates.length} jour(s).</p>
+            <p style={{ fontSize: 13, color: "rgba(0,0,0,0.5)", fontWeight: 500 }}>Vous allez échanger les horaires des personnes suivantes pour {swapSession.selectedDates.length} jour(s).</p>
 
-            <div className="space-y-4 flex-1">
-              <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
-                <label className="text-xs font-black text-slate-500 uppercase block mb-2">Membre 1</label>
-                <select value={swapSession.m1Id || ''} onChange={e => setSwapSession({...swapSession, m1Id: e.target.value})} className="w-full p-3 rounded-xl border-2 border-slate-200 font-bold outline-none focus:border-black">
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div style={{ padding: "12px 14px", background: "var(--cream)", borderRadius: 8, border: "1.5px solid rgba(0,0,0,0.12)" }}>
+                <label className="bc" style={{ fontSize: 11, display: "block", marginBottom: 6 }}>Membre 1</label>
+                <select value={swapSession.m1Id || ''} onChange={e => setSwapSession({...swapSession, m1Id: e.target.value})} className="pop-input" style={{ width: "100%" }}>
                    <option value="">Sélectionner un collaborateur...</option>
                    {activeEquipe.map(m => <option key={m.id} value={m.id}>{m.nom}</option>)}
                 </select>
               </div>
 
-              <div className="flex justify-center text-2xl opacity-50">⇅</div>
+              <div style={{ textAlign: "center", fontSize: 22, opacity: 0.4 }}>⇅</div>
 
-              <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
-                <label className="text-xs font-black text-slate-500 uppercase block mb-2">Membre 2</label>
-                <select value={swapSession.m2Id || ''} onChange={e => setSwapSession({...swapSession, m2Id: e.target.value})} className="w-full p-3 rounded-xl border-2 border-slate-200 font-bold outline-none focus:border-black">
+              <div style={{ padding: "12px 14px", background: "var(--cream)", borderRadius: 8, border: "1.5px solid rgba(0,0,0,0.12)" }}>
+                <label className="bc" style={{ fontSize: 11, display: "block", marginBottom: 6 }}>Membre 2</label>
+                <select value={swapSession.m2Id || ''} onChange={e => setSwapSession({...swapSession, m2Id: e.target.value})} className="pop-input" style={{ width: "100%" }}>
                    <option value="">Sélectionner un collaborateur...</option>
                    {activeEquipe.filter(m => m.id !== swapSession.m1Id).map(m => <option key={m.id} value={m.id}>{m.nom}</option>)}
                 </select>
               </div>
             </div>
 
-            <button onClick={executerEchange} disabled={!swapSession.m1Id || !swapSession.m2Id} className="w-full mt-6 bg-black text-white font-black py-4 rounded-2xl transition-colors shadow-sm hover:bg-gray-800 disabled:bg-slate-300 disabled:cursor-not-allowed shrink-0">
+            <button onClick={executerEchange} disabled={!swapSession.m1Id || !swapSession.m2Id} className="pop-btn pop-btn-dark" style={{ width: "100%", justifyContent: "center", fontSize: 15, padding: "14px 0", opacity: (!swapSession.m1Id || !swapSession.m2Id) ? 0.4 : 1, cursor: (!swapSession.m1Id || !swapSession.m2Id) ? "not-allowed" : "pointer" }}>
                Confirmer l'échange
             </button>
           </div>
@@ -1430,51 +1434,51 @@ useEffect(() => {
       )}
 
       {showEquipePanel && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex justify-end backdrop-blur-sm">
-          <div className="bg-white w-full max-w-lg h-full shadow-2xl flex flex-col animate-slide-in-right">
-            <div className="p-6 border-b-2 border-slate-100 flex justify-between items-center bg-white">
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 50, display: "flex", justifyContent: "flex-end", backdropFilter: "blur(4px)" }}>
+          <div style={{ background: "var(--white)", width: "100%", maxWidth: 520, height: "100%", display: "flex", flexDirection: "column", border: "2.5px solid var(--ink)", borderRight: "none", boxShadow: "-6px 0 0 var(--ink)" }} className="animate-slide-in-right">
+            <div style={{ padding: "20px 24px", borderBottom: "2px solid rgba(0,0,0,0.08)", display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--white)" }}>
               <div>
-                <h2 className="text-2xl font-black text-black">Équipe</h2>
-                <p className="text-xs text-slate-400 font-medium mt-0.5">Profils, horaires et suivi RH</p>
+                <h2 className="bc" style={{ fontSize: 26, margin: 0 }}>Équipe</h2>
+                <p style={{ fontSize: 12, color: "rgba(0,0,0,0.4)", fontWeight: 500, marginTop: 2 }}>Profils, horaires et suivi RH</p>
               </div>
-              <button onClick={() => { setShowEquipePanel(false); setMembreActif(null); }} className="w-9 h-9 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 font-bold transition-colors">✕</button>
+              <button onClick={() => { setShowEquipePanel(false); setMembreActif(null); }} className="pop-btn pop-btn-outline" style={{ width: 36, height: 36, padding: 0, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
             </div>
             
-            <div className="flex-1 overflow-y-auto p-6">
+            <div style={{ flex: 1, overflowY: "auto", padding: 24 }} className="hide-scrollbar">
               {!membreActif ? (
-                <div className="space-y-4">
-                  <button onClick={() => { setShowEquipePanel(false); setSwapSession({active: true, step: 1, selectedDates: [], m1Id: '', m2Id: ''}); }} className="w-full bg-white border-2 border-slate-200 hover:border-black text-black font-black py-3.5 rounded-2xl transition-colors flex justify-center items-center gap-2 text-sm">
+                <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                  <button onClick={() => { setShowEquipePanel(false); setSwapSession({active: true, step: 1, selectedDates: [], m1Id: '', m2Id: ''}); }} className="pop-btn pop-btn-outline" style={{ width: "100%", justifyContent: "center", fontSize: 14, padding: "12px 0" }}>
                     🔄 Échanger des horaires
                   </button>
 
-                  <div className="space-y-3 pt-4 border-t-2 border-slate-100">
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8, paddingTop: 12, borderTop: "2px solid rgba(0,0,0,0.08)" }}>
                     {activeEquipe.map(membre => (
-                      <div key={membre.id} onClick={() => { setMembreActif(membre); setOngletMembre("profil"); }} className="p-4 border-2 border-slate-100 hover:border-black rounded-2xl cursor-pointer transition-colors flex justify-between items-center group bg-white">
+                      <div key={membre.id} onClick={() => { setMembreActif(membre); setOngletMembre("profil"); }} className="pop-card pop-card-hover" style={{ padding: "12px 16px", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                         <div>
-                          <p className="font-black text-base flex items-center gap-2">
+                          <p style={{ fontWeight: 800, fontSize: 15, display: "flex", alignItems: "center", gap: 8 }}>
                             {membre.nom}
                             {membre.groupe && membre.groupe !== 'Aucun' && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded-md font-black text-black" style={{ backgroundColor: membre.groupe === 'A' ? couleurs.equipeA : couleurs.equipeB }}>Grp {membre.groupe}</span>
+                              <span className="pop-sticker" style={{ backgroundColor: membre.groupe === 'A' ? couleurs.equipeA : couleurs.equipeB, fontSize: 10, padding: "2px 7px" }}>Grp {membre.groupe}</span>
                             )}
                           </p>
-                          <p className="text-sm text-slate-400 font-medium">{membre.role} · {membre.heures_hebdo_base}h/sem</p>
+                          <p style={{ fontSize: 13, color: "rgba(0,0,0,0.4)", fontWeight: 500 }}>{membre.role} · {membre.heures_hebdo_base}h/sem</p>
                         </div>
-                        <span className="text-slate-300 group-hover:text-black transition-colors font-black">›</span>
+                        <span style={{ color: "rgba(0,0,0,0.3)", fontWeight: 900, fontSize: 18 }}>›</span>
                       </div>
                     ))}
-                    {activeEquipe.length === 0 && <p className="text-center text-slate-400 py-10 font-medium">L'équipe est vide.</p>}
+                    {activeEquipe.length === 0 && <p style={{ textAlign: "center", color: "rgba(0,0,0,0.3)", padding: "40px 0", fontWeight: 500 }}>L'équipe est vide.</p>}
                   </div>
                 </div>
               ) : (
-                <div className="space-y-6">
-                  <div className="flex justify-between items-center">
-                    <button onClick={() => setMembreActif(null)} className="text-sm font-bold text-slate-400 hover:text-black">◀ Retour à la liste</button>
-                    <h3 className="font-black text-lg">{membreActif.nom}</h3>
+                <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <button onClick={() => setMembreActif(null)} style={{ fontSize: 13, fontWeight: 700, color: "rgba(0,0,0,0.4)", background: "none", border: "none", cursor: "pointer", fontFamily: "inherit" }}>◀ Retour à la liste</button>
+                    <h3 className="bc" style={{ fontSize: 18, margin: 0 }}>{membreActif.nom}</h3>
                   </div>
 
-                  <div className="flex bg-slate-100 p-1 rounded-2xl font-bold text-sm">
-                    <button onClick={() => setOngletMembre("profil")} className={`flex-1 py-2 rounded-xl transition-all ${ongletMembre === "profil" ? "bg-white shadow-sm text-black" : "text-slate-500 hover:text-black"}`}>Profil & Horaires</button>
-                    <button onClick={() => setOngletMembre("suivi")} className={`flex-1 py-2 rounded-xl transition-all ${ongletMembre === "suivi" ? "bg-white shadow-sm text-black" : "text-slate-500 hover:text-black"}`}>Fiche Perso (RH)</button>
+                  <div className="pop-card" style={{ display: "flex", padding: 4, gap: 0 }}>
+                    <button onClick={() => setOngletMembre("profil")} className="pop-btn" style={{ flex: 1, justifyContent: "center", fontSize: 13, padding: "7px 0", background: ongletMembre === "profil" ? "var(--yellow)" : "transparent", boxShadow: ongletMembre === "profil" ? "2px 2px 0 var(--ink)" : "none", border: ongletMembre === "profil" ? "2px solid var(--ink)" : "2px solid transparent" }}>Profil & Horaires</button>
+                    <button onClick={() => setOngletMembre("suivi")} className="pop-btn" style={{ flex: 1, justifyContent: "center", fontSize: 13, padding: "7px 0", background: ongletMembre === "suivi" ? "var(--yellow)" : "transparent", boxShadow: ongletMembre === "suivi" ? "2px 2px 0 var(--ink)" : "none", border: ongletMembre === "suivi" ? "2px solid var(--ink)" : "2px solid transparent" }}>Fiche Perso (RH)</button>
                   </div>
                   
                   {ongletMembre === "profil" ? (
@@ -1742,10 +1746,10 @@ useEffect(() => {
               )}
             </div>
             {membreActif && (
-              <div className="p-6 border-t-2 border-slate-100 bg-white shrink-0">
+              <div style={{ padding: "16px 24px", borderTop: "2px solid rgba(0,0,0,0.08)", background: "var(--white)", flexShrink: 0 }}>
                 {ongletMembre === "profil"
-                  ? <button onClick={sauvegarderMembre} disabled={!membreActif.nom} className="w-full bg-black hover:bg-gray-800 disabled:bg-slate-300 text-white font-black py-4 rounded-2xl transition-colors shadow-md">Enregistrer le profil</button>
-                  : <button onClick={sauvegarderSoldes} className="w-full bg-black hover:bg-gray-800 text-white font-black py-4 rounded-2xl transition-colors shadow-md">Enregistrer les soldes</button>
+                  ? <button onClick={sauvegarderMembre} disabled={!membreActif.nom} className="pop-btn pop-btn-dark" style={{ width: "100%", justifyContent: "center", fontSize: 15, padding: "14px 0", opacity: !membreActif.nom ? 0.4 : 1, cursor: !membreActif.nom ? "not-allowed" : "pointer" }}>Enregistrer le profil</button>
+                  : <button onClick={sauvegarderSoldes} className="pop-btn pop-btn-dark" style={{ width: "100%", justifyContent: "center", fontSize: 15, padding: "14px 0" }}>Enregistrer les soldes</button>
                 }
               </div>
             )}
@@ -1754,69 +1758,69 @@ useEffect(() => {
       )}
 
       {showEventsListPanel && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex justify-end backdrop-blur-sm">
-          <div className="bg-white w-full max-w-lg h-full shadow-2xl flex flex-col animate-slide-in-right">
-            <div className="p-6 border-b-2 border-slate-100 flex justify-between items-center bg-white">
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 50, display: "flex", justifyContent: "flex-end", backdropFilter: "blur(4px)" }}>
+          <div style={{ background: "var(--white)", width: "100%", maxWidth: 520, height: "100%", display: "flex", flexDirection: "column", border: "2.5px solid var(--ink)", borderRight: "none", boxShadow: "-6px 0 0 var(--ink)" }} className="animate-slide-in-right">
+            <div style={{ padding: "20px 24px", borderBottom: "2px solid rgba(0,0,0,0.08)", display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--white)" }}>
               <div>
-                <h2 className="text-2xl font-black text-black">Événements</h2>
-                <p className="text-xs text-slate-400 font-medium mt-0.5">Ponctuels et séries récurrentes</p>
+                <h2 className="bc" style={{ fontSize: 26, margin: 0 }}>Événements</h2>
+                <p style={{ fontSize: 12, color: "rgba(0,0,0,0.4)", fontWeight: 500, marginTop: 2 }}>Ponctuels et séries récurrentes</p>
               </div>
-              <button onClick={() => setShowEventsListPanel(false)} className="w-9 h-9 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 font-bold transition-colors">✕</button>
+              <button onClick={() => setShowEventsListPanel(false)} className="pop-btn pop-btn-outline" style={{ width: 36, height: 36, padding: 0, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
             </div>
-            <div className="flex-1 overflow-y-auto p-6">
-              
-              <button onClick={() => { 
+            <div style={{ flex: 1, overflowY: "auto", padding: 24 }} className="hide-scrollbar">
+
+              <button onClick={() => {
                 const dStr = format(dateActuelle, 'yyyy-MM-dd');
-                setNouvelEvent({...eventParDefaut, date_debut: dStr, date_fin: dStr}); 
+                setNouvelEvent({...eventParDefaut, date_debut: dStr, date_fin: dStr});
                 setEditMode('single');
                 setRep({ active: false, interval: 1, period: 'weeks', date_limite: format(addMonths(new Date(), 1), 'yyyy-MM-dd'), rotation: false });
-                setShowEventsListPanel(false); 
-                setShowEventModal(true); 
-              }} className="w-full text-black font-black py-4 rounded-2xl mb-6 transition-colors shadow-sm hover:brightness-95" style={{ backgroundColor: couleurs.accent }}>
+                setShowEventsListPanel(false);
+                setShowEventModal(true);
+              }} className="pop-btn pop-btn-dark" style={{ width: "100%", justifyContent: "center", fontSize: 15, padding: "13px 0", marginBottom: 20 }}>
                 + Nouvel événement
               </button>
 
-              <div className="flex bg-slate-100 p-1 rounded-2xl mb-6 font-bold text-sm">
-                <button onClick={() => setListTab('ponctuels')} className={`flex-1 py-2.5 rounded-xl transition-all ${listTab === 'ponctuels' ? 'bg-white shadow-sm text-black' : 'text-slate-500 hover:text-black'}`}>Ponctuels</button>
-                <button onClick={() => setListTab('series')} className={`flex-1 py-2.5 rounded-xl transition-all ${listTab === 'series' ? 'bg-white shadow-sm text-black' : 'text-slate-500 hover:text-black'}`}>Séries Récurrentes</button>
+              <div className="pop-card" style={{ display: "flex", padding: 4, gap: 0, marginBottom: 20 }}>
+                <button onClick={() => setListTab('ponctuels')} className="pop-btn" style={{ flex: 1, justifyContent: "center", fontSize: 13, padding: "7px 0", background: listTab === 'ponctuels' ? "var(--yellow)" : "transparent", boxShadow: listTab === 'ponctuels' ? "2px 2px 0 var(--ink)" : "none", border: listTab === 'ponctuels' ? "2px solid var(--ink)" : "2px solid transparent" }}>Ponctuels</button>
+                <button onClick={() => setListTab('series')} className="pop-btn" style={{ flex: 1, justifyContent: "center", fontSize: 13, padding: "7px 0", background: listTab === 'series' ? "var(--yellow)" : "transparent", boxShadow: listTab === 'series' ? "2px 2px 0 var(--ink)" : "none", border: listTab === 'series' ? "2px solid var(--ink)" : "2px solid transparent" }}>Séries Récurrentes</button>
               </div>
 
               {listTab === 'ponctuels' && (
                 <>
-                  <h3 className="font-black text-lg text-slate-800 mb-4">En cours</h3>
-                  <div className="space-y-3 mb-8">
-                    {eventsEnCours.length === 0 && <p className="text-sm text-slate-400 italic">Rien de prévu en ce moment.</p>}
+                  <p className="bc" style={{ fontSize: 16, marginBottom: 10 }}>En cours</p>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 24 }}>
+                    {eventsEnCours.length === 0 && <p style={{ fontSize: 13, color: "rgba(0,0,0,0.4)", fontStyle: "italic" }}>Rien de prévu en ce moment.</p>}
                     {eventsEnCours.map(ev => (
-                      <div key={ev.id} className={`p-4 border-2 border-slate-100 rounded-2xl flex justify-between items-center group shadow-sm ${getEventStyle(ev.type)}`}>
-                        <div className="flex-1 cursor-pointer" onClick={() => ouvrirEditionEvenement(ev, 'single')}>
-                          <p className="font-bold text-md flex items-center gap-2">{getEventIcon(ev.type)} {ev.titre}</p>
-                          <p className="text-xs font-medium mt-1 opacity-80">
-                            {format(new Date(ev.date_debut), 'dd MMM yyyy', {locale: fr})} 
+                      <div key={ev.id} className={`pop-card pop-card-hover ${getEventStyle(ev.type)}`} style={{ padding: "12px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                        <div style={{ flex: 1, cursor: "pointer" }} onClick={() => ouvrirEditionEvenement(ev, 'single')}>
+                          <p style={{ fontWeight: 800, fontSize: 14, display: "flex", alignItems: "center", gap: 6 }}>{getEventIcon(ev.type)} {ev.titre}</p>
+                          <p style={{ fontSize: 12, fontWeight: 500, marginTop: 3, opacity: 0.8 }}>
+                            {format(new Date(ev.date_debut), 'dd MMM yyyy', {locale: fr})}
                             {ev.date_debut !== ev.date_fin && ` ➔ ${format(new Date(ev.date_fin), 'dd MMM yyyy', {locale: fr})}`}
                             {ev.heure_debut ? ` • ${ev.heure_debut}-${ev.heure_fin}` : ' • Journée entière'}
                           </p>
-                          <p className="text-[10px] font-black mt-1 uppercase tracking-wide opacity-90">{getNomsMembresEvent(ev.membres)}</p>
+                          <p style={{ fontSize: 10, fontWeight: 800, marginTop: 3, textTransform: "uppercase", letterSpacing: "0.04em", opacity: 0.9 }}>{getNomsMembresEvent(ev.membres)}</p>
                         </div>
-                        <button onClick={() => supprimerEvenement(ev.id!)} className="w-8 h-8 rounded-full bg-white/50 hover:bg-rose-500 hover:text-white transition-colors flex justify-center items-center font-bold">✕</button>
+                        <button onClick={() => supprimerEvenement(ev.id!)} className="pop-btn pop-btn-outline" style={{ width: 32, height: 32, padding: 0, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, borderColor: "rgba(220,38,38,0.4)", color: "#dc2626" }}>✕</button>
                       </div>
                     ))}
                   </div>
 
-                  <h3 className="font-black text-lg text-slate-800 mb-4">À venir</h3>
-                  <div className="space-y-3 mb-8">
-                    {eventsAVenir.length === 0 && <p className="text-sm text-slate-400 italic">Aucun événement à venir.</p>}
+                  <p className="bc" style={{ fontSize: 16, marginBottom: 10 }}>À venir</p>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 24 }}>
+                    {eventsAVenir.length === 0 && <p style={{ fontSize: 13, color: "rgba(0,0,0,0.4)", fontStyle: "italic" }}>Aucun événement à venir.</p>}
                     {eventsAVenir.map(ev => (
-                      <div key={ev.id} className="p-4 border-2 border-slate-100 rounded-2xl flex justify-between items-center group bg-white shadow-sm">
-                        <div className="flex-1 cursor-pointer" onClick={() => ouvrirEditionEvenement(ev, 'single')}>
-                          <p className="font-bold text-md flex items-center gap-2">{getEventIcon(ev.type)} {ev.titre}</p>
-                          <p className="text-xs text-slate-500 font-medium mt-1">
-                            {format(new Date(ev.date_debut), 'dd MMM yyyy', {locale: fr})} 
+                      <div key={ev.id} className="pop-card pop-card-hover" style={{ padding: "12px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                        <div style={{ flex: 1, cursor: "pointer" }} onClick={() => ouvrirEditionEvenement(ev, 'single')}>
+                          <p style={{ fontWeight: 800, fontSize: 14, display: "flex", alignItems: "center", gap: 6 }}>{getEventIcon(ev.type)} {ev.titre}</p>
+                          <p style={{ fontSize: 12, color: "rgba(0,0,0,0.4)", fontWeight: 500, marginTop: 3 }}>
+                            {format(new Date(ev.date_debut), 'dd MMM yyyy', {locale: fr})}
                             {ev.date_debut !== ev.date_fin && ` ➔ ${format(new Date(ev.date_fin), 'dd MMM yyyy', {locale: fr})}`}
                             {ev.heure_debut ? ` • ${ev.heure_debut}-${ev.heure_fin}` : ' • Journée entière'}
                           </p>
-                          <p className="text-[10px] text-slate-400 font-bold mt-1 uppercase tracking-wide">{getNomsMembresEvent(ev.membres)}</p>
+                          <p style={{ fontSize: 10, color: "rgba(0,0,0,0.35)", fontWeight: 700, marginTop: 3, textTransform: "uppercase", letterSpacing: "0.04em" }}>{getNomsMembresEvent(ev.membres)}</p>
                         </div>
-                        <button onClick={() => supprimerEvenement(ev.id!)} className="w-8 h-8 rounded-full bg-rose-50 text-rose-500 hover:bg-rose-500 hover:text-white transition-colors flex justify-center items-center font-bold">✕</button>
+                        <button onClick={() => supprimerEvenement(ev.id!)} className="pop-btn pop-btn-outline" style={{ width: 32, height: 32, padding: 0, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, borderColor: "rgba(220,38,38,0.4)", color: "#dc2626" }}>✕</button>
                       </div>
                     ))}
                   </div>
@@ -1824,36 +1828,36 @@ useEffect(() => {
               )}
 
               {listTab === 'series' && (
-                <div className="space-y-4">
-                  {Object.keys(groupesSeries).length === 0 && <p className="text-sm text-slate-400 italic">Aucune série répétée.</p>}
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {Object.keys(groupesSeries).length === 0 && <p style={{ fontSize: 13, color: "rgba(0,0,0,0.4)", fontStyle: "italic" }}>Aucune série répétée.</p>}
                   {Object.entries(groupesSeries).map(([pid, evs]) => {
                     const firstEv = evs[0];
                     const isExpanded = groupesEtendus[pid];
                     return (
-                      <div key={pid} className="border-2 border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-                        <div className="p-4 bg-slate-50 flex justify-between items-center cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => setGroupesEtendus(p => ({...p, [pid]: !p[pid]}))}>
+                      <div key={pid} className="pop-card" style={{ overflow: "hidden" }}>
+                        <div style={{ padding: "12px 14px", background: "var(--cream2)", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }} onClick={() => setGroupesEtendus(p => ({...p, [pid]: !p[pid]}))}>
                           <div>
-                            <p className="font-black text-md flex items-center gap-2">{getEventIcon(firstEv.type)} {firstEv.titre}</p>
-                            <p className="text-xs text-slate-500 font-medium mt-1">Série de {evs.length} événement(s)</p>
+                            <p style={{ fontWeight: 800, fontSize: 14, display: "flex", alignItems: "center", gap: 6 }}>{getEventIcon(firstEv.type)} {firstEv.titre}</p>
+                            <p style={{ fontSize: 12, color: "rgba(0,0,0,0.4)", fontWeight: 500, marginTop: 3 }}>Série de {evs.length} événement(s)</p>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <button onClick={(e) => { e.stopPropagation(); ouvrirEditionEvenement(firstEv, 'series'); }} className="px-3 py-1.5 bg-white border border-slate-200 hover:border-black rounded-lg text-xs font-bold transition-colors shadow-sm">
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <button onClick={(e) => { e.stopPropagation(); ouvrirEditionEvenement(firstEv, 'series'); }} className="pop-btn pop-btn-outline" style={{ fontSize: 11, padding: "5px 10px" }}>
                               ✏️ Série
                             </button>
-                            <button onClick={(e) => { e.stopPropagation(); supprimerEvenement(firstEv.id!, true, pid); }} className="w-8 h-8 rounded-full bg-white border border-slate-200 text-rose-500 hover:bg-rose-500 hover:text-white transition-colors flex justify-center items-center font-bold">
+                            <button onClick={(e) => { e.stopPropagation(); supprimerEvenement(firstEv.id!, true, pid); }} className="pop-btn pop-btn-outline" style={{ width: 32, height: 32, padding: 0, display: "flex", alignItems: "center", justifyContent: "center", borderColor: "rgba(220,38,38,0.4)", color: "#dc2626" }}>
                               ✕
                             </button>
                           </div>
                         </div>
                         {isExpanded && (
-                          <div className="p-3 bg-white space-y-2 border-t border-slate-100 max-h-[300px] overflow-y-auto">
+                          <div style={{ padding: 10, background: "var(--white)", borderTop: "1.5px solid rgba(0,0,0,0.08)", maxHeight: 280, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6 }} className="hide-scrollbar">
                             {evs.map(occ => (
-                              <div key={occ.id} className={`p-3 rounded-xl border flex justify-between items-center group cursor-pointer transition-colors ${occ.date_debut < todayStr ? 'opacity-50 grayscale' : ''} ${getEventStyle(occ.type)}`} onClick={() => ouvrirEditionEvenement(occ, 'single')}>
+                              <div key={occ.id} className={`${getEventStyle(occ.type)}`} style={{ padding: "10px 12px", borderRadius: 8, border: "1.5px solid rgba(0,0,0,0.12)", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", opacity: occ.date_debut < todayStr ? 0.5 : 1 }} onClick={() => ouvrirEditionEvenement(occ, 'single')}>
                                 <div>
-                                  <p className="font-bold text-sm">{format(new Date(occ.date_debut), 'dd MMM yyyy', {locale: fr})}</p>
-                                  <p className="text-[10px] font-medium opacity-80 mt-0.5">{occ.heure_debut ? `${occ.heure_debut}-${occ.heure_fin}` : 'Journée entière'} • {getNomsMembresEvent(occ.membres)}</p>
+                                  <p style={{ fontWeight: 700, fontSize: 13 }}>{format(new Date(occ.date_debut), 'dd MMM yyyy', {locale: fr})}</p>
+                                  <p style={{ fontSize: 10, fontWeight: 500, opacity: 0.8, marginTop: 2 }}>{occ.heure_debut ? `${occ.heure_debut}-${occ.heure_fin}` : 'Journée entière'} • {getNomsMembresEvent(occ.membres)}</p>
                                 </div>
-                                <button onClick={(e) => { e.stopPropagation(); supprimerEvenement(occ.id!); }} className="w-6 h-6 rounded-full bg-white/50 hover:bg-rose-500 hover:text-white transition-colors flex justify-center items-center font-bold text-xs opacity-0 group-hover:opacity-100">✕</button>
+                                <button onClick={(e) => { e.stopPropagation(); supprimerEvenement(occ.id!); }} className="pop-btn pop-btn-outline" style={{ width: 24, height: 24, padding: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, borderColor: "rgba(220,38,38,0.4)", color: "#dc2626" }}>✕</button>
                               </div>
                             ))}
                           </div>
@@ -1869,20 +1873,20 @@ useEffect(() => {
       )}
 
       {showEventModal && (
-        <div className="fixed inset-0 bg-black/50 z-[9999] flex justify-center items-center backdrop-blur-sm p-4">
-          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-fade-in max-h-[95vh] flex flex-col">
-            <div className="flex justify-between items-center p-6 border-b border-slate-100 shrink-0">
-              <div className="flex items-center gap-3">
-                <h2 className="text-xl font-black text-black">{nouvelEvent.id ? 'Modifier' : 'Nouvel Événement'}</h2>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 9999, display: "flex", justifyContent: "center", alignItems: "center", backdropFilter: "blur(4px)", padding: 16 }}>
+          <div className="pop-card animate-fade-in" style={{ width: "100%", maxWidth: 460, maxHeight: "95vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "18px 22px", borderBottom: "1.5px solid rgba(0,0,0,0.08)", flexShrink: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <h2 className="bc" style={{ fontSize: 22, margin: 0 }}>{nouvelEvent.id ? 'Modifier' : 'Nouvel Événement'}</h2>
                 {nouvelEvent.id && (
-                  <button onClick={dupliquerEvenement} className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold px-3 py-1.5 rounded-xl transition-colors flex items-center gap-1">
+                  <button onClick={dupliquerEvenement} className="pop-btn pop-btn-outline" style={{ fontSize: 12, padding: "4px 10px" }}>
                     📄 Dupliquer
                   </button>
                 )}
               </div>
-              <button onClick={() => setShowEventModal(false)} className="w-9 h-9 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 font-bold transition-colors">✕</button>
+              <button onClick={() => setShowEventModal(false)} className="pop-btn pop-btn-outline" style={{ width: 34, height: 34, padding: 0, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13 }}>✕</button>
             </div>
-            <div className="overflow-y-auto hide-scrollbar flex-1 p-6">
+            <div className="overflow-y-auto hide-scrollbar" style={{ flex: 1, padding: "18px 22px" }}>
 
             <div className="space-y-4 flex-1">
               
@@ -2033,7 +2037,7 @@ useEffect(() => {
               )}
             </div>
 
-            <button onClick={sauvegarderEvenement} className="w-full mt-6 text-black font-black py-4 rounded-2xl transition-colors shadow-sm hover:brightness-95 shrink-0" style={{ backgroundColor: couleurs.accent }}>
+            <button onClick={sauvegarderEvenement} className="pop-btn" style={{ width: "100%", justifyContent: "center", fontSize: 15, padding: "13px 0", marginTop: 16, flexShrink: 0, background: couleurs.accent, color: "var(--ink)", border: "2.5px solid var(--ink)", boxShadow: "3px 3px 0 var(--ink)" }}>
               {nouvelEvent.id ? 'Mettre à jour' : 'Enregistrer'}
             </button>
           </div>
@@ -2041,20 +2045,18 @@ useEffect(() => {
       </div>
       )}
 
-      {/* Mini-modal modification absence (Fiche Perso RH) */}
       {quickEditEv && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[60] flex items-center justify-center p-4"
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)", zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
           onClick={e => { if (e.target === e.currentTarget) setQuickEditEv(null); }}>
-          <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl">
-            <div className="flex items-center justify-between p-5 border-b border-slate-100">
-              <h2 className="font-black text-base">Modifier l'absence</h2>
-              <button onClick={() => setQuickEditEv(null)}
-                className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center font-bold text-slate-500">✕</button>
+          <div className="pop-card" style={{ width: "100%", maxWidth: 380 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px", borderBottom: "1.5px solid rgba(0,0,0,0.08)" }}>
+              <h2 className="bc" style={{ fontSize: 18, margin: 0 }}>Modifier l'absence</h2>
+              <button onClick={() => setQuickEditEv(null)} className="pop-btn pop-btn-outline" style={{ width: 32, height: 32, padding: 0, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12 }}>✕</button>
             </div>
-            <div className="p-5 flex flex-col gap-4">
-              <div className="flex flex-col gap-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Type d'absence</label>
-                <div className="flex gap-2">
+            <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 14 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <label className="bc" style={{ fontSize: 10, letterSpacing: "0.08em" }}>Type d'absence</label>
+                <div style={{ display: "flex", gap: 6 }}>
                   {(['Congé', 'RTT', 'Récupération'] as const).map(base => {
                     const isActive = quickEditEv.type === base || quickEditEv.type === `Demi-${base}`;
                     return (
@@ -2064,7 +2066,8 @@ useEffect(() => {
                           const newType = isDemi ? `Demi-${base}` : base;
                           setQuickEditEv({...quickEditEv, type: newType, titre: newType});
                         }}
-                        className={`flex-1 py-2.5 rounded-xl font-bold text-xs border-2 transition-colors ${isActive ? 'bg-black text-white border-black' : 'bg-white text-slate-500 border-slate-200 hover:border-slate-400'}`}>
+                        className={`pop-btn ${isActive ? 'pop-btn-dark' : 'pop-btn-outline'}`}
+                        style={{ flex: 1, justifyContent: "center", fontSize: 11, padding: "6px 0" }}>
                         {getEventIcon(base)} {base}
                       </button>
                     );
@@ -2077,36 +2080,37 @@ useEffect(() => {
                     const newType = isDemi ? base : `Demi-${base}`;
                     setQuickEditEv({...quickEditEv, type: newType, titre: newType});
                   }}
-                  className={`w-full py-2 rounded-xl font-bold text-xs border-2 transition-colors ${quickEditEv.type.startsWith('Demi-') ? 'bg-amber-50 text-amber-700 border-amber-300' : 'bg-slate-50 text-slate-400 border-slate-200 hover:border-slate-300'}`}>
+                  className="pop-btn pop-btn-outline"
+                  style={{ width: "100%", justifyContent: "center", fontSize: 12, padding: "8px 0", background: quickEditEv.type.startsWith('Demi-') ? "var(--yellow)" : "transparent" }}>
                   {quickEditEv.type.startsWith('Demi-') ? '✓ Demi-journée activée' : 'Basculer en demi-journée'}
                 </button>
               </div>
-              <div className="flex gap-3">
-                <div className="flex-1">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Début</label>
+              <div style={{ display: "flex", gap: 12 }}>
+                <div style={{ flex: 1 }}>
+                  <label className="bc" style={{ fontSize: 10, letterSpacing: "0.08em", display: "block", marginBottom: 5 }}>Début</label>
                   <input type="date" value={quickEditEv.date_debut}
                     onChange={e => setQuickEditEv({...quickEditEv, date_debut: e.target.value, date_fin: e.target.value > quickEditEv.date_fin ? e.target.value : quickEditEv.date_fin})}
-                    className="w-full mt-1 p-2.5 rounded-xl border-2 border-slate-200 font-bold text-sm outline-none focus:border-black" />
+                    className="pop-input" style={{ width: "100%", fontSize: 13 }} />
                 </div>
-                <div className="flex-1">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Fin</label>
+                <div style={{ flex: 1 }}>
+                  <label className="bc" style={{ fontSize: 10, letterSpacing: "0.08em", display: "block", marginBottom: 5 }}>Fin</label>
                   <input type="date" value={quickEditEv.date_fin} min={quickEditEv.date_debut}
                     onChange={e => setQuickEditEv({...quickEditEv, date_fin: e.target.value})}
-                    className="w-full mt-1 p-2.5 rounded-xl border-2 border-slate-200 font-bold text-sm outline-none focus:border-black" />
+                    className="pop-input" style={{ width: "100%", fontSize: 13 }} />
                 </div>
               </div>
             </div>
-            <div className="flex gap-2 p-5 border-t border-slate-100">
+            <div style={{ display: "flex", gap: 8, padding: "14px 20px", borderTop: "1.5px solid rgba(0,0,0,0.08)" }}>
               <button onClick={() => { supprimerEvenement(quickEditEv.id!); setQuickEditEv(null); }}
-                className="px-3 py-2.5 rounded-xl bg-rose-50 text-rose-600 font-bold text-xs hover:bg-rose-100 transition-colors">
+                className="pop-btn pop-btn-outline" style={{ fontSize: 12, padding: "8px 12px", borderColor: "rgba(220,38,38,0.4)", color: "#dc2626" }}>
                 Supprimer
               </button>
               <button onClick={() => setQuickEditEv(null)}
-                className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-600 font-bold text-sm hover:bg-slate-200 transition-colors">
+                className="pop-btn pop-btn-outline" style={{ flex: 1, justifyContent: "center", fontSize: 14 }}>
                 Annuler
               </button>
               <button onClick={sauvegarderQuickEdit}
-                className="flex-1 py-2.5 rounded-xl bg-black text-white font-bold text-sm hover:bg-slate-800 transition-colors">
+                className="pop-btn pop-btn-dark" style={{ flex: 1, justifyContent: "center", fontSize: 14 }}>
                 Enregistrer
               </button>
             </div>
