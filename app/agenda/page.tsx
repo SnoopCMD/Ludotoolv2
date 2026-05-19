@@ -1482,77 +1482,75 @@ useEffect(() => {
                   </div>
                   
                   {ongletMembre === "profil" ? (
-                    <div className="animate-fade-in space-y-6">
-                      <div className={`px-4 py-3 rounded-xl flex justify-between items-center font-bold text-sm border-2 ${Math.abs(diffHeures) > 0.1 ? 'bg-rose-50 border-rose-100 text-rose-600' : 'bg-slate-100 border-slate-200 text-black'}`} style={Math.abs(diffHeures) <= 0.1 ? {backgroundColor: couleurs.accent+'33', borderColor: couleurs.accent} : {}}>
-                        <span>Moyenne Base : {moyenneHeures.toFixed(1)}h</span>
-                        {Math.abs(diffHeures) > 0.1 ? (
-                          <span>⚠️ Écart : {diffHeures > 0 ? '+' : ''}{diffHeures.toFixed(1)}h</span>
-                        ) : (
-                          <span>✅ Objectif atteint</span>
-                        )}
+                    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                      {/* Bilan hebdo */}
+                      <div className="pop-card" style={{ padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: `4px solid ${Math.abs(diffHeures) > 0.1 ? "var(--rouge)" : "var(--vert)"}` }}>
+                        <span style={{ fontSize: 13, fontWeight: 700 }}>Moyenne Base : <strong>{moyenneHeures.toFixed(1)}h</strong></span>
+                        <span style={{ fontSize: 13, fontWeight: 800, color: Math.abs(diffHeures) > 0.1 ? "var(--rouge)" : "var(--vert)" }}>
+                          {Math.abs(diffHeures) > 0.1 ? `⚠️ Écart : ${diffHeures > 0 ? '+' : ''}${diffHeures.toFixed(1)}h` : "✅ Objectif atteint"}
+                        </span>
                       </div>
 
-                      <div className="space-y-4 bg-slate-50 p-5 rounded-2xl border-2 border-slate-100">
+                      {/* Identité */}
+                      <div className="pop-card" style={{ padding: "16px 18px", borderTop: "4px solid var(--bleu)", display: "flex", flexDirection: "column", gap: 12 }}>
+                        <p className="bc" style={{ fontSize: 14, letterSpacing: "0.04em", marginBottom: 2 }}>Identité</p>
                         <div>
-                          <label className="text-xs font-black text-slate-500 uppercase tracking-wide">Nom complet</label>
-                          <input type="text" value={membreActif.nom} onChange={e => setMembreActif({...membreActif, nom: e.target.value})} className="w-full mt-1 p-3 rounded-xl border-2 border-slate-200 font-bold outline-none focus:border-black" />
+                          <span style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.07em", color: "rgba(0,0,0,0.4)", display: "block", marginBottom: 5 }}>Nom complet</span>
+                          <input type="text" value={membreActif.nom} onChange={e => setMembreActif({...membreActif, nom: e.target.value})} className="pop-input" style={{ width: "100%" }} />
                         </div>
-                        <div className="flex gap-4">
-                          <div className="flex-1">
-                            <label className="text-xs font-black text-slate-500 uppercase tracking-wide">Rôle</label>
-                            <input type="text" value={membreActif.role} onChange={e => setMembreActif({...membreActif, role: e.target.value})} className="w-full mt-1 p-3 rounded-xl border-2 border-slate-200 font-bold outline-none focus:border-black" />
+                        <div style={{ display: "flex", gap: 10 }}>
+                          <div style={{ flex: 1 }}>
+                            <span style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.07em", color: "rgba(0,0,0,0.4)", display: "block", marginBottom: 5 }}>Rôle</span>
+                            <input type="text" value={membreActif.role} onChange={e => setMembreActif({...membreActif, role: e.target.value})} className="pop-input" style={{ width: "100%" }} />
                           </div>
-                          <div className="w-1/3">
-                            <label className="text-xs font-black text-slate-500 uppercase tracking-wide">Équipe</label>
-                            <select value={membreActif.groupe || 'Aucun'} onChange={e => setMembreActif({...membreActif, groupe: e.target.value})} className="w-full mt-1 p-3 rounded-xl border-2 border-slate-200 font-bold outline-none focus:border-black">
+                          <div style={{ width: "30%" }}>
+                            <span style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.07em", color: "rgba(0,0,0,0.4)", display: "block", marginBottom: 5 }}>Équipe</span>
+                            <select value={membreActif.groupe || 'Aucun'} onChange={e => setMembreActif({...membreActif, groupe: e.target.value})} className="pop-input" style={{ width: "100%", cursor: "pointer" }}>
                               <option value="Aucun">Aucune</option>
                               <option value="A">Équipe A</option>
                               <option value="B">Équipe B</option>
                             </select>
                           </div>
                         </div>
-                        <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <label className="text-xs font-black text-slate-500 uppercase tracking-wide">Base (h/sem)</label>
-                            <input type="number" step="0.5" min="0" value={membreActif.heures_hebdo_base} onChange={e => setMembreActif({...membreActif, heures_hebdo_base: parseFloat(e.target.value) || 0})} className="w-full mt-1 p-3 rounded-xl border-2 border-slate-200 font-bold outline-none focus:border-black" />
-                          </div>
-                          <div>
-                            <label className="text-xs font-black text-slate-500 uppercase tracking-wide">Solde Récup (h)</label>
-                            <input type="number" step="0.5" value={membreActif.solde_recup ?? 0} onChange={e => setMembreActif({...membreActif, solde_recup: parseFloat(e.target.value)})} className="w-full mt-1 p-3 rounded-xl border-2 border-slate-200 font-bold outline-none focus:border-black" />
-                          </div>
-                          <div>
-                            <label className="text-xs font-black text-slate-500 uppercase tracking-wide">Solde Congés (Jrs)</label>
-                            <input type="number" step="0.5" value={membreActif.solde_conges ?? 25} onChange={e => setMembreActif({...membreActif, solde_conges: parseFloat(e.target.value)})} className="w-full mt-1 p-3 rounded-xl border-2 border-slate-200 font-bold outline-none focus:border-black" />
-                          </div>
-                          <div>
-                            <label className="text-xs font-black text-slate-500 uppercase tracking-wide">Solde RTT (Jrs)</label>
-                            <input type="number" step="0.5" value={membreActif.solde_rtt ?? 0} onChange={e => setMembreActif({...membreActif, solde_rtt: parseFloat(e.target.value)})} className="w-full mt-1 p-3 rounded-xl border-2 border-slate-200 font-bold outline-none focus:border-black" />
-                          </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                          {[
+                            { label: "Base (h/sem)", value: membreActif.heures_hebdo_base, onChange: (v: string) => setMembreActif({...membreActif, heures_hebdo_base: parseFloat(v) || 0}) },
+                            { label: "Solde Récup (h)", value: membreActif.solde_recup ?? 0, onChange: (v: string) => setMembreActif({...membreActif, solde_recup: parseFloat(v)}) },
+                            { label: "Solde Congés (jrs)", value: membreActif.solde_conges ?? 25, onChange: (v: string) => setMembreActif({...membreActif, solde_conges: parseFloat(v)}) },
+                            { label: "Solde RTT (jrs)", value: membreActif.solde_rtt ?? 0, onChange: (v: string) => setMembreActif({...membreActif, solde_rtt: parseFloat(v)}) },
+                          ].map(f => (
+                            <div key={f.label}>
+                              <span style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.07em", color: "rgba(0,0,0,0.4)", display: "block", marginBottom: 5 }}>{f.label}</span>
+                              <input type="number" step="0.5" min="0" value={f.value} onChange={e => f.onChange(e.target.value)} className="pop-input" style={{ width: "100%" }} />
+                            </div>
+                          ))}
                         </div>
                       </div>
 
-                      <div>
-                        <div className="flex justify-between items-center mb-4">
-                          <h3 className="font-black text-lg">Horaires de la semaine</h3>
-                          <button onClick={inverserSemaines} title="Inverser Semaine A et B" className="p-2 bg-slate-100 hover:bg-slate-200 rounded text-slate-500 hover:text-black transition-colors text-xs font-bold">⇅ Inverser A/B</button>
+                      {/* Horaires */}
+                      <div className="pop-card" style={{ padding: "16px 18px", borderTop: "4px solid var(--yellow)", display: "flex", flexDirection: "column", gap: 12 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <p className="bc" style={{ fontSize: 14, letterSpacing: "0.04em", margin: 0 }}>Horaires de la semaine</p>
+                          <button onClick={inverserSemaines} className="pop-btn pop-btn-outline" style={{ fontSize: 11, padding: "4px 10px" }}>⇅ Inverser A/B</button>
                         </div>
-                        <div className="flex bg-slate-100 p-1 rounded-2xl mb-4 font-bold text-sm">
-                          <button onClick={() => setSemaineActive("semaineA")} className={`flex-1 py-2 rounded-xl transition-all ${semaineActive === "semaineA" ? "bg-white shadow-sm text-black" : "text-slate-500 hover:text-black"}`}>Semaine A</button>
-                          <button onClick={() => setSemaineActive("semaineB")} className={`flex-1 py-2 rounded-xl transition-all ${semaineActive === "semaineB" ? "bg-white shadow-sm text-black" : "text-slate-500 hover:text-black"}`}>Semaine B</button>
+                        <div className="pop-card" style={{ display: "flex", padding: 4, gap: 0 }}>
+                          <button onClick={() => setSemaineActive("semaineA")} className="pop-btn" style={{ flex: 1, justifyContent: "center", fontSize: 13, padding: "6px 0", background: semaineActive === "semaineA" ? "var(--yellow)" : "transparent", boxShadow: semaineActive === "semaineA" ? "2px 2px 0 var(--ink)" : "none", border: semaineActive === "semaineA" ? "2px solid var(--ink)" : "2px solid transparent" }}>Semaine A</button>
+                          <button onClick={() => setSemaineActive("semaineB")} className="pop-btn" style={{ flex: 1, justifyContent: "center", fontSize: 13, padding: "6px 0", background: semaineActive === "semaineB" ? "var(--yellow)" : "transparent", boxShadow: semaineActive === "semaineB" ? "2px 2px 0 var(--ink)" : "none", border: semaineActive === "semaineB" ? "2px solid var(--ink)" : "2px solid transparent" }}>Semaine B</button>
                         </div>
-                        <div className="space-y-2">
+                        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                           {JOURS_SEMAINE.map(jour => {
                             const h = membreActif.horaires?.[semaineActive]?.[jour] || { debut: '', fin: '', pause: 1 };
+                            const actif = !!(h.debut && h.fin);
                             return (
-                              <div key={jour} className="flex flex-col sm:flex-row sm:items-center justify-between p-3 bg-white border-2 border-slate-100 rounded-xl hover:border-slate-300 transition-colors gap-2">
-                                <span className="w-24 font-bold text-sm capitalize">{jour}</span>
-                                <div className="flex items-center gap-1 sm:gap-2">
-                                  <input type="time" value={h.debut} onChange={e => updateHoraire(jour, 'debut', e.target.value)} className="p-1 sm:p-2 border-2 border-slate-100 rounded-lg text-xs sm:text-sm font-bold outline-none focus:border-black" />
-                                  <span className="text-slate-400 font-bold">à</span>
-                                  <input type="time" value={h.fin} onChange={e => updateHoraire(jour, 'fin', e.target.value)} className="p-1 sm:p-2 border-2 border-slate-100 rounded-lg text-xs sm:text-sm font-bold outline-none focus:border-black" />
-                                  <div className="flex items-center bg-slate-50 border-2 border-slate-100 rounded-lg ml-1 px-1 sm:px-2">
-                                    <span className="text-[10px] sm:text-xs font-bold text-slate-400 mr-1">Repas(h)</span>
-                                    <input type="number" step="0.5" min="0" value={h.pause !== undefined ? h.pause : 1} onChange={e => updateHoraire(jour, 'pause', parseFloat(e.target.value) || 0)} className="w-10 sm:w-12 p-1 bg-transparent text-xs sm:text-sm font-bold outline-none text-center" />
+                              <div key={jour} className="pop-card" style={{ padding: "8px 12px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, background: actif ? "var(--white)" : "var(--cream2)", opacity: actif ? 1 : 0.6 }}>
+                                <span style={{ width: 70, fontWeight: 800, fontSize: 13, textTransform: "capitalize", flexShrink: 0 }}>{jour}</span>
+                                <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                                  <input type="time" value={h.debut} onChange={e => updateHoraire(jour, 'debut', e.target.value)} className="pop-input" style={{ padding: "5px 8px", fontSize: 12, width: 90 }} />
+                                  <span style={{ fontWeight: 700, color: "rgba(0,0,0,0.35)", fontSize: 12 }}>→</span>
+                                  <input type="time" value={h.fin} onChange={e => updateHoraire(jour, 'fin', e.target.value)} className="pop-input" style={{ padding: "5px 8px", fontSize: 12, width: 90 }} />
+                                  <div style={{ display: "flex", alignItems: "center", background: "var(--cream2)", border: "1.5px solid rgba(0,0,0,0.12)", borderRadius: 6, padding: "4px 8px", gap: 4 }}>
+                                    <span style={{ fontSize: 10, fontWeight: 700, color: "rgba(0,0,0,0.4)" }}>🍽</span>
+                                    <input type="number" step="0.5" min="0" value={h.pause !== undefined ? h.pause : 1} onChange={e => updateHoraire(jour, 'pause', parseFloat(e.target.value) || 0)} style={{ width: 36, padding: 0, background: "transparent", border: "none", fontSize: 12, fontWeight: 700, outline: "none", textAlign: "center", fontFamily: "inherit" }} />
                                   </div>
                                 </div>
                               </div>
@@ -1562,176 +1560,165 @@ useEffect(() => {
                       </div>
                     </div>
                   ) : (
-                    <div className="space-y-6 animate-fade-in">
+                    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                       {statsPerso && (
                         <>
-                          <div className="bg-slate-50 p-5 rounded-2xl border-2 border-slate-100">
-                            <h3 className="text-xs font-black text-slate-500 uppercase tracking-wide mb-4">Bilan Annuel ({dateActuelle.getFullYear()})</h3>
-                            <div className="grid grid-cols-3 gap-3 mb-4">
-                              <div className="bg-white p-3 rounded-xl border border-slate-200 flex flex-col justify-center shadow-sm">
-                                <span className="text-[9px] font-bold text-slate-400 uppercase">Congés restants</span>
-                                <span className="text-xl font-black mt-1">{(membreActif.solde_conges ?? 25) - statsPerso.congesPrisJours} <span className="text-xs font-bold text-slate-500">jrs</span></span>
-                                <span className="text-[9px] font-bold text-slate-400 mt-1">({statsPerso.congesPrisJours} pris)</span>
-                              </div>
-                              <div className="bg-white p-3 rounded-xl border border-slate-200 flex flex-col justify-center shadow-sm">
-                                <span className="text-[9px] font-bold text-slate-400 uppercase">RTT restants</span>
-                                <span className="text-xl font-black mt-1">{(membreActif.solde_rtt ?? 0) - statsPerso.rttPrisJours} <span className="text-xs font-bold text-slate-500">jrs</span></span>
-                                <span className="text-[9px] font-bold text-slate-400 mt-1">({statsPerso.rttPrisJours} pris)</span>
-                              </div>
-                              <div className="bg-white p-3 rounded-xl border border-slate-200 flex flex-col justify-center shadow-sm">
-                                <span className="text-[9px] font-bold text-slate-400 uppercase">Heures Récup.</span>
-                                <span className="text-xl font-black mt-1">{(membreActif.solde_recup ?? 0) - statsPerso.recupPriseHeures} <span className="text-xs font-bold text-slate-500">h</span></span>
-                                <span className="text-[9px] font-bold text-slate-400 mt-1">({statsPerso.recupPriseHeures}h prises)</span>
+                          {/* Bilan annuel KPIs */}
+                          <div className="pop-card" style={{ padding: "16px 18px", borderTop: "4px solid var(--bleu)" }}>
+                            <p className="bc" style={{ fontSize: 14, letterSpacing: "0.04em", marginBottom: 12 }}>Bilan Annuel ({dateActuelle.getFullYear()})</p>
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 14 }}>
+                              {[
+                                { label: "Congés restants", value: (membreActif.solde_conges ?? 25) - statsPerso.congesPrisJours, unit: "jrs", sub: `${statsPerso.congesPrisJours} pris`, color: "var(--rose)" },
+                                { label: "RTT restants", value: (membreActif.solde_rtt ?? 0) - statsPerso.rttPrisJours, unit: "jrs", sub: `${statsPerso.rttPrisJours} pris`, color: "var(--vert)" },
+                                { label: "Heures Récup.", value: (membreActif.solde_recup ?? 0) - statsPerso.recupPriseHeures, unit: "h", sub: `${statsPerso.recupPriseHeures}h prises`, color: "var(--bleu)" },
+                              ].map(k => (
+                                <div key={k.label} className="pop-card" style={{ padding: "10px 12px", borderTop: `3px solid ${k.color}` }}>
+                                  <span style={{ fontSize: 9, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.07em", color: "rgba(0,0,0,0.4)", display: "block" }}>{k.label}</span>
+                                  <span style={{ fontSize: 22, fontWeight: 900, display: "block", marginTop: 4 }}>{k.value} <span style={{ fontSize: 11, fontWeight: 600, color: "rgba(0,0,0,0.45)" }}>{k.unit}</span></span>
+                                  <span style={{ fontSize: 9, fontWeight: 700, color: "rgba(0,0,0,0.35)", marginTop: 2, display: "block" }}>({k.sub})</span>
+                                </div>
+                              ))}
+                            </div>
+
+                            {/* Soldes initiaux */}
+                            <div style={{ borderTop: "1.5px solid rgba(0,0,0,0.08)", paddingTop: 12 }}>
+                              <p className="bc" style={{ fontSize: 11, letterSpacing: "0.06em", color: "rgba(0,0,0,0.4)", marginBottom: 8 }}>Soldes initiaux</p>
+                              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+                                {[
+                                  { label: "Congés (jrs)", value: membreActif.solde_conges ?? 25, onChange: (v: string) => setMembreActif({...membreActif, solde_conges: parseFloat(v) || 0}) },
+                                  { label: "RTT (jrs)", value: membreActif.solde_rtt ?? 0, onChange: (v: string) => setMembreActif({...membreActif, solde_rtt: parseFloat(v) || 0}) },
+                                  { label: "Récup (h)", value: membreActif.solde_recup ?? 0, onChange: (v: string) => setMembreActif({...membreActif, solde_recup: parseFloat(v) || 0}) },
+                                ].map(f => (
+                                  <div key={f.label}>
+                                    <span style={{ fontSize: 9, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.07em", color: "rgba(0,0,0,0.4)", display: "block", marginBottom: 4 }}>{f.label}</span>
+                                    <input type="number" step="0.5" value={f.value} onChange={e => f.onChange(e.target.value)} className="pop-input" style={{ width: "100%", textAlign: "center", fontSize: 13 }} />
+                                  </div>
+                                ))}
                               </div>
                             </div>
-                            <div className="border-t border-slate-200 pt-4 flex flex-col gap-4">
-                              <div>
-                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Soldes initiaux</p>
-                                <div className="grid grid-cols-3 gap-2">
-                                  <div>
-                                    <label className="text-[9px] font-bold text-slate-400 uppercase">Congés (jrs)</label>
-                                    <input type="number" step="0.5" value={membreActif.solde_conges ?? 25}
-                                      onChange={e => setMembreActif({...membreActif, solde_conges: parseFloat(e.target.value) || 0})}
-                                      className="w-full mt-0.5 p-2 rounded-lg border-2 border-slate-200 font-bold text-sm outline-none focus:border-black text-center" />
-                                  </div>
-                                  <div>
-                                    <label className="text-[9px] font-bold text-slate-400 uppercase">RTT (jrs)</label>
-                                    <input type="number" step="0.5" value={membreActif.solde_rtt ?? 0}
-                                      onChange={e => setMembreActif({...membreActif, solde_rtt: parseFloat(e.target.value) || 0})}
-                                      className="w-full mt-0.5 p-2 rounded-lg border-2 border-slate-200 font-bold text-sm outline-none focus:border-black text-center" />
-                                  </div>
-                                  <div>
-                                    <label className="text-[9px] font-bold text-slate-400 uppercase">Récup (h)</label>
-                                    <input type="number" step="0.5" value={membreActif.solde_recup ?? 0}
-                                      onChange={e => setMembreActif({...membreActif, solde_recup: parseFloat(e.target.value) || 0})}
-                                      className="w-full mt-0.5 p-2 rounded-lg border-2 border-slate-200 font-bold text-sm outline-none focus:border-black text-center" />
-                                  </div>
-                                </div>
-                              </div>
-                              <div>
-                                <div className="flex items-center justify-between mb-2">
-                                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Périodes hors système</p>
-                                  {!newAbsHS && (
-                                    <button onClick={() => setNewAbsHS({ debut: format(new Date(), 'yyyy-MM-dd'), fin: format(new Date(), 'yyyy-MM-dd'), type: 'conge' })}
-                                      className="text-[9px] font-black px-2 py-1 bg-black text-white rounded-lg hover:bg-slate-700 transition-colors">
-                                      + Ajouter
-                                    </button>
-                                  )}
-                                </div>
-                                {/* Liste des périodes */}
-                                <div className="flex flex-col gap-1.5 mb-2">
-                                  {(membreActif.absences_hs ?? []).length === 0 && !newAbsHS && (
-                                    <p className="text-[10px] text-slate-400 italic py-1">Aucune période saisie</p>
-                                  )}
-                                  {(membreActif.absences_hs ?? []).map((ab, idx) => {
-                                    const jours = compterJoursTravailles(ab.debut, ab.fin, membreActif, joursFeries);
-                                    const label = ab.type === 'conge' ? 'Congé' : ab.type === 'rtt' ? 'RTT' : 'Récup';
-                                    const color = ab.type === 'rtt' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : ab.type === 'recup' ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-rose-50 border-rose-200 text-rose-700';
-                                    return (
-                                      <div key={idx} className={`flex items-center justify-between px-3 py-2 rounded-xl border text-[10px] font-bold ${color}`}>
-                                        <span>{label} · {format(new Date(ab.debut + 'T12:00:00'), 'dd/MM')} – {format(new Date(ab.fin + 'T12:00:00'), 'dd/MM/yy')}</span>
-                                        <span className="flex items-center gap-2">
-                                          <span className="opacity-70">{jours} j{ab.type === 'recup' ? ` × ${(membreActif.heures_hebdo_base/5).toFixed(1)}h` : ''}</span>
-                                          <button onClick={() => setMembreActif({...membreActif, absences_hs: (membreActif.absences_hs ?? []).filter((_, i) => i !== idx)})}
-                                            className="w-4 h-4 rounded-full bg-white/60 hover:bg-white flex items-center justify-center opacity-80 hover:opacity-100">✕</button>
-                                        </span>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                                {/* Formulaire d'ajout */}
-                                {newAbsHS && (
-                                  <div className="bg-slate-50 border-2 border-slate-200 rounded-xl p-3 flex flex-col gap-2">
-                                    <div className="flex gap-1.5">
-                                      {(['conge', 'rtt', 'recup'] as const).map(t => (
-                                        <button key={t}
-                                          onClick={() => setNewAbsHS({...newAbsHS, type: t})}
-                                          className={`flex-1 py-1.5 rounded-lg font-bold text-[10px] border-2 transition-colors ${newAbsHS.type === t ? 'bg-black text-white border-black' : 'bg-white text-slate-500 border-slate-200'}`}>
-                                          {t === 'conge' ? '🏖️ Congé' : t === 'rtt' ? '🌴 RTT' : '🛋️ Récup'}
-                                        </button>
-                                      ))}
-                                    </div>
-                                    <div className="flex gap-2">
-                                      <div className="flex-1">
-                                        <label className="text-[9px] font-bold text-slate-400 uppercase">Début</label>
-                                        <input type="date" value={newAbsHS.debut}
-                                          onChange={e => setNewAbsHS({...newAbsHS, debut: e.target.value, fin: e.target.value > newAbsHS.fin ? e.target.value : newAbsHS.fin})}
-                                          className="w-full mt-0.5 p-2 rounded-lg border-2 border-slate-200 font-bold text-xs outline-none focus:border-black" />
-                                      </div>
-                                      <div className="flex-1">
-                                        <label className="text-[9px] font-bold text-slate-400 uppercase">Fin</label>
-                                        <input type="date" value={newAbsHS.fin} min={newAbsHS.debut}
-                                          onChange={e => setNewAbsHS({...newAbsHS, fin: e.target.value})}
-                                          className="w-full mt-0.5 p-2 rounded-lg border-2 border-slate-200 font-bold text-xs outline-none focus:border-black" />
-                                      </div>
-                                    </div>
-                                    <div className="text-[10px] font-bold text-slate-500 text-center">
-                                      {compterJoursTravailles(newAbsHS.debut, newAbsHS.fin, membreActif, joursFeries)} jour(s) travaillé(s) dans la période
-                                    </div>
-                                    <div className="flex gap-2">
-                                      <button onClick={() => setNewAbsHS(null)}
-                                        className="flex-1 py-1.5 rounded-lg bg-slate-200 text-slate-600 font-bold text-xs hover:bg-slate-300 transition-colors">
-                                        Annuler
-                                      </button>
-                                      <button onClick={() => {
-                                        setMembreActif({...membreActif, absences_hs: [...(membreActif.absences_hs ?? []), newAbsHS]});
-                                        setNewAbsHS(null);
-                                      }}
-                                        className="flex-1 py-1.5 rounded-lg bg-black text-white font-bold text-xs hover:bg-slate-800 transition-colors">
-                                        Ajouter
-                                      </button>
-                                    </div>
-                                  </div>
+
+                            {/* Périodes hors système */}
+                            <div style={{ borderTop: "1.5px solid rgba(0,0,0,0.08)", paddingTop: 12, marginTop: 12 }}>
+                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                                <p className="bc" style={{ fontSize: 11, letterSpacing: "0.06em", color: "rgba(0,0,0,0.4)", margin: 0 }}>Périodes hors système</p>
+                                {!newAbsHS && (
+                                  <button onClick={() => setNewAbsHS({ debut: format(new Date(), 'yyyy-MM-dd'), fin: format(new Date(), 'yyyy-MM-dd'), type: 'conge' })}
+                                    className="pop-btn pop-btn-dark" style={{ fontSize: 10, padding: "4px 10px" }}>
+                                    + Ajouter
+                                  </button>
                                 )}
                               </div>
-                              <button onClick={sauvegarderSoldes}
-                                className="w-full py-2 rounded-xl bg-black text-white font-black text-xs hover:bg-slate-800 transition-colors">
-                                Enregistrer
-                              </button>
+                              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                                {(membreActif.absences_hs ?? []).length === 0 && !newAbsHS && (
+                                  <p style={{ fontSize: 11, color: "rgba(0,0,0,0.35)", fontStyle: "italic" }}>Aucune période saisie</p>
+                                )}
+                                {(membreActif.absences_hs ?? []).map((ab, idx) => {
+                                  const jours = compterJoursTravailles(ab.debut, ab.fin, membreActif, joursFeries);
+                                  const label = ab.type === 'conge' ? '🏖️ Congé' : ab.type === 'rtt' ? '🌴 RTT' : '🛋️ Récup';
+                                  const bg = ab.type === 'rtt' ? "var(--vert)" : ab.type === 'recup' ? "var(--bleu)" : "var(--rose)";
+                                  return (
+                                    <div key={idx} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 10px", borderRadius: 6, border: "1.5px solid var(--ink)", background: "var(--white)" }}>
+                                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                        <span className="pop-sticker" style={{ background: bg, fontSize: 9, padding: "2px 7px" }}>{label}</span>
+                                        <span style={{ fontSize: 11, fontWeight: 700 }}>{format(new Date(ab.debut + 'T12:00:00'), 'dd/MM')} – {format(new Date(ab.fin + 'T12:00:00'), 'dd/MM/yy')}</span>
+                                      </div>
+                                      <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                        <span style={{ fontSize: 10, fontWeight: 600, color: "rgba(0,0,0,0.4)" }}>{jours}j{ab.type === 'recup' ? ` × ${(membreActif.heures_hebdo_base/5).toFixed(1)}h` : ''}</span>
+                                        <button onClick={() => setMembreActif({...membreActif, absences_hs: (membreActif.absences_hs ?? []).filter((_, i) => i !== idx)})}
+                                          className="pop-btn pop-btn-outline" style={{ width: 22, height: 22, padding: 0, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10 }}>✕</button>
+                                      </span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                              {newAbsHS && (
+                                <div className="pop-card" style={{ padding: "12px 14px", marginTop: 8, display: "flex", flexDirection: "column", gap: 8, background: "var(--cream2)" }}>
+                                  <div style={{ display: "flex", gap: 6 }}>
+                                    {(['conge', 'rtt', 'recup'] as const).map(t => (
+                                      <button key={t}
+                                        onClick={() => setNewAbsHS({...newAbsHS, type: t})}
+                                        className={`pop-btn ${newAbsHS.type === t ? 'pop-btn-dark' : 'pop-btn-outline'}`}
+                                        style={{ flex: 1, justifyContent: "center", fontSize: 11, padding: "5px 0" }}>
+                                        {t === 'conge' ? '🏖️ Congé' : t === 'rtt' ? '🌴 RTT' : '🛋️ Récup'}
+                                      </button>
+                                    ))}
+                                  </div>
+                                  <div style={{ display: "flex", gap: 8 }}>
+                                    <div style={{ flex: 1 }}>
+                                      <span style={{ fontSize: 9, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.07em", color: "rgba(0,0,0,0.4)", display: "block", marginBottom: 4 }}>Début</span>
+                                      <input type="date" value={newAbsHS.debut}
+                                        onChange={e => setNewAbsHS({...newAbsHS, debut: e.target.value, fin: e.target.value > newAbsHS.fin ? e.target.value : newAbsHS.fin})}
+                                        className="pop-input" style={{ width: "100%", fontSize: 12 }} />
+                                    </div>
+                                    <div style={{ flex: 1 }}>
+                                      <span style={{ fontSize: 9, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.07em", color: "rgba(0,0,0,0.4)", display: "block", marginBottom: 4 }}>Fin</span>
+                                      <input type="date" value={newAbsHS.fin} min={newAbsHS.debut}
+                                        onChange={e => setNewAbsHS({...newAbsHS, fin: e.target.value})}
+                                        className="pop-input" style={{ width: "100%", fontSize: 12 }} />
+                                    </div>
+                                  </div>
+                                  <p style={{ fontSize: 11, fontWeight: 700, color: "rgba(0,0,0,0.5)", textAlign: "center" }}>
+                                    {compterJoursTravailles(newAbsHS.debut, newAbsHS.fin, membreActif, joursFeries)} jour(s) travaillé(s) dans la période
+                                  </p>
+                                  <div style={{ display: "flex", gap: 8 }}>
+                                    <button onClick={() => setNewAbsHS(null)}
+                                      className="pop-btn pop-btn-outline" style={{ flex: 1, justifyContent: "center", fontSize: 13 }}>
+                                      Annuler
+                                    </button>
+                                    <button onClick={() => {
+                                      setMembreActif({...membreActif, absences_hs: [...(membreActif.absences_hs ?? []), newAbsHS]});
+                                      setNewAbsHS(null);
+                                    }}
+                                      className="pop-btn pop-btn-dark" style={{ flex: 1, justifyContent: "center", fontSize: 13 }}>
+                                      Ajouter
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           </div>
 
-                          <div>
-                            <div className="flex justify-between items-center mb-3">
-                              <h3 className="text-xs font-black text-slate-500 uppercase tracking-wide">Bilan Mensuel</h3>
-                              <div className="flex items-center gap-1 bg-slate-200/50 p-1 rounded-lg">
-                                <button onClick={() => setDateActuelle(subMonths(dateActuelle, 1))} className="px-2 py-1 hover:bg-white rounded-md text-slate-600 font-black text-xs transition-all shadow-sm">◀</button>
-                                <span className="text-[10px] font-black uppercase tracking-wide text-slate-700 px-2 min-w-[90px] text-center">
+                          {/* Bilan mensuel */}
+                          <div className="pop-card" style={{ padding: "16px 18px", borderTop: "4px solid var(--orange)" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                              <p className="bc" style={{ fontSize: 14, letterSpacing: "0.04em", margin: 0 }}>Bilan Mensuel</p>
+                              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                <button onClick={() => setDateActuelle(subMonths(dateActuelle, 1))} className="pop-btn pop-btn-outline" style={{ padding: "4px 8px", fontSize: 11 }}>◀</button>
+                                <span className="bc" style={{ fontSize: 11, color: "var(--ink)", padding: "0 6px", minWidth: 90, textAlign: "center", textTransform: "capitalize" }}>
                                   {format(dateActuelle, 'MMMM yyyy', {locale: fr})}
                                 </span>
-                                <button onClick={() => setDateActuelle(addMonths(dateActuelle, 1))} className="px-2 py-1 hover:bg-white rounded-md text-slate-600 font-black text-xs transition-all shadow-sm">▶</button>
+                                <button onClick={() => setDateActuelle(addMonths(dateActuelle, 1))} className="pop-btn pop-btn-outline" style={{ padding: "4px 8px", fontSize: 11 }}>▶</button>
                               </div>
-                            </div>
-                            
-                            <div className={`p-4 rounded-xl border-2 shadow-sm mb-4 flex justify-between items-center ${statsPerso.diffMoisHeures > 0 ? 'bg-blue-50 border-blue-200 text-blue-700' : statsPerso.diffMoisHeures < 0 ? 'bg-rose-50 border-rose-200 text-rose-700' : 'bg-slate-50 border-slate-200 text-slate-700'}`}>
-                              <span className="font-bold">Heures Supplémentaires ce mois :</span>
-                              <span className="font-black text-xl">{statsPerso.diffMoisHeures > 0 ? '+' : ''}{statsPerso.diffMoisHeures.toFixed(1)} h</span>
                             </div>
 
-                            <div className="bg-white border-2 border-slate-100 rounded-2xl overflow-hidden">
-                              <div className="p-4 border-b-2 border-slate-100 bg-slate-50">
-                                <span className="font-bold text-sm">Événements du mois ({statsPerso.eventsDuMois.length})</span>
+                            <div className="pop-card" style={{ padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, borderTop: `3px solid ${statsPerso.diffMoisHeures > 0 ? "var(--bleu)" : statsPerso.diffMoisHeures < 0 ? "var(--rouge)" : "var(--cream2)"}` }}>
+                              <span style={{ fontSize: 13, fontWeight: 700 }}>Heures Supplémentaires</span>
+                              <span style={{ fontSize: 20, fontWeight: 900, color: statsPerso.diffMoisHeures > 0 ? "var(--bleu)" : statsPerso.diffMoisHeures < 0 ? "var(--rouge)" : "var(--ink)" }}>
+                                {statsPerso.diffMoisHeures > 0 ? '+' : ''}{statsPerso.diffMoisHeures.toFixed(1)} h
+                              </span>
+                            </div>
+
+                            <div className="pop-card" style={{ overflow: "hidden" }}>
+                              <div style={{ padding: "10px 14px", background: "var(--cream2)", borderBottom: "1.5px solid rgba(0,0,0,0.08)" }}>
+                                <span style={{ fontSize: 13, fontWeight: 800 }}>Événements du mois ({statsPerso.eventsDuMois.length})</span>
                               </div>
-                              <div className="divide-y-2 divide-slate-50 max-h-[300px] overflow-y-auto hide-scrollbar">
-                                {statsPerso.eventsDuMois.length === 0 && <p className="p-4 text-sm text-slate-400 italic">Aucun événement ce mois-ci.</p>}
+                              <div style={{ maxHeight: 280, overflowY: "auto" }} className="hide-scrollbar">
+                                {statsPerso.eventsDuMois.length === 0 && <p style={{ padding: 14, fontSize: 13, color: "rgba(0,0,0,0.35)", fontStyle: "italic" }}>Aucun événement ce mois-ci.</p>}
                                 {statsPerso.eventsDuMois.map(ev => (
-                                  <div key={ev.id} className="px-4 py-3 hover:bg-slate-50 transition-colors flex items-center gap-3">
-                                    <div className="flex-1 min-w-0">
-                                      <div className="flex items-center gap-2 flex-wrap">
-                                        <span className="font-bold text-sm flex items-center gap-1.5 truncate">{getEventIcon(ev.type)} {ev.titre}</span>
-                                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-md uppercase shrink-0 ${getEventStyle(ev.type)}`}>{ev.type.replace('Demi-', '1/2 ')}</span>
+                                  <div key={ev.id} style={{ padding: "10px 14px", display: "flex", alignItems: "center", gap: 10, borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                                        <span style={{ fontWeight: 700, fontSize: 13, display: "flex", alignItems: "center", gap: 5 }}>{getEventIcon(ev.type)} {ev.titre}</span>
+                                        <span className="pop-sticker" style={{ fontSize: 9, padding: "2px 7px" }}>{ev.type.replace('Demi-', '1/2 ')}</span>
                                       </div>
-                                      <span className="text-xs font-medium text-slate-500">
+                                      <span style={{ fontSize: 11, fontWeight: 500, color: "rgba(0,0,0,0.45)", marginTop: 2, display: "block" }}>
                                         {format(new Date(ev.date_debut), 'dd MMM', {locale: fr})}
                                         {ev.date_debut !== ev.date_fin && ` - ${format(new Date(ev.date_fin), 'dd MMM', {locale: fr})}`}
                                         {ev.heure_debut && ` • ${ev.heure_debut}-${ev.heure_fin}`}
                                       </span>
                                     </div>
                                     {ABSENCE_TYPES.includes(ev.type) && (
-                                      <button onClick={() => setQuickEditEv(ev)}
-                                        className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-black hover:text-white text-slate-500 flex items-center justify-center text-xs transition-colors shrink-0">
-                                        ✏️
-                                      </button>
+                                      <button onClick={() => setQuickEditEv(ev)} className="pop-btn pop-btn-outline" style={{ width: 30, height: 30, padding: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, flexShrink: 0 }}>✏️</button>
                                     )}
                                   </div>
                                 ))}
@@ -1888,86 +1875,106 @@ useEffect(() => {
             </div>
             <div className="overflow-y-auto hide-scrollbar" style={{ flex: 1, padding: "18px 22px" }}>
 
-            <div className="space-y-4 flex-1">
-              
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+
+              {/* Scope série */}
               {nouvelEvent.parent_id && (
-                <div className="flex bg-slate-100 p-1 rounded-xl font-bold text-xs mb-2">
-                  <button onClick={() => setEditMode('single')} className={`flex-1 py-2 rounded-lg transition-all ${editMode === 'single' ? 'bg-white shadow-sm text-black' : 'text-slate-500 hover:text-black'}`}>Cet événement uniquement</button>
-                  <button onClick={() => setEditMode('series')} className={`flex-1 py-2 rounded-lg transition-all ${editMode === 'series' ? 'bg-white shadow-sm text-black' : 'text-slate-500 hover:text-black'}`}>Toute la série</button>
+                <div className="pop-card" style={{ display: "flex", padding: 4, gap: 0 }}>
+                  <button onClick={() => setEditMode('single')} className="pop-btn" style={{ flex: 1, justifyContent: "center", fontSize: 12, padding: "6px 0", background: editMode === 'single' ? "var(--yellow)" : "transparent", boxShadow: editMode === 'single' ? "2px 2px 0 var(--ink)" : "none", border: editMode === 'single' ? "2px solid var(--ink)" : "2px solid transparent" }}>Cet événement uniquement</button>
+                  <button onClick={() => setEditMode('series')} className="pop-btn" style={{ flex: 1, justifyContent: "center", fontSize: 12, padding: "6px 0", background: editMode === 'series' ? "var(--yellow)" : "transparent", boxShadow: editMode === 'series' ? "2px 2px 0 var(--ink)" : "none", border: editMode === 'series' ? "2px solid var(--ink)" : "2px solid transparent" }}>Toute la série</button>
                 </div>
               )}
 
+              {/* Titre */}
               <div>
-                <label className="text-xs font-black text-slate-500 uppercase">Titre</label>
-                <input type="text" value={nouvelEvent.titre} onChange={e => setNouvelEvent({...nouvelEvent, titre: e.target.value})} className="w-full mt-1 p-3 rounded-xl border-2 border-slate-200 font-bold outline-none focus:border-black" placeholder="Ex: Congés Bernard, Animation Cité..." />
+                <span style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.07em", color: "rgba(0,0,0,0.4)", display: "block", marginBottom: 6 }}>Titre</span>
+                <input type="text" value={nouvelEvent.titre} onChange={e => setNouvelEvent({...nouvelEvent, titre: e.target.value})} className="pop-input" style={{ width: "100%" }} placeholder="Ex: Congés Bernard, Animation Cité..." />
               </div>
 
-              <div className="bg-slate-50 p-2 rounded-xl border border-slate-200">
-                <div className="flex flex-wrap gap-1 mb-2 bg-white p-1 rounded-lg shadow-sm">
-                  <button type="button" onClick={() => setMainType('Absence')} className={`flex-1 py-2 px-1 rounded-md font-bold text-[11px] transition-colors ${mainTypeUI === 'Absence' ? 'bg-rose-50 text-rose-600' : 'text-slate-500 hover:bg-slate-50'}`}>Absence</button>
-                  <button type="button" onClick={() => setMainType('Réunion')} className={`flex-1 py-2 px-1 rounded-md font-bold text-[11px] transition-colors ${mainTypeUI === 'Réunion' ? 'bg-indigo-50 text-indigo-600' : 'text-slate-500 hover:bg-slate-50'}`}>Réunion</button>
-                  <button type="button" onClick={() => setMainType('Animation')} className={`flex-1 py-2 px-1 rounded-md font-bold text-[11px] transition-colors ${mainTypeUI === 'Animation' ? 'bg-amber-50 text-amber-600' : 'text-slate-500 hover:bg-slate-50'}`}>Animation</button>
-                  <button type="button" onClick={() => setMainType('Soirée Jeux')} className={`flex-1 py-2 px-1 rounded-md font-bold text-[11px] transition-colors ${mainTypeUI === 'Soirée Jeux' ? 'bg-purple-50 text-purple-600' : 'text-slate-500 hover:bg-slate-50'}`}>Soirée Jeux</button>
-                  <button type="button" onClick={() => setMainType('Heures Exceptionnelles')} className={`flex-1 py-2 px-1 rounded-md font-bold text-[11px] transition-colors ${mainTypeUI === 'Heures Exceptionnelles' ? 'bg-teal-50 text-teal-600' : 'text-slate-500 hover:bg-slate-50'}`}>H. Excep.</button>
+              {/* Type */}
+              <div className="pop-card" style={{ padding: "10px 12px", background: "var(--cream2)", display: "flex", flexDirection: "column", gap: 8 }}>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 5, background: "var(--white)", padding: 6, borderRadius: 8, border: "1.5px solid rgba(0,0,0,0.1)" }}>
+                  {([
+                    { key: 'Absence', color: "var(--rose)" },
+                    { key: 'Réunion', color: "var(--bleu)" },
+                    { key: 'Animation', color: "var(--orange)" },
+                    { key: 'Soirée Jeux', color: "var(--purple)" },
+                    { key: 'Heures Exceptionnelles', label: 'H. Excep.', color: "var(--vert)" },
+                  ] as const).map(t => (
+                    <button key={t.key} type="button" onClick={() => setMainType(t.key as any)}
+                      className="pop-btn"
+                      style={{ flex: 1, justifyContent: "center", fontSize: 11, padding: "5px 4px", background: mainTypeUI === t.key ? t.color : "transparent", boxShadow: mainTypeUI === t.key ? "2px 2px 0 var(--ink)" : "none", border: mainTypeUI === t.key ? "2px solid var(--ink)" : "2px solid transparent", color: "var(--ink)" }}>
+                      {'label' in t ? t.label : t.key}
+                    </button>
+                  ))}
                 </div>
 
                 {mainTypeUI === 'Absence' && (
-                  <div className="space-y-3 px-2 pb-2">
-                    <div className="flex gap-2 justify-center">
-                      <button type="button" onClick={() => setAbsType('Congé')} className={`flex-1 py-1.5 rounded-full font-bold text-[10px] uppercase border transition-colors ${absTypeUI === 'Congé' ? 'border-rose-500 bg-rose-500 text-white shadow-sm' : 'border-slate-300 text-slate-500 hover:bg-white'}`}>Congé</button>
-                      <button type="button" onClick={() => setAbsType('RTT')} className={`flex-1 py-1.5 rounded-full font-bold text-[10px] uppercase border transition-colors ${absTypeUI === 'RTT' ? 'border-emerald-500 bg-emerald-500 text-white shadow-sm' : 'border-slate-300 text-slate-500 hover:bg-white'}`}>RTT</button>
-                      <button type="button" onClick={() => setAbsType('Récupération')} className={`flex-1 py-1.5 rounded-full font-bold text-[10px] uppercase border transition-colors ${absTypeUI === 'Récupération' ? 'border-rose-500 bg-rose-500 text-white shadow-sm' : 'border-slate-300 text-slate-500 hover:bg-white'}`}>Récupération</button>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: "0 2px" }}>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      {(['Congé', 'RTT', 'Récupération'] as const).map(a => (
+                        <button key={a} type="button" onClick={() => setAbsType(a)}
+                          className={`pop-btn ${absTypeUI === a ? 'pop-btn-dark' : 'pop-btn-outline'}`}
+                          style={{ flex: 1, justifyContent: "center", fontSize: 11, padding: "6px 0" }}>
+                          {a}
+                        </button>
+                      ))}
                     </div>
-                    <div className="flex gap-2">
-                      <button type="button" onClick={() => setIsDemi(false)} className={`flex-1 py-2 rounded-lg font-bold text-xs border-2 transition-colors ${!isDemiUI ? 'border-black bg-white text-black shadow-sm' : 'border-transparent text-slate-500 hover:bg-white'}`}>Journée entière</button>
-                      <button type="button" onClick={() => setIsDemi(true)} className={`flex-1 py-2 rounded-lg font-bold text-xs border-2 transition-colors ${isDemiUI ? 'border-black bg-white text-black shadow-sm' : 'border-transparent text-slate-500 hover:bg-white'}`}>Demi-journée</button>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <button type="button" onClick={() => setIsDemi(false)} className="pop-btn" style={{ flex: 1, justifyContent: "center", fontSize: 12, padding: "7px 0", background: !isDemiUI ? "var(--white)" : "transparent", boxShadow: !isDemiUI ? "2px 2px 0 var(--ink)" : "none", border: !isDemiUI ? "2.5px solid var(--ink)" : "2px solid rgba(0,0,0,0.15)" }}>Journée entière</button>
+                      <button type="button" onClick={() => setIsDemi(true)} className="pop-btn" style={{ flex: 1, justifyContent: "center", fontSize: 12, padding: "7px 0", background: isDemiUI ? "var(--yellow)" : "transparent", boxShadow: isDemiUI ? "2px 2px 0 var(--ink)" : "none", border: isDemiUI ? "2.5px solid var(--ink)" : "2px solid rgba(0,0,0,0.15)" }}>Demi-journée</button>
                     </div>
                   </div>
                 )}
               </div>
 
-              <div className="flex gap-4">
-                <div className="flex-1">
-                  <label className="text-xs font-black text-slate-500 uppercase">Le (Début)</label>
-                  <input type="date" value={nouvelEvent.date_debut} onChange={e => handleDateDebutChange(e.target.value)} className="w-full mt-1 p-3 rounded-xl border-2 border-slate-200 font-bold outline-none focus:border-black text-sm" />
+              {/* Dates */}
+              <div style={{ display: "flex", gap: 10 }}>
+                <div style={{ flex: 1 }}>
+                  <span style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.07em", color: "rgba(0,0,0,0.4)", display: "block", marginBottom: 6 }}>Le (Début)</span>
+                  <input type="date" value={nouvelEvent.date_debut} onChange={e => handleDateDebutChange(e.target.value)} className="pop-input" style={{ width: "100%", fontSize: 13 }} />
                 </div>
                 {(!rep.active && editMode === 'single') && (
-                  <div className="flex-1">
-                    <label className="text-xs font-black text-slate-500 uppercase">Au (Fin)</label>
-                    <input type="date" value={nouvelEvent.date_fin} min={nouvelEvent.date_debut} onChange={e => setNouvelEvent({...nouvelEvent, date_fin: e.target.value})} className="w-full mt-1 p-3 rounded-xl border-2 border-slate-200 font-bold outline-none focus:border-black text-sm" />
+                  <div style={{ flex: 1 }}>
+                    <span style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.07em", color: "rgba(0,0,0,0.4)", display: "block", marginBottom: 6 }}>Au (Fin)</span>
+                    <input type="date" value={nouvelEvent.date_fin} min={nouvelEvent.date_debut} onChange={e => setNouvelEvent({...nouvelEvent, date_fin: e.target.value})} className="pop-input" style={{ width: "100%", fontSize: 13 }} />
                   </div>
                 )}
               </div>
 
-              <div className={`flex gap-4 transition-opacity ${isTimeDisabled ? 'opacity-30 pointer-events-none' : ''}`}>
-                <div className="flex-1">
-                  <label className="text-xs font-black text-slate-500 uppercase">De (Optionnel)</label>
-                  <input type="time" value={nouvelEvent.heure_debut || ''} onChange={e => setNouvelEvent({...nouvelEvent, heure_debut: e.target.value})} className="w-full mt-1 p-3 rounded-xl border-2 border-slate-200 font-bold outline-none focus:border-black text-sm bg-white" />
+              {/* Heures */}
+              <div style={{ display: "flex", gap: 10, opacity: isTimeDisabled ? 0.3 : 1, pointerEvents: isTimeDisabled ? "none" : "auto" }}>
+                <div style={{ flex: 1 }}>
+                  <span style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.07em", color: "rgba(0,0,0,0.4)", display: "block", marginBottom: 6 }}>De (optionnel)</span>
+                  <input type="time" value={nouvelEvent.heure_debut || ''} onChange={e => setNouvelEvent({...nouvelEvent, heure_debut: e.target.value})} className="pop-input" style={{ width: "100%", fontSize: 13 }} />
                 </div>
-                <div className="flex-1">
-                  <label className="text-xs font-black text-slate-500 uppercase">À (Optionnel)</label>
-                  <input type="time" value={nouvelEvent.heure_fin || ''} onChange={e => setNouvelEvent({...nouvelEvent, heure_fin: e.target.value})} className="w-full mt-1 p-3 rounded-xl border-2 border-slate-200 font-bold outline-none focus:border-black text-sm bg-white" />
+                <div style={{ flex: 1 }}>
+                  <span style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.07em", color: "rgba(0,0,0,0.4)", display: "block", marginBottom: 6 }}>À (optionnel)</span>
+                  <input type="time" value={nouvelEvent.heure_fin || ''} onChange={e => setNouvelEvent({...nouvelEvent, heure_fin: e.target.value})} className="pop-input" style={{ width: "100%", fontSize: 13 }} />
                 </div>
               </div>
 
+              {/* Personnes */}
               <div>
-                <label className="text-xs font-black text-slate-500 uppercase block mb-2">Personnes concernées</label>
-                <div className="flex flex-wrap gap-2 mb-3">
-                  <button type="button" onClick={() => setNouvelEvent({...nouvelEvent, membres: activeEquipe.map(m => m.id)})} className="text-[10px] font-bold px-3 py-1.5 bg-slate-200 hover:bg-slate-300 rounded-full transition-colors text-slate-700">Toute l'équipe</button>
-                  <button type="button" onClick={() => setNouvelEvent({...nouvelEvent, membres: activeEquipe.filter(m => m.groupe === 'A').map(m => m.id)})} className="text-[10px] font-bold px-3 py-1.5 bg-rose-100 hover:bg-rose-200 text-rose-700 rounded-full transition-colors">Équipe A</button>
-                  <button type="button" onClick={() => setNouvelEvent({...nouvelEvent, membres: activeEquipe.filter(m => m.groupe === 'B').map(m => m.id)})} className="text-[10px] font-bold px-3 py-1.5 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-full transition-colors">Équipe B</button>
-                  <button type="button" onClick={() => setNouvelEvent({...nouvelEvent, membres: []})} className="text-[10px] font-bold px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-full transition-colors">Vider</button>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                  <span style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.07em", color: "rgba(0,0,0,0.4)" }}>Personnes concernées</span>
+                  <div style={{ display: "flex", gap: 5 }}>
+                    <button type="button" onClick={() => setNouvelEvent({...nouvelEvent, membres: activeEquipe.map(m => m.id)})} className="pop-sticker" style={{ cursor: "pointer", background: "var(--cream2)", fontSize: 9 }}>Tous</button>
+                    <button type="button" onClick={() => setNouvelEvent({...nouvelEvent, membres: activeEquipe.filter(m => m.groupe === 'A').map(m => m.id)})} className="pop-sticker" style={{ cursor: "pointer", background: couleurs.equipeA, fontSize: 9 }}>Éq. A</button>
+                    <button type="button" onClick={() => setNouvelEvent({...nouvelEvent, membres: activeEquipe.filter(m => m.groupe === 'B').map(m => m.id)})} className="pop-sticker" style={{ cursor: "pointer", background: couleurs.equipeB, fontSize: 9 }}>Éq. B</button>
+                    <button type="button" onClick={() => setNouvelEvent({...nouvelEvent, membres: []})} className="pop-sticker" style={{ cursor: "pointer", background: "var(--white)", fontSize: 9 }}>Vider</button>
+                  </div>
                 </div>
-
-                <div className="grid grid-cols-2 gap-2">
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
                   {activeEquipe.map(m => {
                     const isAbsent = membresEnConge.includes(m.id);
+                    const isSelected = nouvelEvent.membres.includes(m.id);
                     return (
-                      <label key={m.id} className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer border-2 transition-colors ${nouvelEvent.membres.includes(m.id) ? 'border-black bg-slate-50 shadow-sm' : 'border-transparent hover:bg-slate-50'} ${isAbsent ? 'opacity-50 bg-slate-100 grayscale' : ''}`}>
-                        <input type="checkbox" checked={nouvelEvent.membres.includes(m.id)} onChange={() => toggleMembreEvent(m.id)} className="w-4 h-4 accent-black shrink-0" />
-                        <div className="flex flex-col overflow-hidden">
-                          <span className="font-bold text-sm truncate">{m.nom}</span>
-                          {isAbsent && <span className="text-[9px] text-rose-500 font-bold leading-none mt-0.5">🏖️ En congé</span>}
+                      <label key={m.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderRadius: 8, cursor: "pointer", border: isSelected ? "2.5px solid var(--ink)" : "1.5px solid rgba(0,0,0,0.12)", background: isSelected ? "var(--yellow)" : "var(--white)", boxShadow: isSelected ? "2px 2px 0 var(--ink)" : "none", opacity: isAbsent ? 0.5 : 1 }}>
+                        <input type="checkbox" checked={isSelected} onChange={() => toggleMembreEvent(m.id)} style={{ width: 14, height: 14, accentColor: "var(--ink)", flexShrink: 0 }} />
+                        <div style={{ display: "flex", flexDirection: "column", overflow: "hidden" }}>
+                          <span style={{ fontWeight: 800, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.nom}</span>
+                          {isAbsent && <span style={{ fontSize: 9, color: "var(--rouge)", fontWeight: 700 }}>🏖️ En congé</span>}
                         </div>
                       </label>
                     );
@@ -1975,62 +1982,61 @@ useEffect(() => {
                 </div>
               </div>
 
+              {/* Horaires exceptionnels */}
               {((mainTypeUI === 'Soirée Jeux' || isDemiUI) && nouvelEvent.membres.length > 0) && (
-                <div className="bg-slate-50 p-4 rounded-2xl border-2 border-slate-200 mt-4 animate-fade-in">
-                  <h4 className="text-xs font-black text-slate-800 uppercase mb-3">Horaires de travail exceptionnels</h4>
-                  
-                  {['A', 'B', 'Aucun'].filter(grp => 
-                    mainTypeUI === 'Soirée Jeux' 
-                      ? activeEquipe.some(m => (m.groupe || 'Aucun') === grp) 
+                <div className="pop-card" style={{ padding: "12px 14px", background: "var(--cream2)" }}>
+                  <p className="bc" style={{ fontSize: 12, letterSpacing: "0.05em", marginBottom: 10 }}>Horaires de travail exceptionnels</p>
+                  {['A', 'B', 'Aucun'].filter(grp =>
+                    mainTypeUI === 'Soirée Jeux'
+                      ? activeEquipe.some(m => (m.groupe || 'Aucun') === grp)
                       : activeEquipe.some(m => nouvelEvent.membres.includes(m.id) && (m.groupe || 'Aucun') === grp)
                   ).map(grp => (
-                    <div key={grp} className="flex flex-col sm:flex-row sm:items-center justify-between bg-white p-3 rounded-xl mb-2 shadow-sm gap-2 border border-slate-100">
-                      <span className="text-xs font-bold text-slate-700">
-                        {grp === 'Aucun' ? 'Sans équipe' : `Équipe ${grp}`}
-                      </span>
-                      <div className="flex items-center gap-1 sm:gap-2">
-                        <input type="time" value={horairesException[grp]?.debut || ''} onChange={e => setHorairesException({...horairesException, [grp]: {...horairesException[grp], debut: e.target.value}})} className="p-1.5 rounded-lg border-2 border-slate-100 text-xs font-bold outline-none focus:border-slate-300" />
-                        <span className="text-slate-400 font-bold text-xs">à</span>
-                        <input type="time" value={horairesException[grp]?.fin || ''} onChange={e => setHorairesException({...horairesException, [grp]: {...horairesException[grp], fin: e.target.value}})} className="p-1.5 rounded-lg border-2 border-slate-100 text-xs font-bold outline-none focus:border-slate-300" />
-                        <div className="flex items-center bg-slate-50 border border-slate-200 rounded-lg ml-1 px-1">
-                          <span className="text-[9px] font-bold text-slate-400 mr-1">Repas</span>
-                          <input type="number" step="0.5" min="0" value={horairesException[grp]?.pause !== undefined ? horairesException[grp].pause : 1} onChange={e => setHorairesException({...horairesException, [grp]: {...horairesException[grp], pause: parseFloat(e.target.value) || 0}})} className="w-10 p-1 bg-transparent text-xs font-bold outline-none text-center" />
+                    <div key={grp} className="pop-card" style={{ padding: "8px 10px", marginBottom: 6, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                      <span style={{ fontSize: 12, fontWeight: 800 }}>{grp === 'Aucun' ? 'Sans équipe' : `Équipe ${grp}`}</span>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <input type="time" value={horairesException[grp]?.debut || ''} onChange={e => setHorairesException({...horairesException, [grp]: {...horairesException[grp], debut: e.target.value}})} className="pop-input" style={{ padding: "5px 7px", fontSize: 12, width: 85 }} />
+                        <span style={{ fontSize: 11, fontWeight: 700, color: "rgba(0,0,0,0.35)" }}>→</span>
+                        <input type="time" value={horairesException[grp]?.fin || ''} onChange={e => setHorairesException({...horairesException, [grp]: {...horairesException[grp], fin: e.target.value}})} className="pop-input" style={{ padding: "5px 7px", fontSize: 12, width: 85 }} />
+                        <div style={{ display: "flex", alignItems: "center", background: "var(--cream2)", border: "1.5px solid rgba(0,0,0,0.1)", borderRadius: 6, padding: "4px 7px", gap: 3 }}>
+                          <span style={{ fontSize: 10, fontWeight: 700, color: "rgba(0,0,0,0.4)" }}>🍽</span>
+                          <input type="number" step="0.5" min="0" value={horairesException[grp]?.pause !== undefined ? horairesException[grp].pause : 1} onChange={e => setHorairesException({...horairesException, [grp]: {...horairesException[grp], pause: parseFloat(e.target.value) || 0}})} style={{ width: 32, padding: 0, background: "transparent", border: "none", fontSize: 12, fontWeight: 700, outline: "none", textAlign: "center", fontFamily: "inherit" }} />
                         </div>
                       </div>
                     </div>
                   ))}
                 </div>
               )}
-              
+
+              {/* Récurrence */}
               {(!nouvelEvent.id || editMode === 'series') && (
-                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 mt-2">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" checked={rep.active} onChange={e => setRep({...rep, active: e.target.checked})} className="w-4 h-4 accent-black" />
-                    <span className="font-bold text-sm text-slate-700">Répéter cet événement (Série)</span>
+                <div className="pop-card" style={{ padding: "12px 14px", background: "var(--cream2)" }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                    <input type="checkbox" checked={rep.active} onChange={e => setRep({...rep, active: e.target.checked})} style={{ width: 15, height: 15, accentColor: "var(--ink)" }} />
+                    <span style={{ fontWeight: 700, fontSize: 13 }}>Répéter cet événement (Série)</span>
                   </label>
                   {rep.active && (
-                    <div className="grid grid-cols-2 gap-3 mt-3 animate-fade-in border-t border-slate-200 pt-3">
-                       <div className="col-span-2 sm:col-span-1">
-                         <label className="text-[10px] font-black text-slate-500 uppercase">Répéter tous les...</label>
-                         <div className="flex gap-2 mt-1">
-                           <input type="number" min="1" value={rep.interval} onChange={e => setRep({...rep, interval: parseInt(e.target.value) || 1})} className="w-16 p-2 rounded-lg border border-slate-200 text-xs font-bold outline-none focus:border-black text-center" />
-                           <select value={rep.period} onChange={e => setRep({...rep, period: e.target.value})} className="flex-1 p-2 rounded-lg border border-slate-200 text-xs font-bold outline-none cursor-pointer focus:border-black">
-                             <option value="weeks">Semaine(s)</option>
-                             <option value="months">Mois</option>
-                           </select>
-                         </div>
-                       </div>
-                       <div className="col-span-2 sm:col-span-1">
-                         <label className="text-[10px] font-black text-slate-500 uppercase">Jusqu'au</label>
-                         <input type="date" min={nouvelEvent.date_debut} value={rep.date_limite} onChange={e => setRep({...rep, date_limite: e.target.value})} className="w-full p-2 mt-1 rounded-lg border border-slate-200 text-xs font-bold outline-none focus:border-black" />
-                       </div>
-                       <div className="col-span-2">
-                         <label className="text-[10px] font-black text-slate-500 uppercase">Participants</label>
-                         <select value={rep.rotation ? 'true' : 'false'} onChange={e => setRep({...rep, rotation: e.target.value === 'true'})} className="w-full p-2 mt-1 rounded-lg border border-slate-200 text-xs font-bold outline-none cursor-pointer focus:border-black">
-                           <option value="false">Fixes (Tous les sélectionnés participeront)</option>
-                           <option value="true">Chacun son tour (Rotation parmi les sélectionnés)</option>
-                         </select>
-                       </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12, paddingTop: 12, borderTop: "1.5px solid rgba(0,0,0,0.08)" }}>
+                      <div>
+                        <span style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.07em", color: "rgba(0,0,0,0.4)", display: "block", marginBottom: 5 }}>Répéter tous les…</span>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <input type="number" min="1" value={rep.interval} onChange={e => setRep({...rep, interval: parseInt(e.target.value) || 1})} className="pop-input" style={{ width: 52, textAlign: "center", fontSize: 13 }} />
+                          <select value={rep.period} onChange={e => setRep({...rep, period: e.target.value})} className="pop-input" style={{ flex: 1, cursor: "pointer", fontSize: 13 }}>
+                            <option value="weeks">Semaine(s)</option>
+                            <option value="months">Mois</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div>
+                        <span style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.07em", color: "rgba(0,0,0,0.4)", display: "block", marginBottom: 5 }}>Jusqu'au</span>
+                        <input type="date" min={nouvelEvent.date_debut} value={rep.date_limite} onChange={e => setRep({...rep, date_limite: e.target.value})} className="pop-input" style={{ width: "100%", fontSize: 13 }} />
+                      </div>
+                      <div style={{ gridColumn: "1 / -1" }}>
+                        <span style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.07em", color: "rgba(0,0,0,0.4)", display: "block", marginBottom: 5 }}>Participants</span>
+                        <select value={rep.rotation ? 'true' : 'false'} onChange={e => setRep({...rep, rotation: e.target.value === 'true'})} className="pop-input" style={{ width: "100%", cursor: "pointer", fontSize: 13 }}>
+                          <option value="false">Fixes (Tous les sélectionnés participeront)</option>
+                          <option value="true">Chacun son tour (Rotation parmi les sélectionnés)</option>
+                        </select>
+                      </div>
                     </div>
                   )}
                 </div>
