@@ -289,6 +289,19 @@ useEffect(() => {
   const [newAbsHS, setNewAbsHS] = useState<AbsenceHS | null>(null);
 
   const isAbsenceType = ABSENCE_TYPES.includes(nouvelEvent.type);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (quickEditEv) { setQuickEditEv(null); return; }
+      if (showEventModal) { setShowEventModal(false); return; }
+      if (swapSession.active && swapSession.step === 2) { setSwapSession({ active: false, step: 1, selectedDates: [], m1Id: '', m2Id: '' }); return; }
+      if (showEquipePanel) { setShowEquipePanel(false); return; }
+      if (showEventsListPanel) { setShowEventsListPanel(false); return; }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [quickEditEv, showEventModal, swapSession, showEquipePanel, showEventsListPanel]);
   const mainTypeUI = isAbsenceType ? 'Absence' : (['Réunion', 'Animation', 'Soirée Jeux', 'Heures Exceptionnelles'].includes(nouvelEvent.type) ? nouvelEvent.type : 'Autre');
   const absTypeUI = nouvelEvent.type.includes('RTT') ? 'RTT' : nouvelEvent.type.includes('Récupération') ? 'Récupération' : 'Congé';
   const isDemiUI = nouvelEvent.type.startsWith('Demi-');
@@ -1397,8 +1410,9 @@ useEffect(() => {
       </div>
 
       {swapSession.active && swapSession.step === 2 && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 9999, display: "flex", justifyContent: "center", alignItems: "center", backdropFilter: "blur(4px)", padding: 16 }}>
-          <div className="pop-card animate-fade-in" style={{ width: "100%", maxWidth: 440, padding: "28px 32px", maxHeight: "95vh", overflowY: "auto", display: "flex", flexDirection: "column", gap: 20 }} >
+        <div style={{ position: "fixed", top: 64, bottom: 0, left: 0, right: 0, background: "rgba(0,0,0,0.5)", zIndex: 9999, display: "flex", justifyContent: "center", alignItems: "center", backdropFilter: "blur(4px)", padding: 16 }}
+          onClick={e => { if (e.target === e.currentTarget) setSwapSession({ active: false, step: 1, selectedDates: [], m1Id: '', m2Id: '' }); }}>
+          <div className="pop-card animate-fade-in" style={{ width: "100%", maxWidth: 440, padding: "28px 32px", maxHeight: "90vh", overflowY: "auto", display: "flex", flexDirection: "column", gap: 20 }} >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <h2 className="bc" style={{ fontSize: 24, margin: 0 }}>🔄 Échange d'horaires</h2>
               <button onClick={() => setSwapSession({ active: false, step: 1, selectedDates: [], m1Id: '', m2Id: '' })} className="pop-btn pop-btn-outline" style={{ width: 36, height: 36, padding: 0, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
@@ -1434,7 +1448,8 @@ useEffect(() => {
       )}
 
       {showEquipePanel && (
-        <div style={{ position: "fixed", top: 64, bottom: 0, left: 0, right: 0, background: "rgba(0,0,0,0.5)", zIndex: 50, display: "flex", justifyContent: "flex-end", backdropFilter: "blur(4px)" }}>
+        <div style={{ position: "fixed", top: 64, bottom: 0, left: 0, right: 0, background: "rgba(0,0,0,0.5)", zIndex: 50, display: "flex", justifyContent: "flex-end", backdropFilter: "blur(4px)" }}
+          onClick={e => { if (e.target === e.currentTarget) { setShowEquipePanel(false); setMembreActif(null); } }}>
           <div style={{ background: "var(--white)", width: "100%", maxWidth: 520, height: "100%", display: "flex", flexDirection: "column", border: "2.5px solid var(--ink)", borderRight: "none", boxShadow: "-6px 0 0 var(--ink)" }} className="animate-slide-in-right">
             <div style={{ padding: "20px 24px", borderBottom: "2px solid rgba(0,0,0,0.08)", display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--white)" }}>
               <div>
@@ -1745,7 +1760,8 @@ useEffect(() => {
       )}
 
       {showEventsListPanel && (
-        <div style={{ position: "fixed", top: 64, bottom: 0, left: 0, right: 0, background: "rgba(0,0,0,0.5)", zIndex: 50, display: "flex", justifyContent: "flex-end", backdropFilter: "blur(4px)" }}>
+        <div style={{ position: "fixed", top: 64, bottom: 0, left: 0, right: 0, background: "rgba(0,0,0,0.5)", zIndex: 50, display: "flex", justifyContent: "flex-end", backdropFilter: "blur(4px)" }}
+          onClick={e => { if (e.target === e.currentTarget) setShowEventsListPanel(false); }}>
           <div style={{ background: "var(--white)", width: "100%", maxWidth: 520, height: "100%", display: "flex", flexDirection: "column", border: "2.5px solid var(--ink)", borderRight: "none", boxShadow: "-6px 0 0 var(--ink)" }} className="animate-slide-in-right">
             <div style={{ padding: "20px 24px", borderBottom: "2px solid rgba(0,0,0,0.08)", display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--white)" }}>
               <div>
@@ -1860,8 +1876,9 @@ useEffect(() => {
       )}
 
       {showEventModal && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 9999, display: "flex", justifyContent: "center", alignItems: "center", backdropFilter: "blur(4px)", padding: 16 }}>
-          <div className="pop-card animate-fade-in" style={{ width: "100%", maxWidth: 460, maxHeight: "95vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <div style={{ position: "fixed", top: 64, bottom: 0, left: 0, right: 0, background: "rgba(0,0,0,0.5)", zIndex: 9999, display: "flex", justifyContent: "center", alignItems: "center", backdropFilter: "blur(4px)", padding: 16 }}
+          onClick={e => { if (e.target === e.currentTarget) setShowEventModal(false); }}>
+          <div className="pop-card animate-fade-in" style={{ width: "100%", maxWidth: 460, maxHeight: "100%", display: "flex", flexDirection: "column", overflow: "hidden" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "18px 22px", borderBottom: "1.5px solid rgba(0,0,0,0.08)", flexShrink: 0 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <h2 className="bc" style={{ fontSize: 22, margin: 0 }}>{nouvelEvent.id ? 'Modifier' : 'Nouvel Événement'}</h2>
@@ -2052,7 +2069,7 @@ useEffect(() => {
       )}
 
       {quickEditEv && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)", zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
+        <div style={{ position: "fixed", top: 64, bottom: 0, left: 0, right: 0, background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)", zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
           onClick={e => { if (e.target === e.currentTarget) setQuickEditEv(null); }}>
           <div className="pop-card" style={{ width: "100%", maxWidth: 380 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px", borderBottom: "1.5px solid rgba(0,0,0,0.08)" }}>
