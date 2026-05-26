@@ -200,17 +200,18 @@ export default function Home() {
     setter: React.Dispatch<React.SetStateAction<JeuAttenteType[]>>
   ) => {
     const uid = nextUid();
-    setter(prev => [...prev, { uid, ean: codeScan, nom: "⏳ Recherche en cours...", typeAjout: "nouveaute", etapes: { ...defaultEtapes }, couleur: "" }]);
+    setter(prev => [{ uid, ean: codeScan, nom: "⏳ Recherche en cours...", typeAjout: "nouveaute", etapes: { ...defaultEtapes }, couleur: "" }, ...prev]);
 
     const [apiData, dbResult] = await Promise.all([
       fetch(`/api/recherche?ean=${codeScan}`).then(r => r.json()).catch(() => ({ nom: null })),
-      supabase.from('jeux').select('id', { count: 'exact', head: true }).eq('ean', codeScan)
+      supabase.from('jeux').select('nom', { count: 'exact' }).eq('ean', codeScan).limit(1)
     ]);
 
     const doublesCount = dbResult.count ?? 0;
+    const nomFromDb = dbResult.data?.[0]?.nom ?? null;
     setter(prev => prev.map(j => j.uid === uid ? {
       ...j,
-      nom: apiData.nom || "",
+      nom: apiData.nom || nomFromDb || "",
       typeAjout: doublesCount > 0 ? "double" : "nouveaute",
       doublesExistants: doublesCount > 0 ? doublesCount : undefined,
     } : j));
@@ -225,7 +226,7 @@ export default function Home() {
 
   const ajouterManuel = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key !== "Enter" || !manuelInput.trim()) return;
-    setJeuxAttente([...jeuxAttente, { uid: nextUid(), ean: "Manuel", nom: manuelInput.trim(), typeAjout: "nouveaute", etapes: { ...defaultEtapes }, couleur: "" }]);
+    setJeuxAttente(prev => [{ uid: nextUid(), ean: "Manuel", nom: manuelInput.trim(), typeAjout: "nouveaute", etapes: { ...defaultEtapes }, couleur: "" }, ...prev]);
     setManuelInput("");
   };
 
@@ -238,7 +239,7 @@ export default function Home() {
 
   const ajouterManuelReception = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key !== "Enter" || !manuelReceptionInput.trim()) return;
-    setJeuxReception(prev => [...prev, { uid: nextUid(), ean: "Manuel", nom: manuelReceptionInput.trim(), typeAjout: "nouveaute", etapes: { ...defaultEtapes }, couleur: "" }]);
+    setJeuxReception(prev => [{ uid: nextUid(), ean: "Manuel", nom: manuelReceptionInput.trim(), typeAjout: "nouveaute", etapes: { ...defaultEtapes }, couleur: "" }, ...prev]);
     setManuelReceptionInput("");
   };
 
