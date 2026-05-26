@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
-import * as cheerio from "cheerio";
+
+const DOOFINDER_URL = "https://eu1-search.doofinder.com/5/search";
+const DOOFINDER_HASHID = "b220561599a93dfc2d82f89bf6223e54";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -8,23 +10,28 @@ export async function GET(request: Request) {
   if (!ean) return NextResponse.json({ nom: null });
 
   try {
-    const reponse = await fetch(`https://www.philibertnet.com/fr/recherche?search_query=${ean}`, {
-      headers: { "User-Agent": "Mozilla/5.0" }
-    });
-    
-    if (!reponse.ok) return NextResponse.json({ nom: null });
-    
-    const html = await reponse.text();
-    const $ = cheerio.load(html);
-    
-    const titrePage = $("h1.h1").text().trim();
-    if (titrePage) return NextResponse.json({ nom: titrePage });
-    
-    const titreListe = $("p.s_title_block a").first().text().trim();
-    if (titreListe) return NextResponse.json({ nom: titreListe });
-    
-    return NextResponse.json({ nom: null });
-  } catch (error) {
+    const response = await fetch(
+      `${DOOFINDER_URL}?hashid=${DOOFINDER_HASHID}&query=${encodeURIComponent(ean)}&rpp=1`,
+      {
+        headers: {
+          "Origin": "https://www.philibertnet.com",
+          "User-Agent": "Mozilla/5.0",
+        }
+      }
+    );
+
+    if (!response.ok) return NextResponse.json({ nom: null });
+
+    const data = await response.json();
+    const result = data.results?.[0];
+
+    if (!result) return NextResponse.json({ nom: null });
+
+    // Vérifier que l'EAN correspond exactement pour éviter les faux positifs
+    if (result.ean13 !== ean) return NextResponse.json({ nom: null });
+
+    return NextResponse.json({ nom: result.title ?? null });
+  } catch {
     return NextResponse.json({ nom: null });
   }
 }
