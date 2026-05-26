@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
-import { supabase } from "../../lib/supabase"; 
+import { supabase } from "../../lib/supabase";
 import Link from "next/link";
 import NavBar from "../../components/NavBar";
 
@@ -24,15 +24,35 @@ type JeuType = {
   etape_notice: boolean;
   etape_nouveaute: boolean;
   couleur?: string;
-  [key: string]: string | number | boolean | undefined; 
+  [key: string]: string | number | boolean | undefined;
 };
 
 type JeuAttenteType = {
+  uid: number;
   ean: string;
   nom: string;
   typeAjout: "nouveaute" | "double" | "existant";
   etapes: Record<string, boolean>;
   couleur: string;
+  doublesExistants?: number;
+};
+
+type CommandeAttenteType = {
+  uid: number;
+  ean: string;
+  nom: string;
+  quantite: number;
+};
+
+type CommandeType = {
+  id: number;
+  ean: string;
+  nom: string;
+  quantite: number;
+  statut: "En attente" | "Reçu";
+  notes: string | null;
+  date_commande: string;
+  date_reception: string | null;
 };
 
 const defaultEtapes = {
@@ -52,23 +72,29 @@ const COULEURS = [
   { id: 'orange', hex: '#fb923c' },
 ];
 
+const formatDate = (dateStr: string) => {
+  const d = new Date(dateStr);
+  return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+};
+
+let uidCounter = 0;
+const nextUid = () => ++uidCounter;
+
 export default function Home() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isListeOpen, setIsListeOpen] = useState(false);
   const [etapeActive, setEtapeActive] = useState<string | null>(null);
-  
+
   const [nbReparations, setNbReparations] = useState(0);
   const [nbManquants, setNbManquants] = useState(0);
-  const [nbOrphelines, setNbOrphelines] = useState(0); 
+  const [nbOrphelines, setNbOrphelines] = useState(0);
 
   const [jeuxAttente, setJeuxAttente] = useState<JeuAttenteType[]>([]);
   const [jeuxEnPrepa, setJeuxEnPrepa] = useState<JeuType[]>([]);
   const [jeuxSelectionnes, setJeuxSelectionnes] = useState<(string | number)[]>([]);
 
-  // ── Recherche dans les modals d'étape ──
   const [rechercheEtape, setRechercheEtape] = useState("");
 
-  // ── Modal scan codes Syracuse après Équiper ──
   const [isScanOpen,    setIsScanOpen]    = useState(false);
   const [scanQueue,     setScanQueue]     = useState<JeuType[]>([]);
   const [scanIdx,       setScanIdx]       = useState(0);
@@ -80,12 +106,29 @@ export default function Home() {
   const [manuelInput, setManuelInput] = useState("");
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editingEanIndex, setEditingEanIndex] = useState<number | null>(null);
-  
+
   const [totalEnPrepa, setTotalEnPrepa] = useState(0);
   const [comptesEtapes, setComptesEtapes] = useState<Record<string, number>>({});
 
   const [rechercheJeu, setRechercheJeu] = useState("");
   const [isSearchDropdownOpen, setIsSearchDropdownOpen] = useState(false);
+
+  // ── Commandes ──
+  const [isCommandesOpen, setIsCommandesOpen] = useState(false);
+  const [commandesAttente, setCommandesAttente] = useState<CommandeAttenteType[]>([]);
+  const [commandesHistorique, setCommandesHistorique] = useState<CommandeType[]>([]);
+  const [eanCommandeInput, setEanCommandeInput] = useState("");
+  const [manuelCommandeInput, setManuelCommandeInput] = useState("");
+  const [nbCommandesEnAttente, setNbCommandesEnAttente] = useState(0);
+  const [filtreHistorique, setFiltreHistorique] = useState<"tous" | "En attente" | "Reçu">("tous");
+
+  const fetchCommandesData = async () => {
+    const { data } = await supabase.from('commandes').select('*').order('date_commande', { ascending: false });
+    if (data) {
+      setCommandesHistorique(data as CommandeType[]);
+      setNbCommandesEnAttente(data.filter((c: CommandeType) => c.statut === 'En attente').length);
+    }
+  };
 
   const fetchDashboardData = async () => {
     const { data: jeuxData, error: jeuxError } = await supabase
@@ -101,7 +144,7 @@ export default function Home() {
 
     const jeuxBruts = (jeuxData as JeuType[]).sort((a, b) => a.nom.localeCompare(b.nom));
     const eans = [...new Set(jeuxBruts.map(j => j.ean))];
-    
+
     let colorMap: Record<string, string> = {};
     if (eans.length > 0) {
       const { data: catData } = await supabase.from('catalogue').select('ean, couleur').in('ean', eans);
@@ -113,7 +156,7 @@ export default function Home() {
     }
 
     const jeux = jeuxBruts.map(j => ({ ...j, couleur: colorMap[j.ean] || "" }));
-    
+
     setJeuxEnPrepa(jeux);
     setTotalEnPrepa(jeux.length);
 
@@ -124,7 +167,7 @@ export default function Home() {
       etape_equiper: jeux.filter(j => !j.etape_equiper).length,
       etape_encoder: jeux.filter(j => !j.etape_encoder).length,
       etape_notice: jeux.filter(j => !j.etape_notice).length,
-      etape_nouveaute: jeux.filter(j => !j.is_double && !j.etape_nouveaute).length, // Ne compte plus les doubles
+      etape_nouveaute: jeux.filter(j => !j.is_double && !j.etape_nouveaute).length,
     });
 
     const { count: countRep } = await supabase.from('reparations').select('*', { count: 'exact', head: true }).eq('statut', 'À faire');
@@ -133,11 +176,12 @@ export default function Home() {
 
     setNbReparations(countRep || 0);
     setNbManquants(countManq || 0);
-    setNbOrphelines(countOrp || 0); 
+    setNbOrphelines(countOrp || 0);
   };
 
   useEffect(() => {
     fetchDashboardData();
+    fetchCommandesData();
   }, []);
 
   const etapesVisuelles = [
@@ -152,24 +196,33 @@ export default function Home() {
 
   const formatNum = (num: number) => num < 10 ? `0${num}` : num;
 
+  // ── Ajout jeu : détecte automatiquement les doubles ──
   const ajouterEan = async (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" && eanInput.trim() !== "") {
       const codeScan = eanInput.trim();
-      setEanInput(""); 
-      setJeuxAttente(prev => [...prev, { ean: codeScan, nom: "⏳ Recherche en cours...", typeAjout: "nouveaute", etapes: { ...defaultEtapes }, couleur: "" }]);
-      try {
-        const res = await fetch(`/api/recherche?ean=${codeScan}`);
-        const data = await res.json();
-        setJeuxAttente(prev => prev.map(jeu => jeu.ean === codeScan ? { ...jeu, nom: data.nom || "" } : jeu));
-      } catch (err) {
-        setJeuxAttente(prev => prev.map(jeu => jeu.ean === codeScan ? { ...jeu, nom: "" } : jeu));
-      }
+      const uid = nextUid();
+      setEanInput("");
+      setJeuxAttente(prev => [...prev, { uid, ean: codeScan, nom: "⏳ Recherche en cours...", typeAjout: "nouveaute", etapes: { ...defaultEtapes }, couleur: "" }]);
+
+      const [apiData, dbResult] = await Promise.all([
+        fetch(`/api/recherche?ean=${codeScan}`).then(r => r.json()).catch(() => ({ nom: null })),
+        supabase.from('jeux').select('id', { count: 'exact', head: true }).eq('ean', codeScan)
+      ]);
+
+      const doublesCount = dbResult.count ?? 0;
+
+      setJeuxAttente(prev => prev.map(jeu => jeu.uid === uid ? {
+        ...jeu,
+        nom: apiData.nom || "",
+        typeAjout: doublesCount > 0 ? "double" : "nouveaute",
+        doublesExistants: doublesCount > 0 ? doublesCount : undefined,
+      } : jeu));
     }
   };
 
   const ajouterManuel = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" && manuelInput.trim() !== "") {
-      setJeuxAttente([...jeuxAttente, { ean: "Manuel", nom: manuelInput, typeAjout: "nouveaute", etapes: { ...defaultEtapes }, couleur: "" }]);
+      setJeuxAttente([...jeuxAttente, { uid: nextUid(), ean: "Manuel", nom: manuelInput, typeAjout: "nouveaute", etapes: { ...defaultEtapes }, couleur: "" }]);
       setManuelInput("");
     }
   };
@@ -193,7 +246,7 @@ export default function Home() {
   };
 
   const toggleEtapeAttente = (index: number, etapeId: string) => {
-    if (etapeId === 'etape_nouveaute') return; 
+    if (etapeId === 'etape_nouveaute') return;
     setJeuxAttente(prev => prev.map((jeu, i) => {
       if (i === index) return { ...jeu, etapes: { ...jeu.etapes, [etapeId]: !jeu.etapes[etapeId] } };
       return jeu;
@@ -204,20 +257,19 @@ export default function Home() {
     const jeuxAInserer = jeuxAttente.map(jeu => {
       const isExistant = jeu.typeAjout === "existant";
       const isDouble = jeu.typeAjout === "double";
-      
-      const basesOk = jeu.etapes.etape_plastifier && jeu.etapes.etape_contenu && 
-                      jeu.etapes.etape_etiquette && jeu.etapes.etape_equiper && 
+
+      const basesOk = jeu.etapes.etape_plastifier && jeu.etapes.etape_contenu &&
+                      jeu.etapes.etape_etiquette && jeu.etapes.etape_equiper &&
                       jeu.etapes.etape_encoder && jeu.etapes.etape_notice;
-                      
-      // Un double va en stock si les bases sont faites. Un existant y va direct.
+
       const isTermine = isExistant || (isDouble && basesOk);
 
-      return { 
-        nom: jeu.nom, 
-        ean: jeu.ean, 
+      return {
+        nom: jeu.nom,
+        ean: jeu.ean,
         statut: isTermine ? "En stock" : "En préparation",
         is_double: isDouble || isExistant,
-        etape_nouveaute: false, // JAMAIS true lors de l'ajout ! Se débloque manuellement pour les nouveautés dans l'atelier.
+        etape_nouveaute: false,
         etape_plastifier: isExistant ? true : jeu.etapes.etape_plastifier,
         etape_contenu: isExistant ? true : jeu.etapes.etape_contenu,
         etape_etiquette: isExistant ? true : jeu.etapes.etape_etiquette,
@@ -226,14 +278,14 @@ export default function Home() {
         etape_notice: isExistant ? true : jeu.etapes.etape_notice
       };
     });
-    
+
     const { error: jeuxError } = await supabase.from('jeux').insert(jeuxAInserer);
-    
+
     if (jeuxError) {
       console.error(jeuxError);
-      alert("Erreur d'envoi dans jeux : " + jeuxError.message); 
+      alert("Erreur d'envoi dans jeux : " + jeuxError.message);
       return;
-    } 
+    }
 
     const catalogueUpdates = jeuxAttente.filter(j => j.couleur !== "").map(j => ({
       ean: j.ean,
@@ -246,15 +298,52 @@ export default function Home() {
       if (catError) console.error("Erreur mise à jour catalogue:", catError.message);
     }
 
-    setJeuxAttente([]); 
-    setIsModalOpen(false); 
-    fetchDashboardData(); 
+    setJeuxAttente([]);
+    setIsModalOpen(false);
+    fetchDashboardData();
+  };
+
+  // ── Commandes ──
+  const ajouterEanCommande = async (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" && eanCommandeInput.trim() !== "") {
+      const codeScan = eanCommandeInput.trim();
+      const uid = nextUid();
+      setEanCommandeInput("");
+      setCommandesAttente(prev => [...prev, { uid, ean: codeScan, nom: "⏳ Recherche...", quantite: 1 }]);
+      const apiData = await fetch(`/api/recherche?ean=${codeScan}`).then(r => r.json()).catch(() => ({ nom: null }));
+      setCommandesAttente(prev => prev.map(c => c.uid === uid ? { ...c, nom: apiData.nom || codeScan } : c));
+    }
+  };
+
+  const ajouterManuelCommande = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" && manuelCommandeInput.trim() !== "") {
+      setCommandesAttente(prev => [...prev, { uid: nextUid(), ean: "Manuel", nom: manuelCommandeInput.trim(), quantite: 1 }]);
+      setManuelCommandeInput("");
+    }
+  };
+
+  const validerCommandes = async () => {
+    if (commandesAttente.length === 0) return;
+    const toInsert = commandesAttente.map(c => ({ ean: c.ean, nom: c.nom, quantite: c.quantite, statut: 'En attente' }));
+    const { error } = await supabase.from('commandes').insert(toInsert);
+    if (error) { alert("Erreur: " + error.message); return; }
+    setCommandesAttente([]);
+    fetchCommandesData();
+  };
+
+  const marquerRecu = async (id: number) => {
+    await supabase.from('commandes').update({ statut: 'Reçu', date_reception: new Date().toISOString() }).eq('id', id);
+    fetchCommandesData();
+  };
+
+  const supprimerCommande = async (id: number) => {
+    await supabase.from('commandes').delete().eq('id', id);
+    fetchCommandesData();
   };
 
   const verifierSiTermine = (jeu: JeuType) => {
-    const bases = jeu.etape_plastifier && jeu.etape_contenu && jeu.etape_etiquette && 
+    const bases = jeu.etape_plastifier && jeu.etape_contenu && jeu.etape_etiquette &&
                   jeu.etape_equiper && jeu.etape_encoder && jeu.etape_notice;
-    // Si c'est un double, il ne nécessite pas l'étape nouveauté pour être "Terminé"
     return jeu.is_double ? bases : (bases && jeu.etape_nouveaute);
   };
 
@@ -266,7 +355,7 @@ export default function Home() {
 
     const updatedVal = !valeurActuelle;
     const updatedJeu = { ...jeuActuel, [colonne]: updatedVal };
-    
+
     const estFini = verifierSiTermine(updatedJeu);
     const newStatut = estFini ? "En stock" : "En préparation";
 
@@ -279,7 +368,7 @@ export default function Home() {
 
     const { error } = await supabase.from('jeux').update({ [colonne]: updatedVal, statut: newStatut }).eq('id', id);
     if (error) alert("Erreur de synchronisation !");
-    
+
     fetchDashboardData();
   };
 
@@ -303,7 +392,6 @@ export default function Home() {
     setJeuxSelectionnes([]);
     fetchDashboardData();
 
-    // Ouvrir la modal de scan si étape Équiper
     if (etapeActive === 'etape_equiper' && jeuxValides.length > 0) {
       setScanQueue(jeuxValides);
       setScanIdx(0);
@@ -338,8 +426,7 @@ export default function Home() {
   };
 
   const etapeActiveInfo = etapesVisuelles.find(e => e.id === etapeActive);
-  
-  // NOUVEAU: On exclut les doubles de la modale de validation si l'étape active est "Nouveauté"
+
   const jeuxPourEtapeActive = jeuxEnPrepa.filter(j => {
     if (!etapeActive) return false;
     if (etapeActive === 'etape_nouveaute' && j.is_double) return false;
@@ -348,20 +435,17 @@ export default function Home() {
 
   const changerCouleurJeu = async (idJeu: string | number, ean: string, nom: string, nouvelleCouleur: string) => {
     setJeuxEnPrepa(prev => prev.map(j => j.id === idJeu ? { ...j, couleur: nouvelleCouleur } : j));
-
-    const { error } = await supabase
-      .from('catalogue')
-      .upsert({ ean, nom, couleur: nouvelleCouleur }, { onConflict: 'ean' });
-      
-    if (error) {
-      console.error("Erreur màj couleur:", error);
-      alert("Erreur de sauvegarde de la couleur");
-    }
+    const { error } = await supabase.from('catalogue').upsert({ ean, nom, couleur: nouvelleCouleur }, { onConflict: 'ean' });
+    if (error) console.error("Erreur màj couleur:", error);
   };
-  
-  const jeuxEnPrepaFiltres = jeuxEnPrepa.filter(jeu => 
-    jeu.nom.toLowerCase().includes(rechercheJeu.toLowerCase()) || 
+
+  const jeuxEnPrepaFiltres = jeuxEnPrepa.filter(jeu =>
+    jeu.nom.toLowerCase().includes(rechercheJeu.toLowerCase()) ||
     jeu.ean.includes(rechercheJeu)
+  );
+
+  const commandesFiltrees = commandesHistorique.filter(c =>
+    filtreHistorique === "tous" ? true : c.statut === filtreHistorique
   );
 
   const S = {
@@ -389,13 +473,27 @@ export default function Home() {
             </div>
             <div style={{ fontSize: 14, color: 'rgba(0,0,0,0.4)', marginTop: 6 }}>{totalEnPrepa} jeux en préparation</div>
           </div>
-          <button onClick={() => setIsModalOpen(true)} className="pop-btn pop-btn-dark">+ Ajouter un jeu</button>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <button
+              onClick={() => { setIsCommandesOpen(true); fetchCommandesData(); }}
+              className="pop-btn pop-btn-outline"
+              style={{ position: 'relative' }}
+            >
+              📋 Commandes
+              {nbCommandesEnAttente > 0 && (
+                <span style={{ background: 'var(--orange)', color: 'var(--ink)', border: '2px solid var(--ink)', borderRadius: 20, padding: '1px 7px', fontSize: 12, fontWeight: 700, marginLeft: 4 }}>
+                  {nbCommandesEnAttente}
+                </span>
+              )}
+            </button>
+            <button onClick={() => setIsModalOpen(true)} className="pop-btn pop-btn-dark">+ Ajouter un jeu</button>
+          </div>
         </div>
 
         {/* ── MAIN 3-COL GRID ── */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14, marginBottom: 20 }}>
 
-          {/* Compteur — sticker style */}
+          {/* Compteur */}
           <div
             onClick={() => { setIsListeOpen(true); setRechercheJeu(""); }}
             style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 380, position: 'relative', overflow: 'visible', cursor: 'pointer' }}
@@ -666,7 +764,7 @@ export default function Home() {
               {jeuxAttente.length === 0 ? (
                 <p style={{ textAlign: 'center', color: 'rgba(0,0,0,0.4)', padding: '40px 0', fontSize: 15 }}>La liste d&apos;attente est vide.</p>
               ) : jeuxAttente.map((jeu, index) => (
-                <div key={index} className="pop-card" style={{ background: 'var(--white)', padding: '14px 16px', position: 'relative' }}
+                <div key={jeu.uid} className="pop-card" style={{ background: 'var(--white)', padding: '14px 16px', position: 'relative' }}
                   onMouseEnter={e => { const a = e.currentTarget.querySelector<HTMLElement>('.jeu-actions'); if (a) a.style.opacity = '1'; }}
                   onMouseLeave={e => { const a = e.currentTarget.querySelector<HTMLElement>('.jeu-actions'); if (a) a.style.opacity = '0'; }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
@@ -676,6 +774,12 @@ export default function Home() {
                       <input type="text" value={jeu.nom} onChange={e => setJeuxAttente(prev => { const l = [...prev]; l[index].nom = e.target.value; return l; })} onBlur={() => setEditingIndex(null)} onKeyDown={e => e.key === "Enter" && setEditingIndex(null)} autoFocus style={{ fontWeight: 700, fontSize: 18, background: 'transparent', borderBottom: '2px solid var(--ink)', outline: 'none', width: 200 }} />
                     ) : (
                       <span style={{ fontWeight: 700, fontSize: 18 }}>{jeu.nom}</span>
+                    )}
+                    {/* Badge double détecté */}
+                    {jeu.doublesExistants && jeu.doublesExistants > 0 && (
+                      <span style={{ background: 'var(--orange)', border: '2px solid var(--ink)', borderRadius: 6, padding: '2px 8px', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}>
+                        ⚠️ {jeu.doublesExistants} déjà en inventaire
+                      </span>
                     )}
                     <div style={{ display: 'flex', gap: 4, background: 'var(--cream2)', padding: '3px 6px', borderRadius: 20, border: '1.5px solid var(--ink)' }}>
                       {COULEURS.map(c => (
@@ -735,6 +839,123 @@ export default function Home() {
                 disabled={jeuxAttente.length === 0 || jeuxAttente.some(j => j.nom === "" || j.nom.includes("⏳"))}>
                 Valider et envoyer à l&apos;Atelier →
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══ MODAL COMMANDES ══ */}
+      {isCommandesOpen && (
+        <div style={S.modal}>
+          <div style={{ ...S.modalBox, maxWidth: 780 }}>
+            {/* Header */}
+            <div style={{ padding: '20px 24px', borderBottom: '3px solid var(--ink)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--rose)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <span className="bc" style={{ fontSize: 24, textTransform: 'uppercase' }}>Commandes</span>
+                {nbCommandesEnAttente > 0 && (
+                  <span className="pop-sticker" style={{ background: 'var(--orange)', fontSize: 13 }}>{nbCommandesEnAttente} en attente</span>
+                )}
+              </div>
+              <button style={S.closeBtn} onClick={() => setIsCommandesOpen(false)}>✕</button>
+            </div>
+
+            <div style={{ flex: 1, overflowY: 'auto' }}>
+              {/* ── Section nouvelle commande ── */}
+              <div style={{ padding: '20px 24px', borderBottom: '3px solid var(--ink)', background: 'rgba(244,114,182,0.08)' }}>
+                <div className="bc" style={{ fontSize: 16, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 12, color: 'rgba(0,0,0,0.5)' }}>Nouvelle commande</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: 'rgba(0,0,0,0.4)', marginBottom: 5 }}>Scanner un EAN</div>
+                    <input type="text" value={eanCommandeInput} onChange={e => setEanCommandeInput(e.target.value)} onKeyDown={ajouterEanCommande} className="pop-input" style={{ width: '100%' }} placeholder="Ex: 3770001874241" />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: 'rgba(0,0,0,0.4)', marginBottom: 5 }}>Nom manuel</div>
+                    <input type="text" value={manuelCommandeInput} onChange={e => setManuelCommandeInput(e.target.value)} onKeyDown={ajouterManuelCommande} className="pop-input" style={{ width: '100%' }} placeholder="Nom du jeu..." />
+                  </div>
+                </div>
+
+                {/* Liste d'attente de la commande */}
+                {commandesAttente.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
+                    {commandesAttente.map((c) => (
+                      <div key={c.uid} className="pop-card" style={{ background: 'var(--white)', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <div style={{ flex: 1 }}>
+                          <span style={{ fontWeight: 700, fontSize: 15 }}>{c.nom}</span>
+                          <span style={{ display: 'block', fontSize: 12, color: 'rgba(0,0,0,0.4)', fontFamily: 'monospace' }}>EAN: {c.ean}</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: 'rgba(0,0,0,0.4)' }}>Qté :</span>
+                          <button onClick={() => setCommandesAttente(prev => prev.map(x => x.uid === c.uid ? { ...x, quantite: Math.max(1, x.quantite - 1) } : x))} style={{ width: 26, height: 26, border: '2px solid var(--ink)', borderRadius: 6, background: 'var(--cream)', fontWeight: 700, cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
+                          <span style={{ fontWeight: 700, fontSize: 16, minWidth: 20, textAlign: 'center' }}>{c.quantite}</span>
+                          <button onClick={() => setCommandesAttente(prev => prev.map(x => x.uid === c.uid ? { ...x, quantite: x.quantite + 1 } : x))} style={{ width: 26, height: 26, border: '2px solid var(--ink)', borderRadius: 6, background: 'var(--cream)', fontWeight: 700, cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
+                          <button onClick={() => setCommandesAttente(prev => prev.filter(x => x.uid !== c.uid))} style={{ width: 26, height: 26, border: '2px solid var(--ink)', borderRadius: 6, background: 'var(--cream)', cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <button
+                  className="pop-btn pop-btn-dark"
+                  style={{ width: '100%', justifyContent: 'center' }}
+                  onClick={validerCommandes}
+                  disabled={commandesAttente.length === 0 || commandesAttente.some(c => c.nom.includes("⏳"))}
+                >
+                  📋 Commander {commandesAttente.length > 0 ? `(${commandesAttente.reduce((s, c) => s + c.quantite, 0)} jeu(x))` : ""}
+                </button>
+              </div>
+
+              {/* ── Historique ── */}
+              <div style={{ padding: '20px 24px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                  <div className="bc" style={{ fontSize: 16, textTransform: 'uppercase', letterSpacing: '.06em', color: 'rgba(0,0,0,0.5)' }}>Historique</div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    {(['tous', 'En attente', 'Reçu'] as const).map(f => (
+                      <button key={f} onClick={() => setFiltreHistorique(f)}
+                        style={{ background: filtreHistorique === f ? 'var(--ink)' : 'var(--cream2)', color: filtreHistorique === f ? 'var(--white)' : 'var(--ink)', border: '2px solid var(--ink)', borderRadius: 6, padding: '4px 12px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                        {f === 'tous' ? 'Tous' : f}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {commandesFiltrees.length === 0 ? (
+                  <p style={{ textAlign: 'center', color: 'rgba(0,0,0,0.35)', padding: '30px 0', fontSize: 15 }}>Aucune commande trouvée.</p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {commandesFiltrees.map(c => (
+                      <div key={c.id} className="pop-card" style={{ background: 'var(--white)', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+                        {/* Statut badge */}
+                        <div style={{ flexShrink: 0, width: 10, height: 10, borderRadius: '50%', background: c.statut === 'En attente' ? 'var(--orange)' : 'var(--vert)', border: '2px solid var(--ink)' }} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+                            <span style={{ fontWeight: 700, fontSize: 16 }}>{c.nom}</span>
+                            {c.quantite > 1 && (
+                              <span className="pop-sticker" style={{ background: 'var(--bleu)', fontSize: 12 }}>×{c.quantite}</span>
+                            )}
+                            <span className="pop-sticker" style={{ background: c.statut === 'En attente' ? 'var(--orange)' : 'var(--vert)', fontSize: 12 }}>
+                              {c.statut === 'En attente' ? '⏳ En attente' : '✓ Reçu'}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.4)', display: 'flex', gap: 12 }}>
+                            <span>EAN: {c.ean}</span>
+                            <span>Commandé le {formatDate(c.date_commande)}</span>
+                            {c.date_reception && <span>· Reçu le {formatDate(c.date_reception)}</span>}
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                          {c.statut === 'En attente' && (
+                            <button onClick={() => marquerRecu(c.id)} className="pop-btn pop-btn-green" style={{ fontSize: 13, padding: '5px 12px' }}>
+                              ✓ Reçu
+                            </button>
+                          )}
+                          <button onClick={() => supprimerCommande(c.id)} style={{ width: 30, height: 30, border: '2px solid var(--ink)', borderRadius: 6, background: 'var(--cream2)', cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Supprimer">🗑️</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
