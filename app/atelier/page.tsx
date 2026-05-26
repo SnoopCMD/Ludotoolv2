@@ -202,16 +202,20 @@ export default function Home() {
     const uid = nextUid();
     setter(prev => [{ uid, ean: codeScan, nom: "⏳ Recherche en cours...", typeAjout: "nouveaute", etapes: { ...defaultEtapes }, couleur: "" }, ...prev]);
 
-    const [apiData, dbResult] = await Promise.all([
+    const [apiData, dbResult, catResult] = await Promise.all([
       fetch(`/api/recherche?ean=${codeScan}`).then(r => r.json()).catch(() => ({ nom: null })),
-      supabase.from('jeux').select('nom', { count: 'exact' }).eq('ean', codeScan).limit(1)
+      supabase.from('jeux').select('nom', { count: 'exact' }).eq('ean', codeScan).limit(1),
+      supabase.from('catalogue').select('nom, couleur').eq('ean', codeScan).maybeSingle()
     ]);
 
     const doublesCount = dbResult.count ?? 0;
-    const nomFromDb = dbResult.data?.[0]?.nom ?? null;
+    const nomFromDb  = dbResult.data?.[0]?.nom ?? null;
+    const nomFromCat = catResult.data?.nom ?? null;
+    const couleurFromCat = catResult.data?.couleur ?? "";
     setter(prev => prev.map(j => j.uid === uid ? {
       ...j,
-      nom: apiData.nom || nomFromDb || "",
+      nom: apiData.nom || nomFromCat || nomFromDb || "",
+      couleur: couleurFromCat,
       typeAjout: doublesCount > 0 ? "double" : "nouveaute",
       doublesExistants: doublesCount > 0 ? doublesCount : undefined,
     } : j));
