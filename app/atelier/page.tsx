@@ -37,19 +37,12 @@ type JeuAttenteType = {
   doublesExistants?: number;
 };
 
-type CommandeAttenteType = {
-  uid: number;
-  ean: string;
-  nom: string;
-  quantite: number;
-};
-
-type CommandeType = {
+type ReceptionEntreeType = {
   id: number;
   ean: string;
   nom: string;
   quantite: number;
-  statut: "En attente" | "Reçu";
+  statut: string;
   notes: string | null;
   date_commande: string;
   date_reception: string | null;
@@ -72,10 +65,8 @@ const COULEURS = [
   { id: 'jaune', bg: 'bg-[#ffa600]' }
 ];
 
-const formatDate = (dateStr: string) => {
-  const d = new Date(dateStr);
-  return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
-};
+const formatDate = (dateStr: string) =>
+  new Date(dateStr).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
 let uidCounter = 0;
 const nextUid = () => ++uidCounter;
@@ -113,21 +104,28 @@ export default function Home() {
   const [rechercheJeu, setRechercheJeu] = useState("");
   const [isSearchDropdownOpen, setIsSearchDropdownOpen] = useState(false);
 
-  // ── Commandes ──
-  const [isCommandesOpen, setIsCommandesOpen] = useState(false);
-  const [commandesAttente, setCommandesAttente] = useState<CommandeAttenteType[]>([]);
-  const [commandesHistorique, setCommandesHistorique] = useState<CommandeType[]>([]);
-  const [eanCommandeInput, setEanCommandeInput] = useState("");
-  const [manuelCommandeInput, setManuelCommandeInput] = useState("");
-  const [nbCommandesEnAttente, setNbCommandesEnAttente] = useState(0);
-  const [filtreHistorique, setFiltreHistorique] = useState<"tous" | "En attente" | "Reçu">("tous");
+  // ── Réceptions ──
+  const [isCommandesOpen,          setIsCommandesOpen]          = useState(false);
+  const [jeuxReception,            setJeuxReception]            = useState<JeuAttenteType[]>([]);
+  const [historiqueEntrees,        setHistoriqueEntrees]        = useState<ReceptionEntreeType[]>([]);
+  const [eanReceptionInput,        setEanReceptionInput]        = useState("");
+  const [manuelReceptionInput,     setManuelReceptionInput]     = useState("");
+  const [editingReceptionIndex,    setEditingReceptionIndex]    = useState<number | null>(null);
+  const [editingReceptionEanIndex, setEditingReceptionEanIndex] = useState<number | null>(null);
 
-  const fetchCommandesData = async () => {
-    const { data } = await supabase.from('commandes').select('*').order('date_commande', { ascending: false });
-    if (data) {
-      setCommandesHistorique(data as CommandeType[]);
-      setNbCommandesEnAttente(data.filter((c: CommandeType) => c.statut === 'En attente').length);
-    }
+  const historiqueParJour = historiqueEntrees.reduce<Record<string, ReceptionEntreeType[]>>((acc, e) => {
+    const jour = formatDate(e.date_commande);
+    if (!acc[jour]) acc[jour] = [];
+    acc[jour].push(e);
+    return acc;
+  }, {});
+
+  const fetchHistorique = async () => {
+    const { data } = await supabase
+      .from('commandes')
+      .select('*')
+      .order('date_commande', { ascending: false });
+    if (data) setHistoriqueEntrees(data as ReceptionEntreeType[]);
   };
 
   const fetchDashboardData = async () => {
@@ -181,7 +179,7 @@ export default function Home() {
 
   useEffect(() => {
     fetchDashboardData();
-    fetchCommandesData();
+    fetchHistorique();
   }, []);
 
   const etapesVisuelles = [
@@ -196,149 +194,125 @@ export default function Home() {
 
   const formatNum = (num: number) => num < 10 ? `0${num}` : num;
 
-  // ── Ajout jeu : détecte automatiquement les doubles ──
+  // ── Shared scan helper with double detection ──
+  const scanEanAvecDouble = async (
+    codeScan: string,
+    setter: React.Dispatch<React.SetStateAction<JeuAttenteType[]>>
+  ) => {
+    const uid = nextUid();
+    setter(prev => [...prev, { uid, ean: codeScan, nom: "⏳ Recherche en cours...", typeAjout: "nouveaute", etapes: { ...defaultEtapes }, couleur: "" }]);
+
+    const [apiData, dbResult] = await Promise.all([
+      fetch(`/api/recherche?ean=${codeScan}`).then(r => r.json()).catch(() => ({ nom: null })),
+      supabase.from('jeux').select('id', { count: 'exact', head: true }).eq('ean', codeScan)
+    ]);
+
+    const doublesCount = dbResult.count ?? 0;
+    setter(prev => prev.map(j => j.uid === uid ? {
+      ...j,
+      nom: apiData.nom || "",
+      typeAjout: doublesCount > 0 ? "double" : "nouveaute",
+      doublesExistants: doublesCount > 0 ? doublesCount : undefined,
+    } : j));
+  };
+
+  // ── Modal ajout jeu ──
   const ajouterEan = async (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" && eanInput.trim() !== "") {
-      const codeScan = eanInput.trim();
-      const uid = nextUid();
-      setEanInput("");
-      setJeuxAttente(prev => [...prev, { uid, ean: codeScan, nom: "⏳ Recherche en cours...", typeAjout: "nouveaute", etapes: { ...defaultEtapes }, couleur: "" }]);
-
-      const [apiData, dbResult] = await Promise.all([
-        fetch(`/api/recherche?ean=${codeScan}`).then(r => r.json()).catch(() => ({ nom: null })),
-        supabase.from('jeux').select('id', { count: 'exact', head: true }).eq('ean', codeScan)
-      ]);
-
-      const doublesCount = dbResult.count ?? 0;
-
-      setJeuxAttente(prev => prev.map(jeu => jeu.uid === uid ? {
-        ...jeu,
-        nom: apiData.nom || "",
-        typeAjout: doublesCount > 0 ? "double" : "nouveaute",
-        doublesExistants: doublesCount > 0 ? doublesCount : undefined,
-      } : jeu));
-    }
+    if (e.key !== "Enter" || !eanInput.trim()) return;
+    const code = eanInput.trim(); setEanInput("");
+    await scanEanAvecDouble(code, setJeuxAttente);
   };
 
   const ajouterManuel = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" && manuelInput.trim() !== "") {
-      setJeuxAttente([...jeuxAttente, { uid: nextUid(), ean: "Manuel", nom: manuelInput, typeAjout: "nouveaute", etapes: { ...defaultEtapes }, couleur: "" }]);
-      setManuelInput("");
-    }
+    if (e.key !== "Enter" || !manuelInput.trim()) return;
+    setJeuxAttente([...jeuxAttente, { uid: nextUid(), ean: "Manuel", nom: manuelInput.trim(), typeAjout: "nouveaute", etapes: { ...defaultEtapes }, couleur: "" }]);
+    setManuelInput("");
   };
 
-  const changerTypeAjout = (index: number, nouveauType: "nouveaute" | "double" | "existant") => {
-    setJeuxAttente(prev => prev.map((jeu, i) => {
-      if (i === index) {
-        let nouvellesEtapes = { ...jeu.etapes };
-        if (nouveauType === "existant") {
-           nouvellesEtapes = {
-             etape_plastifier: true, etape_contenu: true, etape_etiquette: true,
-             etape_equiper: true, etape_encoder: true, etape_notice: true
-           };
-        } else if (jeu.typeAjout === "existant") {
-           nouvellesEtapes = { ...defaultEtapes };
-        }
-        return { ...jeu, typeAjout: nouveauType, etapes: nouvellesEtapes };
+  // ── Modal réception ──
+  const ajouterEanReception = async (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== "Enter" || !eanReceptionInput.trim()) return;
+    const code = eanReceptionInput.trim(); setEanReceptionInput("");
+    await scanEanAvecDouble(code, setJeuxReception);
+  };
+
+  const ajouterManuelReception = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== "Enter" || !manuelReceptionInput.trim()) return;
+    setJeuxReception(prev => [...prev, { uid: nextUid(), ean: "Manuel", nom: manuelReceptionInput.trim(), typeAjout: "nouveaute", etapes: { ...defaultEtapes }, couleur: "" }]);
+    setManuelReceptionInput("");
+  };
+
+  // ── Shared type/etape handlers (accept setter) ──
+  const changerTypeAjoutListe = (
+    setter: React.Dispatch<React.SetStateAction<JeuAttenteType[]>>,
+    index: number,
+    nouveauType: "nouveaute" | "double" | "existant"
+  ) => {
+    setter(prev => prev.map((jeu, i) => {
+      if (i !== index) return jeu;
+      let nouvellesEtapes = { ...jeu.etapes };
+      if (nouveauType === "existant") {
+        nouvellesEtapes = { etape_plastifier: true, etape_contenu: true, etape_etiquette: true, etape_equiper: true, etape_encoder: true, etape_notice: true };
+      } else if (jeu.typeAjout === "existant") {
+        nouvellesEtapes = { ...defaultEtapes };
       }
-      return jeu;
+      return { ...jeu, typeAjout: nouveauType, etapes: nouvellesEtapes };
     }));
   };
 
-  const toggleEtapeAttente = (index: number, etapeId: string) => {
+  const toggleEtapeAttenteListe = (
+    setter: React.Dispatch<React.SetStateAction<JeuAttenteType[]>>,
+    index: number,
+    etapeId: string
+  ) => {
     if (etapeId === 'etape_nouveaute') return;
-    setJeuxAttente(prev => prev.map((jeu, i) => {
-      if (i === index) return { ...jeu, etapes: { ...jeu.etapes, [etapeId]: !jeu.etapes[etapeId] } };
-      return jeu;
-    }));
+    setter(prev => prev.map((jeu, i) => i === index ? { ...jeu, etapes: { ...jeu.etapes, [etapeId]: !jeu.etapes[etapeId] } } : jeu));
   };
+
+  // ── Build jeux rows for insertion ──
+  const construireJeuxAInserer = (liste: JeuAttenteType[]) => liste.map(jeu => {
+    const isExistant = jeu.typeAjout === "existant";
+    const isDouble   = jeu.typeAjout === "double";
+    const basesOk    = Object.values(jeu.etapes).every(Boolean);
+    const isTermine  = isExistant || (isDouble && basesOk);
+    return {
+      nom: jeu.nom, ean: jeu.ean,
+      statut: isTermine ? "En stock" : "En préparation",
+      is_double: isDouble || isExistant,
+      etape_nouveaute: false,
+      etape_plastifier: isExistant || jeu.etapes.etape_plastifier,
+      etape_contenu:    isExistant || jeu.etapes.etape_contenu,
+      etape_etiquette:  isExistant || jeu.etapes.etape_etiquette,
+      etape_equiper:    isExistant || jeu.etapes.etape_equiper,
+      etape_encoder:    isExistant || jeu.etapes.etape_encoder,
+      etape_notice:     isExistant || jeu.etapes.etape_notice,
+    };
+  });
 
   const validerEtEnvoyer = async () => {
-    const jeuxAInserer = jeuxAttente.map(jeu => {
-      const isExistant = jeu.typeAjout === "existant";
-      const isDouble = jeu.typeAjout === "double";
-
-      const basesOk = jeu.etapes.etape_plastifier && jeu.etapes.etape_contenu &&
-                      jeu.etapes.etape_etiquette && jeu.etapes.etape_equiper &&
-                      jeu.etapes.etape_encoder && jeu.etapes.etape_notice;
-
-      const isTermine = isExistant || (isDouble && basesOk);
-
-      return {
-        nom: jeu.nom,
-        ean: jeu.ean,
-        statut: isTermine ? "En stock" : "En préparation",
-        is_double: isDouble || isExistant,
-        etape_nouveaute: false,
-        etape_plastifier: isExistant ? true : jeu.etapes.etape_plastifier,
-        etape_contenu: isExistant ? true : jeu.etapes.etape_contenu,
-        etape_etiquette: isExistant ? true : jeu.etapes.etape_etiquette,
-        etape_equiper: isExistant ? true : jeu.etapes.etape_equiper,
-        etape_encoder: isExistant ? true : jeu.etapes.etape_encoder,
-        etape_notice: isExistant ? true : jeu.etapes.etape_notice
-      };
-    });
-
-    const { error: jeuxError } = await supabase.from('jeux').insert(jeuxAInserer);
-
-    if (jeuxError) {
-      console.error(jeuxError);
-      alert("Erreur d'envoi dans jeux : " + jeuxError.message);
-      return;
-    }
-
-    const catalogueUpdates = jeuxAttente.filter(j => j.couleur !== "").map(j => ({
-      ean: j.ean,
-      nom: j.nom,
-      couleur: j.couleur
-    }));
-
-    if (catalogueUpdates.length > 0) {
-      const { error: catError } = await supabase.from('catalogue').upsert(catalogueUpdates, { onConflict: 'ean' });
-      if (catError) console.error("Erreur mise à jour catalogue:", catError.message);
-    }
-
-    setJeuxAttente([]);
-    setIsModalOpen(false);
-    fetchDashboardData();
+    const { error } = await supabase.from('jeux').insert(construireJeuxAInserer(jeuxAttente));
+    if (error) { alert("Erreur d'envoi dans jeux : " + error.message); return; }
+    const catUpdates = jeuxAttente.filter(j => j.couleur).map(j => ({ ean: j.ean, nom: j.nom, couleur: j.couleur }));
+    if (catUpdates.length > 0) await supabase.from('catalogue').upsert(catUpdates, { onConflict: 'ean' });
+    setJeuxAttente([]); setIsModalOpen(false); fetchDashboardData();
   };
 
-  // ── Commandes ──
-  const ajouterEanCommande = async (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" && eanCommandeInput.trim() !== "") {
-      const codeScan = eanCommandeInput.trim();
-      const uid = nextUid();
-      setEanCommandeInput("");
-      setCommandesAttente(prev => [...prev, { uid, ean: codeScan, nom: "⏳ Recherche...", quantite: 1 }]);
-      const apiData = await fetch(`/api/recherche?ean=${codeScan}`).then(r => r.json()).catch(() => ({ nom: null }));
-      setCommandesAttente(prev => prev.map(c => c.uid === uid ? { ...c, nom: apiData.nom || codeScan } : c));
-    }
+  // ── Validate reception: add to jeux + log in commandes ──
+  const validerReception = async () => {
+    if (jeuxReception.length === 0) return;
+    const { error: jeuxError } = await supabase.from('jeux').insert(construireJeuxAInserer(jeuxReception));
+    if (jeuxError) { alert("Erreur : " + jeuxError.message); return; }
+    const maintenant = new Date().toISOString();
+    const entrees = jeuxReception.map(j => ({ ean: j.ean, nom: j.nom, quantite: 1, statut: 'Reçu', date_commande: maintenant }));
+    await supabase.from('commandes').insert(entrees);
+    const catUpdates = jeuxReception.filter(j => j.couleur).map(j => ({ ean: j.ean, nom: j.nom, couleur: j.couleur }));
+    if (catUpdates.length > 0) await supabase.from('catalogue').upsert(catUpdates, { onConflict: 'ean' });
+    setJeuxReception([]); fetchDashboardData(); fetchHistorique();
   };
 
-  const ajouterManuelCommande = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" && manuelCommandeInput.trim() !== "") {
-      setCommandesAttente(prev => [...prev, { uid: nextUid(), ean: "Manuel", nom: manuelCommandeInput.trim(), quantite: 1 }]);
-      setManuelCommandeInput("");
-    }
-  };
-
-  const validerCommandes = async () => {
-    if (commandesAttente.length === 0) return;
-    const toInsert = commandesAttente.map(c => ({ ean: c.ean, nom: c.nom, quantite: c.quantite, statut: 'En attente' }));
-    const { error } = await supabase.from('commandes').insert(toInsert);
-    if (error) { alert("Erreur: " + error.message); return; }
-    setCommandesAttente([]);
-    fetchCommandesData();
-  };
-
-  const marquerRecu = async (id: number) => {
-    await supabase.from('commandes').update({ statut: 'Reçu', date_reception: new Date().toISOString() }).eq('id', id);
-    fetchCommandesData();
-  };
-
-  const supprimerCommande = async (id: number) => {
+  const supprimerEntreeHistorique = async (id: number) => {
     await supabase.from('commandes').delete().eq('id', id);
-    fetchCommandesData();
+    fetchHistorique();
   };
 
   const verifierSiTermine = (jeu: JeuType) => {
@@ -382,9 +356,7 @@ export default function Home() {
 
       const updatedJeu = { ...jeuActuel, [etapeActive]: true };
       const estFini = verifierSiTermine(updatedJeu);
-      const newStatut = estFini ? "En stock" : "En préparation";
-
-      await supabase.from('jeux').update({ [etapeActive]: true, statut: newStatut }).eq('id', id);
+      await supabase.from('jeux').update({ [etapeActive]: true, statut: estFini ? "En stock" : "En préparation" }).eq('id', id);
       jeuxValides.push(jeuActuel);
     }
 
@@ -409,8 +381,7 @@ export default function Home() {
       await supabase.from('jeux').update({ code_syracuse: code }).eq('id', jeu.id);
       setScanDone(prev => [...prev, { nom: jeu.nom, code }]);
     }
-    const next = scanIdx + 1;
-    setScanIdx(next);
+    setScanIdx(prev => prev + 1);
     setScanInput("");
     setTimeout(() => scanInputRef.current?.focus(), 50);
   };
@@ -435,15 +406,7 @@ export default function Home() {
 
   const changerCouleurJeu = async (idJeu: string | number, ean: string, nom: string, nouvelleCouleur: string) => {
     setJeuxEnPrepa(prev => prev.map(j => j.id === idJeu ? { ...j, couleur: nouvelleCouleur } : j));
-
-    const { error } = await supabase
-      .from('catalogue')
-      .upsert({ ean, nom, couleur: nouvelleCouleur }, { onConflict: 'ean' });
-
-    if (error) {
-      console.error("Erreur màj couleur:", error);
-      alert("Erreur de sauvegarde de la couleur");
-    }
+    await supabase.from('catalogue').upsert({ ean, nom, couleur: nouvelleCouleur }, { onConflict: 'ean' });
   };
 
   const jeuxEnPrepaFiltres = jeuxEnPrepa.filter(jeu =>
@@ -451,8 +414,101 @@ export default function Home() {
     jeu.ean.includes(rechercheJeu)
   );
 
-  const commandesFiltrees = commandesHistorique.filter(c =>
-    filtreHistorique === "tous" ? true : c.statut === filtreHistorique
+  // ── Reusable game card for waiting lists ──
+  const CarteJeuAttente = ({
+    jeu, index, setter, editingIdx, setEditingIdx, editingEanIdx, setEditingEanIdx
+  }: {
+    jeu: JeuAttenteType; index: number;
+    setter: React.Dispatch<React.SetStateAction<JeuAttenteType[]>>;
+    editingIdx: number | null; setEditingIdx: (i: number | null) => void;
+    editingEanIdx: number | null; setEditingEanIdx: (i: number | null) => void;
+  }) => (
+    <div className="group relative bg-white p-5 rounded-xl shadow-sm mb-3 border border-slate-100 hover:border-slate-300 transition-colors">
+
+      <div className="flex justify-between items-start mb-2.5">
+        <div className="flex-1 mr-12">
+          <div className="flex items-center gap-3 flex-wrap">
+            {jeu.nom === "⏳ Recherche en cours..." ? (
+              <span className="font-bold text-lg text-slate-400">{jeu.nom}</span>
+            ) : editingIdx === index || jeu.nom === "" ? (
+              <input type="text" value={jeu.nom}
+                onChange={e => setter(prev => { const l = [...prev]; l[index] = { ...l[index], nom: e.target.value }; return l; })}
+                onBlur={() => setEditingIdx(null)} onKeyDown={e => e.key === "Enter" && setEditingIdx(null)}
+                autoFocus className="font-bold text-lg w-full max-w-[200px] bg-transparent border-b border-black text-black outline-none pb-1" />
+            ) : (
+              <span className="font-bold text-lg text-black block leading-tight">{jeu.nom}</span>
+            )}
+
+            {jeu.doublesExistants && jeu.doublesExistants > 0 && (
+              <span className="bg-[#ff7b00]/20 text-[#cc5500] border border-[#ff7b00]/40 text-xs font-black px-2 py-1 rounded-lg">
+                ⚠️ {jeu.doublesExistants} déjà en inventaire
+              </span>
+            )}
+
+            <div className="flex gap-1.5 bg-slate-50 p-1.5 rounded-full border border-slate-200">
+              {COULEURS.map(c => (
+                <button key={c.id} type="button"
+                  onClick={() => setter(prev => prev.map((j, i) => i === index ? { ...j, couleur: j.couleur === c.id ? "" : c.id } : j))}
+                  className={`w-5 h-5 rounded-full border-2 transition-transform hover:scale-110 shadow-sm ${jeu.couleur === c.id ? 'border-black scale-110' : 'border-transparent'} ${c.bg}`}
+                  title={c.id} />
+              ))}
+            </div>
+          </div>
+
+          <div className="flex items-center text-sm font-medium text-black/80 mt-1">
+            <BarcodeIcon />
+            {editingEanIdx === index ? (
+              <input type="text" value={jeu.ean === "Manuel" ? "" : jeu.ean}
+                onChange={e => setter(prev => { const l = [...prev]; l[index] = { ...l[index], ean: e.target.value || "Manuel" }; return l; })}
+                onBlur={() => setEditingEanIdx(null)} onKeyDown={e => e.key === "Enter" && setEditingEanIdx(null)}
+                autoFocus className="bg-transparent border-b border-black outline-none w-48 text-black" />
+            ) : (
+              <span>EAN: {jeu.ean}</span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2 mb-3 bg-slate-50 p-1.5 rounded-xl w-max border border-slate-200">
+        {(['nouveaute', 'double', 'existant'] as const).map(type => {
+          const labels = { nouveaute: '🌟 Nouveauté', double: '🔄 Double', existant: '✅ Existant' };
+          const activeClass = { nouveaute: 'bg-[#ffa600] text-white shadow-sm scale-105', double: 'bg-blue-500 text-white shadow-sm scale-105', existant: 'bg-emerald-500 text-white shadow-sm scale-105' };
+          return (
+            <button key={type} onClick={() => changerTypeAjoutListe(setter, index, type)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${jeu.typeAjout === type ? activeClass[type] : 'text-slate-500 hover:text-black hover:bg-slate-200'}`}>
+              {labels[type]}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="flex gap-x-5 gap-y-1.5 flex-wrap border-t border-slate-100 pt-3">
+        {etapesVisuelles.map(etape => {
+          const isExistant = jeu.typeAjout === 'existant';
+          const isDouble   = jeu.typeAjout === 'double';
+          const isNouv     = etape.id === 'etape_nouveaute';
+          const disabled   = isExistant || isNouv;
+          let checked = jeu.etapes[etape.id];
+          let label   = etape.nom;
+          if (isExistant) { checked = !isNouv; label = isNouv ? "🚫 Pas une nouveauté" : etape.nom; }
+          else if (isDouble && isNouv) { checked = false; label = "🔄 Double"; }
+          else if (isNouv) { checked = false; label = "🌟 Nouveauté (Atelier)"; }
+          return (
+            <label key={etape.id} className={`flex items-center gap-1.5 ${disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
+              <input type="checkbox" className="custom-cb" disabled={disabled} checked={checked}
+                onChange={() => toggleEtapeAttenteListe(setter, index, etape.id)} />
+              <span className="text-sm font-semibold leading-none text-black">{label}</span>
+            </label>
+          );
+        })}
+      </div>
+
+      <div className="absolute top-4 right-4 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity bg-white p-1 rounded-lg shadow-inner border border-slate-100">
+        <button onClick={() => setEditingEanIdx(index)} title="Modifier EAN" className="text-emerald-600 hover:bg-emerald-50 p-1.5 rounded">🏷️</button>
+        <button onClick={() => setEditingIdx(index)} title="Modifier Nom" className="text-blue-500 hover:bg-blue-50 p-1.5 rounded">✏️</button>
+        <button onClick={() => setter(prev => prev.filter((_, i) => i !== index))} title="Supprimer" className="text-red-500 hover:bg-red-50 p-1.5 rounded">🗑️</button>
+      </div>
+    </div>
   );
 
   return (
@@ -472,12 +528,12 @@ export default function Home() {
 
         <div className="flex justify-end w-full gap-3">
           <button
-            onClick={() => { setIsCommandesOpen(true); fetchCommandesData(); }}
+            onClick={() => { setIsCommandesOpen(true); fetchHistorique(); }}
             className="flex items-center gap-2 bg-white hover:bg-slate-50 text-black border-2 border-slate-200 hover:border-slate-400 px-6 py-3 rounded-full font-bold transition-colors shadow-sm"
           >
-            📋 Commandes
-            {nbCommandesEnAttente > 0 && (
-              <span className="bg-[#ff7b00] text-white text-xs font-black px-2 py-0.5 rounded-full">{nbCommandesEnAttente}</span>
+            📦 Réceptions
+            {historiqueEntrees.length > 0 && (
+              <span className="bg-[#6ba4ff] text-white text-xs font-black px-2 py-0.5 rounded-full">{historiqueEntrees.length}</span>
             )}
           </button>
           <button onClick={() => setIsModalOpen(true)} className="bg-black hover:bg-gray-800 text-white px-8 py-3 rounded-full font-bold transition-colors shadow-sm">
@@ -505,10 +561,7 @@ export default function Home() {
                   type="text"
                   placeholder="Rechercher un jeu précis..."
                   value={rechercheJeu}
-                  onChange={(e) => {
-                    setRechercheJeu(e.target.value);
-                    setIsSearchDropdownOpen(true);
-                  }}
+                  onChange={(e) => { setRechercheJeu(e.target.value); setIsSearchDropdownOpen(true); }}
                   onFocus={() => setIsSearchDropdownOpen(true)}
                   className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl pl-12 pr-4 py-3 text-black outline-none focus:border-[#baff29] transition-colors font-medium shadow-sm"
                 />
@@ -519,13 +572,8 @@ export default function Home() {
                       <div className="p-4 text-center text-slate-500 text-sm font-medium">Aucun jeu trouvé</div>
                     ) : (
                       jeuxEnPrepaFiltres.map(jeu => (
-                        <div
-                          key={jeu.id}
-                          onClick={() => {
-                            setRechercheJeu(jeu.nom);
-                            setIsSearchDropdownOpen(false);
-                            setIsListeOpen(true);
-                          }}
+                        <div key={jeu.id}
+                          onClick={() => { setRechercheJeu(jeu.nom); setIsSearchDropdownOpen(false); setIsListeOpen(true); }}
                           className="p-3 hover:bg-[#baff29]/20 cursor-pointer border-b border-slate-100 last:border-0 flex flex-col transition-colors"
                         >
                           <span className="font-bold text-black text-left">{jeu.nom}</span>
@@ -581,10 +629,7 @@ export default function Home() {
             {etapesVisuelles.map((etape) => (
               <div
                 key={etape.id}
-                onClick={() => {
-                  setEtapeActive(etape.id); setRechercheEtape("");
-                  setJeuxSelectionnes([]);
-                }}
+                onClick={() => { setEtapeActive(etape.id); setRechercheEtape(""); setJeuxSelectionnes([]); }}
                 className={`${etape.color} rounded-[2rem] p-5 flex flex-col justify-between aspect-square shadow-sm cursor-pointer hover:scale-105 hover:shadow-md transition-all`}
               >
                <span className="text-base font-bold">{etape.nom}</span>
@@ -627,12 +672,7 @@ export default function Home() {
                   .filter(j => !rechercheEtape || j.nom.toLowerCase().includes(rechercheEtape.toLowerCase()) || j.ean.includes(rechercheEtape))
                   .map((jeu) => (
                   <label key={jeu.id} className={`flex items-center gap-4 bg-white p-5 rounded-xl shadow-sm mb-3 border cursor-pointer transition-colors ${jeuxSelectionnes.includes(jeu.id) ? 'border-black' : 'border-slate-100 hover:border-slate-300'}`}>
-                    <input
-                      type="checkbox"
-                      className="custom-cb"
-                      checked={jeuxSelectionnes.includes(jeu.id)}
-                      onChange={() => toggleSelection(jeu.id)}
-                    />
+                    <input type="checkbox" className="custom-cb" checked={jeuxSelectionnes.includes(jeu.id)} onChange={() => toggleSelection(jeu.id)} />
                     <div className="flex-1">
                       <span className="font-bold text-lg text-black block">{jeu.nom}</span>
                       <span className="text-sm font-medium text-slate-400 block mt-0.5">EAN: {jeu.ean}</span>
@@ -771,64 +811,51 @@ export default function Home() {
               {jeuxEnPrepaFiltres.length === 0 ? (
                 <p className="text-center text-slate-400 mt-10 font-medium">Aucun jeu trouvé.</p>
               ) : (
-                jeuxEnPrepaFiltres.map((jeu) => {
-                  return (
-                    <div key={jeu.id} className="bg-white p-5 rounded-xl shadow-sm mb-3 border border-slate-100 flex flex-col lg:flex-row justify-between lg:items-center gap-4 hover:border-slate-300 transition-colors">
-                      <div className="flex-1 min-w-[200px]">
-                        <div className="flex items-center gap-3 mb-1">
-                          <span className="font-bold text-xl text-black block leading-tight">{jeu.nom}</span>
+                jeuxEnPrepaFiltres.map((jeu) => (
+                  <div key={jeu.id} className="bg-white p-5 rounded-xl shadow-sm mb-3 border border-slate-100 flex flex-col lg:flex-row justify-between lg:items-center gap-4 hover:border-slate-300 transition-colors">
+                    <div className="flex-1 min-w-[200px]">
+                      <div className="flex items-center gap-3 mb-1">
+                        <span className="font-bold text-xl text-black block leading-tight">{jeu.nom}</span>
 
-                          <div className="flex gap-1 bg-slate-50 p-1 rounded-full border border-slate-200">
-                            {COULEURS.map(c => (
-                              <button
-                                key={c.id}
-                                type="button"
-                                onClick={() => changerCouleurJeu(jeu.id, jeu.ean, jeu.nom, jeu.couleur === c.id ? "" : c.id)}
-                                className={`w-4 h-4 rounded-full border transition-transform hover:scale-110 ${
-                                  jeu.couleur === c.id ? 'border-black scale-125 shadow-sm' : 'border-transparent opacity-60 hover:opacity-100'
-                                } ${c.bg}`}
-                                title={c.id}
-                              />
-                            ))}
-                          </div>
-                        </div>
-                        <div className="flex items-center text-sm font-medium text-slate-400">
-                          <BarcodeIcon /> EAN: {jeu.ean}
+                        <div className="flex gap-1 bg-slate-50 p-1 rounded-full border border-slate-200">
+                          {COULEURS.map(c => (
+                            <button key={c.id} type="button"
+                              onClick={() => changerCouleurJeu(jeu.id, jeu.ean, jeu.nom, jeu.couleur === c.id ? "" : c.id)}
+                              className={`w-4 h-4 rounded-full border transition-transform hover:scale-110 ${jeu.couleur === c.id ? 'border-black scale-125 shadow-sm' : 'border-transparent opacity-60 hover:opacity-100'} ${c.bg}`}
+                              title={c.id} />
+                          ))}
                         </div>
                       </div>
-
-                      <div className="flex flex-wrap gap-2">
-                        {etapesVisuelles.map((etape) => {
-                          const estFait = jeu[etape.id] === true;
-                          const isEtapeNouveaute = etape.id === 'etape_nouveaute';
-
-                          let labelText = estFait ? `✓ ${etape.nom}` : etape.nom;
-                          let btnStyle = estFait
-                            ? `${etape.color} border-transparent shadow-sm scale-95 opacity-50 hover:opacity-100`
-                            : `bg-white border-slate-200 text-slate-500 hover:border-slate-400 hover:text-black`;
-                          let isClickable = true;
-
-                          if (isEtapeNouveaute && jeu.is_double) {
-                            labelText = "🔄 Double";
-                            btnStyle = "bg-slate-100 border-transparent text-slate-400 cursor-not-allowed";
-                            isClickable = false;
-                          }
-
-                          return (
-                            <button
-                              key={etape.id}
-                              onClick={() => isClickable && toggleEtapeUnique(jeu.id, etape.id, estFait)}
-                              className={`px-4 py-2 rounded-xl text-sm font-bold transition-all border-2 ${btnStyle}`}
-                              disabled={!isClickable}
-                            >
-                              {labelText}
-                            </button>
-                          );
-                        })}
+                      <div className="flex items-center text-sm font-medium text-slate-400">
+                        <BarcodeIcon /> EAN: {jeu.ean}
                       </div>
                     </div>
-                  );
-                })
+
+                    <div className="flex flex-wrap gap-2">
+                      {etapesVisuelles.map((etape) => {
+                        const estFait = jeu[etape.id] === true;
+                        const isEtapeNouveaute = etape.id === 'etape_nouveaute';
+                        let labelText = estFait ? `✓ ${etape.nom}` : etape.nom;
+                        let btnStyle = estFait
+                          ? `${etape.color} border-transparent shadow-sm scale-95 opacity-50 hover:opacity-100`
+                          : `bg-white border-slate-200 text-slate-500 hover:border-slate-400 hover:text-black`;
+                        let isClickable = true;
+                        if (isEtapeNouveaute && jeu.is_double) {
+                          labelText = "🔄 Double";
+                          btnStyle = "bg-slate-100 border-transparent text-slate-400 cursor-not-allowed";
+                          isClickable = false;
+                        }
+                        return (
+                          <button key={etape.id} onClick={() => isClickable && toggleEtapeUnique(jeu.id, etape.id, estFait)}
+                            className={`px-4 py-2 rounded-xl text-sm font-bold transition-all border-2 ${btnStyle}`}
+                            disabled={!isClickable}>
+                            {labelText}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))
               )}
             </div>
           </div>
@@ -846,271 +873,120 @@ export default function Home() {
             <div className="grid grid-cols-2 gap-4 mb-6">
               <div>
                 <label className="block text-sm font-bold text-slate-500 mb-2">🔫 Scanner un EAN</label>
-                <input type="text" value={eanInput} onChange={(e) => setEanInput(e.target.value)} onKeyDown={ajouterEan} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none focus:border-black transition-colors" placeholder="Ex: 3770001874241" autoFocus />
+                <input type="text" value={eanInput} onChange={e => setEanInput(e.target.value)} onKeyDown={ajouterEan}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none focus:border-black transition-colors"
+                  placeholder="Ex: 3770001874241" autoFocus />
               </div>
               <div>
                 <label className="block text-sm font-bold text-slate-500 mb-2">✍️ Taper un nom (EAN inconnu)</label>
-                <input type="text" value={manuelInput} onChange={(e) => setManuelInput(e.target.value)} onKeyDown={ajouterManuel} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none focus:border-black transition-colors" placeholder="Nom du jeu..." />
+                <input type="text" value={manuelInput} onChange={e => setManuelInput(e.target.value)} onKeyDown={ajouterManuel}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none focus:border-black transition-colors"
+                  placeholder="Nom du jeu..." />
               </div>
             </div>
 
             <div className="flex-1 overflow-y-auto bg-slate-50 rounded-2xl p-4 border border-slate-100 mb-6 min-h-[200px]">
               {jeuxAttente.length === 0 ? (
                 <p className="text-center text-slate-400 mt-10 font-medium">La liste d&apos;attente est vide.</p>
-              ) : (
-                jeuxAttente.map((jeu, index) => (
-                  <div key={jeu.uid} className="group relative bg-white p-5 rounded-xl shadow-sm mb-3 border border-slate-100 hover:border-slate-300 transition-colors">
-
-                    <div className="flex justify-between items-start mb-2.5">
-                      <div className="flex-1 mr-12">
-
-                        <div className="flex items-center gap-3 flex-wrap">
-                          {jeu.nom === "⏳ Recherche en cours..." ? (
-                            <span className="font-bold text-lg text-slate-400">{jeu.nom}</span>
-                          ) : editingIndex === index || jeu.nom === "" ? (
-                            <input type="text" value={jeu.nom} onChange={(e) => setJeuxAttente(prev => {const l = [...prev]; l[index].nom = e.target.value; return l;})} onBlur={() => setEditingIndex(null)} onKeyDown={(e) => e.key === "Enter" && setEditingIndex(null)} autoFocus className="font-bold text-lg w-full max-w-[200px] bg-transparent border-b border-black text-black outline-none pb-1" />
-                          ) : (
-                            <span className="font-bold text-lg text-black block leading-tight">{jeu.nom}</span>
-                          )}
-
-                          {/* Badge double détecté automatiquement */}
-                          {jeu.doublesExistants && jeu.doublesExistants > 0 && (
-                            <span className="bg-[#ff7b00]/20 text-[#cc5500] border border-[#ff7b00]/40 text-xs font-black px-2 py-1 rounded-lg">
-                              ⚠️ {jeu.doublesExistants} déjà en inventaire
-                            </span>
-                          )}
-
-                          <div className="flex gap-1.5 bg-slate-50 p-1.5 rounded-full border border-slate-200">
-                            {COULEURS.map(c => (
-                              <button
-                                key={c.id}
-                                type="button"
-                                onClick={() => setJeuxAttente(prev => prev.map((j, i) => i === index ? { ...j, couleur: j.couleur === c.id ? "" : c.id } : j))}
-                                className={`w-5 h-5 rounded-full border-2 transition-transform hover:scale-110 shadow-sm ${
-                                  jeu.couleur === c.id ? 'border-black scale-110' : 'border-transparent'
-                                } ${c.bg}`}
-                                title={c.id}
-                              />
-                            ))}
-                          </div>
-                        </div>
-
-                        <div className="flex items-center text-sm font-medium text-black/80 mt-1">
-                          <BarcodeIcon />
-                          {editingEanIndex === index ? (
-                            <input type="text" value={jeu.ean === "Manuel" ? "" : jeu.ean} onChange={(e) => setJeuxAttente(prev => {const l = [...prev]; l[index].ean = e.target.value || "Manuel"; return l;})} onBlur={() => setEditingEanIndex(null)} onKeyDown={(e) => e.key === "Enter" && setEditingEanIndex(null)} autoFocus className="bg-transparent border-b border-black outline-none w-48 text-black" />
-                          ) : (
-                            <span>EAN: {jeu.ean}</span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 mb-3 bg-slate-50 p-1.5 rounded-xl w-max border border-slate-200">
-                      <button
-                        onClick={() => changerTypeAjout(index, 'nouveaute')}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${jeu.typeAjout === 'nouveaute' ? 'bg-[#ffa600] text-white shadow-sm scale-105' : 'text-slate-500 hover:text-black hover:bg-slate-200'}`}
-                      >
-                        🌟 Nouveauté
-                      </button>
-                      <button
-                        onClick={() => changerTypeAjout(index, 'double')}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${jeu.typeAjout === 'double' ? 'bg-blue-500 text-white shadow-sm scale-105' : 'text-slate-500 hover:text-black hover:bg-slate-200'}`}
-                      >
-                        🔄 Double
-                      </button>
-                      <button
-                        onClick={() => changerTypeAjout(index, 'existant')}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${jeu.typeAjout === 'existant' ? 'bg-emerald-500 text-white shadow-sm scale-105' : 'text-slate-500 hover:text-black hover:bg-slate-200'}`}
-                      >
-                        ✅ Existant
-                      </button>
-                    </div>
-
-                    <div className="flex gap-x-5 gap-y-1.5 flex-wrap border-t border-slate-100 pt-3">
-                      {etapesVisuelles.map((etape) => {
-                        const isExistant = jeu.typeAjout === 'existant';
-                        const isDouble = jeu.typeAjout === 'double';
-                        const isEtapeNouv = etape.id === 'etape_nouveaute';
-
-                        let disabled = isExistant || isEtapeNouv;
-                        let checked = jeu.etapes[etape.id];
-                        let label = etape.nom;
-
-                        if (isExistant) {
-                          checked = true;
-                          if (isEtapeNouv) {
-                             checked = false;
-                             label = "🚫 Pas une nouveauté";
-                          }
-                        } else if (isDouble) {
-                          if (isEtapeNouv) {
-                            checked = false;
-                            label = "🔄 Double";
-                          }
-                        } else {
-                          if (isEtapeNouv) {
-                            checked = false;
-                            label = "🌟 Nouveauté (Atelier)";
-                          }
-                        }
-
-                        return (
-                          <label key={etape.id} className={`flex items-center gap-1.5 ${disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
-                            <input
-                              type="checkbox"
-                              className="custom-cb"
-                              disabled={disabled}
-                              checked={checked}
-                              onChange={() => toggleEtapeAttente(index, etape.id)}
-                            />
-                            <span className="text-sm font-semibold leading-none text-black">
-                              {label}
-                            </span>
-                          </label>
-                        );
-                      })}
-                    </div>
-
-                    <div className="absolute top-4 right-4 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity bg-white p-1 rounded-lg shadow-inner border border-slate-100">
-                      <button onClick={() => setEditingEanIndex(index)} title="Modifier EAN" className="text-emerald-600 hover:bg-emerald-50 p-1.5 rounded">🏷️</button>
-                      <button onClick={() => setEditingIndex(index)} title="Modifier Nom" className="text-blue-500 hover:bg-blue-50 p-1.5 rounded">✏️</button>
-                      <button onClick={() => setJeuxAttente(prev => prev.filter((_, i) => i !== index))} title="Supprimer" className="text-red-500 hover:bg-red-50 p-1.5 rounded">🗑️</button>
-                    </div>
-
-                  </div>
-                ))
-              )}
+              ) : jeuxAttente.map((jeu, index) => (
+                <CarteJeuAttente key={jeu.uid} jeu={jeu} index={index} setter={setJeuxAttente}
+                  editingIdx={editingIndex} setEditingIdx={setEditingIndex}
+                  editingEanIdx={editingEanIndex} setEditingEanIdx={setEditingEanIndex} />
+              ))}
             </div>
 
-            <button onClick={validerEtEnvoyer} disabled={jeuxAttente.length === 0 || jeuxAttente.some(j => j.nom === "" || j.nom.includes("⏳"))} className="w-full bg-[#baff29] hover:bg-[#9de30b] disabled:bg-slate-200 text-black font-black py-4 rounded-xl transition-colors shadow-md">
+            <button onClick={validerEtEnvoyer}
+              disabled={jeuxAttente.length === 0 || jeuxAttente.some(j => j.nom === "" || j.nom.includes("⏳"))}
+              className="w-full bg-[#baff29] hover:bg-[#9de30b] disabled:bg-slate-200 text-black font-black py-4 rounded-xl transition-colors shadow-md">
               💾 Valider et envoyer à l&apos;Atelier
             </button>
           </div>
         </div>
       )}
 
-      {/* ══ MODAL COMMANDES ══ */}
+      {/* ══ MODAL RÉCEPTIONS ══ */}
       {isCommandesOpen && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-[2rem] w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
 
             {/* Header */}
-            <div className="px-8 py-6 border-b border-slate-100 flex items-center justify-between bg-[#f45be0]/10">
+            <div className="px-8 py-6 border-b border-slate-100 flex items-center justify-between bg-emerald-50">
               <div className="flex items-center gap-3">
-                <h2 className="text-2xl font-black text-black">📋 Commandes</h2>
-                {nbCommandesEnAttente > 0 && (
-                  <span className="bg-[#ff7b00] text-white text-sm font-black px-3 py-1 rounded-full">{nbCommandesEnAttente} en attente</span>
-                )}
+                <h2 className="text-2xl font-black text-black">📦 Réceptions</h2>
+                <span className="text-slate-500 text-sm font-semibold">Enregistrer une commande reçue</span>
               </div>
               <button onClick={() => setIsCommandesOpen(false)} className="w-9 h-9 flex items-center justify-center rounded-full bg-white hover:bg-slate-100 font-black text-slate-600 border border-slate-200">✕</button>
             </div>
 
             <div className="flex-1 overflow-y-auto">
-              {/* ── Nouvelle commande ── */}
+
+              {/* ── Formulaire réception ── */}
               <div className="p-8 border-b border-slate-100 bg-slate-50/50">
-                <h3 className="text-sm font-black text-slate-400 uppercase tracking-wider mb-4">Nouvelle commande</h3>
+                <h3 className="text-xs font-black text-slate-400 uppercase tracking-wider mb-4">
+                  Jeux reçus aujourd&apos;hui — {new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
+                </h3>
                 <div className="grid grid-cols-2 gap-4 mb-4">
                   <div>
                     <label className="block text-xs font-bold text-slate-400 mb-1.5 uppercase tracking-wider">Scanner un EAN</label>
-                    <input type="text" value={eanCommandeInput} onChange={e => setEanCommandeInput(e.target.value)} onKeyDown={ajouterEanCommande}
+                    <input type="text" value={eanReceptionInput} onChange={e => setEanReceptionInput(e.target.value)} onKeyDown={ajouterEanReception}
                       className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 outline-none focus:border-black transition-colors text-sm"
                       placeholder="Ex: 3770001874241" />
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-400 mb-1.5 uppercase tracking-wider">Nom manuel</label>
-                    <input type="text" value={manuelCommandeInput} onChange={e => setManuelCommandeInput(e.target.value)} onKeyDown={ajouterManuelCommande}
+                    <input type="text" value={manuelReceptionInput} onChange={e => setManuelReceptionInput(e.target.value)} onKeyDown={ajouterManuelReception}
                       className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 outline-none focus:border-black transition-colors text-sm"
                       placeholder="Nom du jeu..." />
                   </div>
                 </div>
 
-                {commandesAttente.length > 0 && (
-                  <div className="flex flex-col gap-2 mb-4">
-                    {commandesAttente.map(c => (
-                      <div key={c.uid} className="bg-white border border-slate-200 rounded-xl px-4 py-3 flex items-center gap-3">
-                        <div className="flex-1 min-w-0">
-                          <span className="font-bold text-black text-sm block truncate">{c.nom}</span>
-                          <span className="text-xs text-slate-400 font-mono">EAN: {c.ean}</span>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <span className="text-xs text-slate-500 font-bold">Qté :</span>
-                          <button onClick={() => setCommandesAttente(prev => prev.map(x => x.uid === c.uid ? { ...x, quantite: Math.max(1, x.quantite - 1) } : x))}
-                            className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 font-black text-slate-600 flex items-center justify-center text-sm transition-colors">−</button>
-                          <span className="font-black text-base w-5 text-center">{c.quantite}</span>
-                          <button onClick={() => setCommandesAttente(prev => prev.map(x => x.uid === c.uid ? { ...x, quantite: x.quantite + 1 } : x))}
-                            className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 font-black text-slate-600 flex items-center justify-center text-sm transition-colors">+</button>
-                          <button onClick={() => setCommandesAttente(prev => prev.filter(x => x.uid !== c.uid))}
-                            className="w-7 h-7 rounded-lg bg-red-50 hover:bg-red-100 text-red-400 flex items-center justify-center text-xs transition-colors">✕</button>
-                        </div>
-                      </div>
+                {jeuxReception.length > 0 && (
+                  <div className="mb-4">
+                    {jeuxReception.map((jeu, index) => (
+                      <CarteJeuAttente key={jeu.uid} jeu={jeu} index={index} setter={setJeuxReception}
+                        editingIdx={editingReceptionIndex} setEditingIdx={setEditingReceptionIndex}
+                        editingEanIdx={editingReceptionEanIndex} setEditingEanIdx={setEditingReceptionEanIndex} />
                     ))}
                   </div>
                 )}
 
-                <button
-                  onClick={validerCommandes}
-                  disabled={commandesAttente.length === 0 || commandesAttente.some(c => c.nom.includes("⏳"))}
-                  className="w-full bg-black hover:bg-slate-800 disabled:bg-slate-200 disabled:text-slate-400 text-white font-black py-3 rounded-xl transition-colors"
-                >
-                  📋 Commander {commandesAttente.length > 0 ? `(${commandesAttente.reduce((s, c) => s + c.quantite, 0)} jeu${commandesAttente.reduce((s, c) => s + c.quantite, 0) > 1 ? "x" : ""})` : ""}
+                <button onClick={validerReception}
+                  disabled={jeuxReception.length === 0 || jeuxReception.some(j => j.nom.includes("⏳"))}
+                  className="w-full bg-black hover:bg-slate-800 disabled:bg-slate-200 disabled:text-slate-400 text-white font-black py-3 rounded-xl transition-colors">
+                  📦 Enregistrer la réception et ajouter à l&apos;Atelier
+                  {jeuxReception.length > 0 ? ` (${jeuxReception.length} jeu${jeuxReception.length > 1 ? 'x' : ''})` : ""}
                 </button>
               </div>
 
-              {/* ── Historique ── */}
+              {/* ── Historique par jour ── */}
               <div className="p-8">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-sm font-black text-slate-400 uppercase tracking-wider">Historique</h3>
-                  <div className="flex gap-2">
-                    {(['tous', 'En attente', 'Reçu'] as const).map(f => (
-                      <button key={f} onClick={() => setFiltreHistorique(f)}
-                        className={`px-3 py-1 rounded-full text-xs font-bold transition-colors ${filtreHistorique === f ? 'bg-black text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
-                        {f === 'tous' ? 'Tous' : f}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {commandesFiltrees.length === 0 ? (
-                  <p className="text-center text-slate-400 py-10 font-medium">Aucune commande trouvée.</p>
-                ) : (
-                  <div className="flex flex-col gap-3">
-                    {commandesFiltrees.map(c => (
-                      <div key={c.id} className="bg-white border border-slate-200 rounded-2xl p-4 flex items-center gap-4 hover:border-slate-300 transition-colors">
-                        <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${c.statut === 'En attente' ? 'bg-[#ff7b00]' : 'bg-[#baff29]'}`} />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-                            <span className="font-black text-black">{c.nom}</span>
-                            {c.quantite > 1 && (
-                              <span className="bg-[#6ba4ff]/20 text-[#4080cc] text-xs font-black px-2 py-0.5 rounded-full">×{c.quantite}</span>
-                            )}
-                            <span className={`text-xs font-black px-2 py-0.5 rounded-full ${c.statut === 'En attente' ? 'bg-[#ff7b00]/15 text-[#cc5500]' : 'bg-[#baff29]/30 text-[#5a8000]'}`}>
-                              {c.statut === 'En attente' ? '⏳ En attente' : '✓ Reçu'}
-                            </span>
-                          </div>
-                          <div className="text-xs text-slate-400 flex gap-3 flex-wrap">
-                            <span>EAN: {c.ean}</span>
-                            <span>Commandé le {formatDate(c.date_commande)}</span>
-                            {c.date_reception && <span>· Reçu le {formatDate(c.date_reception)}</span>}
-                          </div>
+                <h3 className="text-xs font-black text-slate-400 uppercase tracking-wider mb-6">Historique des réceptions</h3>
+                {Object.keys(historiqueParJour).length === 0 ? (
+                  <p className="text-center text-slate-400 py-10 font-medium">Aucune réception enregistrée.</p>
+                ) : Object.entries(historiqueParJour).map(([jour, entrees]) => (
+                  <div key={jour} className="mb-6">
+                    <div className="flex items-center gap-3 mb-3">
+                      <span className="bg-black text-white text-xs font-black px-3 py-1.5 rounded-lg whitespace-nowrap capitalize">{jour}</span>
+                      <div className="flex-1 h-px bg-slate-200" />
+                      <span className="bg-emerald-100 text-emerald-700 text-xs font-black px-2 py-1 rounded-full shrink-0">
+                        {entrees.length} jeu{entrees.length > 1 ? 'x' : ''}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {entrees.map(e => (
+                        <div key={e.id} className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl px-3 py-2 shadow-sm hover:border-slate-300 transition-colors">
+                          <span className="font-bold text-sm text-black">{e.nom}</span>
+                          {e.ean !== 'Manuel' && <span className="text-xs text-slate-400 font-mono">{e.ean}</span>}
+                          <button onClick={() => supprimerEntreeHistorique(e.id)}
+                            className="text-slate-300 hover:text-red-400 transition-colors ml-1 text-xs leading-none"
+                            title="Retirer de l'historique">✕</button>
                         </div>
-                        <div className="flex gap-2 shrink-0">
-                          {c.statut === 'En attente' && (
-                            <button onClick={() => marquerRecu(c.id)}
-                              className="bg-[#baff29] hover:bg-[#9de30b] text-black font-black text-xs px-3 py-1.5 rounded-xl transition-colors">
-                              ✓ Reçu
-                            </button>
-                          )}
-                          <button onClick={() => supprimerCommande(c.id)}
-                            className="w-8 h-8 flex items-center justify-center bg-slate-100 hover:bg-red-100 hover:text-red-500 rounded-xl transition-colors text-slate-400 text-sm">
-                            🗑️
-                          </button>
-                        </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
-                )}
+                ))}
               </div>
+
             </div>
           </div>
         </div>
