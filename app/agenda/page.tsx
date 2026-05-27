@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import { supabase } from "../../lib/supabase";
 import NavBar from "../../components/NavBar";
@@ -24,6 +24,9 @@ type MembreEquipe = {
   horaires: any;
 };
 type Evenement = { id?: string; parent_id?: string; titre: string; type: string; date_debut: string; date_fin: string; heure_debut?: string; heure_fin?: string; membres: string[]; };
+type PlanningSlot = { id: string; dateKey: string; debut: string; fin: string; membreIds: string[]; room?: 'principale' | 'jv' };
+type Vacataire = { id: string; nom: string; couleur: string };
+const VAC_COLORS = ['#fb923c', '#c084fc', '#f472b6', '#34d399', '#facc15'];
 
 type SwapSession = {
   active: boolean;
@@ -52,6 +55,44 @@ const minsToTimeStr = (mins: number) => {
   const h = Math.floor(mins / 60);
   const m = Math.round(mins % 60);
   return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+};
+
+const PLANNING_START = 9;
+const PLANNING_END = 20;
+const PLANNING_HEURES = [9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
+const planningTopPct = (t: string) =>
+  Math.max(0, Math.min(100, (timeToMins(t) - PLANNING_START * 60) / ((PLANNING_END - PLANNING_START) * 60) * 100));
+const planningHPct = (d: string, f: string) => planningTopPct(f) - planningTopPct(d);
+const PLANNING_SLOTS_MAP: Record<number, string[]> = {
+  2: ['09:30|11:30', '13:00|16:00', '16:00|18:00', '18:00|19:00'],
+  3: ['10:00|13:00', '13:00|15:00', '15:00|17:00', '17:00|18:00'],
+  4: ['13:00|15:00', '15:00|17:00', '17:00|19:00'],
+  5: ['09:30|11:30', '13:00|16:00', '16:00|18:00', '18:00|20:00'],
+  6: ['10:00|12:00', '12:00|13:00', '13:00|14:00', '14:00|18:00'],
+};
+const JV_SLOTS_MAP: Record<number, string[]> = {
+  2: ['16:00|18:00'],
+  3: ['15:00|17:00'],
+  4: ['15:00|17:00'],
+  5: ['16:00|18:00'],
+};
+const getDefaultPlanningSlots = (days: Date[]): PlanningSlot[] => {
+  const slots: PlanningSlot[] = [];
+  days.forEach(jour => {
+    const dow = jour.getDay();
+    const dk = format(jour, 'yyyy-MM-dd');
+    const ranges = PLANNING_SLOTS_MAP[dow];
+    if (ranges) ranges.forEach(r => {
+      const [d, f] = r.split('|');
+      slots.push({ id: `${dk}-${d}`, dateKey: dk, debut: d, fin: f, membreIds: [], room: 'principale' });
+    });
+    const jvRanges = JV_SLOTS_MAP[dow];
+    if (jvRanges) jvRanges.forEach(r => {
+      const [d, f] = r.split('|');
+      slots.push({ id: `${dk}-${d}-jv`, dateKey: dk, debut: d, fin: f, membreIds: [], room: 'jv' });
+    });
+  });
+  return slots;
 };
 
 const soustraireHeures = (debutA: string, finA: string, debutB: string, finB: string) => {
@@ -107,6 +148,21 @@ const getEventIcon = (type: string) => {
   if (type === 'Soirée Jeux') return '🌙';
   if (type === 'Heures Exceptionnelles') return '⭐';
   return '📌';
+};
+
+const getPlanningHatches = (debut: string, fin: string, dateKey: string, memberIds: string[], slots: PlanningSlot[]) => {
+  const bStart = timeToMins(debut);
+  const bEnd = timeToMins(fin, true);
+  const dur = bEnd - bStart;
+  if (dur <= 0) return [];
+  return slots
+    .filter(s => s.dateKey === dateKey && s.membreIds.some(mid => memberIds.includes(mid)))
+    .flatMap(s => {
+      const oStart = Math.max(bStart, timeToMins(s.debut));
+      const oEnd = Math.min(bEnd, timeToMins(s.fin, true));
+      if (oStart >= oEnd) return [];
+      return [{ topPct: (oStart - bStart) / dur * 100, heightPct: (oEnd - oStart) / dur * 100 }];
+    });
 };
 
 function isJourTravaille(membre: MembreEquipe, dateStr: string, feries: Record<string, string>): boolean {
@@ -227,6 +283,9 @@ useEffect(() => {
   }, []);
   useEffect(() => { localStorage.setItem('agenda_couleurs', JSON.stringify(couleurs)); }, [couleurs]);
 
+  const getMemberColor = (m: { groupe?: string; couleur?: string }) =>
+    m.couleur || (m.groupe === 'A' ? couleurs.equipeA : m.groupe === 'B' ? couleurs.equipeB : couleurs.accent);
+
   const getBlocColor = (membresBloc: any[], currentEquipe: MembreEquipe[]) => {
     if (currentEquipe.length === 0) return couleurs.accent;
     const countA = membresBloc.filter(m => m.groupe === 'A').length;
@@ -280,6 +339,33 @@ useEffect(() => {
   const [quickEditEv, setQuickEditEv] = useState<Evenement | null>(null);
   const [newAbsHS, setNewAbsHS] = useState<AbsenceHS | null>(null);
 
+  const [viewPlanningSlots, setViewPlanningSlots] = useState<PlanningSlot[]>([]);
+  const [showPlanningModal, setShowPlanningModal] = useState(false);
+  const [planningDate, setPlanningDate] = useState(new Date());
+  const [planningSlots, setPlanningSlots] = useState<PlanningSlot[]>([]);
+  const [dragSelectionIds, setDragSelectionIds] = useState<string[]>([]);
+  const [hoveringSlotId, setHoveringSlotId] = useState<string | null>(null);
+  const [vacataires, setVacataires] = useState<Vacataire[]>([]);
+  const [editingVacId, setEditingVacId] = useState<string | null>(null);
+  const addVacataire = () => {
+    const id = `vac-${Date.now()}`;
+    const couleur = VAC_COLORS[vacataires.length % VAC_COLORS.length];
+    setVacataires(prev => [...prev, { id, nom: 'Vacataire', couleur }]);
+    setEditingVacId(id);
+  };
+  const removeVacataire = (id: string) => {
+    setVacataires(prev => prev.filter(v => v.id !== id));
+    setPlanningSlots(prev => prev.map(s => ({ ...s, membreIds: s.membreIds.filter(m => m !== id) })));
+  };
+  const planningGridRef = useRef<HTMLDivElement>(null);
+  const resizingRef = useRef<{ slotId: string; edge: 'top' | 'bottom'; startY: number; origDebut: string; origFin: string } | null>(null);
+  const lastLoadedPlanningRef = useRef<{ slots: PlanningSlot[]; vacataires: Vacataire[] } | null>(null);
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const multiDragRef = useRef<{ ids: string[] } | null>(null);
+  const ghostRef = useRef<HTMLDivElement | null>(null);
+  const memberDataRef = useRef<Record<string, { initial: string; color: string }>>({});
+  const openPlanningModal = () => { setPlanningDate(dateActuelle); setShowPlanningModal(true); };
+
   const isAbsenceType = ABSENCE_TYPES.includes(nouvelEvent.type);
 
   useEffect(() => {
@@ -290,10 +376,152 @@ useEffect(() => {
       if (swapSession.active && swapSession.step === 2) { setSwapSession({ active: false, step: 1, selectedDates: [], m1Id: '', m2Id: '' }); return; }
       if (showEquipePanel) { setShowEquipePanel(false); return; }
       if (showEventsListPanel) { setShowEventsListPanel(false); return; }
+      if (showPlanningModal) { setShowPlanningModal(false); return; }
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [quickEditEv, showEventModal, swapSession, showEquipePanel, showEventsListPanel]);
+  }, [quickEditEv, showEventModal, swapSession, showEquipePanel, showEventsListPanel, showPlanningModal]);
+
+  // Keep memberDataRef in sync so ghost element can read colors without stale closures
+  useEffect(() => {
+    const map: Record<string, { initial: string; color: string }> = {};
+    activeEquipe.forEach(m => {
+      const nom = m.nom.trim() || '?';
+      map[m.id] = { initial: nom[0].toUpperCase(), color: getMemberColor({ groupe: m.groupe, couleur: m.horaires?.couleur }) };
+    });
+    vacataires.forEach(v => {
+      const nom = v.nom.trim() || '?';
+      map[v.id] = { initial: nom[0].toUpperCase(), color: v.couleur };
+    });
+    memberDataRef.current = map;
+  }, [activeEquipe, vacataires]);
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (resizingRef.current && planningGridRef.current) {
+        // Resize logic
+        const { slotId, edge, startY, origDebut, origFin } = resizingRef.current;
+        const rect = planningGridRef.current.getBoundingClientRect();
+        const pxPerMin = rect.height / ((PLANNING_END - PLANNING_START) * 60);
+        const deltaMins = Math.round((e.clientY - startY) / pxPerMin / 30) * 30;
+        setPlanningSlots(prev => prev.map(s => {
+          if (s.id !== slotId) return s;
+          if (edge === 'top') {
+            const nd = timeToMins(origDebut) + deltaMins;
+            if (nd < PLANNING_START * 60 || nd >= timeToMins(origFin) - 30) return s;
+            return { ...s, debut: minsToTimeStr(nd) };
+          } else {
+            const nf = timeToMins(origFin) + deltaMins;
+            if (nf <= timeToMins(origDebut) + 30 || nf > PLANNING_END * 60) return s;
+            return { ...s, fin: minsToTimeStr(nf) };
+          }
+        }));
+        return;
+      }
+
+      if (!multiDragRef.current) return;
+
+      // Move ghost
+      if (ghostRef.current) {
+        ghostRef.current.style.left = `${e.clientX + 14}px`;
+        ghostRef.current.style.top = `${e.clientY + 14}px`;
+      }
+
+      // Detect hover over another member
+      const elAt = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null;
+      const memberEl = elAt?.closest('[data-member-id]') as HTMLElement | null;
+      if (memberEl) {
+        const mid = memberEl.dataset.memberId!;
+        if (!multiDragRef.current.ids.includes(mid)) {
+          multiDragRef.current.ids.push(mid);
+          setDragSelectionIds([...multiDragRef.current.ids]);
+          // Append new avatar to ghost
+          const d = memberDataRef.current[mid];
+          if (d && ghostRef.current) {
+            const span = document.createElement('span');
+            span.style.cssText = `font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:28px;line-height:1;color:${d.color};-webkit-text-stroke:1.5px #0d0d0d;filter:drop-shadow(1.5px 1.5px 0 #0d0d0d);display:inline-block`;
+            span.textContent = d.initial;
+            ghostRef.current.appendChild(span);
+          }
+        }
+      }
+
+      // Highlight hovered slot
+      const slotEl = elAt?.closest('[data-slot-id]') as HTMLElement | null;
+      setHoveringSlotId(slotEl?.dataset.slotId ?? null);
+    };
+
+    const onUp = (e: MouseEvent) => {
+      if (multiDragRef.current) {
+        const elAt = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null;
+        const slotEl = elAt?.closest('[data-slot-id]') as HTMLElement | null;
+        if (slotEl) {
+          const slotId = slotEl.dataset.slotId!;
+          const ids = multiDragRef.current.ids;
+          setPlanningSlots(prev => prev.map(s => s.id === slotId ? { ...s, membreIds: [...new Set([...s.membreIds, ...ids])] } : s));
+        }
+        if (ghostRef.current) { document.body.removeChild(ghostRef.current); ghostRef.current = null; }
+        multiDragRef.current = null;
+        setDragSelectionIds([]);
+        setHoveringSlotId(null);
+      }
+      resizingRef.current = null;
+    };
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+  }, []);
+
+
+  useEffect(() => {
+    const key = format(startOfWeek(dateActuelle, { weekStartsOn: 1 }), 'yyyy-MM-dd');
+    supabase.from('planning_semaine').select('slots').eq('semaine_key', key).single()
+      .then(({ data }) => setViewPlanningSlots((data?.slots ?? []) as PlanningSlot[]));
+  }, [dateActuelle]);
+
+  const planningWeekKey = (d: Date) => format(startOfWeek(d, { weekStartsOn: 1 }), 'yyyy-MM-dd');
+
+  useEffect(() => {
+    const days = eachDayOfInterval({ start: startOfWeek(planningDate, { weekStartsOn: 1 }), end: endOfWeek(planningDate, { weekStartsOn: 1 }) });
+    const key = planningWeekKey(planningDate);
+    (async () => {
+      const { data } = await supabase.from('planning_semaine').select('slots,vacataires').eq('semaine_key', key).single();
+      let slots: PlanningSlot[];
+      let vacs: Vacataire[];
+      if (data?.slots?.length) {
+        slots = data.slots as PlanningSlot[];
+        vacs = (data.vacataires ?? []) as Vacataire[];
+      } else {
+        slots = getDefaultPlanningSlots(days);
+        vacs = [];
+      }
+      lastLoadedPlanningRef.current = { slots, vacataires: vacs };
+      setPlanningSlots(slots);
+      setVacataires(vacs);
+    })();
+  }, [planningDate]);
+
+  useEffect(() => {
+    const last = lastLoadedPlanningRef.current;
+    if (last && last.slots === planningSlots && last.vacataires === vacataires) return;
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    autoSaveTimerRef.current = setTimeout(() => {
+      const key = planningWeekKey(planningDate);
+      supabase.from('planning_semaine').upsert({ semaine_key: key, slots: planningSlots, vacataires, updated_at: new Date().toISOString() });
+      lastLoadedPlanningRef.current = { slots: planningSlots, vacataires };
+    }, 800);
+    return () => { if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current); };
+  }, [planningSlots, vacataires]);
+
+  const [savingPlanning, setSavingPlanning] = useState(false);
+  const savePlanningWeek = async () => {
+    setSavingPlanning(true);
+    const key = planningWeekKey(planningDate);
+    await supabase.from('planning_semaine').upsert({ semaine_key: key, slots: planningSlots, vacataires, updated_at: new Date().toISOString() });
+    lastLoadedPlanningRef.current = { slots: planningSlots, vacataires };
+    setSavingPlanning(false);
+  };
   const mainTypeUI = isAbsenceType ? 'Absence' : (['Réunion', 'Animation', 'Soirée Jeux', 'Heures Exceptionnelles'].includes(nouvelEvent.type) ? nouvelEvent.type : 'Autre');
   const absTypeUI = nouvelEvent.type.includes('RTT') ? 'RTT' : nouvelEvent.type.includes('Récupération') ? 'Récupération' : 'Congé';
   const isDemiUI = nouvelEvent.type.startsWith('Demi-');
@@ -381,7 +609,7 @@ useEffect(() => {
     
     fetch(`https://calendrier.api.gouv.fr/jours-feries/metropole/${dateActuelle.getFullYear()}.json`)
       .then(res => res.json())
-      .then(data => setJoursFeries(data))
+      .then(data => setJoursFeries(data as Record<string, string>))
       .catch(console.error);
 
     const channel = supabase.channel('agenda_realtime')
@@ -854,8 +1082,24 @@ useEffect(() => {
     const finMois = endOfMonth(debutMois);
     return vue === "Mois" ? eachDayOfInterval({ start: startOfWeek(debutMois, { weekStartsOn: 1 }), end: endOfWeek(finMois, { weekStartsOn: 1 }) }) : eachDayOfInterval({ start: startOfWeek(dateActuelle, { weekStartsOn: 1 }), end: endOfWeek(dateActuelle, { weekStartsOn: 1 }) });
   }, [dateActuelle, vue]);
+
+  const planningDays = useMemo(() =>
+    eachDayOfInterval({ start: startOfWeek(planningDate, { weekStartsOn: 1 }), end: endOfWeek(planningDate, { weekStartsOn: 1 }) }).slice(1, 6),
+  [planningDate]);
   
   const [alertes, setAlertes] = useState<{amplitude: string[], heuresSupp: string[]}>({amplitude: [], heuresSupp: []});
+  const [currentTimePct, setCurrentTimePct] = useState(() => {
+    const now = new Date();
+    return Math.max(0, Math.min(100, (((now.getHours() - HEURE_DEBUT) * 60 + now.getMinutes()) / ((HEURE_FIN - HEURE_DEBUT) * 60)) * 100));
+  });
+  useEffect(() => {
+    const tick = () => {
+      const now = new Date();
+      setCurrentTimePct(Math.max(0, Math.min(100, (((now.getHours() - HEURE_DEBUT) * 60 + now.getMinutes()) / ((HEURE_FIN - HEURE_DEBUT) * 60)) * 100)));
+    };
+    const id = setInterval(tick, 60000);
+    return () => clearInterval(id);
+  }, []);
   
   useEffect(() => {
     if (!isDraftMode) return;
@@ -1051,8 +1295,11 @@ useEffect(() => {
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <div>
               <div className="bc" style={{ fontSize: 80, lineHeight: 0.9, textTransform: "uppercase", letterSpacing: "-1px", background: "linear-gradient(135deg, #0d0d0d 40%, var(--purple))", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>Agenda</div>
-              <div className="bc capitalize" style={{ fontSize: 20, color: "rgba(0,0,0,0.35)", marginTop: 6 }}>
-                {vue === "Mois" ? format(dateActuelle, 'MMMM yyyy', { locale: fr }) : `Sem. ${format(startOfWeek(dateActuelle, { weekStartsOn: 1 }), 'w', { locale: fr })}`}
+              <div className="bc" style={{ fontSize: 16, color: "rgba(0,0,0,0.35)", marginTop: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                {vue === "Mois"
+                  ? `${format(dateActuelle, 'MMMM yyyy', { locale: fr })} · Vue Stickers`
+                  : `Semaine ${getISOWeek(dateActuelle)} · ${format(startOfWeek(dateActuelle, { weekStartsOn: 1 }), 'd', { locale: fr })}–${format(endOfWeek(dateActuelle, { weekStartsOn: 1 }), 'd MMM yyyy', { locale: fr })}`
+                }
               </div>
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
@@ -1067,6 +1314,10 @@ useEffect(() => {
               </div>
               <button onClick={() => setDateActuelle(new Date())} className="pop-btn pop-btn-outline" style={{ fontSize: 13, padding: "8px 14px" }}>Aujourd'hui</button>
               <button onClick={() => setDateActuelle(vue === "Mois" ? addMonths(dateActuelle, 1) : addWeeks(dateActuelle, 1))} className="pop-btn pop-btn-outline" style={{ padding: "8px 12px", fontSize: 14 }}>▶</button>
+              <div className="pop-card" style={{ display: "flex", padding: 4, gap: 0 }}>
+                <button onClick={() => setVue("Mois")} className="pop-btn" style={{ fontSize: 13, padding: "6px 16px", background: vue === "Mois" ? "var(--yellow)" : "transparent", boxShadow: vue === "Mois" ? "2px 2px 0 var(--ink)" : "none", border: vue === "Mois" ? "2px solid var(--ink)" : "2px solid transparent" }}>Mois</button>
+                <button onClick={() => setVue("Semaine")} className="pop-btn" style={{ fontSize: 13, padding: "6px 16px", background: vue === "Semaine" ? "var(--yellow)" : "transparent", boxShadow: vue === "Semaine" ? "2px 2px 0 var(--ink)" : "none", border: vue === "Semaine" ? "2px solid var(--ink)" : "2px solid transparent" }}>Semaine</button>
+              </div>
             </div>
           </div>
 
@@ -1076,10 +1327,6 @@ useEffect(() => {
                 🛠️ Prévision
               </button>
             )}
-            <div className="pop-card" style={{ display: "flex", padding: 4, gap: 0 }}>
-              <button onClick={() => setVue("Mois")} className="pop-btn" style={{ fontSize: 13, padding: "6px 16px", background: vue === "Mois" ? "var(--yellow)" : "transparent", boxShadow: vue === "Mois" ? "2px 2px 0 var(--ink)" : "none", border: vue === "Mois" ? "2px solid var(--ink)" : "2px solid transparent" }}>Mois</button>
-              <button onClick={() => setVue("Semaine")} className="pop-btn" style={{ fontSize: 13, padding: "6px 16px", background: vue === "Semaine" ? "var(--yellow)" : "transparent", boxShadow: vue === "Semaine" ? "2px 2px 0 var(--ink)" : "none", border: vue === "Semaine" ? "2px solid var(--ink)" : "2px solid transparent" }}>Semaine</button>
-            </div>
             <button onClick={() => setShowEventsListPanel(true)} className="pop-btn pop-btn-outline" style={{ fontSize: 13 }}>📅 Événements</button>
             <button onClick={() => { setOngletMembre("profil"); setShowEquipePanel(true); }} className="pop-btn pop-btn-outline" style={{ fontSize: 13 }}>👥 Équipe</button>
             <button onClick={() => setShowSettings(!showSettings)} className="pop-btn pop-btn-outline" style={{ fontSize: 18, padding: "6px 10px" }}>⚙️</button>
@@ -1094,23 +1341,26 @@ useEffect(() => {
         </div>
 
         <div className="pop-card" style={{ display: "flex", flexDirection: "column", overflow: "hidden", flex: 1 }}>
-          <div style={{ display: "grid", borderBottom: "2px solid var(--ink)", background: "var(--cream2)", borderRadius: "10px 10px 0 0", gridTemplateColumns: vue === "Semaine" ? "60px 1fr 1fr 1fr 1fr 1fr 1fr 1fr" : "repeat(7, 1fr)" }}>
+          <div style={{ display: "grid", borderBottom: "2px solid var(--ink)", background: "var(--ink)", borderRadius: "10px 10px 0 0", gridTemplateColumns: vue === "Semaine" ? "60px 1fr 1fr 1fr 1fr 1fr 1fr 1fr" : "repeat(7, 1fr)" }}>
             {vue === "Semaine" && <div style={{ padding: "10px 0" }}></div>}
             {vue === "Semaine"
               ? joursAffiches.map((jour) => {
                   const today = isToday(jour);
                   return (
                     <div key={format(jour, 'yyyy-MM-dd')} style={{ padding: "8px 0", textAlign: "center", background: today ? couleurs.accent : "transparent", borderBottom: today ? "2px solid var(--ink)" : "none", marginBottom: today ? -2 : 0, borderRadius: today ? "0" : "0" }}>
-                      <div className="bc" style={{ fontSize: 10, letterSpacing: "0.08em", color: today ? "var(--ink)" : "rgba(0,0,0,0.45)", textTransform: "uppercase" }}>{format(jour, 'EEE', { locale: fr })}</div>
-                      <div className="bc" style={{ fontSize: 22, lineHeight: 1, fontWeight: 900, color: "var(--ink)", marginTop: 1 }}>{format(jour, 'd')}</div>
+                      <div className="bc" style={{ fontSize: 10, letterSpacing: "0.08em", color: today ? "var(--ink)" : "rgba(255,255,255,0.6)", textTransform: "uppercase" }}>{format(jour, 'EEE', { locale: fr })}</div>
+                      <div className="bc" style={{ fontSize: 22, lineHeight: 1, fontWeight: 900, color: today ? "var(--ink)" : "var(--white)", marginTop: 1 }}>{format(jour, 'd')}</div>
                     </div>
                   );
                 })
               : ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'].map(jour => (
-                  <div key={jour} className="bc" style={{ padding: "10px 0", textAlign: "center", color: "rgba(0,0,0,0.45)", fontSize: 11, letterSpacing: "0.08em" }}>{jour}</div>
+                  <div key={jour} className="bc" style={{ padding: "10px 0", textAlign: "center", color: "rgba(255,255,255,0.6)", fontSize: 11, letterSpacing: "0.08em" }}>{jour}</div>
                 ))
             }
           </div>
+
+          {/* Rainbow colour stripe — echo of the navbar arc-en-ciel */}
+          <div style={{ height: 6, background: "linear-gradient(90deg,#a8e063 0%,#a8e063 16.6%,#f472b6 16.6%,#f472b6 33.2%,#60a5fa 33.2%,#60a5fa 49.8%,#f87171 49.8%,#f87171 66.4%,#fb923c 66.4%,#fb923c 83%,#c084fc 83%,#c084fc 100%)", flexShrink: 0 }}></div>
 
           {vue === "Mois" ? (
             <div style={{ flex: 1, display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gridAutoRows: "1fr" }}>
@@ -1144,15 +1394,26 @@ useEffect(() => {
                         }
                       });
 
-                      segments.forEach(seg => presencesDuJour.push({ nom: m.nom, groupe: m.groupe, debut: seg.debut, fin: seg.fin }));
+                      segments.forEach(seg => presencesDuJour.push({ nom: m.nom, groupe: m.groupe, debut: seg.debut, fin: seg.fin, id: m.id, couleur: m.horaires?.couleur }));
                     }
                   });
                 }
 
                 const blocsHoraires = genererBlocsMensuels(presencesDuJour);
+                const specialEvsDuJour = evenementsDuJour.filter(e => ['Soirée Jeux', 'Heures Exceptionnelles'].includes(e.type));
+                const blocsToShowMois = blocsHoraires.filter((bloc: any) =>
+                  !specialEvsDuJour.some(ev => {
+                    const coversMembers = !ev.membres.length || bloc.membresInfos.every((m: any) => ev.membres.includes(m.id));
+                    if (!ev.heure_debut || !ev.heure_fin) return coversMembers;
+                    const evS = timeToMins(ev.heure_debut); const evE = timeToMins(ev.heure_fin, true);
+                    const bS = timeToMins(bloc.debut);      const bE = timeToMins(bloc.fin, true);
+                    return coversMembers && evS <= bS && evE >= bE;
+                  })
+                );
 
                 return (
                   <div key={i}
+                    className={!isSelectedForSwap && isToday(jour) ? 'today-hatch' : ''}
                     onClick={() => {
                       if (swapSession.active && swapSession.step === 1) toggleSwapDate(dateKey);
                       else { setDateActuelle(jour); setVue("Semaine"); }
@@ -1160,7 +1421,7 @@ useEffect(() => {
                     style={{
                       borderRight: "1.5px solid rgba(0,0,0,0.09)",
                       borderBottom: "1.5px solid rgba(0,0,0,0.09)",
-                      background: isSelectedForSwap ? "rgba(96,165,250,0.12)" : isSameMonth(jour, dateActuelle) ? "var(--white)" : "rgba(0,0,0,0.025)",
+                      background: isSelectedForSwap ? "rgba(96,165,250,0.12)" : isToday(jour) ? undefined : isSameMonth(jour, dateActuelle) ? "var(--white)" : "rgba(0,0,0,0.025)",
                       outline: isSelectedForSwap ? "3px solid var(--bleu)" : "none",
                       outlineOffset: -3,
                       position: "relative",
@@ -1182,48 +1443,84 @@ useEffect(() => {
                     {/* Header row: event dots + day number */}
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "7px 7px 4px", zIndex: 20, pointerEvents: "none" }}>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 3, flex: 1, marginRight: 4, marginTop: 2 }}>
-                        {nomFerie && (
-                          <span style={{ fontSize: 9, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.05em", background: "var(--yellow)", color: "var(--ink)", border: "1.5px solid var(--ink)", borderRadius: 4, padding: "1px 5px", boxShadow: "1px 1px 0 var(--ink)", display: "block", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>{nomFerie}</span>
-                        )}
                         {!nomFerie && evenementsDuJour.filter(e => !['Soirée Jeux', 'Heures Exceptionnelles'].includes(e.type)).map((ev, idx) => (
                           <div key={`dot-${idx}`} style={{ width: 9, height: 9, borderRadius: "50%", backgroundColor: getEventColor(ev.type), border: "1.5px solid var(--ink)", flexShrink: 0 }}></div>
                         ))}
                       </div>
-                      <span style={{
-                        fontWeight: 900, fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center",
-                        width: 26, height: 26, borderRadius: "50%", flexShrink: 0,
-                        background: isToday(jour) ? couleurs.accent : "transparent",
-                        border: isToday(jour) ? "2px solid var(--ink)" : "none",
-                        boxShadow: isToday(jour) ? "1.5px 1.5px 0 var(--ink)" : "none",
-                        color: nomFerie && !isToday(jour) ? "var(--rouge)" : "var(--ink)",
-                      }}>
-                        {format(jour, 'd')}
-                      </span>
+                      {isToday(jour) ? (
+                        <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+                          <span className="bc" style={{ fontSize: 20, lineHeight: 1, letterSpacing: "-0.5px" }}>
+                            {format(jour, 'd')}
+                          </span>
+                          <span style={{ background: "var(--ink)", color: "var(--yellow)", borderRadius: 4, padding: "1px 5px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em" }}>
+                            AUJ.
+                          </span>
+                        </div>
+                      ) : (
+                        <span style={{
+                          fontWeight: 900, fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center",
+                          width: 26, height: 26, borderRadius: "50%", flexShrink: 0,
+                          background: "transparent",
+                          color: nomFerie ? "var(--rouge)" : "var(--ink)",
+                        }}>
+                          {format(jour, 'd')}
+                        </span>
+                      )}
                     </div>
 
-                    {/* Event blocks */}
-                    <div style={{ flex: 1, display: "flex", flexDirection: "column", padding: "0 5px 5px", gap: 3, zIndex: 10, overflowY: "auto" }} className="hide-scrollbar">
-                      {blocsHoraires.map((bloc: any, idx: number) => {
+                    {/* Event blocks — overflow:visible so rotated stickers aren't clipped by the header */}
+                    <div style={{ flex: 1, display: "flex", flexDirection: "column", padding: "0 5px 5px", gap: 4, zIndex: 10 }}>
+                      {nomFerie && (
+                        <div className="bc" style={{ background: "var(--yellow)", border: "2px solid var(--ink)", borderRadius: 6, padding: "4px 7px", fontWeight: 900, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.06em", boxShadow: "2px 2px 0 var(--ink)", transform: "rotate(-2deg)", transformOrigin: "center", alignSelf: "stretch", lineHeight: 1.2 }}>
+                          {nomFerie}
+                        </div>
+                      )}
+                      {blocsToShowMois.map((bloc: any, idx: number) => {
                         const bgColor = getBlocColor(bloc.membresInfos, activeEquipe);
                         const absInBloc = evenementsDuJour.filter(e => ABSENCE_TYPES.includes(e.type) && e.membres.some(mId => bloc.membresInfos.find((m:any) => m.id === mId)));
+                        const isSingleBloc = blocsToShowMois.length === 1;
                         return (
-                          <div key={idx} style={{ background: bgColor, border: "1.5px solid var(--ink)", borderRadius: 6, padding: "3px 6px", display: "flex", flexDirection: "column", gap: 1 }}>
-                            <span style={{ fontWeight: 800, fontSize: 10, lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{bloc.noms.join(', ')}</span>
+                          <div key={idx} style={{ background: bgColor, border: "2px solid var(--ink)", borderRadius: 6, padding: isSingleBloc ? "5px 8px" : "3px 6px", display: "flex", flexDirection: "column", gap: isSingleBloc ? 2 : 1, boxShadow: "2px 2px 0 var(--ink)", transform: idx % 2 === 0 ? "rotate(-1.5deg)" : "rotate(1deg)", transformOrigin: "center" }}>
+                            <div style={{ display: "flex", gap: 3, flexWrap: "wrap", alignItems: "flex-end" }}>
+                              {bloc.membresInfos.map((m: any, mIdx: number) => {
+                                const tilt = (((m.nom.charCodeAt(0) + mIdx * 7) % 9) - 4) * 0.8;
+                                return (
+                                  <span key={mIdx} className="bc" style={{ fontSize: isSingleBloc ? 14 : 12, lineHeight: 1, display: "inline-block", flexShrink: 0, color: getMemberColor(m), WebkitTextStroke: "1px var(--ink)", filter: "drop-shadow(1px 1px 0 #0d0d0d)", transform: `rotate(${tilt}deg)` }}>
+                                    {m.nom.trim()[0].toUpperCase()}
+                                  </span>
+                                );
+                              })}
+                            </div>
                             {absInBloc.map((abs, aIdx) => (
                               <span key={aIdx} style={{ fontSize: 8, fontWeight: 800, background: "var(--rose)", color: "var(--ink)", border: "1px solid var(--ink)", borderRadius: 3, padding: "0 3px" }}>{abs.type.replace('Demi-', '½ ')}</span>
                             ))}
-                            <span style={{ fontSize: 9, fontWeight: 600, opacity: 0.65 }}>{bloc.debut}–{bloc.fin}</span>
+                            <span style={{ fontSize: isSingleBloc ? 10 : 9, fontWeight: 600, opacity: 0.65 }}>{bloc.debut}–{bloc.fin}</span>
                           </div>
                         );
                       })}
-                      {evenementsDuJour.filter(e => ['Soirée Jeux', 'Heures Exceptionnelles'].includes(e.type)).map((ev, idx) => (
-                        <div key={`ev-m-${idx}`}
-                          onClick={(e) => { e.stopPropagation(); ouvrirEditionEvenement(ev, 'single'); }}
-                          style={{ background: getEventColor(ev.type), border: "1.5px solid var(--ink)", borderRadius: 6, padding: "3px 6px", display: "flex", flexDirection: "column", gap: 1, cursor: "pointer", pointerEvents: "auto" }}>
-                          <span style={{ fontWeight: 800, fontSize: 10, lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{getEventIcon(ev.type)} {ev.titre}</span>
-                          {ev.heure_debut && <span style={{ fontSize: 9, fontWeight: 600, opacity: 0.65 }}>{ev.heure_debut}–{ev.heure_fin}</span>}
-                        </div>
-                      ))}
+                      {evenementsDuJour.filter(e => ['Soirée Jeux', 'Heures Exceptionnelles'].includes(e.type)).map((ev, idx) => {
+                        const membresEv = ev.membres.length > 0 ? activeEquipe.filter(m => ev.membres.includes(m.id)) : [];
+                        return (
+                          <div key={`ev-m-${idx}`}
+                            onClick={(e) => { e.stopPropagation(); ouvrirEditionEvenement(ev, 'single'); }}
+                            style={{ background: getEventColor(ev.type), border: "2px solid var(--ink)", borderRadius: 6, padding: "3px 6px", display: "flex", flexDirection: "column", gap: 1, cursor: "pointer", pointerEvents: "auto", boxShadow: "2px 2px 0 var(--ink)", transform: idx % 2 === 0 ? "rotate(1.5deg)" : "rotate(-1deg)", transformOrigin: "center" }}>
+                            {membresEv.length > 0 && (
+                              <div style={{ display: "flex", gap: 3, flexWrap: "wrap", alignItems: "flex-end", marginBottom: 1 }}>
+                                {membresEv.map((m, mIdx) => {
+                                  const tilt = (((m.nom.charCodeAt(0) + mIdx * 7) % 9) - 4) * 0.8;
+                                  return (
+                                    <span key={m.id} className="bc" style={{ fontSize: 12, lineHeight: 1, display: "inline-block", flexShrink: 0, color: getMemberColor({ groupe: m.groupe, couleur: m.horaires?.couleur }), WebkitTextStroke: "1px var(--ink)", filter: "drop-shadow(1px 1px 0 #0d0d0d)", transform: `rotate(${tilt}deg)` }}>
+                                      {m.nom.trim()[0].toUpperCase()}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            )}
+                            <span style={{ fontWeight: 800, fontSize: 10, lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{getEventIcon(ev.type)} {ev.titre}</span>
+                            {ev.heure_debut && <span style={{ fontSize: 9, fontWeight: 600, opacity: 0.65 }}>{ev.heure_debut}–{ev.heure_fin}</span>}
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 );
@@ -1236,6 +1533,12 @@ useEffect(() => {
                   <div key={i} style={{ position: "absolute", width: "100%", borderTop: "1px solid rgba(0,0,0,0.07)", top: `${calculerPositionTop(heure + ':00')}%` }}></div>
                 ))}
               </div>
+              {joursAffiches.some(j => isToday(j)) && (
+                <div style={{ position: "absolute", left: 60, right: 0, top: `${currentTimePct}%`, zIndex: 90, pointerEvents: "none", display: "flex", alignItems: "center" }}>
+                  <div style={{ width: 10, height: 10, borderRadius: "50%", background: "var(--rouge)", border: "2px solid white", flexShrink: 0, marginLeft: -5 }}></div>
+                  <div style={{ flex: 1, height: 2, background: "var(--rouge)", opacity: 0.75 }}></div>
+                </div>
+              )}
               <div style={{ width: 60, borderRight: "1.5px solid rgba(0,0,0,0.1)", display: "flex", flexDirection: "column", background: "var(--white)", zIndex: 10, position: "relative" }}>
                 {HEURES_GRILLE.map((heure, i) => (
                   <div key={i} style={{ position: "absolute", width: "100%", fontSize: 11, fontWeight: 700, color: "rgba(0,0,0,0.35)", textAlign: "center", top: `${calculerPositionTop(heure + ':00')}%`, marginTop: -7 }}>
@@ -1282,17 +1585,26 @@ useEffect(() => {
                             segments = newSegments;
                           }
                         });
-                        segments.forEach(seg => presencesDuJour.push({ nom: m.nom, groupe: m.groupe, debut: seg.debut, fin: seg.fin, id: m.id }));
+                        segments.forEach(seg => presencesDuJour.push({ nom: m.nom, groupe: m.groupe, debut: seg.debut, fin: seg.fin, id: m.id, couleur: m.horaires?.couleur }));
                       }
                     });
                   }
 
                   const blocsHoraires = genererBlocsHoraires(presencesDuJour);
+                  const blocsToShow = blocsHoraires.filter((bloc: any) =>
+                    !eventsGrille.some(ev => {
+                      const coversMembers = !ev.membres.length || bloc.membresInfos.every((m: any) => ev.membres.includes(m.id));
+                      const evS = timeToMins(ev.heure_debut!); const evE = timeToMins(ev.heure_fin!, true);
+                      const bS = timeToMins(bloc.debut);       const bE = timeToMins(bloc.fin, true);
+                      return coversMembers && evS <= bS && evE >= bE;
+                    })
+                  );
 
                   return (
                     <div key={i}
+                         className={!isSelectedForSwap && isToday(jour) ? 'today-hatch' : ''}
                          onClick={() => { if (swapSession.active && swapSession.step === 1) toggleSwapDate(dateKey); }}
-                         style={{ position: "relative", background: isSelectedForSwap ? "rgba(96,165,250,0.06)" : "transparent", zIndex: 10, overflow: "hidden", cursor: swapSession.active ? "pointer" : "default", outline: isSelectedForSwap ? "3px solid var(--bleu)" : "none", outlineOffset: -3 }}>
+                         style={{ position: "relative", background: isSelectedForSwap ? "rgba(96,165,250,0.06)" : isToday(jour) ? undefined : "transparent", zIndex: 10, cursor: swapSession.active ? "pointer" : "default", outline: isSelectedForSwap ? "3px solid var(--bleu)" : "none", outlineOffset: -3 }}>
 
                       {/* Vacation band */}
                       {zonesVacances.length > 0 && (
@@ -1303,14 +1615,16 @@ useEffect(() => {
                         </div>
                       )}
 
-                      {/* Ferie label */}
+                      {/* Ferie block — full column */}
                       {nomFerie && (
-                        <div style={{ position: "absolute", top: 8, left: 6, right: 6, zIndex: 30, pointerEvents: "none" }}>
-                          <span style={{ fontSize: 9, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.05em", background: "var(--yellow)", color: "var(--ink)", border: "1.5px solid var(--ink)", borderRadius: 4, padding: "2px 5px", boxShadow: "1px 1px 0 var(--ink)", display: "inline-block" }}>{nomFerie}</span>
+                        <div style={{ position: "absolute", top: 6, left: 4, right: 4, bottom: 6, zIndex: 25, pointerEvents: "none", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                          <div className="bc" style={{ width: "100%", height: "100%", background: "var(--yellow)", border: "2px solid var(--ink)", borderRadius: 8, boxShadow: "2px 2px 0 var(--ink)", display: "flex", alignItems: "center", justifyContent: "center", transform: "rotate(-2deg)", padding: 8 }}>
+                            <span style={{ fontWeight: 900, fontSize: 12, textTransform: "uppercase", letterSpacing: "0.07em", textAlign: "center", lineHeight: 1.3 }}>{nomFerie}</span>
+                          </div>
                         </div>
                       )}
 
-                      {blocsHoraires.map((bloc: any, idx: number) => {
+                      {blocsToShow.map((bloc: any, idx: number) => {
                         const top = calculerPositionTop(bloc.debut);
                         const bottom = calculerPositionTop(bloc.fin, true);
                         const height = bottom - top;
@@ -1332,14 +1646,20 @@ useEffect(() => {
                               display: "flex", flexDirection: "column",
                               overflow: "hidden",
                               opacity: isDayFullTeam ? 1 : 0.82,
+                              transform: idx % 2 === 0 ? "rotate(-0.8deg)" : "rotate(0.6deg)",
+                              transformOrigin: "center",
                             }}>
-                              {/* Member dots */}
-                              <div style={{ display: "flex", gap: 3, flexWrap: "wrap", marginBottom: 4 }}>
-                                {bloc.membresInfos.map((m: any, mIdx: number) => (
-                                  <div key={mIdx} style={{ width: 10, height: 10, borderRadius: "50%", background: m.groupe === 'A' ? couleurs.equipeA : m.groupe === 'B' ? couleurs.equipeB : couleurs.accent, border: "1.5px solid var(--ink)", flexShrink: 0 }} />
-                                ))}
+                              {/* Member letters */}
+                              <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 4, alignItems: "flex-end" }}>
+                                {bloc.membresInfos.map((m: any, mIdx: number) => {
+                                  const tilt = (((m.nom.charCodeAt(0) + mIdx * 7) % 9) - 4) * 0.8;
+                                  return (
+                                    <span key={mIdx} className="bc" style={{ fontSize: 20, lineHeight: 1, display: "inline-block", flexShrink: 0, color: getMemberColor(m), WebkitTextStroke: "1.5px var(--ink)", filter: "drop-shadow(1.5px 1.5px 0 #0d0d0d)", transform: `rotate(${tilt}deg)` }}>
+                                      {m.nom.trim()[0].toUpperCase()}
+                                    </span>
+                                  );
+                                })}
                               </div>
-                              <span style={{ fontWeight: 800, fontSize: 11, lineHeight: 1.25, overflow: "hidden", textOverflow: "ellipsis" }}>{bloc.noms.join(', ')}</span>
                               {absencesDuBloc.map((abs, aIdx) => (
                                 <span key={aIdx} style={{ marginTop: 2, fontSize: 9, fontWeight: 800, background: "var(--rose)", border: "1px solid var(--ink)", borderRadius: 3, padding: "1px 4px", width: "fit-content" }}>{abs.type.replace('Demi-', '½ ')} : {getNomsMembresEvent(abs.membres)}</span>
                               ))}
@@ -1348,6 +1668,79 @@ useEffect(() => {
                           </div>
                         );
                       })}
+
+                      {/* Planning blocks overlay */}
+                      {(() => {
+                        const dayPlanSlots = viewPlanningSlots.filter(s => s.dateKey === dateKey && s.membreIds.length > 0);
+                        const byTime = new Map<string, { main: PlanningSlot | null; jv: PlanningSlot | null }>();
+                        dayPlanSlots.forEach(s => {
+                          const k = `${s.debut}|${s.fin}`;
+                          if (!byTime.has(k)) byTime.set(k, { main: null, jv: null });
+                          const e = byTime.get(k)!;
+                          if (s.room === 'jv') e.jv = s; else e.main = s;
+                        });
+                        const getMembers = (slot: PlanningSlot | null) => slot ? slot.membreIds.flatMap(mid => {
+                          const eq = activeEquipe.find(m => m.id === mid);
+                          const vac = vacataires.find(v => v.id === mid);
+                          if (!eq && !vac) return [];
+                          const nom = (eq?.nom ?? vac?.nom ?? '?').trim() || '?';
+                          const col = vac ? vac.couleur : getMemberColor({ groupe: eq?.groupe, couleur: eq?.horaires?.couleur });
+                          return [{ nom, col }];
+                        }) : [];
+                        return Array.from(byTime.entries()).map(([k, { main, jv }]) => {
+                          const ref = main ?? jv!;
+                          const top = calculerPositionTop(ref.debut);
+                          const height = Math.max(calculerPositionTop(ref.fin, true) - top, 1);
+                          const mainMembers = getMembers(main);
+                          const jvMembers = getMembers(jv);
+                          return (
+                            <div key={`pl-${k}`} style={{ position: "absolute", left: 9, right: 9, top: `${top}%`, height: `${height}%`, zIndex: 30, pointerEvents: "none", overflow: "visible", background: "repeating-linear-gradient(45deg, transparent, transparent 5px, rgba(248,113,113,0.13) 5px, rgba(248,113,113,0.13) 8px)", borderTop: "3px solid var(--rouge)", borderBottom: "3px solid var(--rouge)", display: "flex", alignItems: "center", justifyContent: "center", flexWrap: "wrap", gap: 6, padding: "4px 8px" }}>
+                              {mainMembers.map((m, mi) => {
+                                const seed = m.nom.charCodeAt(0) + mi * 37;
+                                const tilt = ((seed % 26) - 13) * 1.4;
+                                const dy = ((seed * 11) % 12) - 6;
+                                return (
+                                  <span key={mi} className="bc" style={{ fontSize: 22, lineHeight: 1, color: m.col, WebkitTextStroke: "1.5px var(--ink)", filter: "drop-shadow(1.5px 1.5px 0 #0d0d0d)", transform: `rotate(${tilt}deg) translateY(${dy}px)`, flexShrink: 0, display: "inline-block" }}>
+                                    {m.nom[0].toUpperCase()}
+                                  </span>
+                                );
+                              })}
+                              {jvMembers.length > 0 && (
+                                <div style={{ position: "absolute", top: "50%", right: 2, width: 52, height: 52, display: "flex", alignItems: "center", justifyContent: "center", transform: "translateY(-50%) rotate(-9deg)", zIndex: 3 }}>
+                                  <svg width={52} height={52} viewBox="0 0 100 100" style={{ position: "absolute", inset: 0 }}>
+                                    {(() => {
+                                      const n = 20, cx = 50, cy = 50, R = 47, r = 37;
+                                      const pts = Array.from({ length: n * 2 }, (_, i) => {
+                                        const a = (i * Math.PI / n) - Math.PI / 2;
+                                        return [cx + (i % 2 === 0 ? R : r) * Math.cos(a), cy + (i % 2 === 0 ? R : r) * Math.sin(a)];
+                                      });
+                                      const s = [(pts[0][0] + pts[pts.length - 1][0]) / 2, (pts[0][1] + pts[pts.length - 1][1]) / 2];
+                                      let d = `M ${s[0].toFixed(1)} ${s[1].toFixed(1)}`;
+                                      for (let i = 0; i < pts.length; i++) {
+                                        const p = pts[i], nx = pts[(i + 1) % pts.length];
+                                        d += ` Q ${p[0].toFixed(1)} ${p[1].toFixed(1)} ${((p[0] + nx[0]) / 2).toFixed(1)} ${((p[1] + nx[1]) / 2).toFixed(1)}`;
+                                      }
+                                      return <path d={d + ' Z'} fill="var(--yellow)" stroke="var(--ink)" strokeWidth="2.5" />;
+                                    })()}
+                                  </svg>
+                                  <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "center", gap: 2 }}>
+                                    <span className="bc" style={{ fontSize: 14, lineHeight: 1 }}>🎮</span>
+                                    {jvMembers.map((m, mi) => {
+                                      const seed = m.nom.charCodeAt(0) + mi * 19;
+                                      const tilt = ((seed % 14) - 7) * 1.2;
+                                      return (
+                                        <span key={mi} className="bc" style={{ fontSize: 19, lineHeight: 1, color: m.col, WebkitTextStroke: "1.5px var(--ink)", filter: "drop-shadow(1.5px 1.5px 0 #0d0d0d)", transform: `rotate(${tilt}deg)`, flexShrink: 0, display: "inline-block" }}>
+                                          {m.nom[0].toUpperCase()}
+                                        </span>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        });
+                      })()}
 
                       {blocsHoraires.length === 0 && absencesDay.length > 0 && !nomFerie && (
                         <div style={{ position: "absolute", top: 44, left: 6, right: 6, display: "flex", flexDirection: "column", gap: 4, zIndex: 20, pointerEvents: "none" }}>
@@ -1366,8 +1759,19 @@ useEffect(() => {
                         return (
                           <div key={`ev-h-${idx}`} onClick={(e) => { e.stopPropagation(); ouvrirEditionEvenement(ev, 'single'); }}
                             style={{ position: "absolute", left: 6, right: 6, top: `${top}%`, height: `${height}%`, zIndex: 40 + idx, cursor: "pointer", pointerEvents: "auto" }}>
-                            <div style={{ position: "absolute", inset: 0, backgroundColor: getEventColor(ev.type), border: "2px solid var(--ink)", borderRadius: 8, boxShadow: "2px 2px 0 var(--ink)", padding: "6px 8px", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-                              <span style={{ fontSize: 10, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{getNomsMembresEvent(ev.membres)}</span>
+                            <div style={{ position: "absolute", inset: 0, backgroundColor: getEventColor(ev.type), border: "2px solid var(--ink)", borderRadius: 8, boxShadow: "2px 2px 0 var(--ink)", padding: "6px 8px", display: "flex", flexDirection: "column", overflow: "hidden", transform: idx % 2 === 0 ? "rotate(0.8deg)" : "rotate(-0.6deg)", transformOrigin: "center" }}>
+                              {ev.membres.length > 0 && (
+                                <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "flex-end", marginBottom: 4 }}>
+                                  {activeEquipe.filter(m => ev.membres.includes(m.id)).map((m, mIdx) => {
+                                    const tilt = (((m.nom.charCodeAt(0) + mIdx * 7) % 9) - 4) * 0.8;
+                                    return (
+                                      <span key={m.id} className="bc" style={{ fontSize: 20, lineHeight: 1, display: "inline-block", flexShrink: 0, color: getMemberColor({ groupe: m.groupe, couleur: m.horaires?.couleur }), WebkitTextStroke: "1.5px var(--ink)", filter: "drop-shadow(1.5px 1.5px 0 #0d0d0d)", transform: `rotate(${tilt}deg)` }}>
+                                        {m.nom.trim()[0].toUpperCase()}
+                                      </span>
+                                    );
+                                  })}
+                                </div>
+                              )}
                               <span style={{ fontWeight: 800, fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{getEventIcon(ev.type)} {ev.titre}</span>
                               <span style={{ fontSize: 10, fontWeight: 700, opacity: 0.6, marginTop: "auto" }}>{ev.heure_debut}–{ev.heure_fin}</span>
                             </div>
@@ -1448,6 +1852,9 @@ useEffect(() => {
             <div style={{ flex: 1, overflowY: "auto", padding: 24 }} className="hide-scrollbar">
               {!membreActif ? (
                 <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                  <button onClick={() => { openPlanningModal(); setShowEquipePanel(false); }} className="pop-btn pop-btn-dark" style={{ width: "100%", justifyContent: "center", fontSize: 14, padding: "12px 0" }}>
+                    📋 Planning
+                  </button>
                   <button onClick={() => { setShowEquipePanel(false); setSwapSession({active: true, step: 1, selectedDates: [], m1Id: '', m2Id: ''}); }} className="pop-btn pop-btn-outline" style={{ width: "100%", justifyContent: "center", fontSize: 14, padding: "12px 0" }}>
                     🔄 Échanger des horaires
                   </button>
@@ -1511,6 +1918,17 @@ useEffect(() => {
                               <option value="A">Équipe A</option>
                               <option value="B">Équipe B</option>
                             </select>
+                          </div>
+                        </div>
+                        <div>
+                          <span style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.07em", color: "rgba(0,0,0,0.4)", display: "block", marginBottom: 5 }}>Couleur de la pastille</span>
+                          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                            <input type="color" value={membreActif.horaires?.couleur || '#baff29'} onChange={e => setMembreActif({...membreActif, horaires: {...(membreActif.horaires || {}), couleur: e.target.value}})} style={{ width: 36, height: 36, borderRadius: 6, cursor: "pointer", border: "2px solid var(--ink)", padding: 2, background: "var(--white)" }} />
+                            <div style={{ width: 22, height: 22, borderRadius: "50%", background: membreActif.horaires?.couleur || '#baff29', border: "2px solid var(--ink)", boxShadow: "2px 2px 0 var(--ink)", flexShrink: 0 }}></div>
+                            <span style={{ fontSize: 11, fontFamily: "monospace", color: "rgba(0,0,0,0.4)", textTransform: "uppercase" }}>{membreActif.horaires?.couleur || '#baff29'}</span>
+                            {membreActif.horaires?.couleur && (
+                              <button onClick={() => setMembreActif({...membreActif, horaires: {...(membreActif.horaires || {}), couleur: undefined}})} style={{ fontSize: 10, fontWeight: 700, color: "rgba(0,0,0,0.35)", background: "none", border: "none", cursor: "pointer", fontFamily: "inherit" }}>Réinitialiser</button>
+                            )}
                           </div>
                         </div>
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
@@ -2052,6 +2470,232 @@ useEffect(() => {
           </div>
         </div>
       </div>
+      )}
+
+      {showPlanningModal && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: "80px 16px 16px" }}
+          onClick={e => { if (e.target === e.currentTarget) setShowPlanningModal(false); }}>
+          <div className="pop-card" style={{ width: "100%", maxWidth: 1400, height: "90vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+            {/* Header */}
+            <div style={{ background: "var(--ink)", padding: "14px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
+              <span className="bc" style={{ fontSize: 22, color: "var(--cream)" }}>📋 Planning</span>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <button onClick={() => setPlanningDate(subWeeks(planningDate, 1))} className="pop-btn" style={{ padding: "6px 10px", background: "rgba(255,255,255,0.1)", color: "var(--white)", border: "1.5px solid rgba(255,255,255,0.2)" }}>◀</button>
+                <span style={{ color: "var(--white)", fontSize: 13, fontWeight: 700, minWidth: 220, textAlign: "center" }}>
+                  S{getISOWeek(planningDate)} · {format(startOfWeek(planningDate, { weekStartsOn: 1 }), 'd', { locale: fr })}–{format(endOfWeek(planningDate, { weekStartsOn: 1 }), 'd MMM yyyy', { locale: fr })}
+                </span>
+                <button onClick={() => setPlanningDate(addWeeks(planningDate, 1))} className="pop-btn" style={{ padding: "6px 10px", background: "rgba(255,255,255,0.1)", color: "var(--white)", border: "1.5px solid rgba(255,255,255,0.2)" }}>▶</button>
+                <button onClick={() => setPlanningDate(new Date())} className="pop-btn" style={{ fontSize: 11, padding: "6px 10px", background: "rgba(255,255,255,0.1)", color: "var(--white)", border: "1.5px solid rgba(255,255,255,0.2)" }}>Auj.</button>
+                <button onClick={savePlanningWeek} disabled={savingPlanning} className="pop-btn" style={{ fontSize: 12, padding: "6px 16px", background: savingPlanning ? "rgba(168,224,99,0.3)" : "var(--vert)", color: "var(--ink)", border: "2px solid rgba(255,255,255,0.4)", fontWeight: 900, marginLeft: 8 }}>{savingPlanning ? '…' : '✓ Enregistrer'}</button>
+                <button onClick={() => setShowPlanningModal(false)} style={{ width: 30, height: 30, borderRadius: "50%", background: "rgba(255,255,255,0.12)", border: "none", cursor: "pointer", color: "var(--white)", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
+              </div>
+            </div>
+            <div style={{ height: 5, background: "linear-gradient(90deg,#a8e063 0%,#a8e063 16.6%,#f472b6 16.6%,#f472b6 33.2%,#60a5fa 33.2%,#60a5fa 49.8%,#f87171 49.8%,#f87171 66.4%,#fb923c 66.4%,#fb923c 83%,#c084fc 83%,#c084fc 100%)", flexShrink: 0 }} />
+            {/* Body */}
+            <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+              {/* Member sidebar */}
+              <div style={{ width: 100, borderRight: "2.5px solid var(--ink)", padding: "16px 8px", display: "flex", flexDirection: "column", gap: 10, overflowY: "auto", background: "var(--cream)", flexShrink: 0 }}>
+                <span className="bc" style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "rgba(0,0,0,0.35)", paddingBottom: 6, borderBottom: "1.5px solid rgba(0,0,0,0.1)", display: "block" }}>Équipe</span>
+                {activeEquipe.map(m => {
+                  const col = getMemberColor({ groupe: m.groupe, couleur: m.horaires?.couleur });
+                  const tilt = (m.nom.charCodeAt(0) % 9 - 4) * 0.6;
+                  return (
+                    <div key={m.id} data-member-id={m.id}
+                      onMouseDown={e => {
+                        e.preventDefault();
+                        multiDragRef.current = { ids: [m.id] };
+                        setDragSelectionIds([m.id]);
+                        const ghost = document.createElement('div');
+                        ghost.style.cssText = `position:fixed;left:${e.clientX + 14}px;top:${e.clientY + 14}px;pointer-events:none;z-index:9999;display:flex;gap:4px;background:rgba(255,255,255,0.92);border:2px solid #0d0d0d;border-radius:10px;padding:6px 8px;box-shadow:3px 3px 0 #0d0d0d`;
+                        const d = memberDataRef.current[m.id];
+                        if (d) { const span = document.createElement('span'); span.style.cssText = `font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:28px;line-height:1;color:${d.color};-webkit-text-stroke:1.5px #0d0d0d;filter:drop-shadow(1.5px 1.5px 0 #0d0d0d);display:inline-block`; span.textContent = d.initial; ghost.appendChild(span); }
+                        document.body.appendChild(ghost);
+                        ghostRef.current = ghost;
+                      }}
+                      style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, cursor: "grab", padding: "6px 4px", borderRadius: 8, background: dragSelectionIds.includes(m.id) ? "rgba(0,0,0,0.06)" : "transparent", userSelect: "none", transition: "background 0.1s" }}>
+                      <span className="bc" style={{ fontSize: 34, lineHeight: 1, display: "inline-block", color: col, WebkitTextStroke: "1.5px var(--ink)", filter: "drop-shadow(1.5px 1.5px 0 #0d0d0d)", transform: `rotate(${tilt}deg)` }}>
+                        {m.nom.trim()[0].toUpperCase()}
+                      </span>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: "rgba(0,0,0,0.45)", textAlign: "center", lineHeight: 1.2 }}>{m.nom.split(' ')[0]}</span>
+                    </div>
+                  );
+                })}
+                {/* Vacataires */}
+                <div style={{ borderTop: "1.5px solid rgba(0,0,0,0.1)", paddingTop: 8, marginTop: 2, display: "flex", flexDirection: "column", gap: 8 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <span className="bc" style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "rgba(0,0,0,0.35)" }}>Vacataires</span>
+                    <button onClick={addVacataire} style={{ width: 18, height: 18, borderRadius: "50%", background: "var(--ink)", color: "var(--white)", border: "none", cursor: "pointer", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1, flexShrink: 0 }}>+</button>
+                  </div>
+                  {vacataires.map(vac => {
+                    const label = vac.nom.trim() || '?';
+                    const tilt = (label.charCodeAt(0) % 9 - 4) * 0.6;
+                    return (
+                      <div key={vac.id} style={{ position: "relative" }}>
+                        <div data-member-id={vac.id}
+                          onMouseDown={e => {
+                            e.preventDefault();
+                            multiDragRef.current = { ids: [vac.id] };
+                            setDragSelectionIds([vac.id]);
+                            const ghost = document.createElement('div');
+                            ghost.style.cssText = `position:fixed;left:${e.clientX + 14}px;top:${e.clientY + 14}px;pointer-events:none;z-index:9999;display:flex;gap:4px;background:rgba(255,255,255,0.92);border:2px solid #0d0d0d;border-radius:10px;padding:6px 8px;box-shadow:3px 3px 0 #0d0d0d`;
+                            const d = memberDataRef.current[vac.id];
+                            if (d) { const span = document.createElement('span'); span.style.cssText = `font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:28px;line-height:1;color:${d.color};-webkit-text-stroke:1.5px #0d0d0d;filter:drop-shadow(1.5px 1.5px 0 #0d0d0d);display:inline-block`; span.textContent = d.initial; ghost.appendChild(span); }
+                            document.body.appendChild(ghost);
+                            ghostRef.current = ghost;
+                          }}
+                          style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, cursor: "grab", padding: "6px 4px", borderRadius: 8, background: dragSelectionIds.includes(vac.id) ? "rgba(0,0,0,0.06)" : "transparent", userSelect: "none" }}>
+                          <span className="bc" style={{ fontSize: 34, lineHeight: 1, display: "inline-block", color: vac.couleur, WebkitTextStroke: "1.5px var(--ink)", filter: "drop-shadow(1.5px 1.5px 0 #0d0d0d)", transform: `rotate(${tilt}deg)` }}>
+                            {label[0].toUpperCase()}
+                          </span>
+                          {editingVacId === vac.id ? (
+                            <input autoFocus value={vac.nom}
+                              onChange={e => setVacataires(prev => prev.map(v => v.id === vac.id ? { ...v, nom: e.target.value } : v))}
+                              onBlur={() => setEditingVacId(null)}
+                              onKeyDown={e => { if (e.key === 'Enter') setEditingVacId(null); }}
+                              style={{ width: 76, fontSize: 10, textAlign: "center", border: "1.5px solid var(--ink)", borderRadius: 3, padding: "2px 4px", fontFamily: "inherit", fontWeight: 700, outline: "none" }} />
+                          ) : (
+                            <span onClick={() => setEditingVacId(vac.id)} title="Cliquer pour renommer" style={{ fontSize: 10, fontWeight: 700, color: "rgba(0,0,0,0.45)", textAlign: "center", lineHeight: 1.2, cursor: "text", borderBottom: "1px dashed rgba(0,0,0,0.2)" }}>
+                              {vac.nom.split(' ')[0]}
+                            </span>
+                          )}
+                        </div>
+                        <button onClick={() => removeVacataire(vac.id)} title="Supprimer"
+                          style={{ position: "absolute", top: 2, right: 2, width: 14, height: 14, borderRadius: "50%", background: "rgba(0,0,0,0.12)", color: "var(--ink)", border: "none", cursor: "pointer", fontSize: 9, display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1 }}>✕</button>
+                      </div>
+                    );
+                  })}
+                  {vacataires.length === 0 && (
+                    <span style={{ fontSize: 10, color: "rgba(0,0,0,0.3)", textAlign: "center", fontStyle: "italic" }}>Aucun</span>
+                  )}
+                </div>
+              </div>
+              {/* Grid */}
+              <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+                {/* Day headers */}
+                <div style={{ display: "grid", gridTemplateColumns: "44px repeat(5, 1fr)", background: "var(--white)", borderBottom: "2px solid var(--ink)", flexShrink: 0 }}>
+                  <div />
+                  {planningDays.map(jour => {
+                    const today = isToday(jour);
+                    return (
+                      <div key={format(jour, 'yyyy-MM-dd')} style={{ padding: "8px 0", display: "flex", flexDirection: "column", alignItems: "center", gap: 2, background: today ? "var(--yellow)" : "transparent" }}>
+                        <span style={{ fontSize: 10, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.08em", color: "rgba(0,0,0,0.4)" }}>{format(jour, "EEE", { locale: fr })}</span>
+                        <span className="bc" style={{ fontSize: 18, lineHeight: 1 }}>{format(jour, "d")}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+                {/* Scrollable time grid */}
+                <div style={{ flex: 1, overflowY: "auto" }}>
+                  <div style={{ display: "flex", minHeight: 660, position: "relative" }}>
+                    {/* Hour labels */}
+                    <div style={{ width: 44, flexShrink: 0, position: "relative", borderRight: "1.5px solid rgba(0,0,0,0.1)", background: "var(--white)" }}>
+                      {PLANNING_HEURES.map(h => (
+                        <div key={h} style={{ position: "absolute", top: `${planningTopPct(`${h}:00`)}%`, right: 6, fontSize: 10, fontWeight: 700, color: "rgba(0,0,0,0.3)", transform: "translateY(-50%)" }}>{h}h</div>
+                      ))}
+                    </div>
+                    {/* Grid lines */}
+                    <div style={{ position: "absolute", left: 44, right: 0, top: 0, bottom: 0, pointerEvents: "none" }}>
+                      {PLANNING_HEURES.map(h => (
+                        <div key={h} style={{ position: "absolute", width: "100%", borderTop: "1px solid rgba(0,0,0,0.06)", top: `${planningTopPct(`${h}:00`)}%` }} />
+                      ))}
+                    </div>
+                    {/* Day columns */}
+                    <div ref={planningGridRef} style={{ flex: 1, display: "grid", gridTemplateColumns: "repeat(5, 1fr)" }}>
+                      {planningDays.map(jour => {
+                        const dk = format(jour, 'yyyy-MM-dd');
+                        const daySlots = planningSlots.filter(s => s.dateKey === dk);
+                        const jvTimes = new Set(daySlots.filter(s => s.room === 'jv').map(s => `${s.debut}|${s.fin}`));
+                        const today = isToday(jour);
+                        const allDebuts = daySlots.map(s => timeToMins(s.debut));
+                        const allFins = daySlots.map(s => timeToMins(s.fin));
+                        const earliestDebut = allDebuts.length ? Math.min(...allDebuts) : -1;
+                        const latestFin = allFins.length ? Math.max(...allFins) : -1;
+                        const addSlotToDay = (dMins: number, fMins: number) => {
+                          const d = minsToTimeStr(dMins); const f = minsToTimeStr(fMins);
+                          setPlanningSlots(prev => [...prev, { id: `${dk}-${d}-${Date.now()}`, dateKey: dk, debut: d, fin: f, membreIds: [], room: 'principale' }]);
+                        };
+                        return (
+                          <div key={dk} className={today ? 'today-hatch' : ''} style={{ position: "relative", borderRight: "1px solid rgba(0,0,0,0.08)" }}>
+                            {daySlots.map(slot => {
+                              const top = planningTopPct(slot.debut);
+                              const height = planningHPct(slot.debut, slot.fin);
+                              const isEmpty = slot.membreIds.length === 0;
+                              const hovering = hoveringSlotId === slot.id;
+                              const isJV = slot.room === 'jv';
+                              const hasJVSibling = !isJV && jvTimes.has(`${slot.debut}|${slot.fin}`);
+                              const leftVal = isJV ? "50%" : 4;
+                              const rightVal = (!isJV && hasJVSibling) ? "50%" : 4;
+                              const jvBg = isEmpty ? "rgba(168,224,99,0.07)" : "rgba(168,224,99,0.18)";
+                              return (
+                                <div key={slot.id} data-slot-id={slot.id}
+                                  style={{ position: "absolute", left: leftVal, right: rightVal, top: `${top}%`, height: `${height}%`, borderRadius: 7, border: hovering ? "2.5px dashed var(--bleu)" : isEmpty ? "2px dashed rgba(0,0,0,0.18)" : "2px solid var(--ink)", background: hovering ? "rgba(96,165,250,0.08)" : isJV ? jvBg : isEmpty ? "rgba(0,0,0,0.015)" : "var(--white)", boxShadow: isEmpty ? "none" : "2px 2px 0 var(--ink)", display: "flex", flexDirection: "column", overflow: "visible", transition: "border-color 0.1s, background 0.1s" }}>
+                                  {/* Top resize handle */}
+                                  <div onMouseDown={e => { e.preventDefault(); resizingRef.current = { slotId: slot.id, edge: 'top', startY: e.clientY, origDebut: slot.debut, origFin: slot.fin }; }}
+                                    style={{ position: "absolute", top: 0, left: 0, right: 0, height: 8, cursor: "n-resize", borderRadius: "7px 7px 0 0", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2 }}>
+                                    <div style={{ width: 18, height: 2, borderRadius: 1, background: "rgba(0,0,0,0.2)" }} />
+                                  </div>
+                                  {/* Delete button */}
+                                  <button onClick={e => { e.stopPropagation(); setPlanningSlots(prev => prev.filter(s => s.id !== slot.id)); }}
+                                    style={{ position: "absolute", top: 3, right: 3, width: 14, height: 14, borderRadius: "50%", background: "rgba(0,0,0,0.1)", color: "rgba(0,0,0,0.35)", border: "none", cursor: "pointer", fontSize: 8, display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1, zIndex: 5 }}>✕</button>
+                                  {/* Content */}
+                                  <div style={{ flex: 1, padding: "10px 6px 6px", display: "flex", flexDirection: "column", gap: 4, overflow: "hidden" }}>
+                                    <span style={{ fontSize: 9, fontWeight: 800, color: "rgba(0,0,0,0.35)", lineHeight: 1, letterSpacing: "0.04em" }}>{isJV ? '🎮 ' : ''}{slot.debut}–{slot.fin}</span>
+                                    {slot.membreIds.length > 0 && (
+                                      <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "flex-end" }}>
+                                        {slot.membreIds.map(mid => {
+                                          const vac = vacataires.find(v => v.id === mid);
+                                          const membre = activeEquipe.find(mb => mb.id === mid);
+                                          const nomRaw = vac?.nom ?? membre?.nom ?? '';
+                                          const nom = nomRaw.trim() || '?';
+                                          if (!nomRaw && !membre) return null;
+                                          const col = vac ? vac.couleur : getMemberColor({ groupe: membre?.groupe, couleur: membre?.horaires?.couleur });
+                                          const tilt = (nom.charCodeAt(0) % 9 - 4) * 0.6;
+                                          return (
+                                            <div key={mid} style={{ position: "relative" }}>
+                                              <span className="bc" style={{ fontSize: 44, lineHeight: 1, display: "inline-block", color: col, WebkitTextStroke: "1.5px var(--ink)", filter: "drop-shadow(1.5px 1.5px 0 #0d0d0d)", transform: `rotate(${tilt}deg)` }}>
+                                                {nom[0].toUpperCase()}
+                                              </span>
+                                              <button onClick={() => setPlanningSlots(prev => prev.map(s => s.id === slot.id ? { ...s, membreIds: s.membreIds.filter(id => id !== mid) } : s))}
+                                                style={{ position: "absolute", top: -3, right: -5, width: 13, height: 13, borderRadius: "50%", background: "var(--ink)", color: "var(--white)", border: "none", cursor: "pointer", fontSize: 8, display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1 }}>✕</button>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    )}
+                                  </div>
+                                  {/* Bottom resize handle */}
+                                  <div onMouseDown={e => { e.preventDefault(); resizingRef.current = { slotId: slot.id, edge: 'bottom', startY: e.clientY, origDebut: slot.debut, origFin: slot.fin }; }}
+                                    style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 8, cursor: "s-resize", borderRadius: "0 0 7px 7px", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2 }}>
+                                    <div style={{ width: 18, height: 2, borderRadius: 1, background: "rgba(0,0,0,0.2)" }} />
+                                  </div>
+                                </div>
+                              );
+                            })}
+                            {/* + before first slot */}
+                            {earliestDebut > PLANNING_START * 60 && (
+                              <button onClick={() => addSlotToDay(Math.max(PLANNING_START * 60, earliestDebut - 60), earliestDebut)}
+                                style={{ position: "absolute", top: `${planningTopPct(minsToTimeStr(earliestDebut))}%`, left: "50%", transform: "translate(-50%, -110%)", zIndex: 10, width: 16, height: 16, borderRadius: "50%", background: "rgba(0,0,0,0.18)", color: "var(--white)", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1 }}>+</button>
+                            )}
+                            {/* + after last slot */}
+                            {latestFin >= 0 && latestFin < PLANNING_END * 60 && (
+                              <button onClick={() => addSlotToDay(latestFin, Math.min(PLANNING_END * 60, latestFin + 60))}
+                                style={{ position: "absolute", top: `${planningTopPct(minsToTimeStr(latestFin))}%`, left: "50%", transform: "translate(-50%, 10%)", zIndex: 10, width: 16, height: 16, borderRadius: "50%", background: "rgba(0,0,0,0.18)", color: "var(--white)", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1 }}>+</button>
+                            )}
+                            {/* + to start if empty day */}
+                            {daySlots.length === 0 && (
+                              <button onClick={() => addSlotToDay(13 * 60, 14 * 60)}
+                                style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", zIndex: 10, width: 22, height: 22, borderRadius: "50%", background: "rgba(0,0,0,0.12)", color: "var(--ink)", border: "2px dashed rgba(0,0,0,0.2)", cursor: "pointer", fontSize: 15, fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1 }}>+</button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {quickEditEv && (

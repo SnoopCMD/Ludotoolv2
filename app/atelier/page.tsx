@@ -203,7 +203,7 @@ export default function Home() {
     const couleurFromCat = catResult.data?.couleur ?? "";
     setter(prev => prev.map(j => j.uid === uid ? {
       ...j,
-      nom: apiData.nom || nomFromCat || nomFromDb || "",
+      nom: (apiData as { nom?: string | null })?.nom || nomFromCat || nomFromDb || "",
       couleur: couleurFromCat,
       typeAjout: doublesCount > 0 ? "double" : "nouveaute",
       doublesExistants: doublesCount > 0 ? doublesCount : undefined,

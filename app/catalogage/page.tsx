@@ -267,7 +267,7 @@ function ModalCatalogage({ game: initGame, onClose, onSaved }: {
       if (game.ean) params.set("ean", game.ean);
       params.set("nom", game.nom);
       const resp = await fetch(`/api/espritjeu?${params}`);
-      const data = await resp.json();
+      const data = await resp.json() as any;
       if (data.notFound) { setSearchError("Jeu introuvable sur Esprit Jeu"); return; }
       if (data.error) { setSearchError(data.error); return; }
       setEspritData(data);

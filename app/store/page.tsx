@@ -112,7 +112,7 @@ export default function StorePage() {
       setIsSearching(true); setShowResultats(true);
       try {
         const res = await fetch(`/api/store/recherche?nom=${encodeURIComponent(val.trim())}`);
-        const data = await res.json();
+        const data = await res.json() as any;
         setResultats(data.resultats ?? []);
       } catch { setResultats([]); }
       finally { setIsSearching(false); }

@@ -22,7 +22,7 @@ export async function GET(request: Request) {
 
     if (!response.ok) return NextResponse.json({ nom: null });
 
-    const data = await response.json();
+    const data = await response.json() as { results?: Array<{ ean13?: string; title?: string }> };
     const result = data.results?.[0];
 
     if (!result) return NextResponse.json({ nom: null });

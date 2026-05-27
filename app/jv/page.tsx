@@ -208,7 +208,7 @@ function ModalJeu({
     try {
       const params = new URLSearchParams({ q: titre, platform: console });
       const res = await fetch(`/api/jv/igdb?${params}`);
-      const data = await res.json();
+      const data = await res.json() as any;
       if (data.error) { setSearchError(data.error); return; }
       if (!data.length) { setSearchError("Aucun résultat — vérifiez le titre ou changez de console"); return; }
       setSearchResults(data as SearchResult[]);
@@ -229,7 +229,7 @@ function ModalJeu({
       try {
         const params = new URLSearchParams({ q: titreRecherche.trim(), platform: consoleRecherche });
         const res = await fetch(`/api/jv/igdb?${params}`);
-        const data = await res.json();
+        const data = await res.json() as any;
         if (!data.error && data.length) setSearchResults(data as SearchResult[]);
       } catch {}
       finally { setIsSearching(false); }
@@ -261,7 +261,7 @@ function ModalJeu({
     try {
       const params = new URLSearchParams({ q: r.titre, platform: console_used });
       const res = await fetch(`/api/jv/search?${params}`);
-      const data = await res.json();
+      const data = await res.json() as any;
       if (Array.isArray(data) && data[0]) {
         const src = data[0];
         setForm(f => ({
