@@ -58,6 +58,7 @@ type Alerte = {
 
 type JeuNote = { texte: string; rappel: boolean };
 type RappelItem = { jeu_id: string | number; nom: string; texte: string; code_syracuse?: string };
+type PlanningSlot = { id: string; dateKey: string; debut: string; fin: string; membreIds: string[] };
 
 // ─── Helpers planning ─────────────────────────────────────────────────────────
 
@@ -99,7 +100,26 @@ const getHoraireForDay = (
   return null;
 };
 
-const genererBlocsHoraires = (membres: { nom: string; groupe?: string; debut: string; fin: string }[]) => {
+const getMemberDotColor = (m: { groupe?: string; couleur?: string }): string =>
+  m.couleur || (m.groupe === 'A' ? '#f87171' : m.groupe === 'B' ? '#60a5fa' : '#a8e063');
+
+const getPlanningHatches = (debut: string, fin: string, dateKey: string, memberIds: string[], slots: PlanningSlot[]) => {
+  const bStart = timeToMins(debut);
+  const bEnd = timeToMins(fin, true);
+  const dur = bEnd - bStart;
+  if (dur <= 0) return [];
+  return slots
+    .filter(s => s.dateKey === dateKey && s.membreIds.some(mid => memberIds.includes(mid)))
+    .flatMap(s => {
+      const oStart = Math.max(bStart, timeToMins(s.debut));
+      const oEnd = Math.min(bEnd, timeToMins(s.fin, true));
+      if (oStart >= oEnd) return [];
+      return [{ topPct: (oStart - bStart) / dur * 100, heightPct: (oEnd - oStart) / dur * 100 }];
+    });
+};
+
+
+const genererBlocsHoraires = (membres: { nom: string; groupe?: string; debut: string; fin: string; id?: string; couleur?: string }[]) => {
   const points = new Set<string>();
   membres.forEach(m => { if (m.debut && m.fin) { points.add(m.debut); points.add(m.fin); } });
   const timepoints = Array.from(points).sort((a, b) => timeToMins(a, true) - timeToMins(b, true));
@@ -188,6 +208,7 @@ export default function AccueilPage() {
   const [evenements, setEvenements] = useState<Evenement[]>([]);
   const [nouveautes, setNouveautes] = useState<Nouveaute[]>([]);
   const [semaineRef, setSemaineRef] = useState(new Date());
+  const [weekPlanningSlots, setWeekPlanningSlots] = useState<PlanningSlot[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -199,6 +220,11 @@ export default function AccueilPage() {
 
   useEffect(() => { chargerAlertes(); chargerEquipe(); chargerNouveautes(); }, []);
   useEffect(() => { chargerEvenements(); }, [semaineRef]);
+  useEffect(() => {
+    const key = format(startOfWeek(semaineRef, { weekStartsOn: 1 }), 'yyyy-MM-dd');
+    supabase.from('planning_semaine').select('slots').eq('semaine_key', key).single()
+      .then(({ data }) => setWeekPlanningSlots((data?.slots ?? []) as PlanningSlot[]));
+  }, [semaineRef]);
 
   const chargerAlertes = async () => {
     const [{ data: alertesData }, { data: rappelsData }] = await Promise.all([
@@ -341,7 +367,7 @@ export default function AccueilPage() {
       const absences = evsDuJour.filter(e => ABSENCE_TYPES.includes(e.type));
       const eventsGrille = evsDuJour.filter(e => !ABSENCE_TYPES.includes(e.type) && e.heure_debut && e.heure_fin && e.date_debut === e.date_fin);
       const eventsJournee = evsDuJour.filter(e => !ABSENCE_TYPES.includes(e.type) && (!e.heure_debut || !e.heure_fin || e.date_debut !== e.date_fin));
-      const presences: { nom: string; groupe?: string; debut: string; fin: string }[] = [];
+      const presences: { nom: string; groupe?: string; debut: string; fin: string; id?: string; couleur?: string }[] = [];
       equipe.forEach(m => {
         const h = getHoraireForDay(m, dateKey, nomJour, typeSemaine);
         if (!h) return;
@@ -354,9 +380,20 @@ export default function AccueilPage() {
             segments = next;
           }
         });
-        segments.forEach(seg => presences.push({ nom: m.nom, groupe: m.groupe, debut: seg.debut, fin: seg.fin }));
+        segments.forEach(seg => presences.push({ nom: m.nom, groupe: m.groupe, debut: seg.debut, fin: seg.fin, id: m.id, couleur: m.horaires?.couleur }));
       });
-      return { jour, dateKey, blocs: genererBlocsHoraires(presences), absences, eventsGrille, eventsJournee };
+      const blocsAll = genererBlocsHoraires(presences);
+      const specialEvs = evsDuJour.filter(e => ['Soirée Jeux', 'Heures Exceptionnelles'].includes(e.type));
+      const blocs = blocsAll.filter(bloc =>
+        !specialEvs.some(ev => {
+          const coversMembers = !ev.membres.length || bloc.membres.every(m => ev.membres.includes(m.id!));
+          if (!ev.heure_debut || !ev.heure_fin) return coversMembers;
+          const evS = timeToMins(ev.heure_debut); const evE = timeToMins(ev.heure_fin, true);
+          const bS = timeToMins(bloc.debut);       const bE = timeToMins(bloc.fin, true);
+          return coversMembers && evS <= bS && evE >= bE;
+        })
+      );
+      return { jour, dateKey, blocs, absences, eventsGrille, eventsJournee };
     });
   }, [joursAffiches, equipe, evenements]);
 
@@ -422,22 +459,24 @@ export default function AccueilPage() {
 
             <div className="pop-card" style={{ overflow: "hidden" }}>
               {/* En-têtes jours */}
-              <div style={{ display: "grid", gridTemplateColumns: "44px repeat(5, 1fr)", borderBottom: "2.5px solid var(--ink)", background: "var(--cream)" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "44px repeat(5, 1fr)", background: "var(--ink)" }}>
                 <div />
                 {joursAffiches.map(jour => {
                   const today = isToday(jour);
                   return (
-                    <div key={jour.toISOString()} style={{ padding: "10px 0", display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
-                      <span style={{ fontSize: 10, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.08em", color: today ? "var(--ink)" : "rgba(0,0,0,0.38)" }}>
+                    <div key={jour.toISOString()} style={{ padding: "10px 0", display: "flex", flexDirection: "column", alignItems: "center", gap: 2, background: today ? "var(--yellow)" : "transparent" }}>
+                      <span style={{ fontSize: 10, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.08em", color: today ? "var(--ink)" : "rgba(255,255,255,0.5)" }}>
                         {format(jour, "EEE", { locale: fr })}
                       </span>
-                      <span style={{ fontSize: 17, fontWeight: 900, lineHeight: 1, width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", background: today ? "var(--ink)" : "transparent", color: today ? "var(--yellow)" : "rgba(0,0,0,0.6)" }}>
+                      <span className="bc" style={{ fontSize: 20, lineHeight: 1, color: today ? "var(--ink)" : "var(--white)" }}>
                         {format(jour, "d")}
                       </span>
                     </div>
                   );
                 })}
               </div>
+              {/* Rainbow colour stripe */}
+              <div style={{ height: 6, background: "linear-gradient(90deg,#a8e063 0%,#a8e063 16.6%,#f472b6 16.6%,#f472b6 33.2%,#60a5fa 33.2%,#60a5fa 49.8%,#f87171 49.8%,#f87171 66.4%,#fb923c 66.4%,#fb923c 83%,#c084fc 83%,#c084fc 100%)", flexShrink: 0 }} />
 
               {/* Grille temporelle */}
               <div style={{ display: "flex", position: "relative", minHeight: 480 }}>
@@ -458,7 +497,7 @@ export default function AccueilPage() {
                   {donneesDuJour.map(({ jour, dateKey, blocs, absences, eventsGrille, eventsJournee }) => {
                     const today = isToday(jour);
                     return (
-                      <div key={dateKey} style={{ position: "relative", overflow: "hidden", background: today ? "rgba(168,224,99,0.05)" : "transparent" }}>
+                      <div key={dateKey} className={today ? 'today-hatch' : ''} style={{ position: "relative", background: today ? undefined : "transparent" }}>
                         {eventsJournee.length > 0 && (
                           <div style={{ position: "absolute", top: 2, left: 2, right: 2, display: "flex", flexDirection: "column", gap: 2, zIndex: 30 }}>
                             {eventsJournee.map(ev => (
@@ -479,21 +518,115 @@ export default function AccueilPage() {
                           const top = calculerPositionTop(bloc.debut);
                           const height = Math.max(calculerPositionTop(bloc.fin, true) - top, 2);
                           const bgColor = getBlocColor(bloc.membres);
+                          const rot = idx % 2 === 0 ? -0.6 : 0.6;
                           return (
-                            <div key={idx} style={{ position: "absolute", left: 2, right: 2, borderRadius: 4, borderLeft: `4px solid ${bgColor}`, paddingLeft: 4, paddingTop: 2, overflow: "hidden", top: `${top}%`, height: `${height}%`, backgroundColor: bgColor, zIndex: 10 + idx, opacity: 0.88 }}>
-                              <span style={{ fontSize: 9, fontWeight: 700, color: "var(--ink)", lineHeight: 1.2, display: "block" }}>{bloc.membres.map(m => m.nom).join(", ")}</span>
-                              {height > 6 && <span style={{ fontSize: 8, fontWeight: 900, color: "rgba(0,0,0,0.5)", display: "block" }}>{bloc.debut}–{bloc.fin}</span>}
+                            <div key={idx} style={{ position: "absolute", left: 3, right: 3, borderRadius: 5, border: "2px solid var(--ink)", boxShadow: "2px 2px 0 var(--ink)", padding: "4px 7px", top: `${top}%`, height: `${height}%`, backgroundColor: bgColor, zIndex: 10 + idx, transform: `rotate(${rot}deg)`, display: "flex", flexDirection: "column", justifyContent: "flex-start", gap: 3 }}>
+                              <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "flex-end" }}>
+                                {bloc.membres.map((m, mi) => {
+                                  const tilt = (((m.nom.charCodeAt(0) + mi * 7) % 9) - 4) * 0.8;
+                                  return (
+                                    <span key={mi} className="bc" style={{ fontSize: 20, lineHeight: 1, display: "inline-block", flexShrink: 0, color: getMemberDotColor(m), WebkitTextStroke: "1.5px var(--ink)", filter: "drop-shadow(1.5px 1.5px 0 #0d0d0d)", transform: `rotate(${tilt}deg)` }}>
+                                      {m.nom.trim()[0].toUpperCase()}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                              {height > 5 && <span className="bc" style={{ fontSize: 12, lineHeight: 1, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{bloc.debut}–{bloc.fin}</span>}
                             </div>
                           );
                         })}
+                        {/* Planning blocks overlay */}
+                        {(() => {
+                          const dayPlanSlots = weekPlanningSlots.filter(s => s.dateKey === dateKey && s.membreIds.length > 0);
+                          const byTime = new Map<string, { main: PlanningSlot | null; jv: PlanningSlot | null }>();
+                          dayPlanSlots.forEach(s => {
+                            const k = `${s.debut}|${s.fin}`;
+                            if (!byTime.has(k)) byTime.set(k, { main: null, jv: null });
+                            const e = byTime.get(k)!;
+                            if ((s as any).room === 'jv') e.jv = s; else e.main = s;
+                          });
+                          const getMembers = (slot: PlanningSlot | null) => slot ? slot.membreIds.flatMap(mid => {
+                            const m = equipe.find(mb => mb.id === mid);
+                            if (!m) return [];
+                            return [{ nom: m.nom.trim() || '?', col: getMemberDotColor({ groupe: m.groupe, couleur: m.horaires?.couleur }) }];
+                          }) : [];
+                          return Array.from(byTime.entries()).map(([k, { main, jv }]) => {
+                            const ref = main ?? jv!;
+                            const top = calculerPositionTop(ref.debut);
+                            const height = Math.max(calculerPositionTop(ref.fin, true) - top, 1);
+                            const mainMembers = getMembers(main);
+                            const jvMembers = getMembers(jv);
+                            return (
+                              <div key={`pl-${k}`} style={{ position: "absolute", left: 6, right: 6, top: `${top}%`, height: `${height}%`, zIndex: 22, pointerEvents: "none", overflow: "visible", background: "repeating-linear-gradient(45deg, transparent, transparent 4px, rgba(248,113,113,0.13) 4px, rgba(248,113,113,0.13) 7px)", borderTop: "2.5px solid var(--rouge)", borderBottom: "2.5px solid var(--rouge)", display: "flex", alignItems: "center", justifyContent: "center", flexWrap: "wrap", gap: 4, padding: "3px 6px" }}>
+                                {mainMembers.map((m, mi) => {
+                                  const seed = m.nom.charCodeAt(0) + mi * 37;
+                                  const tilt = ((seed % 26) - 13) * 1.4;
+                                  const dy = ((seed * 11) % 10) - 5;
+                                  return (
+                                    <span key={mi} className="bc" style={{ fontSize: 16, lineHeight: 1, color: m.col, WebkitTextStroke: "1px var(--ink)", filter: "drop-shadow(1px 1px 0 #0d0d0d)", transform: `rotate(${tilt}deg) translateY(${dy}px)`, flexShrink: 0, display: "inline-block" }}>
+                                      {m.nom[0].toUpperCase()}
+                                    </span>
+                                  );
+                                })}
+                                {jvMembers.length > 0 && (
+                                  <div style={{ position: "absolute", top: "50%", right: 1, width: 38, height: 38, display: "flex", alignItems: "center", justifyContent: "center", transform: "translateY(-50%) rotate(-9deg)", zIndex: 3 }}>
+                                    <svg width={38} height={38} viewBox="0 0 100 100" style={{ position: "absolute", inset: 0 }}>
+                                      {(() => {
+                                        const n = 20, cx = 50, cy = 50, R = 47, r = 37;
+                                        const pts = Array.from({ length: n * 2 }, (_, i) => {
+                                          const a = (i * Math.PI / n) - Math.PI / 2;
+                                          return [cx + (i % 2 === 0 ? R : r) * Math.cos(a), cy + (i % 2 === 0 ? R : r) * Math.sin(a)];
+                                        });
+                                        const s = [(pts[0][0] + pts[pts.length - 1][0]) / 2, (pts[0][1] + pts[pts.length - 1][1]) / 2];
+                                        let d = `M ${s[0].toFixed(1)} ${s[1].toFixed(1)}`;
+                                        for (let i = 0; i < pts.length; i++) {
+                                          const p = pts[i], nx = pts[(i + 1) % pts.length];
+                                          d += ` Q ${p[0].toFixed(1)} ${p[1].toFixed(1)} ${((p[0] + nx[0]) / 2).toFixed(1)} ${((p[1] + nx[1]) / 2).toFixed(1)}`;
+                                        }
+                                        return <path d={d + ' Z'} fill="var(--yellow)" stroke="var(--ink)" strokeWidth="2.5" />;
+                                      })()}
+                                    </svg>
+                                    <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "center", gap: 1 }}>
+                                      <span className="bc" style={{ fontSize: 10, lineHeight: 1 }}>🎮</span>
+                                      {jvMembers.map((m, mi) => {
+                                        const seed = m.nom.charCodeAt(0) + mi * 19;
+                                        const tilt = ((seed % 14) - 7) * 1.2;
+                                        return (
+                                          <span key={mi} className="bc" style={{ fontSize: 13, lineHeight: 1, color: m.col, WebkitTextStroke: "1px var(--ink)", filter: "drop-shadow(1px 1px 0 #0d0d0d)", transform: `rotate(${tilt}deg)`, flexShrink: 0, display: "inline-block" }}>
+                                            {m.nom[0].toUpperCase()}
+                                          </span>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          });
+                        })()}
                         {eventsGrille.map((ev, idx) => {
                           const top = calculerPositionTop(ev.heure_debut!);
                           const height = Math.max(calculerPositionTop(ev.heure_fin!, true) - top, 2);
+                          const rot = idx % 2 === 0 ? 0.8 : -0.5;
                           return (
                             <div key={ev.id} title={`${ev.titre} · ${ev.heure_debut}–${ev.heure_fin}`}
-                              style={{ position: "absolute", left: 2, right: 2, borderRadius: 4, borderLeft: `4px solid ${getEventBorderColor(ev.type)}`, paddingLeft: 4, paddingTop: 2, overflow: "hidden", top: `${top}%`, height: `${height}%`, zIndex: 20 + idx, ...getEventStyle(ev.type) }}>
-                              <span style={{ fontSize: 9, fontWeight: 700, lineHeight: 1.2, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{getEventIcon(ev.type)} {ev.titre}</span>
-                              {height > 5 && <span style={{ fontSize: 8, fontWeight: 500, opacity: 0.7, display: "block" }}>{ev.heure_debut}–{ev.heure_fin}</span>}
+                              style={{ ...getEventStyle(ev.type), position: "absolute", left: 3, right: 3, borderRadius: 5, border: "2px solid var(--ink)", boxShadow: "2px 2px 0 var(--ink)", padding: "3px 5px", top: `${top}%`, height: `${height}%`, zIndex: 20 + idx, transform: `rotate(${rot}deg)`, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+                              {ev.membres.length > 0 && (
+                                <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 2, alignItems: "flex-end" }}>
+                                  {ev.membres.map((mid, membIdx) => {
+                                    const m = equipe.find(mb => mb.id === mid);
+                                    if (!m) return null;
+                                    const tilt = (((m.nom.charCodeAt(0) + membIdx * 7) % 9) - 4) * 0.8;
+                                    return (
+                                      <span key={mid} className="bc" style={{ fontSize: 18, lineHeight: 1, display: "inline-block", flexShrink: 0, color: getMemberDotColor({ groupe: m.groupe, couleur: m.horaires?.couleur }), WebkitTextStroke: "1.5px var(--ink)", filter: "drop-shadow(1.5px 1.5px 0 #0d0d0d)", transform: `rotate(${tilt}deg)` }}>
+                                        {m.nom.trim()[0].toUpperCase()}
+                                      </span>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                              <span className="bc" style={{ fontSize: 12, lineHeight: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{getEventIcon(ev.type)} {ev.titre}</span>
+                              {height > 5 && <span style={{ fontSize: 10, fontWeight: 700, opacity: 0.7, display: "block" }}>{ev.heure_debut}–{ev.heure_fin}</span>}
                             </div>
                           );
                         })}
