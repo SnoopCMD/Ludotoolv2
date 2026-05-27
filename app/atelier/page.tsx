@@ -297,7 +297,9 @@ export default function Home() {
   const validerEtEnvoyer = async () => {
     const { error } = await supabase.from('jeux').insert(construireJeuxAInserer(jeuxAttente));
     if (error) { alert("Erreur d'envoi dans jeux : " + error.message); return; }
-    const catUpdates = jeuxAttente.filter(j => j.couleur).map(j => ({ ean: j.ean, nom: j.nom, couleur: j.couleur }));
+    const catMap = new Map<string, { ean: string; nom: string; couleur: string }>();
+    jeuxAttente.filter(j => j.ean !== "Manuel").forEach(j => catMap.set(j.ean, { ean: j.ean, nom: j.nom, couleur: j.couleur }));
+    const catUpdates = [...catMap.values()];
     if (catUpdates.length > 0) await supabase.from('catalogue').upsert(catUpdates, { onConflict: 'ean' });
     setJeuxAttente([]); setIsModalOpen(false); fetchDashboardData();
   };
@@ -310,7 +312,9 @@ export default function Home() {
     const maintenant = new Date().toISOString();
     const entrees = jeuxReception.map(j => ({ ean: j.ean, nom: j.nom, quantite: 1, statut: 'Reçu', date_commande: maintenant }));
     await supabase.from('commandes').insert(entrees);
-    const catUpdates = jeuxReception.filter(j => j.couleur).map(j => ({ ean: j.ean, nom: j.nom, couleur: j.couleur }));
+    const catMap = new Map<string, { ean: string; nom: string; couleur: string }>();
+    jeuxReception.filter(j => j.ean !== "Manuel").forEach(j => catMap.set(j.ean, { ean: j.ean, nom: j.nom, couleur: j.couleur }));
+    const catUpdates = [...catMap.values()];
     if (catUpdates.length > 0) await supabase.from('catalogue').upsert(catUpdates, { onConflict: 'ean' });
     setJeuxReception([]); fetchDashboardData(); fetchHistorique();
   };
