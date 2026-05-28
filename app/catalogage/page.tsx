@@ -379,7 +379,7 @@ function ModalCatalogage({ game: initGame, onClose, onSaved }: {
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <span style={labelStyle}>Recherche Esprit Jeu</span>
               <button onClick={searchEspritJeu} disabled={isSearching} className="pop-btn pop-btn-dark" style={{ fontSize: 12, padding: "6px 14px", opacity: isSearching ? 0.5 : 1 }}>
-                {isSearching ? "Recherche…" : "🔍 Chercher sur Esprit Jeu"}
+                {isSearching ? "Recherche…" : "Chercher sur Esprit Jeu"}
               </button>
             </div>
             {searchError && <p style={{ fontSize: 13, fontWeight: 700, color: "var(--rouge)" }}>{searchError}</p>}

@@ -192,6 +192,14 @@ body::before {
 /* ── Animations ── */
 @keyframes jv-spin { to { transform: rotate(360deg); } }
 @keyframes jv-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+@keyframes fadeInUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes shake {
+  0%, 100% { transform: translateX(0) rotate(0deg); }
+  20%  { transform: translateX(-7px) rotate(-4deg); }
+  40%  { transform: translateX(7px)  rotate(4deg); }
+  60%  { transform: translateX(-5px) rotate(-2deg); }
+  80%  { transform: translateX(5px)  rotate(2deg); }
+}
 .spin { animation: jv-spin 0.8s linear infinite; }
 .pulse { animation: jv-pulse 2s ease-in-out infinite; }
 

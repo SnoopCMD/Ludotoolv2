@@ -187,6 +187,39 @@ const getEventIcon = (type: string): string => {
   return "📌";
 };
 
+// ─── Jours fériés français ────────────────────────────────────────────────────
+
+function getEasterDate(year: number): Date {
+  const a = year % 19, b = Math.floor(year / 100), c = year % 100;
+  const d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3), h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4), k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const month = Math.floor((h + l - 7 * m + 114) / 31);
+  const day = ((h + l - 7 * m + 114) % 31) + 1;
+  return new Date(year, month - 1, day);
+}
+
+function getJoursFeries(year: number): Record<string, string> {
+  const easter = getEasterDate(year);
+  const add = (d: Date, n: number) => { const r = new Date(d); r.setDate(r.getDate() + n); return r; };
+  const key = (d: Date) => format(d, 'yyyy-MM-dd');
+  return {
+    [key(new Date(year, 0, 1))]:   "Jour de l'An",
+    [key(add(easter, 1))]:         "Lundi de Pâques",
+    [key(new Date(year, 4, 1))]:   "Fête du Travail",
+    [key(new Date(year, 4, 8))]:   "Victoire 1945",
+    [key(add(easter, 39))]:        "Ascension",
+    [key(add(easter, 50))]:        "Lundi de Pentecôte",
+    [key(new Date(year, 6, 14))]:  "Fête Nationale",
+    [key(new Date(year, 7, 15))]:  "Assomption",
+    [key(new Date(year, 10, 1))]:  "Toussaint",
+    [key(new Date(year, 10, 11))]: "Armistice",
+    [key(new Date(year, 11, 25))]: "Noël",
+  };
+}
+
 // ─── Couleurs jeux & alertes ──────────────────────────────────────────────────
 
 const COULEURS_JEU: Record<string, string> = {
@@ -210,6 +243,27 @@ export default function AccueilPage() {
   const [semaineRef, setSemaineRef] = useState(new Date());
   const [weekPlanningSlots, setWeekPlanningSlots] = useState<PlanningSlot[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  const [agendaCouleurs, setAgendaCouleurs] = useState({
+    accent: '#a8e063', equipeA: '#f87171', equipeB: '#60a5fa', swap: '#c4b5fd',
+  });
+  useEffect(() => {
+    const saved = localStorage.getItem('agenda_couleurs');
+    if (saved) try { setAgendaCouleurs(prev => ({ ...prev, ...JSON.parse(saved) })); } catch (_) {}
+  }, []);
+
+  const getBlocColor = (membres: { groupe?: string; isSwap?: boolean }[]): string => {
+    if (membres.some(m => m.isSwap)) return agendaCouleurs.swap;
+    const cA = membres.filter(m => m.groupe === 'A').length;
+    const cB = membres.filter(m => m.groupe === 'B').length;
+    if (cA > 0 && cB > 0) return agendaCouleurs.accent;
+    if (cA > 0) return agendaCouleurs.equipeA;
+    if (cB > 0) return agendaCouleurs.equipeB;
+    return agendaCouleurs.accent;
+  };
+
+  const getMemberDotColor = (m: { groupe?: string; couleur?: string }): string =>
+    m.couleur || (m.groupe === 'A' ? agendaCouleurs.equipeA : m.groupe === 'B' ? agendaCouleurs.equipeB : agendaCouleurs.accent);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [form, setForm] = useState({ titre: "", description: "", type: "info", jeu_nom: "", jeu_id: "" });
@@ -357,6 +411,10 @@ export default function AccueilPage() {
 
   const joursAffiches = tousLesJours.slice(1, 6);
   const labelSemaine = `${format(joursAffiches[0], "d MMM", { locale: fr })} – ${format(joursAffiches[4], "d MMM yyyy", { locale: fr })}`;
+  const joursFeries = useMemo(() => {
+    const years = [...new Set(joursAffiches.map(j => j.getFullYear()))];
+    return Object.assign({}, ...years.map(y => getJoursFeries(y)));
+  }, [joursAffiches]);
 
   const donneesDuJour = useMemo(() => {
     return joursAffiches.map(jour => {
@@ -463,14 +521,21 @@ export default function AccueilPage() {
                 <div />
                 {joursAffiches.map(jour => {
                   const today = isToday(jour);
+                  const dk = format(jour, "yyyy-MM-dd");
+                  const ferie = joursFeries[dk];
                   return (
-                    <div key={jour.toISOString()} style={{ padding: "10px 0", display: "flex", flexDirection: "column", alignItems: "center", gap: 2, background: today ? "var(--yellow)" : "transparent" }}>
-                      <span style={{ fontSize: 10, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.08em", color: today ? "var(--ink)" : "rgba(255,255,255,0.5)" }}>
+                    <div key={jour.toISOString()} style={{ padding: "8px 4px 6px", display: "flex", flexDirection: "column", alignItems: "center", gap: 1, background: ferie ? "rgba(250,204,21,0.18)" : today ? "var(--yellow)" : "transparent" }}>
+                      <span style={{ fontSize: 10, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.08em", color: today || ferie ? "var(--ink)" : "rgba(255,255,255,0.5)" }}>
                         {format(jour, "EEE", { locale: fr })}
                       </span>
-                      <span className="bc" style={{ fontSize: 20, lineHeight: 1, color: today ? "var(--ink)" : "var(--white)" }}>
+                      <span className="bc" style={{ fontSize: 20, lineHeight: 1, color: today || ferie ? "var(--ink)" : "var(--white)" }}>
                         {format(jour, "d")}
                       </span>
+                      {ferie && (
+                        <span style={{ fontSize: 9, fontWeight: 700, color: "var(--ink)", opacity: 0.65, textAlign: "center", lineHeight: 1.2, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", padding: "0 2px" }}>
+                          {ferie}
+                        </span>
+                      )}
                     </div>
                   );
                 })}
@@ -496,8 +561,9 @@ export default function AccueilPage() {
                   </div>
                   {donneesDuJour.map(({ jour, dateKey, blocs, absences, eventsGrille, eventsJournee }) => {
                     const today = isToday(jour);
+                    const ferie = joursFeries[dateKey];
                     return (
-                      <div key={dateKey} className={today ? 'today-hatch' : ''} style={{ position: "relative", background: today ? undefined : "transparent" }}>
+                      <div key={dateKey} className={today ? 'today-hatch' : ''} style={{ position: "relative", background: !today && ferie ? "rgba(250,204,21,0.08)" : today ? undefined : "transparent" }}>
                         {eventsJournee.length > 0 && (
                           <div style={{ position: "absolute", top: 2, left: 2, right: 2, display: "flex", flexDirection: "column", gap: 2, zIndex: 30 }}>
                             {eventsJournee.map(ev => (
@@ -514,7 +580,7 @@ export default function AccueilPage() {
                             ))}
                           </div>
                         )}
-                        {blocs.map((bloc, idx) => {
+                        {!ferie && blocs.map((bloc, idx) => {
                           const top = calculerPositionTop(bloc.debut);
                           const height = Math.max(calculerPositionTop(bloc.fin, true) - top, 2);
                           const bgColor = getBlocColor(bloc.membres);
@@ -536,7 +602,7 @@ export default function AccueilPage() {
                           );
                         })}
                         {/* Planning blocks overlay */}
-                        {(() => {
+                        {!ferie && (() => {
                           const dayPlanSlots = weekPlanningSlots.filter(s => s.dateKey === dateKey && s.membreIds.length > 0);
                           const byTime = new Map<string, { main: PlanningSlot | null; jv: PlanningSlot | null }>();
                           dayPlanSlots.forEach(s => {
@@ -669,7 +735,7 @@ export default function AccueilPage() {
                         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", flex: 1, minWidth: 0 }}>
                             <span className="pop-sticker" style={{ ...s.badge, border: "1.5px solid var(--ink)", fontSize: 10 }}>{s.icon} {s.label}</span>
-                            {alerte.jeu_nom && <span style={{ fontSize: 12, fontWeight: 700, color: "rgba(0,0,0,0.5)" }}>🎲 {alerte.jeu_nom}</span>}
+                            {alerte.jeu_nom && <span style={{ fontSize: 12, fontWeight: 700, color: "rgba(0,0,0,0.5)" }}>{alerte.jeu_nom}</span>}
                           </div>
                           <button onClick={() => resoudreAlerte(alerte.id)} title="Marquer comme résolu"
                             style={{ width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", background: "var(--vert)", border: "2px solid var(--ink)", cursor: "pointer", fontSize: 13, flexShrink: 0, boxShadow: "1px 1px 0 var(--ink)" }}>✓</button>
@@ -683,8 +749,8 @@ export default function AccueilPage() {
                   {rotationAlertes.map(jeu => (
                     <div key={`rot-${jeu.id}`} style={{ background: "#fecaca", border: "2.5px solid var(--ink)", borderRadius: 10, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <span className="pop-sticker" style={{ background: "var(--rouge)", color: "var(--white)", border: "1.5px solid var(--ink)", fontSize: 10 }}>🔄 Rotation</span>
-                        <span style={{ fontSize: 12, fontWeight: 700, color: "rgba(0,0,0,0.5)" }}>🎲 {jeu.nom}</span>
+                        <span className="pop-sticker" style={{ background: "var(--rouge)", color: "var(--white)", border: "1.5px solid var(--ink)", fontSize: 10 }}>Rotation</span>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: "rgba(0,0,0,0.5)" }}>{jeu.nom}</span>
                       </div>
                       <p style={{ fontWeight: 800, fontSize: 14 }}>Nouveauté à sortir</p>
                       <p style={{ fontSize: 12, color: "rgba(0,0,0,0.55)" }}>Sortie le {jeu.date_sortie ? format(new Date(jeu.date_sortie), "d MMM yyyy", { locale: fr }) : ""}</p>
@@ -696,8 +762,8 @@ export default function AccueilPage() {
                       <div key={`rappel-${r.jeu_id}-${idx}`} style={{ background: "#fef9c3", border: "2.5px solid var(--ink)", borderRadius: 10, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
                         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 6, flex: 1, minWidth: 0, flexWrap: "wrap" }}>
-                            <span className="pop-sticker" style={{ background: "var(--orange)", color: "var(--ink)", border: "1.5px solid var(--ink)", fontSize: 10 }}>🎲 Jeu</span>
-                            <span style={{ fontSize: 12, fontWeight: 700, color: "rgba(0,0,0,0.5)" }}>🎲 {r.nom}{suffix}</span>
+                            <span className="pop-sticker" style={{ background: "var(--orange)", color: "var(--ink)", border: "1.5px solid var(--ink)", fontSize: 10 }}>Jeu</span>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: "rgba(0,0,0,0.5)" }}>{r.nom}{suffix}</span>
                           </div>
                           <button onClick={() => resolveRappel(r.jeu_id, r.texte)} title="Marquer comme traité"
                             style={{ width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", background: "var(--vert)", border: "2px solid var(--ink)", cursor: "pointer", fontSize: 13, flexShrink: 0, boxShadow: "1px 1px 0 var(--ink)" }}>✓</button>

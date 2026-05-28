@@ -62,6 +62,12 @@ type JvRotationConfig = {
   week_start: string;
 };
 
+type JoueurDetail = {
+  nom: string;
+  sexe: "H" | "F" | "N" | null;
+  age: "11-16" | "16-18" | "18+" | "parent" | null;
+};
+
 type JvReservation = {
   id: string;
   jeu_id: string;
@@ -71,6 +77,7 @@ type JvReservation = {
   creneau: string;
   adherent_nom: string;
   nb_joueurs: number;
+  joueurs_details: JoueurDetail[] | null;
   statut: "confirmee" | "annulee" | "terminee";
   notes: string | null;
   created_at: string;
@@ -314,44 +321,56 @@ function ModalJeu({
     onClose();
   };
 
+  const CONSOLE_BG_M: Record<Console, string> = { PS5: 'var(--bleu)', Switch: 'var(--rouge)', PC: 'var(--cream2)' };
+  const STATUS_BG_M: Record<string, string> = {
+    disponible: 'var(--vert)', selection: '#baff29', maintenance: 'var(--orange)', retire: 'var(--rose)',
+  };
+  const headerBg = isNew
+    ? (step === 1 ? 'var(--bleu)' : step === 2 ? 'var(--purple)' : 'var(--vert)')
+    : (CONSOLE_BG_M[form.console ?? 'PS5'] ?? 'var(--cream2)');
+
+  const Slabel: React.CSSProperties = { fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: 'rgba(0,0,0,0.4)', marginBottom: 5, display: 'block' };
+  const Sbox: React.CSSProperties  = { background: 'var(--cream)', border: '3px solid var(--ink)', borderRadius: 12, boxShadow: '8px 8px 0 var(--ink)', width: '100%', maxWidth: 520, display: 'flex', flexDirection: 'column', maxHeight: 'calc(100vh - 96px)', overflow: 'hidden', marginBottom: 32 };
+
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-start justify-center p-4 pt-8 overflow-y-auto"
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 50, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '80px 16px 16px', overflowY: 'auto' }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden mb-8">
+      <div style={Sbox}>
 
         {/* Header */}
-        <div className="flex items-center gap-4 p-6 border-b border-slate-100">
-          <div className="w-14 h-14 rounded-2xl overflow-hidden bg-slate-100 shrink-0 flex items-center justify-center">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '18px 20px', borderBottom: '3px solid var(--ink)', background: headerBg, flexShrink: 0 }}>
+          <div style={{ width: 52, height: 52, borderRadius: 10, overflow: 'hidden', background: 'var(--cream2)', border: '2.5px solid var(--ink)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '3px 3px 0 var(--ink)' }}>
             {form.image_url
-              ? <img src={form.image_url} alt={form.titre} className="w-full h-full object-cover" />
-              : <span className="text-2xl">🎮</span>}
+              ? <img src={form.image_url} alt={form.titre} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              : <span style={{ fontSize: 24 }}>🎮</span>}
           </div>
-          <div className="flex-1 min-w-0">
-            <h2 className="font-black text-xl text-black">{isNew ? "Ajouter un jeu vidéo" : jeu.titre}</h2>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="bc" style={{ fontSize: 20, textTransform: 'uppercase', lineHeight: 1.1 }}>
+              {isNew ? "Ajouter un jeu vidéo" : (jeu?.titre ?? '—')}
+            </div>
             {isNew && (
-              <div className="flex items-center gap-1.5 mt-1">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 6 }}>
                 {([1, 2, 3] as const).map(s => (
-                  <div key={s} className={`h-1.5 rounded-full transition-all ${
-                    step >= s ? "bg-black" : "bg-slate-200"
-                  } ${s === 1 ? "w-8" : s === 2 ? "w-8" : "w-8"}`} />
+                  <div key={s} style={{ height: 5, width: step >= s ? 24 : 14, borderRadius: 3, background: step >= s ? 'var(--ink)' : 'rgba(0,0,0,0.2)', transition: 'width .2s' }} />
                 ))}
-                <span className="text-[10px] text-slate-400 font-medium ml-1">
+                <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: 'rgba(0,0,0,0.5)', marginLeft: 3 }}>
                   {step === 1 ? "Recherche" : step === 2 ? "Sélection" : "Détails"}
                 </span>
               </div>
             )}
-            {!isNew && <span className={`text-[11px] font-bold px-2 py-0.5 rounded-lg border ${CONSOLE_COLORS[jeu.console]}`}>{jeu.console}</span>}
+            {!isNew && (
+              <span style={{ background: CONSOLE_BG_M[jeu!.console], border: '2px solid var(--ink)', borderRadius: 6, padding: '2px 8px', fontSize: 12, fontWeight: 700, boxShadow: '2px 2px 0 var(--ink)', display: 'inline-block', marginTop: 5 }}>{jeu!.console}</span>
+            )}
           </div>
           <button onClick={onClose}
-            className="w-9 h-9 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 font-bold shrink-0">✕</button>
+            style={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--ink)', color: 'var(--white)', border: '2px solid var(--ink)', borderRadius: 6, fontWeight: 700, fontSize: 16, cursor: 'pointer', flexShrink: 0, boxShadow: '2px 2px 0 rgba(0,0,0,0.3)' }}>✕</button>
         </div>
 
         {/* ── Step 1 : Recherche ─────────────────────────────────────────────── */}
         {step === 1 && (
-          <div className="flex flex-col">
-            {/* Barre de recherche — fixe */}
-            <div className="flex gap-2 p-6 pb-3">
-              <div className="relative flex-1">
+          <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+            <div style={{ display: 'flex', gap: 8, padding: '16px 20px 10px', flexShrink: 0 }}>
+              <div style={{ position: 'relative', flex: 1 }}>
                 <input
                   type="text"
                   value={titreRecherche}
@@ -362,60 +381,57 @@ function ModalJeu({
                   }}
                   placeholder="Titre du jeu (3 lettres suffisent)…"
                   autoFocus
-                  className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-4 py-3 pr-10 text-sm font-medium outline-none focus:border-black transition-colors"
-                />
+                  className="pop-input" style={{ width: '100%' }} />
                 {isSearching && (
-                  <span className="absolute right-4 top-1/2 -translate-y-1/2 w-3 h-3 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin" />
+                  <span className="spin" style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', width: 14, height: 14, border: '2px solid var(--cream2)', borderTopColor: 'var(--ink)', borderRadius: '50%', display: 'inline-block' }} />
                 )}
               </div>
               <select value={consoleRecherche} onChange={e => setConsoleRecherche(e.target.value as Console | "")}
-                className="bg-slate-50 border-2 border-slate-100 rounded-2xl px-3 py-3 text-sm font-bold outline-none focus:border-black transition-colors">
+                className="pop-input" style={{ cursor: 'pointer' }}>
                 <option value="">Toutes</option>
                 {CONSOLES.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
               <button
                 onClick={() => searchIgdb(titreRecherche, consoleRecherche)}
                 disabled={!titreRecherche.trim() || isSearching}
-                className="px-4 py-3 bg-black text-white rounded-2xl text-sm font-bold hover:bg-slate-800 disabled:opacity-40 transition-colors">
+                className="pop-btn pop-btn-dark" style={{ opacity: (!titreRecherche.trim() || isSearching) ? 0.4 : 1 }}>
                 →
               </button>
             </div>
 
-            {/* Résultats inline — scrollables */}
             {searchResults.length > 0 && (
-              <div className="flex flex-col overflow-y-auto px-6 pb-4" style={{ maxHeight: "52vh" }}>
+              <div className="custom-scroll" style={{ overflowY: 'auto', padding: '0 20px 10px', flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
                 {searchResults.map(r => (
                   <button key={r.external_id} onClick={() => selectSearchResult(r)}
-                    className="flex items-center gap-3 w-full px-3 py-2.5 rounded-2xl hover:bg-slate-50 transition-colors text-left border-b border-slate-50 last:border-0">
-                    <div className="w-10 h-13 rounded-xl overflow-hidden bg-slate-100 shrink-0 flex items-center justify-center" style={{ minHeight: 52 }}>
-                      {r.image_url
-                        ? <img src={r.image_url} alt={r.titre} className="w-full h-full object-cover" />
-                        : <span className="text-lg">🎮</span>}
+                    className="pop-card pop-card-hover"
+                    style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: 'var(--white)', cursor: 'pointer', width: '100%', textAlign: 'left' }}>
+                    <div style={{ width: 36, height: 48, borderRadius: 6, overflow: 'hidden', background: 'var(--cream2)', border: '2px solid var(--ink)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      {r.image_url ? <img src={r.image_url} alt={r.titre} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: 14 }}>🎮</span>}
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-bold text-sm text-black truncate">{r.titre}</p>
-                      <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
-                        {r.annee && <span className="text-[10px] text-slate-400">{r.annee}</span>}
-                        {r.editeur && <><span className="text-slate-200 text-[9px]">·</span><span className="text-[10px] text-slate-400 truncate max-w-[130px]">{r.editeur}</span></>}
-                        {r.console && <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${CONSOLE_COLORS[r.console]}`}>{r.console}</span>}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: 14, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{r.titre}</div>
+                      <div style={{ display: 'flex', gap: 6, marginTop: 3, flexWrap: 'wrap', alignItems: 'center' }}>
+                        {r.annee && <span style={{ fontSize: 11, color: 'rgba(0,0,0,0.4)' }}>{r.annee}</span>}
+                        {r.editeur && <span style={{ fontSize: 11, color: 'rgba(0,0,0,0.4)', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', maxWidth: 120 }}>{r.editeur}</span>}
+                        {r.console && <span style={{ background: CONSOLE_BG_M[r.console], border: '1.5px solid var(--ink)', borderRadius: 4, padding: '1px 6px', fontSize: 11, fontWeight: 700 }}>{r.console}</span>}
                       </div>
                     </div>
-                    <span className="text-slate-300 text-lg shrink-0">›</span>
+                    <span style={{ color: 'rgba(0,0,0,0.25)', fontSize: 18, flexShrink: 0 }}>›</span>
                   </button>
                 ))}
               </div>
             )}
 
             {searchError && (
-              <div className="flex items-start gap-2 mx-6 mb-4 p-3 bg-amber-50 rounded-2xl border border-amber-100">
-                <span className="text-amber-500 text-sm shrink-0">⚠</span>
-                <p className="text-xs font-medium text-amber-700">{searchError}</p>
+              <div style={{ margin: '0 20px 10px', padding: '10px 14px', background: 'var(--yellow)', border: '2px solid var(--ink)', borderRadius: 8, boxShadow: '2px 2px 0 var(--ink)', display: 'flex', gap: 8, alignItems: 'center' }}>
+                <span style={{ fontWeight: 700, flexShrink: 0 }}>⚠</span>
+                <p style={{ fontSize: 13, fontWeight: 600 }}>{searchError}</p>
               </div>
             )}
 
-            <div className="px-6 pb-5 border-t border-slate-100 pt-3">
+            <div style={{ padding: '10px 20px 14px', borderTop: '2px solid var(--cream2)', marginTop: 'auto', flexShrink: 0 }}>
               <button onClick={() => { setForm({ statut: "disponible", console: (consoleRecherche || "PS5") as Console }); setStep(3); }}
-                className="text-xs text-slate-400 font-medium hover:text-black transition-colors">
+                style={{ fontSize: 12, fontWeight: 700, color: 'rgba(0,0,0,0.4)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>
                 Saisir manuellement sans recherche →
               </button>
             </div>
@@ -424,33 +440,30 @@ function ModalJeu({
 
         {/* ── Step 2 : Résultats ────────────────────────────────────────────── */}
         {step === 2 && (
-          <div className="flex flex-col">
-            <div className="px-6 pt-4 pb-2">
-              <button onClick={() => setStep(1)} className="text-xs font-bold text-slate-400 hover:text-black transition-colors">← Nouvelle recherche</button>
+          <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+            <div style={{ padding: '12px 20px 8px', flexShrink: 0 }}>
+              <button onClick={() => setStep(1)} className="pop-btn pop-btn-outline" style={{ fontSize: 12 }}>← Nouvelle recherche</button>
             </div>
-            <div className="flex flex-col gap-2 px-6 pb-6 overflow-y-auto custom-scroll" style={{ maxHeight: "60vh" }}>
+            <div className="custom-scroll" style={{ flex: 1, overflowY: 'auto', padding: '0 20px 16px', display: 'flex', flexDirection: 'column', gap: 6 }}>
               {searchResults.map(r => (
                 <button key={r.external_id} onClick={() => selectSearchResult(r)}
-                  className="flex items-center gap-3 p-3 rounded-2xl border-2 border-slate-100 hover:border-black bg-white transition-all text-left">
-                  <div className="w-12 h-16 rounded-xl overflow-hidden bg-slate-100 shrink-0 flex items-center justify-center">
-                    {r.image_url
-                      ? <img src={r.image_url} alt={r.titre} className="w-full h-full object-cover" />
-                      : <span className="text-xl">🎮</span>}
+                  className="pop-card pop-card-hover"
+                  style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 12, background: 'var(--white)', cursor: 'pointer', width: '100%', textAlign: 'left' }}>
+                  <div style={{ width: 48, height: 64, borderRadius: 8, overflow: 'hidden', background: 'var(--cream2)', border: '2px solid var(--ink)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {r.image_url ? <img src={r.image_url} alt={r.titre} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: 20 }}>🎮</span>}
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-bold text-sm text-black">{r.titre}</p>
-                    <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                      {r.annee && <span className="text-[10px] text-slate-400">{r.annee}</span>}
-                      {r.editeur && <><span className="text-slate-300 text-[10px]">·</span><span className="text-[10px] text-slate-400">{r.editeur}</span></>}
-                      {r.genre && <span className="text-[10px] bg-slate-100 text-slate-500 font-bold px-1.5 py-0.5 rounded">{r.genre}</span>}
-                      {r.pegi && <span className="text-[10px] bg-amber-50 text-amber-600 font-bold px-1.5 py-0.5 rounded">PEGI {r.pegi}</span>}
-                      {r.console && <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${CONSOLE_COLORS[r.console]}`}>{r.console}</span>}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: 14 }}>{r.titre}</div>
+                    <div style={{ display: 'flex', gap: 6, marginTop: 4, flexWrap: 'wrap', alignItems: 'center' }}>
+                      {r.annee && <span style={{ fontSize: 11, color: 'rgba(0,0,0,0.4)' }}>{r.annee}</span>}
+                      {r.editeur && <span style={{ fontSize: 11, color: 'rgba(0,0,0,0.4)' }}>{r.editeur}</span>}
+                      {r.genre && <span style={{ background: 'var(--cream2)', border: '1.5px solid rgba(0,0,0,0.15)', borderRadius: 20, padding: '1px 7px', fontSize: 11, fontWeight: 600 }}>{r.genre}</span>}
+                      {r.pegi && <span style={{ background: 'var(--yellow)', border: '1.5px solid var(--ink)', borderRadius: 4, padding: '1px 6px', fontSize: 11, fontWeight: 700 }}>PEGI {r.pegi}</span>}
+                      {r.console && <span style={{ background: CONSOLE_BG_M[r.console], border: '1.5px solid var(--ink)', borderRadius: 4, padding: '1px 6px', fontSize: 11, fontWeight: 700 }}>{r.console}</span>}
                     </div>
-                    {r.description && (
-                      <p className="text-[10px] text-slate-400 mt-1 line-clamp-2 leading-relaxed">{r.description}</p>
-                    )}
+                    {r.description && <p style={{ fontSize: 11, color: 'rgba(0,0,0,0.4)', marginTop: 4, overflow: 'hidden', maxHeight: '2.4em', lineHeight: '1.2em' }}>{r.description}</p>}
                   </div>
-                  <span className="text-slate-300 text-xl shrink-0">›</span>
+                  <span style={{ color: 'rgba(0,0,0,0.25)', fontSize: 18, flexShrink: 0 }}>›</span>
                 </button>
               ))}
             </div>
@@ -460,136 +473,135 @@ function ModalJeu({
         {/* ── Step 3 : Formulaire ────────────────────────────────────────────── */}
         {step === 3 && (
           <>
-            <div className="flex flex-col divide-y divide-slate-100 overflow-y-auto custom-scroll" style={{ maxHeight: "60vh" }}>
-              <div className="p-6 flex flex-col gap-4">
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-black text-slate-400 uppercase tracking-widest">Titre *</label>
-                  <input type="text" value={form.titre ?? ""} onChange={e => set("titre", e.target.value)}
-                    placeholder="Nom du jeu…"
-                    className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-4 py-3 text-sm font-medium outline-none focus:border-black transition-colors" />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-black text-slate-400 uppercase tracking-widest">Console *</label>
-                    <select value={form.console ?? "PS5"} onChange={e => set("console", e.target.value as Console)}
-                      className="bg-slate-50 border-2 border-slate-100 rounded-2xl px-4 py-3 text-sm font-medium outline-none focus:border-black transition-colors">
-                      {CONSOLES.map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-black text-slate-400 uppercase tracking-widest">Genre</label>
-                    <input type="text" value={form.genre ?? ""} onChange={e => set("genre", e.target.value || null)}
-                      placeholder="Action, RPG…"
-                      className="bg-slate-50 border-2 border-slate-100 rounded-2xl px-4 py-3 text-sm font-medium outline-none focus:border-black transition-colors" />
-                  </div>
-                </div>
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-black text-slate-400 uppercase tracking-widest">Année</label>
-                    <input type="number" value={form.annee ?? ""} onChange={e => set("annee", e.target.value ? parseInt(e.target.value) : null)}
-                      placeholder="2024"
-                      className="bg-slate-50 border-2 border-slate-100 rounded-2xl px-4 py-3 text-sm font-medium outline-none focus:border-black transition-colors" />
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-black text-slate-400 uppercase tracking-widest">PEGI</label>
-                    <select value={form.pegi ?? ""} onChange={e => set("pegi", e.target.value ? parseInt(e.target.value) : null)}
-                      className="bg-slate-50 border-2 border-slate-100 rounded-2xl px-4 py-3 text-sm font-medium outline-none focus:border-black transition-colors">
-                      <option value="">—</option>
-                      {[3, 7, 12, 16, 18].map(p => <option key={p} value={p}>{p}</option>)}
-                    </select>
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-black text-slate-400 uppercase tracking-widest">Joueurs</label>
-                    <input type="text" value={form.nb_joueurs ?? ""} onChange={e => set("nb_joueurs", e.target.value || null)}
-                      placeholder="1-4"
-                      className="bg-slate-50 border-2 border-slate-100 rounded-2xl px-4 py-3 text-sm font-medium outline-none focus:border-black transition-colors" />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-black text-slate-400 uppercase tracking-widest">Éditeur</label>
-                    <input type="text" value={form.editeur ?? ""} onChange={e => set("editeur", e.target.value || null)}
-                      placeholder="Nintendo, Sony…"
-                      className="bg-slate-50 border-2 border-slate-100 rounded-2xl px-4 py-3 text-sm font-medium outline-none focus:border-black transition-colors" />
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-black text-slate-400 uppercase tracking-widest">Cote Syracuse</label>
-                    <input type="text" value={form.cote_syracuse ?? ""} onChange={e => set("cote_syracuse", e.target.value || null)}
-                      placeholder="ex. JV-PS5-042"
-                      className="bg-slate-50 border-2 border-slate-100 rounded-2xl px-4 py-3 text-sm font-medium outline-none focus:border-black transition-colors" />
-                  </div>
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-black text-slate-400 uppercase tracking-widest">Image</label>
-                  <div className="flex gap-2 items-start">
-                    {form.image_url && (
-                      <div className="w-12 h-16 rounded-xl overflow-hidden bg-slate-100 shrink-0">
-                        <img src={form.image_url} alt="" className="w-full h-full object-cover" />
-                      </div>
-                    )}
-                    <input type="text" value={form.image_url ?? ""} onChange={e => set("image_url", e.target.value || null)}
-                      placeholder="https://… (auto-rempli par la recherche)"
-                      className="flex-1 bg-slate-50 border-2 border-slate-100 rounded-2xl px-4 py-3 text-sm font-medium outline-none focus:border-black transition-colors" />
-                  </div>
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <div className="flex items-center gap-2">
-                    <label className="text-xs font-black text-slate-400 uppercase tracking-widest">Description</label>
-                    {isFetchingDesc && (
-                      <span className="flex items-center gap-1 text-[10px] text-slate-400 font-medium">
-                        <span className="w-2.5 h-2.5 border border-slate-300 border-t-slate-500 rounded-full animate-spin inline-block" />
-                        Récupération FR…
-                      </span>
-                    )}
-                  </div>
-                  <textarea value={form.description ?? ""} onChange={e => set("description", e.target.value || null)}
-                    rows={3} placeholder="Synopsis, ambiance du jeu…"
-                    className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-4 py-3 text-sm font-medium outline-none focus:border-black transition-colors resize-none" />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-black text-slate-400 uppercase tracking-widest">Statut</label>
-                  <div className="flex gap-2 flex-wrap">
-                    {(["disponible", "selection", "maintenance", "retire"] as const).map(s => (
-                      <button key={s} onClick={() => set("statut", s)}
-                        className={`px-4 py-2 rounded-xl text-xs font-bold border-2 transition-colors capitalize ${
-                          form.statut === s ? "bg-black text-white border-black" : "bg-white border-slate-200 text-slate-500 hover:border-slate-300"}`}>
-                        {s}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                {form.igdb_id && (
-                  <p className="text-[10px] text-slate-300 font-medium">IGDB #{form.igdb_id}</p>
-                )}
+            <div className="custom-scroll" style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+              <div>
+                <label style={Slabel}>Titre *</label>
+                <input type="text" value={form.titre ?? ""} onChange={e => set("titre", e.target.value)}
+                  placeholder="Nom du jeu…" className="pop-input" style={{ width: '100%' }} />
               </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div>
+                  <label style={Slabel}>Console *</label>
+                  <select value={form.console ?? "PS5"} onChange={e => set("console", e.target.value as Console)}
+                    className="pop-input" style={{ width: '100%', cursor: 'pointer' }}>
+                    {CONSOLES.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={Slabel}>Genre</label>
+                  <input type="text" value={form.genre ?? ""} onChange={e => set("genre", e.target.value || null)}
+                    placeholder="Action, RPG…" className="pop-input" style={{ width: '100%' }} />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+                <div>
+                  <label style={Slabel}>Année</label>
+                  <input type="number" value={form.annee ?? ""} onChange={e => set("annee", e.target.value ? parseInt(e.target.value) : null)}
+                    placeholder="2024" className="pop-input" style={{ width: '100%' }} />
+                </div>
+                <div>
+                  <label style={Slabel}>PEGI</label>
+                  <select value={form.pegi ?? ""} onChange={e => set("pegi", e.target.value ? parseInt(e.target.value) : null)}
+                    className="pop-input" style={{ width: '100%', cursor: 'pointer' }}>
+                    <option value="">—</option>
+                    {[3, 7, 12, 16, 18].map(p => <option key={p} value={p}>{p}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={Slabel}>Joueurs</label>
+                  <input type="text" value={form.nb_joueurs ?? ""} onChange={e => set("nb_joueurs", e.target.value || null)}
+                    placeholder="1-4" className="pop-input" style={{ width: '100%' }} />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div>
+                  <label style={Slabel}>Éditeur</label>
+                  <input type="text" value={form.editeur ?? ""} onChange={e => set("editeur", e.target.value || null)}
+                    placeholder="Nintendo, Sony…" className="pop-input" style={{ width: '100%' }} />
+                </div>
+                <div>
+                  <label style={Slabel}>Cote Syracuse</label>
+                  <input type="text" value={form.cote_syracuse ?? ""} onChange={e => set("cote_syracuse", e.target.value || null)}
+                    placeholder="ex. JV-PS5-042" className="pop-input" style={{ width: '100%' }} />
+                </div>
+              </div>
+
+              <div>
+                <label style={Slabel}>Image</label>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                  {form.image_url && (
+                    <div style={{ width: 44, height: 60, borderRadius: 6, overflow: 'hidden', border: '2px solid var(--ink)', flexShrink: 0 }}>
+                      <img src={form.image_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    </div>
+                  )}
+                  <input type="text" value={form.image_url ?? ""} onChange={e => set("image_url", e.target.value || null)}
+                    placeholder="https://… (auto-rempli par la recherche)"
+                    className="pop-input" style={{ flex: 1 }} />
+                </div>
+              </div>
+
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
+                  <label style={{ ...Slabel, marginBottom: 0 }}>Description</label>
+                  {isFetchingDesc && (
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10, fontWeight: 700, color: 'rgba(0,0,0,0.35)' }}>
+                      <span className="spin" style={{ width: 10, height: 10, border: '1.5px solid var(--cream2)', borderTopColor: 'var(--ink)', borderRadius: '50%', display: 'inline-block' }} />
+                      Récupération FR…
+                    </span>
+                  )}
+                </div>
+                <textarea value={form.description ?? ""} onChange={e => set("description", e.target.value || null)}
+                  rows={3} placeholder="Synopsis, ambiance du jeu…"
+                  className="pop-input" style={{ width: '100%', resize: 'none', fontFamily: 'inherit' }} />
+              </div>
+
+              <div>
+                <label style={Slabel}>Statut</label>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {(["disponible", "selection", "maintenance", "retire"] as const).map(s => (
+                    <button key={s} onClick={() => set("statut", s)}
+                      style={{
+                        background: form.statut === s ? (STATUS_BG_M[s] ?? 'var(--cream2)') : 'var(--white)',
+                        border: '2.5px solid var(--ink)', borderRadius: 8, padding: '5px 14px',
+                        fontSize: 13, fontWeight: 700, cursor: 'pointer', textTransform: 'capitalize',
+                        boxShadow: form.statut === s ? '3px 3px 0 var(--ink)' : 'none',
+                        transition: 'background .12s, box-shadow .12s',
+                      }}>
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {form.igdb_id && (
+                <p style={{ fontSize: 10, color: 'rgba(0,0,0,0.25)', fontWeight: 600 }}>IGDB #{form.igdb_id}</p>
+              )}
             </div>
 
-            <div className="flex gap-3 p-6 border-t border-slate-100">
+            <div style={{ display: 'flex', gap: 10, padding: '14px 20px', borderTop: '3px solid var(--ink)', background: 'var(--cream2)', flexShrink: 0 }}>
               {!isNew && (
                 confirmDelete ? (
                   <button onClick={del} disabled={isDeleting}
-                    className="px-4 py-3 rounded-2xl bg-rose-500 text-white font-bold text-sm hover:bg-rose-600 disabled:opacity-50 transition-colors">
+                    className="pop-btn" style={{ background: 'var(--rouge)', opacity: isDeleting ? 0.5 : 1 }}>
                     {isDeleting ? "Suppression…" : "Confirmer"}
                   </button>
                 ) : (
                   <button onClick={() => setConfirmDelete(true)}
-                    className="px-4 py-3 rounded-2xl bg-slate-100 hover:bg-rose-50 text-rose-500 font-bold text-sm transition-colors">
+                    className="pop-btn" style={{ color: 'var(--rouge)' }}>
                     Supprimer
                   </button>
                 )
               )}
               {isNew && step === 3 && (
-                <button onClick={() => setStep(1)}
-                  className="px-4 py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-sm transition-colors">
-                  ← Retour
-                </button>
+                <button onClick={() => setStep(1)} className="pop-btn pop-btn-outline">← Retour</button>
               )}
-              <button onClick={onClose}
-                className="flex-1 px-4 py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-sm transition-colors">
-                Annuler
-              </button>
+              <button onClick={onClose} className="pop-btn pop-btn-outline" style={{ flex: 1, justifyContent: 'center' }}>Annuler</button>
               <button onClick={save} disabled={isSaving || !form.titre?.trim()}
-                className="flex-1 px-4 py-3 rounded-2xl bg-black text-white font-bold text-sm hover:bg-slate-800 disabled:opacity-50 transition-colors">
+                className="pop-btn pop-btn-dark" style={{ flex: 1, justifyContent: 'center', opacity: (isSaving || !form.titre?.trim()) ? 0.5 : 1 }}>
                 {isSaving ? "Sauvegarde…" : (isNew ? "Ajouter" : "Enregistrer")}
               </button>
             </div>
@@ -606,6 +618,7 @@ function ModalRotation({
   slot,
   selections,
   jeux,
+  reservations,
   onClose,
   onAddToGroup,
   onRemoveSelection,
@@ -614,6 +627,7 @@ function ModalRotation({
   slot: SelectionSlot;
   selections: JvSelection[];
   jeux: JvJeu[];
+  reservations: JvReservation[];
   onClose: () => void;
   onAddToGroup: (jeuId: string, groupe: number) => void;
   onRemoveSelection: (selId: string) => void;
@@ -668,25 +682,60 @@ function ModalRotation({
       })
     : [];
 
-  return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-start justify-center p-4 pt-8 overflow-y-auto"
-      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden mb-8 relative">
+  const CONSOLE_BG_R: Record<string, string> = { PS5: 'var(--bleu)', Switch: 'var(--rouge)', PC: 'var(--cream2)' };
+  const headerBgR = CONSOLE_BG_R[consoleName] ?? 'var(--cream2)';
 
-        <div className="flex items-center gap-3 p-6 border-b border-slate-100">
-          <div className={`w-8 h-8 rounded-full ${CONSOLE_DOT[consoleName]}`} />
-          <div>
-            <h2 className="font-black text-xl text-black">File d'attente — {SLOT_LABEL[slot]}</h2>
-            <p className="text-xs text-slate-400 font-medium mt-0.5">Groupes de 3 jeux · chaque groupe = une rotation</p>
+  const selectionCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    selections.forEach(s => { counts[s.jeu_id] = (counts[s.jeu_id] || 0) + 1; });
+    return counts;
+  }, [selections]);
+
+  const resaCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    reservations.filter(r => r.statut !== "annulee").forEach(r => {
+      counts[r.jeu_id] = (counts[r.jeu_id] || 0) + 1;
+      if (r.jeu2_id) counts[r.jeu2_id] = (counts[r.jeu2_id] || 0) + 1;
+    });
+    return counts;
+  }, [reservations]);
+
+  const popularityRank = useMemo(() => {
+    const byConsole: Record<string, { id: string; count: number }[]> = {};
+    jeux.forEach(j => {
+      if (!byConsole[j.console]) byConsole[j.console] = [];
+      byConsole[j.console].push({ id: j.id, count: resaCounts[j.id] || 0 });
+    });
+    const ranks: Record<string, { rank: number; total: number }> = {};
+    Object.values(byConsole).forEach(list => {
+      const sorted = [...list].sort((a, b) => b.count - a.count);
+      sorted.forEach((item, i) => { ranks[item.id] = { rank: i + 1, total: sorted.length }; });
+    });
+    return ranks;
+  }, [jeux, resaCounts]);
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 50, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '80px 16px 16px', overflowY: 'auto' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="pop-card" style={{ background: 'var(--cream)', width: '100%', maxWidth: 520, display: 'flex', flexDirection: 'column', maxHeight: 'calc(100vh - 96px)', overflow: 'hidden', marginBottom: 32, position: 'relative' }}>
+
+        {/* Header */}
+        <div style={{ background: headerBgR, padding: '20px 24px 20px', display: 'flex', alignItems: 'center', gap: 12, borderBottom: '2.5px solid var(--ink)', flexShrink: 0 }}>
+          <div style={{ flex: 1 }}>
+            <h2 className="bc" style={{ fontSize: 26, color: 'var(--ink)', margin: 0, lineHeight: 1 }}>
+              File d&apos;attente — {SLOT_LABEL[slot]}
+            </h2>
+            <p style={{ fontSize: 11, fontWeight: 700, color: 'rgba(0,0,0,0.45)', marginTop: 4 }}>
+              Groupes de 3 jeux · chaque groupe = une rotation
+            </p>
           </div>
-          <button onClick={onClose}
-            className="ml-auto w-9 h-9 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 font-bold">✕</button>
+          <button onClick={onClose} style={{ width: 36, height: 36, border: '2.5px solid var(--ink)', borderRadius: 8, background: 'var(--white)', fontWeight: 900, fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>✕</button>
         </div>
 
-        <div className="flex flex-col gap-4 p-6 overflow-y-auto custom-scroll" style={{ maxHeight: "60vh" }}>
+        <div className="custom-scroll" style={{ flex: 1, overflowY: 'auto', padding: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
 
           {groupNums.length === 0 && (
-            <p className="text-sm text-slate-400 font-medium text-center py-6">
+            <p style={{ fontSize: 13, color: 'rgba(0,0,0,0.35)', textAlign: 'center', padding: '24px 0', fontWeight: 600 }}>
               Aucun groupe planifié — créez le premier ci-dessous
             </p>
           )}
@@ -695,47 +744,47 @@ function ModalRotation({
             const games = planifiees.filter(s => s.groupe === g);
 
             return (
-              <div key={g} className="flex flex-col gap-2 p-4 bg-slate-50 rounded-2xl border-2 border-slate-100">
+              <div key={g} className="pop-card" style={{ background: 'var(--cream2)', padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {/* En-tête groupe */}
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-black text-slate-400 uppercase tracking-widest">
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: 11, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.08em', color: 'rgba(0,0,0,0.45)' }}>
                     Groupe {gIdx + 1}
-                    <span className="normal-case font-medium ml-1 text-slate-300">({games.length}/3)</span>
+                    <span style={{ fontWeight: 500, marginLeft: 6, color: 'rgba(0,0,0,0.3)' }}>({games.length}/3)</span>
                   </span>
-                  <div className="flex gap-1">
+                  <div style={{ display: 'flex', gap: 4 }}>
                     {gIdx > 0 && (
                       <button onClick={() => onMoveGroup(g, groupNums[gIdx - 1])}
-                        className="w-6 h-6 flex items-center justify-center rounded-lg bg-white border border-slate-200 hover:border-slate-400 text-slate-400 hover:text-black text-xs transition-colors">▲</button>
+                        style={{ width: 24, height: 24, border: '2px solid var(--ink)', borderRadius: 6, background: 'var(--white)', cursor: 'pointer', fontSize: 10, fontWeight: 900, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>▲</button>
                     )}
                     {gIdx < groupNums.length - 1 && (
                       <button onClick={() => onMoveGroup(g, groupNums[gIdx + 1])}
-                        className="w-6 h-6 flex items-center justify-center rounded-lg bg-white border border-slate-200 hover:border-slate-400 text-slate-400 hover:text-black text-xs transition-colors">▼</button>
+                        style={{ width: 24, height: 24, border: '2px solid var(--ink)', borderRadius: 6, background: 'var(--white)', cursor: 'pointer', fontSize: 10, fontWeight: 900, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>▼</button>
                     )}
                   </div>
                 </div>
 
                 {/* Jeux du groupe */}
-                <div className="flex flex-col gap-1.5">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   {games.map(sel => {
                     const jeu = jeux.find(j => j.id === sel.jeu_id);
                     if (!jeu) return null;
                     return (
-                      <div key={sel.id} className="flex items-center gap-3 p-2.5 bg-white rounded-xl border border-slate-100">
-                        <div className="w-9 h-9 rounded-lg overflow-hidden bg-slate-100 shrink-0 flex items-center justify-center">
+                      <div key={sel.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', background: 'var(--white)', border: '2px solid var(--ink)', borderRadius: 10 }}>
+                        <div style={{ width: 36, height: 36, borderRadius: 8, overflow: 'hidden', background: 'var(--cream2)', flexShrink: 0, border: '2px solid var(--ink)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                           {jeu.image_url
-                            ? <img src={jeu.image_url} alt={jeu.titre} className="w-full h-full object-cover" />
-                            : <span className="text-base">🎮</span>}
+                            ? <img src={jeu.image_url} alt={jeu.titre} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            : <span style={{ fontSize: 16 }}>🎮</span>}
                         </div>
-                        <p className="font-bold text-sm text-black flex-1 truncate">{jeu.titre}</p>
+                        <p style={{ fontWeight: 700, fontSize: 13, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{jeu.titre}</p>
                         <button onClick={() => onRemoveSelection(sel.id)}
-                          className="text-slate-300 hover:text-rose-500 font-black text-sm transition-colors shrink-0">✕</button>
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', fontWeight: 900, fontSize: 14, color: 'var(--rouge)', flexShrink: 0 }}>✕</button>
                       </div>
                     );
                   })}
 
                   {games.length < 3 && (
                     <button onClick={() => openPicker(g)}
-                      className="flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 border-dashed border-slate-200 hover:border-black text-slate-400 hover:text-black text-xs font-bold transition-colors">
+                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '10px', border: '2.5px dashed var(--ink)', borderRadius: 10, background: 'transparent', cursor: 'pointer', fontSize: 12, fontWeight: 800, color: 'rgba(0,0,0,0.45)' }}>
                       + Jeu {games.length + 1}/3
                     </button>
                   )}
@@ -747,15 +796,14 @@ function ModalRotation({
           {/* Nouveau groupe */}
           {disponibles.length > 0 && (
             <button onClick={() => openPicker(nextGroupe)}
-              className="flex items-center justify-center gap-2 py-3 rounded-2xl border-2 border-dashed border-slate-200 hover:border-black text-slate-400 hover:text-black text-sm font-bold transition-colors">
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '14px', border: '2.5px dashed var(--ink)', borderRadius: 12, background: 'transparent', cursor: 'pointer', fontSize: 13, fontWeight: 800, color: 'rgba(0,0,0,0.45)' }}>
               + Nouveau groupe
             </button>
           )}
         </div>
 
-        <div className="p-6 border-t border-slate-100">
-          <button onClick={onClose}
-            className="w-full py-3 rounded-2xl bg-black text-white font-bold text-sm hover:bg-slate-800 transition-colors">
+        <div style={{ padding: '16px 20px', borderTop: '2.5px solid var(--ink)', flexShrink: 0 }}>
+          <button onClick={onClose} className="pop-btn pop-btn-dark" style={{ width: '100%' }}>
             Fermer
           </button>
         </div>
@@ -766,34 +814,34 @@ function ModalRotation({
           const slotsLeft = 3 - existingInGroup - pickerSelected.length;
           const groupLabel = groupNums.indexOf(pickerGroupe) >= 0 ? groupNums.indexOf(pickerGroupe) + 1 : groupNums.length + 1;
           return (
-            <div className="absolute inset-0 bg-white rounded-3xl flex flex-col z-10">
-              <div className="flex items-center gap-3 p-5 border-b border-slate-100 shrink-0">
+            <div style={{ position: 'absolute', inset: 0, background: 'var(--cream)', display: 'flex', flexDirection: 'column', zIndex: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '18px 20px', borderBottom: '2.5px solid var(--ink)', flexShrink: 0 }}>
                 <button onClick={closePicker}
-                  className="w-8 h-8 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold transition-colors">←</button>
-                <div className="flex-1 min-w-0">
-                  <p className="font-black text-sm text-black">Groupe {groupLabel}</p>
-                  <p className="text-[11px] text-slate-400">
+                  style={{ width: 32, height: 32, border: '2.5px solid var(--ink)', borderRadius: 8, background: 'var(--white)', fontWeight: 900, cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>←</button>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontWeight: 900, fontSize: 14, color: 'var(--ink)', margin: 0 }}>Groupe {groupLabel}</p>
+                  <p style={{ fontSize: 11, color: 'rgba(0,0,0,0.4)', margin: 0 }}>
                     {pickerSelected.length > 0
                       ? `${pickerSelected.length} sélectionné${pickerSelected.length > 1 ? "s" : ""} · ${slotsLeft} place${slotsLeft > 1 ? "s" : ""} restante${slotsLeft > 1 ? "s" : ""}`
                       : `${consoleName} · choisir jusqu'à ${slotsLeft} jeu${slotsLeft > 1 ? "x" : ""}`}
                   </p>
                 </div>
               </div>
-              <div className="p-4 border-b border-slate-100 shrink-0">
+              <div style={{ padding: '12px 20px', borderBottom: '2.5px solid var(--ink)', flexShrink: 0 }}>
                 <input
                   ref={pickerRef}
                   type="text"
                   value={pickerSearch}
                   onChange={e => setPickerSearch(e.target.value)}
                   placeholder="Rechercher un jeu…"
-                  className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-4 py-3 text-sm font-medium outline-none focus:border-black transition-colors"
+                  className="pop-input" style={{ width: '100%' }}
                 />
               </div>
               <div className="flex-1 overflow-y-auto custom-scroll p-4">
                 {pickerGames.length === 0 ? (
-                  <p className="text-sm text-slate-400 text-center py-8">Aucun jeu disponible</p>
+                  <p style={{ fontSize: 13, color: 'rgba(0,0,0,0.35)', textAlign: 'center', padding: '32px 0', fontWeight: 600 }}>Aucun jeu disponible</p>
                 ) : (
-                  <div className="grid grid-cols-3 gap-3">
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
                     {pickerGames.map(j => {
                       const isSelected = pickerSelected.includes(j.id);
                       const isDisabled = !isSelected && slotsLeft === 0;
@@ -803,33 +851,54 @@ function ModalRotation({
                           onClick={() => setPickerSelected(prev =>
                             prev.includes(j.id) ? prev.filter(id => id !== j.id) : [...prev, j.id]
                           )}
-                          className={`flex flex-col items-center gap-1.5 p-2 rounded-2xl border-2 transition-all text-left relative ${
-                            isSelected
-                              ? "border-black bg-slate-50"
-                              : isDisabled
-                              ? "border-slate-100 bg-white opacity-40 cursor-not-allowed"
-                              : "border-slate-100 bg-white hover:border-black hover:bg-slate-50"
-                          }`}>
+                          style={{
+                            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: 8,
+                            border: isSelected ? '2.5px solid var(--ink)' : '2px solid var(--cream2)',
+                            borderRadius: 12, background: isSelected ? 'var(--yellow)' : 'var(--white)',
+                            cursor: isDisabled ? 'not-allowed' : 'pointer', opacity: isDisabled ? 0.4 : 1,
+                            position: 'relative', textAlign: 'left',
+                            boxShadow: isSelected ? '3px 3px 0 var(--ink)' : 'none',
+                          }}>
                           {isSelected && (
-                            <span className="absolute top-1.5 right-1.5 w-5 h-5 bg-black rounded-full flex items-center justify-center text-white text-[10px] font-black z-10">✓</span>
+                            <span style={{ position: 'absolute', top: 4, right: 4, width: 18, height: 18, background: 'var(--ink)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--white)', fontSize: 9, fontWeight: 900, zIndex: 10 }}>✓</span>
                           )}
-                          <div className="w-full aspect-[3/4] rounded-xl overflow-hidden bg-slate-100 flex items-center justify-center">
+                          <div style={{ width: '100%', aspectRatio: '3/4', borderRadius: 8, overflow: 'hidden', background: 'var(--cream2)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid var(--cream2)' }}>
                             {j.image_url
-                              ? <img src={j.image_url} alt={j.titre} className="w-full h-full object-cover" />
-                              : <span className="text-3xl">🎮</span>}
+                              ? <img src={j.image_url} alt={j.titre} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                              : <span style={{ fontSize: 24 }}>🎮</span>}
                           </div>
-                          <p className="text-[11px] font-bold text-black text-center leading-tight line-clamp-2 w-full">{j.titre}</p>
+                          <p style={{ fontSize: 10, fontWeight: 700, textAlign: 'center', lineHeight: 1.2, overflow: 'hidden', maxHeight: '2.4em', width: '100%' }}>{j.titre}</p>
+                          {/* Info pills */}
+                          <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 3, width: '100%', marginTop: 2 }}>
+                            <span style={{ fontSize: 8, fontWeight: 700, padding: '2px 5px', borderRadius: 999, background: 'var(--cream2)', color: 'rgba(0,0,0,0.5)', lineHeight: 1 }}>
+                              {(selectionCounts[j.id] || 0) === 0 ? "Inédit" : `${selectionCounts[j.id]}× sél.`}
+                            </span>
+                            {(() => {
+                              const pop = popularityRank[j.id];
+                              const count = resaCounts[j.id] || 0;
+                              if (!pop || count === 0) return <span style={{ fontSize: 8, fontWeight: 700, padding: '2px 5px', borderRadius: 999, background: 'var(--cream2)', color: 'rgba(0,0,0,0.4)', lineHeight: 1 }}>0 rés.</span>;
+                              const pct = pop.rank / pop.total;
+                              const bg = pct <= 0.2 ? 'var(--orange)' : pct <= 0.5 ? 'var(--yellow)' : 'var(--cream2)';
+                              const icon = pct <= 0.2 ? "🔥" : pct <= 0.5 ? "⭐" : "";
+                              return <span style={{ fontSize: 8, fontWeight: 700, padding: '2px 5px', borderRadius: 999, background: bg, color: 'var(--ink)', lineHeight: 1 }}>{icon}{icon ? " " : ""}{count} rés.</span>;
+                            })()}
+                            {j.pegi ? (() => {
+                              const bg = j.pegi <= 7 ? 'var(--vert)' : j.pegi <= 12 ? 'var(--yellow)' : j.pegi <= 16 ? 'var(--orange)' : 'var(--rouge)';
+                              return <span style={{ fontSize: 8, fontWeight: 700, padding: '2px 5px', borderRadius: 999, background: bg, color: 'var(--ink)', lineHeight: 1, border: '1px solid var(--ink)' }}>PEGI {j.pegi}</span>;
+                            })() : <span style={{ fontSize: 8, fontWeight: 700, padding: '2px 5px', borderRadius: 999, background: 'var(--cream2)', color: 'rgba(0,0,0,0.3)', lineHeight: 1 }}>PEGI ?</span>}
+                          </div>
                         </button>
                       );
                     })}
                   </div>
                 )}
               </div>
-              <div className="p-4 border-t border-slate-100 shrink-0">
+              <div style={{ padding: '14px 20px', borderTop: '2.5px solid var(--ink)', flexShrink: 0 }}>
                 <button
                   onClick={confirmPicker}
                   disabled={pickerSelected.length === 0}
-                  className="w-full py-3 rounded-2xl bg-black text-white font-bold text-sm hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed transition-all">
+                  className="pop-btn pop-btn-dark"
+                  style={{ width: '100%', opacity: pickerSelected.length === 0 ? 0.35 : 1, cursor: pickerSelected.length === 0 ? 'not-allowed' : 'pointer' }}>
                   {pickerSelected.length === 0
                     ? "Sélectionner des jeux"
                     : `Ajouter ${pickerSelected.length} jeu${pickerSelected.length > 1 ? "x" : ""} au groupe`}
@@ -916,43 +985,39 @@ function ModalRotationPlanning({
   const hasChanges = slotIndex !== rotationConfig.current_slot_index || weekStart !== rotationConfig.week_start;
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-start justify-center p-4 pt-8 overflow-y-auto"
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 50, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '80px 16px 16px', overflowY: 'auto' }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="bg-white rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden mb-8">
+      <div className="pop-card" style={{ background: 'var(--cream)', width: '100%', maxWidth: 680, display: 'flex', flexDirection: 'column', overflow: 'hidden', marginBottom: 32 }}>
 
-        <div className="flex items-center gap-3 p-6 border-b border-slate-100">
-          <span className="text-2xl">📅</span>
-          <div className="flex-1">
-            <h2 className="font-black text-xl text-black">Planning de rotation</h2>
-            <p className="text-xs text-slate-400 font-medium mt-0.5">Vue globale des changements de sélection semaine par semaine</p>
+        {/* Header */}
+        <div style={{ background: 'var(--purple)', padding: '20px 24px', display: 'flex', alignItems: 'center', gap: 12, borderBottom: '2.5px solid var(--ink)', flexShrink: 0 }}>
+          <div style={{ flex: 1 }}>
+            <h2 className="bc" style={{ fontSize: 26, color: 'var(--ink)', margin: 0, lineHeight: 1 }}>Planning de rotation</h2>
+            <p style={{ fontSize: 11, fontWeight: 700, color: 'rgba(0,0,0,0.45)', marginTop: 4 }}>Vue globale des changements de sélection semaine par semaine</p>
           </div>
-          <button onClick={onClose}
-            className="w-9 h-9 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 font-bold">✕</button>
+          <button onClick={onClose} style={{ width: 36, height: 36, border: '2.5px solid var(--ink)', borderRadius: 8, background: 'var(--white)', fontWeight: 900, fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>✕</button>
         </div>
 
         {/* Config point de départ */}
-        <div className="flex items-center gap-4 px-6 py-4 bg-slate-50 border-b border-slate-100 flex-wrap">
-          <span className="text-xs font-black text-slate-400 uppercase tracking-widest shrink-0">Point de départ</span>
-          <div className="flex gap-2 flex-wrap flex-1">
-            {ROTATION_ORDER.map((slot, idx) => (
-              <button key={slot} onClick={() => setSlotIndex(idx)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold border-2 transition-colors ${
-                  slotIndex === idx
-                    ? "bg-black text-white border-black"
-                    : `${CONSOLE_COLORS[SLOT_CONSOLE[slot]]} hover:opacity-80`
-                }`}>
-                {SLOT_LABEL[slot]}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 20px', background: 'var(--cream2)', borderBottom: '2.5px solid var(--ink)', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.08em', color: 'rgba(0,0,0,0.45)', flexShrink: 0 }}>Point de départ</span>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', flex: 1 }}>
+            {ROTATION_ORDER.map((s2, idx) => (
+              <button key={s2} onClick={() => setSlotIndex(idx)}
+                className={slotIndex === idx ? "pop-btn pop-btn-dark" : "pop-btn pop-btn-outline"}
+                style={{ fontSize: 11, padding: '5px 12px' }}>
+                {SLOT_LABEL[s2]}
               </button>
             ))}
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-400 font-medium shrink-0">Semaine du</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 11, color: 'rgba(0,0,0,0.4)', fontWeight: 600, flexShrink: 0 }}>Semaine du</span>
             <input type="date" value={weekStart} onChange={e => setWeekStart(e.target.value)}
-              className="bg-white border-2 border-slate-200 rounded-xl px-3 py-1.5 text-xs font-medium outline-none focus:border-black transition-colors" />
+              className="pop-input" style={{ padding: '6px 10px', fontSize: 12 }} />
           </div>
           {hasChanges && (
             <button onClick={() => onUpdateConfig(slotIndex, weekStart)}
-              className="px-4 py-2 bg-black text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition-colors">
+              className="pop-btn pop-btn-dark" style={{ fontSize: 11, padding: '6px 14px' }}>
               Enregistrer
             </button>
           )}
@@ -972,39 +1037,40 @@ function ModalRotationPlanning({
           ).map(s => jeux.find(j => j.id === s.jeu_id)).filter(Boolean) as JvJeu[];
 
           return (
-            <div className="flex items-center gap-3 px-6 py-4 bg-[#baff29]/10 border-b border-[#baff29]/30 flex-wrap">
-              <div className="flex items-center gap-2 flex-1 flex-wrap min-w-0">
-                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest shrink-0">Appliquer la rotation</span>
-                <span className={`text-xs font-bold px-2.5 py-1 rounded-lg border ${CONSOLE_COLORS[SLOT_CONSOLE[currentSlot]]}`}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 20px', background: '#baff2920', borderBottom: '2.5px solid var(--ink)', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, flexWrap: 'wrap', minWidth: 0 }}>
+                <span style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.07em', color: 'rgba(0,0,0,0.45)', flexShrink: 0 }}>Appliquer la rotation</span>
+                <span className="pop-sticker" style={{ fontSize: 11, padding: '3px 10px', background: 'var(--cream2)' }}>
                   {SLOT_LABEL[currentSlot]}
                 </span>
-                <span className="text-slate-400 font-bold text-sm shrink-0">→</span>
-                <span className={`text-xs font-bold px-2.5 py-1 rounded-lg border ${CONSOLE_COLORS[SLOT_CONSOLE[nextSlotVal]]}`}>
+                <span style={{ fontWeight: 900, fontSize: 14, color: 'rgba(0,0,0,0.4)', flexShrink: 0 }}>→</span>
+                <span className="pop-sticker" style={{ fontSize: 11, padding: '3px 10px', background: '#baff29' }}>
                   {SLOT_LABEL[nextSlotVal]}
                 </span>
                 {nextGroupGames.length > 0 ? (
-                  <div className="flex items-center gap-1.5 flex-wrap">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                     {nextGroupGames.map(j => (
-                      <div key={j.id} className="flex items-center gap-1">
-                        <div className="w-5 h-5 rounded-md overflow-hidden bg-slate-100 shrink-0">
+                      <div key={j.id} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <div style={{ width: 20, height: 20, borderRadius: 4, overflow: 'hidden', background: 'var(--cream2)', flexShrink: 0, border: '1.5px solid var(--ink)' }}>
                           {j.image_url
-                            ? <img src={j.image_url} alt={j.titre} className="w-full h-full object-cover" />
-                            : <span className="text-[9px] flex items-center justify-center h-full">🎮</span>}
+                            ? <img src={j.image_url} alt={j.titre} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            : <span style={{ fontSize: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>🎮</span>}
                         </div>
-                        <span className="text-[11px] font-bold text-slate-600 max-w-[80px] truncate">{j.titre}</span>
+                        <span style={{ fontSize: 11, fontWeight: 700, maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{j.titre}</span>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <span className="text-[11px] text-slate-300 italic">aucun jeu planifié</span>
+                  <span style={{ fontSize: 11, color: 'rgba(0,0,0,0.25)', fontStyle: 'italic' }}>aucun jeu planifié</span>
                 )}
               </div>
               <button
                 onClick={handleApply}
                 disabled={isApplying}
-                className="flex items-center gap-2 px-4 py-2 bg-black text-white rounded-xl text-xs font-bold hover:bg-slate-800 disabled:opacity-50 transition-colors shrink-0">
+                className="pop-btn pop-btn-dark"
+                style={{ flexShrink: 0, opacity: isApplying ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: 6 }}>
                 {isApplying ? (
-                  <><div className="w-3 h-3 border border-white/30 border-t-white rounded-full animate-spin" />En cours…</>
+                  <><div className="spin" style={{ width: 12, height: 12, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%' }} />En cours…</>
                 ) : (
                   <>🔄 Valider</>
                 )}
@@ -1014,42 +1080,42 @@ function ModalRotationPlanning({
         })()}
 
         {/* Tableau planning */}
-        <div className="overflow-y-auto custom-scroll" style={{ maxHeight: "50vh" }}>
-          <table className="w-full">
-            <thead className="sticky top-0 bg-white border-b border-slate-100">
+        <div className="custom-scroll" style={{ overflowY: 'auto', maxHeight: '50vh' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead style={{ position: 'sticky', top: 0, background: 'var(--cream)', borderBottom: '2.5px solid var(--ink)', zIndex: 1 }}>
               <tr>
-                <th className="text-left px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest w-28">Semaine</th>
-                <th className="text-left px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest w-32">Console</th>
-                <th className="text-left px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Jeux</th>
+                <th style={{ textAlign: 'left', padding: '10px 20px', fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.08em', color: 'rgba(0,0,0,0.4)', width: 110 }}>Semaine</th>
+                <th style={{ textAlign: 'left', padding: '10px 12px', fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.08em', color: 'rgba(0,0,0,0.4)', width: 120 }}>Console</th>
+                <th style={{ textAlign: 'left', padding: '10px 12px', fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.08em', color: 'rgba(0,0,0,0.4)' }}>Jeux</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-50">
-              {planning.map(({ weekOffset, slot, date, games, isActive }) => (
-                <tr key={weekOffset} className={isActive ? "bg-[#baff29]/10" : "hover:bg-slate-50"}>
-                  <td className="px-6 py-3">
-                    <p className={`text-xs font-black ${isActive ? "text-black" : "text-slate-500"}`}>
+            <tbody>
+              {planning.map(({ weekOffset, slot: pSlot, date: pDate, games, isActive }) => (
+                <tr key={weekOffset} style={{ background: isActive ? '#baff2920' : 'transparent', borderBottom: '1.5px solid var(--cream2)' }}>
+                  <td style={{ padding: '10px 20px' }}>
+                    <p style={{ fontSize: 12, fontWeight: 900, color: isActive ? 'var(--ink)' : 'rgba(0,0,0,0.4)', margin: 0 }}>
                       {isActive ? "Cette sem." : `Sem. +${weekOffset}`}
                     </p>
-                    <p className="text-[10px] text-slate-400">{format(date, "d MMM", { locale: fr })}</p>
+                    <p style={{ fontSize: 10, color: 'rgba(0,0,0,0.35)', margin: 0 }}>{format(pDate, "d MMM", { locale: fr })}</p>
                   </td>
-                  <td className="px-4 py-3">
-                    <span className={`text-[11px] font-bold px-2 py-1 rounded-lg border ${CONSOLE_COLORS[SLOT_CONSOLE[slot]]}`}>
-                      {SLOT_LABEL[slot]}
+                  <td style={{ padding: '10px 12px' }}>
+                    <span className="pop-sticker" style={{ fontSize: 10, padding: '3px 8px', background: isActive ? '#baff29' : 'var(--cream2)' }}>
+                      {SLOT_LABEL[pSlot]}
                     </span>
                   </td>
-                  <td className="px-4 py-3">
+                  <td style={{ padding: '10px 12px' }}>
                     {games.length === 0 ? (
-                      <span className="text-[11px] text-slate-300 font-medium italic">— non planifié</span>
+                      <span style={{ fontSize: 11, color: 'rgba(0,0,0,0.25)', fontStyle: 'italic' }}>— non planifié</span>
                     ) : (
-                      <div className="flex items-center gap-2 flex-wrap">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                         {games.map(j => (
-                          <div key={j.id} className="flex items-center gap-1.5">
-                            <div className="w-5 h-5 rounded overflow-hidden bg-slate-100 shrink-0">
+                          <div key={j.id} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                            <div style={{ width: 20, height: 20, borderRadius: 4, overflow: 'hidden', background: 'var(--cream2)', flexShrink: 0, border: '1.5px solid var(--ink)' }}>
                               {j.image_url
-                                ? <img src={j.image_url} alt={j.titre} className="w-full h-full object-cover" />
-                                : <span className="text-[10px] flex items-center justify-center h-full">🎮</span>}
+                                ? <img src={j.image_url} alt={j.titre} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                : <span style={{ fontSize: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>🎮</span>}
                             </div>
-                            <span className="text-[11px] font-bold text-black">{j.titre}</span>
+                            <span style={{ fontSize: 11, fontWeight: 700 }}>{j.titre}</span>
                           </div>
                         ))}
                       </div>
@@ -1061,9 +1127,8 @@ function ModalRotationPlanning({
           </table>
         </div>
 
-        <div className="p-6 border-t border-slate-100">
-          <button onClick={onClose}
-            className="w-full py-3 rounded-2xl bg-black text-white font-bold text-sm hover:bg-slate-800 transition-colors">
+        <div style={{ padding: '16px 20px', borderTop: '2.5px solid var(--ink)', flexShrink: 0 }}>
+          <button onClick={onClose} className="pop-btn pop-btn-dark" style={{ width: '100%' }}>
             Fermer
           </button>
         </div>
@@ -1095,8 +1160,8 @@ function ModalReservation({
   const [date, setDate] = useState(preDate ?? nextOpenDay());
   const [creneau, setCreneau] = useState("");
   const [jeuId, setJeuId] = useState("");
-  const [nom, setNom] = useState("");
   const [nbJoueurs, setNbJoueurs] = useState(1);
+  const [joueurs, setJoueurs] = useState<JoueurDetail[]>([{ nom: "", sexe: null, age: null }]);
   const [notes, setNotes] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
@@ -1119,15 +1184,29 @@ function ModalReservation({
     .filter((x): x is { sel: JvSelection; jeu: JvJeu } => !!x.jeu)
     .filter(x => slot !== "Switch_Multi" || (x.jeu.nb_joueurs && x.jeu.nb_joueurs !== "1"));
 
-  // Reset jeu + nb_joueurs quand le poste change
-  useEffect(() => { setJeuId(""); setNbJoueurs(1); }, [posteId]);
+  // Reset jeu + joueurs quand le poste change
+  useEffect(() => { setJeuId(""); setNbJoueurs(1); setJoueurs([{ nom: "", sexe: null, age: null }]); }, [posteId]);
+
+  // Ajuste le tableau joueurs quand nbJoueurs change
+  useEffect(() => {
+    setJoueurs(prev => {
+      if (nbJoueurs > prev.length)
+        return [...prev, ...Array.from({ length: nbJoueurs - prev.length }, () => ({ nom: "", sexe: null, age: null } as JoueurDetail))];
+      return prev.slice(0, nbJoueurs);
+    });
+  }, [nbJoueurs]);
+
+  const updateJoueur = (i: number, patch: Partial<JoueurDetail>) =>
+    setJoueurs(prev => prev.map((j, idx) => idx === i ? { ...j, ...patch } : j));
 
   const save = async () => {
-    if (!jeuId || !nom.trim() || !creneau || !isJourOuvert || !posteId) return;
+    const nomPrincipal = joueurs[0]?.nom.trim() ?? "";
+    if (!jeuId || !nomPrincipal || !creneau || !isJourOuvert || !posteId) return;
     setIsSaving(true);
     const { data, error } = await supabase.from("jv_reservations").insert({
       jeu_id: jeuId, poste: posteId, date_creneau: date, creneau,
-      adherent_nom: nom.trim(), nb_joueurs: nbJoueurs,
+      adherent_nom: nomPrincipal, nb_joueurs: nbJoueurs,
+      joueurs_details: joueurs,
       notes: notes.trim() || null, statut: "confirmee",
     }).select().single();
     if (error) { alert("Erreur : " + error.message); setIsSaving(false); return; }
@@ -1136,136 +1215,169 @@ function ModalReservation({
     onClose();
   };
 
+  const Slabel: React.CSSProperties = { fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: 'rgba(0,0,0,0.4)', marginBottom: 5, display: 'block' };
+
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-start justify-center p-4 pt-8 overflow-y-auto"
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 50, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '80px 16px 16px', overflowY: 'auto' }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden mb-8">
-        <div className="flex items-center gap-3 p-6 border-b border-slate-100">
-          <span className="text-2xl">📅</span>
-          <h2 className="font-black text-xl text-black flex-1">Nouvelle réservation</h2>
-          <button onClick={onClose}
-            className="w-9 h-9 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 font-bold">✕</button>
+      <div className="pop-card" style={{ background: 'var(--cream)', width: '100%', maxWidth: 480, display: 'flex', flexDirection: 'column', maxHeight: 'calc(100vh - 96px)', overflow: 'hidden', marginBottom: 32 }}>
+
+        {/* Header */}
+        <div style={{ background: 'var(--vert)', padding: '20px 24px', display: 'flex', alignItems: 'center', gap: 12, borderBottom: '2.5px solid var(--ink)', flexShrink: 0 }}>
+          <div style={{ flex: 1 }}>
+            <h2 className="bc" style={{ fontSize: 26, color: 'var(--ink)', margin: 0, lineHeight: 1 }}>Nouvelle réservation</h2>
+          </div>
+          <button onClick={onClose} style={{ width: 36, height: 36, border: '2.5px solid var(--ink)', borderRadius: 8, background: 'var(--white)', fontWeight: 900, fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>✕</button>
         </div>
-        <div className="p-6 flex flex-col gap-5">
+
+        <div className="custom-scroll" style={{ flex: 1, overflowY: 'auto', padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
 
           {/* Poste */}
-          <div className="flex flex-col gap-2">
-            <label className="text-xs font-black text-slate-400 uppercase tracking-widest">Poste *</label>
-            <div className="flex gap-2 flex-wrap">
+          <div>
+            <label style={Slabel}>Poste *</label>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {POSTES.map(p => (
                 <button key={p.id} onClick={() => setPosteId(p.id)}
-                  className={`px-3 py-2 rounded-xl text-xs font-bold border-2 transition-colors ${
-                    posteId === p.id
-                      ? "bg-black text-white border-black"
-                      : `${POSTE_COLORS[p.id]} hover:opacity-80`}`}>
+                  className={posteId === p.id ? "pop-btn pop-btn-dark" : "pop-btn pop-btn-outline"}
+                  style={{ fontSize: 12, padding: '7px 14px' }}>
                   {p.label}
                 </button>
               ))}
             </div>
             {poste.multiOnly && (
-              <p className="text-[10px] text-slate-400 font-medium">Affiche uniquement les jeux multijoueur de la sélection</p>
+              <p style={{ fontSize: 10, color: 'rgba(0,0,0,0.4)', marginTop: 5, fontWeight: 600 }}>Affiche uniquement les jeux multijoueur de la sélection</p>
             )}
           </div>
 
           {/* Date + créneau */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-black text-slate-400 uppercase tracking-widest">Date *</label>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div>
+              <label style={Slabel}>Date *</label>
               <input type="date" value={date} onChange={e => setDate(e.target.value)}
-                className={`bg-slate-50 border-2 rounded-2xl px-4 py-3 text-sm font-medium outline-none transition-colors ${
-                  isJourOuvert ? "border-slate-100 focus:border-black" : "border-rose-200 bg-rose-50"}`} />
-              {!isJourOuvert && <p className="text-[10px] text-rose-500 font-medium">Ouvert Mar · Mer · Jeu · Ven uniquement</p>}
+                className="pop-input"
+                style={{ width: '100%', background: isJourOuvert ? undefined : 'var(--rose)', borderColor: isJourOuvert ? undefined : 'var(--ink)' }} />
+              {!isJourOuvert && <p style={{ fontSize: 10, color: 'var(--rouge)', marginTop: 4, fontWeight: 700 }}>Ouvert Mar · Mer · Jeu · Ven uniquement</p>}
             </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-black text-slate-400 uppercase tracking-widest">Créneau *</label>
+            <div>
+              <label style={Slabel}>Créneau *</label>
               {creneauxDispo.length > 0 ? (
                 <select value={creneau} onChange={e => setCreneau(e.target.value)}
-                  className="bg-slate-50 border-2 border-slate-100 rounded-2xl px-4 py-3 text-sm font-medium outline-none focus:border-black transition-colors">
+                  className="pop-input" style={{ width: '100%', cursor: 'pointer' }}>
                   {creneauxDispo.map(cr => <option key={cr} value={cr}>{cr}</option>)}
                 </select>
               ) : (
-                <div className="bg-slate-50 border-2 border-slate-100 rounded-2xl px-4 py-3 text-sm text-slate-400 font-medium">—</div>
+                <div className="pop-input" style={{ color: 'rgba(0,0,0,0.3)' }}>—</div>
               )}
             </div>
           </div>
 
-          {/* Jeu — boutons cliquables */}
-          <div className="flex flex-col gap-2">
-            <label className="text-xs font-black text-slate-400 uppercase tracking-widest">Jeu (sélection active) *</label>
+          {/* Jeu */}
+          <div>
+            <label style={Slabel}>Jeu (sélection active) *</label>
             {jeuxDispo.length === 0 ? (
-              <div className="bg-amber-50 border-2 border-amber-100 rounded-2xl px-4 py-3 text-sm text-amber-600 font-medium">
+              <div style={{ background: 'var(--yellow)', border: '2.5px solid var(--ink)', borderRadius: 10, padding: '12px 14px', fontSize: 13, fontWeight: 600, boxShadow: '2px 2px 0 var(--ink)' }}>
                 Aucun jeu en sélection active pour ce poste
               </div>
             ) : (
-              <div className="flex flex-col gap-2">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {jeuxDispo.map(({ sel, jeu: j }) => (
                   <button key={j.id} onClick={() => setJeuId(j.id)}
-                    className={`flex items-center gap-3 p-3 rounded-2xl border-2 text-left transition-all ${
-                      jeuId === j.id
-                        ? "border-black bg-slate-50"
-                        : "border-slate-100 bg-white hover:border-slate-300"
-                    }`}>
-                    <div className="w-11 h-11 rounded-xl overflow-hidden bg-slate-100 shrink-0 flex items-center justify-center">
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', textAlign: 'left',
+                      border: jeuId === j.id ? '2.5px solid var(--ink)' : '2px solid var(--cream2)',
+                      borderRadius: 12, background: jeuId === j.id ? 'var(--yellow)' : 'var(--white)',
+                      cursor: 'pointer', boxShadow: jeuId === j.id ? '3px 3px 0 var(--ink)' : 'none',
+                    }}>
+                    <div style={{ width: 44, height: 44, borderRadius: 10, overflow: 'hidden', background: 'var(--cream2)', flexShrink: 0, border: '2px solid var(--ink)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       {j.image_url
-                        ? <img src={j.image_url} alt={j.titre} className="w-full h-full object-cover" />
-                        : <span className="text-lg">🎮</span>}
+                        ? <img src={j.image_url} alt={j.titre} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        : <span style={{ fontSize: 18 }}>🎮</span>}
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-bold text-sm text-black truncate">{j.titre}</p>
-                      <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                        {j.nb_joueurs && <span className="text-[10px] text-slate-400">👥 {j.nb_joueurs}</span>}
-                        {j.genre && <span className="text-[10px] text-slate-400">{j.genre}</span>}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ fontWeight: 700, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', margin: 0 }}>{j.titre}</p>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 3 }}>
+                        {j.nb_joueurs && <span style={{ fontSize: 10, color: 'rgba(0,0,0,0.45)' }}>👥 {j.nb_joueurs}</span>}
+                        {j.genre && <span style={{ fontSize: 10, color: 'rgba(0,0,0,0.45)' }}>{j.genre}</span>}
                         {sel.permanent && (
-                          <span className="text-[10px] bg-amber-50 text-amber-600 font-bold px-1.5 py-0.5 rounded-md border border-amber-100">Permanent</span>
+                          <span style={{ fontSize: 10, background: 'var(--orange)', border: '1.5px solid var(--ink)', borderRadius: 5, padding: '1px 5px', fontWeight: 700 }}>Permanent</span>
                         )}
                       </div>
                     </div>
-                    {jeuId === j.id && <span className="text-black font-black text-lg shrink-0">✓</span>}
+                    {jeuId === j.id && <span style={{ fontWeight: 900, fontSize: 16, flexShrink: 0 }}>✓</span>}
                   </button>
                 ))}
               </div>
             )}
           </div>
 
-          {/* Adhérent */}
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-black text-slate-400 uppercase tracking-widest">Nom adhérent *</label>
-            <input type="text" value={nom} onChange={e => setNom(e.target.value)}
-              placeholder="Prénom NOM…" autoFocus
-              className="bg-slate-50 border-2 border-slate-100 rounded-2xl px-4 py-3 text-sm font-medium outline-none focus:border-black transition-colors" />
-          </div>
-
           {/* Nb joueurs */}
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-black text-slate-400 uppercase tracking-widest">
-              Nb joueurs <span className="normal-case font-medium">(max {poste.maxJoueurs})</span>
-            </label>
-            <div className="flex gap-2">
+          <div>
+            <label style={Slabel}>Nb joueurs (max {poste.maxJoueurs})</label>
+            <div style={{ display: 'flex', gap: 8 }}>
               {Array.from({ length: poste.maxJoueurs }, (_, i) => i + 1).map(n => (
                 <button key={n} onClick={() => setNbJoueurs(n)}
-                  className={`flex-1 py-3 rounded-2xl text-sm font-bold border-2 transition-colors ${
-                    nbJoueurs === n ? "bg-black text-white border-black" : "bg-white border-slate-200 text-slate-500 hover:border-slate-300"}`}>
+                  className={nbJoueurs === n ? "pop-btn pop-btn-dark" : "pop-btn pop-btn-outline"}
+                  style={{ flex: 1, justifyContent: 'center' }}>
                   {n}
                 </button>
               ))}
             </div>
           </div>
 
+          {/* Adhérents — un bloc par joueur */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <label style={Slabel}>Adhérent{nbJoueurs > 1 ? "s" : ""} *</label>
+            {joueurs.map((jj, i) => (
+              <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 14, background: 'var(--cream2)', border: '2px solid var(--ink)', borderRadius: 12 }}>
+                <p style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.07em', color: 'rgba(0,0,0,0.45)', margin: 0 }}>
+                  {i === 0 ? "1er joueur" : `${i + 1}e joueur`}
+                </p>
+                <input type="text" value={jj.nom} onChange={e => updateJoueur(i, { nom: e.target.value })}
+                  placeholder="Prénom NOM…" autoFocus={i === 0}
+                  className="pop-input" style={{ width: '100%', background: 'var(--white)' }} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: 'rgba(0,0,0,0.4)', width: 30, flexShrink: 0 }}>Sexe</span>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    {(["H", "F", "N"] as const).map(s => (
+                      <button key={s} onClick={() => updateJoueur(i, { sexe: jj.sexe === s ? null : s })}
+                        className={jj.sexe === s ? "pop-btn pop-btn-dark" : "pop-btn pop-btn-outline"}
+                        style={{ fontSize: 11, padding: '4px 12px' }}>{s}</button>
+                    ))}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: 'rgba(0,0,0,0.4)', width: 30, flexShrink: 0 }}>Âge</span>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {([
+                      { val: "11-16", label: "11-16" }, { val: "16-18", label: "16-18" },
+                      { val: "18+", label: "18+" }, { val: "parent", label: "Parent" },
+                    ] as const).map(({ val, label }) => (
+                      <button key={val} onClick={() => updateJoueur(i, { age: jj.age === val ? null : val })}
+                        className={jj.age === val ? "pop-btn pop-btn-dark" : "pop-btn pop-btn-outline"}
+                        style={{ fontSize: 11, padding: '4px 10px' }}>{label}</button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
           {/* Notes */}
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-black text-slate-400 uppercase tracking-widest">Notes</label>
+          <div>
+            <label style={Slabel}>Notes</label>
             <input type="text" value={notes} onChange={e => setNotes(e.target.value)}
               placeholder="Remarques optionnelles…"
-              className="bg-slate-50 border-2 border-slate-100 rounded-2xl px-4 py-3 text-sm font-medium outline-none focus:border-black transition-colors" />
+              className="pop-input" style={{ width: '100%' }} />
           </div>
         </div>
-        <div className="flex gap-3 p-6 border-t border-slate-100">
-          <button onClick={onClose}
-            className="flex-1 px-4 py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-sm transition-colors">
+
+        <div style={{ display: 'flex', gap: 10, padding: '16px 20px', borderTop: '2.5px solid var(--ink)', flexShrink: 0, background: 'var(--cream2)' }}>
+          <button onClick={onClose} className="pop-btn pop-btn-outline" style={{ flex: 1, justifyContent: 'center' }}>
             Annuler
           </button>
-          <button onClick={save} disabled={isSaving || !jeuId || !nom.trim() || !creneau || !isJourOuvert}
-            className="flex-1 px-4 py-3 rounded-2xl bg-black text-white font-bold text-sm hover:bg-slate-800 disabled:opacity-50 transition-colors">
+          <button onClick={save} disabled={isSaving || !jeuId || !joueurs[0]?.nom.trim() || !creneau || !isJourOuvert}
+            className="pop-btn pop-btn-dark"
+            style={{ flex: 1, justifyContent: 'center', opacity: (isSaving || !jeuId || !joueurs[0]?.nom.trim() || !creneau || !isJourOuvert) ? 0.4 : 1, cursor: (isSaving || !jeuId || !joueurs[0]?.nom.trim() || !creneau || !isJourOuvert) ? 'not-allowed' : 'pointer' }}>
             {isSaving ? "Sauvegarde…" : "Confirmer"}
           </button>
         </div>
@@ -1322,13 +1434,29 @@ function ModalReservationDetail({
   onSaved: (r: JvReservation) => void;
   onCancelled: (id: string) => void;
 }) {
-  const [nom, setNom] = useState(reservation.adherent_nom);
   const [nbJoueurs, setNbJoueurs] = useState(reservation.nb_joueurs);
+  const [joueurs, setJoueurs] = useState<JoueurDetail[]>(() => {
+    if (reservation.joueurs_details && reservation.joueurs_details.length > 0) return reservation.joueurs_details;
+    return Array.from({ length: reservation.nb_joueurs }, (_, i) => ({
+      nom: i === 0 ? reservation.adherent_nom : "", sexe: null, age: null,
+    } as JoueurDetail));
+  });
   const [notes, setNotes] = useState(reservation.notes ?? "");
   const [jeuId, setJeuId] = useState(reservation.jeu_id);
   const [jeu2Id, setJeu2Id] = useState<string | null>(reservation.jeu2_id ?? null);
   const [isSaving, setIsSaving] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
+
+  useEffect(() => {
+    setJoueurs(prev => {
+      if (nbJoueurs > prev.length)
+        return [...prev, ...Array.from({ length: nbJoueurs - prev.length }, () => ({ nom: "", sexe: null, age: null } as JoueurDetail))];
+      return prev.slice(0, nbJoueurs);
+    });
+  }, [nbJoueurs]);
+
+  const updateJoueur = (i: number, patch: Partial<JoueurDetail>) =>
+    setJoueurs(prev => prev.map((j, idx) => idx === i ? { ...j, ...patch } : j));
 
   const poste = POSTES.find(p => p.id === reservation.poste)!;
   const slot = POSTE_SLOT[reservation.poste] ?? "PS5";
@@ -1344,9 +1472,11 @@ function ModalReservationDetail({
   const jeu2DansSelection = jeu2Id ? activeJeux.some(j => j.id === jeu2Id) : true;
 
   const save = async () => {
+    const nomPrincipal = joueurs[0]?.nom.trim() ?? "";
+    if (!nomPrincipal) return;
     setIsSaving(true);
     const { data, error } = await supabase.from("jv_reservations")
-      .update({ adherent_nom: nom.trim(), nb_joueurs: nbJoueurs, notes: notes.trim() || null, jeu_id: jeuId, jeu2_id: jeu2Id })
+      .update({ adherent_nom: nomPrincipal, nb_joueurs: nbJoueurs, joueurs_details: joueurs, notes: notes.trim() || null, jeu_id: jeuId, jeu2_id: jeu2Id })
       .eq("id", reservation.id).select().single();
     if (error) { alert("Erreur : " + error.message); setIsSaving(false); return; }
     onSaved(data as JvReservation);
@@ -1360,152 +1490,192 @@ function ModalReservationDetail({
     onClose();
   };
 
+  const SlabelD: React.CSSProperties = { fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: 'rgba(0,0,0,0.4)', marginBottom: 5, display: 'block' };
+  const DS_BG: Record<DisplayStatus, string> = { a_venir: 'var(--cream2)', en_cours: '#baff29', passee: 'var(--cream2)', annulee: 'var(--rose)' };
+
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-start justify-center p-4 pt-8 overflow-y-auto"
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 50, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '80px 16px 16px', overflowY: 'auto' }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden mb-8">
+      <div className="pop-card" style={{ background: 'var(--cream)', width: '100%', maxWidth: 480, display: 'flex', flexDirection: 'column', maxHeight: 'calc(100vh - 96px)', overflow: 'hidden', marginBottom: 32 }}>
 
         {/* Header */}
-        <div className="flex items-center gap-3 p-6 border-b border-slate-100">
-          <div className={`w-10 h-10 rounded-2xl flex items-center justify-center font-bold text-sm border-2 ${POSTE_COLORS[reservation.poste] ?? "bg-slate-100 border-slate-200"}`}>
-            {poste?.label ?? reservation.poste}
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="font-black text-base text-black capitalize">
+        <div style={{ background: DS_BG[displayStatus], padding: '20px 24px', display: 'flex', alignItems: 'center', gap: 12, borderBottom: '2.5px solid var(--ink)', flexShrink: 0 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p className="bc" style={{ fontSize: 22, color: 'var(--ink)', margin: 0, lineHeight: 1, textTransform: 'capitalize' }}>
               {format(parseISO(reservation.date_creneau), "EEEE d MMMM", { locale: fr })}
             </p>
-            <div className="flex items-center gap-2 mt-0.5">
-              <span className="text-xs text-slate-400">{reservation.creneau}</span>
-              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-lg flex items-center gap-1 ${STATUS_COLORS[displayStatus]}`}>
-                {displayStatus === "en_cours" && <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 5, flexWrap: 'wrap' }}>
+              <span className="pop-sticker" style={{ fontSize: 11, padding: '3px 10px', background: 'var(--white)' }}>{poste?.label ?? reservation.poste}</span>
+              <span style={{ fontSize: 12, fontWeight: 600, color: 'rgba(0,0,0,0.5)' }}>{reservation.creneau}</span>
+              <span className="pop-sticker" style={{ fontSize: 10, padding: '3px 8px', background: 'var(--white)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                {displayStatus === "en_cours" && <span className="pulse" style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--vert)', display: 'inline-block' }} />}
                 {STATUS_LABEL[displayStatus]}
               </span>
             </div>
           </div>
-          <button onClick={onClose}
-            className="w-9 h-9 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 font-bold">✕</button>
+          <button onClick={onClose} style={{ width: 36, height: 36, border: '2.5px solid var(--ink)', borderRadius: 8, background: 'var(--white)', fontWeight: 900, fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>✕</button>
         </div>
 
-        <div className="p-6 flex flex-col gap-4 overflow-y-auto custom-scroll" style={{ maxHeight: "65vh" }}>
+        <div className="custom-scroll" style={{ flex: 1, overflowY: 'auto', padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
 
           {/* Jeu 1 */}
-          <div className="flex flex-col gap-2">
-            <label className="text-xs font-black text-slate-400 uppercase tracking-widest">Jeu</label>
-            {activeJeux.map(j => (
-              <button key={j.id} onClick={() => setJeuId(j.id)}
-                className={`flex items-center gap-3 p-2.5 rounded-2xl border-2 text-left transition-all ${
-                  jeuId === j.id ? "border-black bg-slate-50" : "border-slate-100 bg-white hover:border-slate-200"
-                }`}>
-                <div className="w-9 h-9 rounded-xl overflow-hidden bg-slate-100 shrink-0 flex items-center justify-center">
-                  {j.image_url ? <img src={j.image_url} alt={j.titre} className="w-full h-full object-cover" /> : <span>🎮</span>}
+          <div>
+            <label style={SlabelD}>Jeu</label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {activeJeux.map(j => (
+                <button key={j.id} onClick={() => setJeuId(j.id)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', textAlign: 'left',
+                    border: jeuId === j.id ? '2.5px solid var(--ink)' : '2px solid var(--cream2)',
+                    borderRadius: 12, background: jeuId === j.id ? 'var(--yellow)' : 'var(--white)',
+                    cursor: 'pointer', boxShadow: jeuId === j.id ? '3px 3px 0 var(--ink)' : 'none',
+                  }}>
+                  <div style={{ width: 36, height: 36, borderRadius: 8, overflow: 'hidden', background: 'var(--cream2)', flexShrink: 0, border: '2px solid var(--ink)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {j.image_url ? <img src={j.image_url} alt={j.titre} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span>🎮</span>}
+                  </div>
+                  <span style={{ fontWeight: 700, fontSize: 13, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{j.titre}</span>
+                  {jeuId === j.id && <span style={{ fontWeight: 900 }}>✓</span>}
+                </button>
+              ))}
+              {jeuActuel && !jeuDansSelection && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', border: '2px solid var(--cream2)', borderRadius: 12, background: 'var(--cream2)', opacity: 0.6 }}>
+                  <div style={{ width: 36, height: 36, borderRadius: 8, overflow: 'hidden', background: 'var(--cream)', flexShrink: 0, border: '2px solid var(--ink)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {jeuActuel.image_url ? <img src={jeuActuel.image_url} alt={jeuActuel.titre} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span>🎮</span>}
+                  </div>
+                  <span style={{ fontWeight: 700, fontSize: 13, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{jeuActuel.titre}</span>
+                  <span style={{ fontSize: 10, color: 'rgba(0,0,0,0.4)', flexShrink: 0 }}>hors sélection</span>
                 </div>
-                <span className="font-bold text-sm flex-1 truncate text-black">{j.titre}</span>
-                {jeuId === j.id && <span className="font-black text-black">✓</span>}
-              </button>
-            ))}
-            {jeuActuel && !jeuDansSelection && (
-              <div className="flex items-center gap-3 p-2.5 rounded-2xl border-2 border-slate-100 bg-slate-50 opacity-60">
-                <div className="w-9 h-9 rounded-xl overflow-hidden bg-slate-100 shrink-0 flex items-center justify-center">
-                  {jeuActuel.image_url ? <img src={jeuActuel.image_url} alt={jeuActuel.titre} className="w-full h-full object-cover" /> : <span>🎮</span>}
-                </div>
-                <span className="font-bold text-sm flex-1 truncate">{jeuActuel.titre}</span>
-                <span className="text-[10px] text-slate-400 shrink-0">hors sélection</span>
-              </div>
-            )}
+              )}
+            </div>
           </div>
 
-          {/* Jeu 2 — changement en cours de créneau */}
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-black text-slate-400 uppercase tracking-widest">Changement de jeu</label>
+          {/* Jeu 2 */}
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 5 }}>
+              <label style={{ ...SlabelD, marginBottom: 0 }}>Changement de jeu</label>
               {jeu2Id && (
                 <button onClick={() => setJeu2Id(null)}
-                  className="text-[10px] font-bold text-rose-400 hover:text-rose-600 transition-colors">
+                  style={{ fontSize: 10, fontWeight: 700, color: 'var(--rouge)', background: 'none', border: 'none', cursor: 'pointer' }}>
                   Supprimer
                 </button>
               )}
             </div>
             {!jeu2Id && (
-              <p className="text-[11px] text-slate-400 font-medium">
+              <p style={{ fontSize: 11, color: 'rgba(0,0,0,0.4)', fontWeight: 600, marginBottom: 6 }}>
                 Optionnel — si les joueurs ont changé de jeu pendant le créneau
               </p>
             )}
-            {activeJeux.filter(j => j.id !== jeuId).map(j => (
-              <button key={j.id} onClick={() => setJeu2Id(jeu2Id === j.id ? null : j.id)}
-                className={`flex items-center gap-3 p-2.5 rounded-2xl border-2 text-left transition-all ${
-                  jeu2Id === j.id ? "border-black bg-slate-50" : "border-slate-100 bg-white hover:border-slate-200"
-                }`}>
-                <div className="w-9 h-9 rounded-xl overflow-hidden bg-slate-100 shrink-0 flex items-center justify-center">
-                  {j.image_url ? <img src={j.image_url} alt={j.titre} className="w-full h-full object-cover" /> : <span>🎮</span>}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {activeJeux.filter(j => j.id !== jeuId).map(j => (
+                <button key={j.id} onClick={() => setJeu2Id(jeu2Id === j.id ? null : j.id)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', textAlign: 'left',
+                    border: jeu2Id === j.id ? '2.5px solid var(--ink)' : '2px solid var(--cream2)',
+                    borderRadius: 12, background: jeu2Id === j.id ? 'var(--yellow)' : 'var(--white)',
+                    cursor: 'pointer', boxShadow: jeu2Id === j.id ? '3px 3px 0 var(--ink)' : 'none',
+                  }}>
+                  <div style={{ width: 36, height: 36, borderRadius: 8, overflow: 'hidden', background: 'var(--cream2)', flexShrink: 0, border: '2px solid var(--ink)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {j.image_url ? <img src={j.image_url} alt={j.titre} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span>🎮</span>}
+                  </div>
+                  <span style={{ fontWeight: 700, fontSize: 13, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{j.titre}</span>
+                  {jeu2Id === j.id && <span style={{ fontWeight: 900 }}>✓</span>}
+                </button>
+              ))}
+              {jeu2Actuel && !jeu2DansSelection && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', border: '2px solid var(--cream2)', borderRadius: 12, background: 'var(--cream2)', opacity: 0.6 }}>
+                  <div style={{ width: 36, height: 36, borderRadius: 8, overflow: 'hidden', background: 'var(--cream)', flexShrink: 0, border: '2px solid var(--ink)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {jeu2Actuel.image_url ? <img src={jeu2Actuel.image_url} alt={jeu2Actuel.titre} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span>🎮</span>}
+                  </div>
+                  <span style={{ fontWeight: 700, fontSize: 13, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{jeu2Actuel.titre}</span>
+                  <span style={{ fontSize: 10, color: 'rgba(0,0,0,0.4)', flexShrink: 0 }}>hors sélection</span>
                 </div>
-                <span className="font-bold text-sm flex-1 truncate text-black">{j.titre}</span>
-                {jeu2Id === j.id && <span className="font-black text-black">✓</span>}
-              </button>
-            ))}
-            {jeu2Actuel && !jeu2DansSelection && (
-              <div className="flex items-center gap-3 p-2.5 rounded-2xl border-2 border-slate-100 bg-slate-50 opacity-60">
-                <div className="w-9 h-9 rounded-xl overflow-hidden bg-slate-100 shrink-0 flex items-center justify-center">
-                  {jeu2Actuel.image_url ? <img src={jeu2Actuel.image_url} alt={jeu2Actuel.titre} className="w-full h-full object-cover" /> : <span>🎮</span>}
-                </div>
-                <span className="font-bold text-sm flex-1 truncate">{jeu2Actuel.titre}</span>
-                <span className="text-[10px] text-slate-400 shrink-0">hors sélection</span>
-              </div>
-            )}
-          </div>
-
-          {/* Adhérent */}
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-black text-slate-400 uppercase tracking-widest">Adhérent</label>
-            <input type="text" value={nom} onChange={e => setNom(e.target.value)}
-              className="bg-slate-50 border-2 border-slate-100 rounded-2xl px-4 py-3 text-sm font-medium outline-none focus:border-black transition-colors" />
+              )}
+            </div>
           </div>
 
           {/* Nb joueurs */}
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-black text-slate-400 uppercase tracking-widest">
-              Nb joueurs <span className="normal-case font-medium">(max {poste?.maxJoueurs ?? 2})</span>
-            </label>
-            <div className="flex gap-2">
+          <div>
+            <label style={SlabelD}>Nb joueurs (max {poste?.maxJoueurs ?? 2})</label>
+            <div style={{ display: 'flex', gap: 8 }}>
               {Array.from({ length: poste?.maxJoueurs ?? 2 }, (_, i) => i + 1).map(n => (
                 <button key={n} onClick={() => setNbJoueurs(n)}
-                  className={`flex-1 py-3 rounded-2xl text-sm font-bold border-2 transition-colors ${
-                    nbJoueurs === n ? "bg-black text-white border-black" : "bg-white border-slate-200 text-slate-500 hover:border-slate-300"
-                  }`}>
+                  className={nbJoueurs === n ? "pop-btn pop-btn-dark" : "pop-btn pop-btn-outline"}
+                  style={{ flex: 1, justifyContent: 'center' }}>
                   {n}
                 </button>
               ))}
             </div>
           </div>
 
+          {/* Adhérents */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <label style={{ ...SlabelD, marginBottom: 0 }}>Adhérent{nbJoueurs > 1 ? "s" : ""}</label>
+            {joueurs.map((jj, i) => (
+              <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 12, background: 'var(--cream2)', border: '2px solid var(--ink)', borderRadius: 10 }}>
+                <p style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.07em', color: 'rgba(0,0,0,0.45)', margin: 0 }}>
+                  {i === 0 ? "1er joueur" : `${i + 1}e joueur`}
+                </p>
+                <input type="text" value={jj.nom} onChange={e => updateJoueur(i, { nom: e.target.value })}
+                  placeholder="Prénom NOM…"
+                  className="pop-input" style={{ width: '100%', background: 'var(--white)' }} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: 'rgba(0,0,0,0.4)', width: 30, flexShrink: 0 }}>Sexe</span>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    {(["H", "F", "N"] as const).map(s => (
+                      <button key={s} onClick={() => updateJoueur(i, { sexe: jj.sexe === s ? null : s })}
+                        className={jj.sexe === s ? "pop-btn pop-btn-dark" : "pop-btn pop-btn-outline"}
+                        style={{ fontSize: 11, padding: '4px 12px' }}>{s}</button>
+                    ))}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: 'rgba(0,0,0,0.4)', width: 30, flexShrink: 0 }}>Âge</span>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {([
+                      { val: "11-16", label: "11-16" }, { val: "16-18", label: "16-18" },
+                      { val: "18+", label: "18+" }, { val: "parent", label: "Parent" },
+                    ] as const).map(({ val, label }) => (
+                      <button key={val} onClick={() => updateJoueur(i, { age: jj.age === val ? null : val })}
+                        className={jj.age === val ? "pop-btn pop-btn-dark" : "pop-btn pop-btn-outline"}
+                        style={{ fontSize: 11, padding: '4px 10px' }}>{label}</button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
           {/* Notes */}
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-black text-slate-400 uppercase tracking-widest">Notes</label>
+          <div>
+            <label style={SlabelD}>Notes</label>
             <input type="text" value={notes} onChange={e => setNotes(e.target.value)}
               placeholder="Remarques optionnelles…"
-              className="bg-slate-50 border-2 border-slate-100 rounded-2xl px-4 py-3 text-sm font-medium outline-none focus:border-black transition-colors" />
+              className="pop-input" style={{ width: '100%' }} />
           </div>
         </div>
 
-        <div className="flex gap-3 p-6 border-t border-slate-100">
+        <div style={{ display: 'flex', gap: 10, padding: '16px 20px', borderTop: '2.5px solid var(--ink)', flexShrink: 0, background: 'var(--cream2)', flexWrap: 'wrap' }}>
           {reservation.statut !== "annulee" && !confirmCancel && (
             <button onClick={() => setConfirmCancel(true)}
-              className="px-4 py-3 rounded-2xl bg-slate-100 hover:bg-rose-50 text-rose-400 font-bold text-sm transition-colors">
-              Annuler
+              className="pop-btn"
+              style={{ background: 'var(--rose)', color: 'var(--ink)', border: '2.5px solid var(--ink)' }}>
+              Annuler rés.
             </button>
           )}
           {confirmCancel && (
             <button onClick={cancel}
-              className="px-4 py-3 rounded-2xl bg-rose-500 text-white font-bold text-sm hover:bg-rose-600 transition-colors">
+              className="pop-btn pop-btn-dark"
+              style={{ background: 'var(--rouge)' }}>
               Confirmer annulation
             </button>
           )}
-          <button onClick={onClose}
-            className="flex-1 px-4 py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-sm transition-colors">
+          <button onClick={onClose} className="pop-btn pop-btn-outline" style={{ flex: 1, justifyContent: 'center' }}>
             Fermer
           </button>
           {reservation.statut !== "annulee" && (
-            <button onClick={save} disabled={isSaving || !nom.trim() || !jeuId}
-              className="flex-1 px-4 py-3 rounded-2xl bg-black text-white font-bold text-sm hover:bg-slate-800 disabled:opacity-50 transition-colors">
+            <button onClick={save} disabled={isSaving || !joueurs[0]?.nom.trim() || !jeuId}
+              className="pop-btn pop-btn-dark"
+              style={{ flex: 1, justifyContent: 'center', opacity: (isSaving || !joueurs[0]?.nom.trim() || !jeuId) ? 0.4 : 1, cursor: (isSaving || !joueurs[0]?.nom.trim() || !jeuId) ? 'not-allowed' : 'pointer' }}>
               {isSaving ? "Sauvegarde…" : "Enregistrer"}
             </button>
           )}
@@ -1545,84 +1715,91 @@ function TabCatalogue({
     });
   }, [jeux, recherche, filtreConsole, filtreStatut]);
 
+  const CONSOLE_BG: Record<Console, string> = { PS5: 'var(--bleu)', Switch: 'var(--rouge)', PC: 'var(--cream2)' };
+  const STATUS_BG: Record<string, string> = {
+    disponible: 'var(--vert)', selection: '#baff29', maintenance: 'var(--orange)', retire: 'var(--rose)',
+  };
+
   return (
-    <div className="flex flex-col gap-5">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
       {/* Stats consoles */}
-      <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
-        {CONSOLES.map(c => (
-          <button key={c} onClick={() => setFiltreConsole(filtreConsole === c ? "Toutes" : c)}
-            className={`flex flex-col items-center gap-1.5 p-3 rounded-2xl border-2 transition-all ${
-              filtreConsole === c ? "border-black bg-black text-white" : "border-slate-100 bg-white hover:border-slate-200"
-            }`}>
-            <div className={`w-2.5 h-2.5 rounded-full ${filtreConsole === c ? "bg-[#baff29]" : CONSOLE_DOT[c]}`} />
-            <span className={`text-lg font-black ${filtreConsole === c ? "text-white" : "text-black"}`}>{counts[c]}</span>
-            <span className={`text-[10px] font-bold ${filtreConsole === c ? "text-white/70" : "text-slate-400"}`}>{c}</span>
-          </button>
-        ))}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+        {CONSOLES.map(c => {
+          const isActive = filtreConsole === c;
+          return (
+            <button key={c}
+              onClick={() => setFiltreConsole(filtreConsole === c ? "Toutes" : c)}
+              className="pop-card pop-card-hover"
+              style={{ background: isActive ? 'var(--ink)' : CONSOLE_BG[c], padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 4, textAlign: 'left', cursor: 'pointer', width: '100%', position: 'relative', overflow: 'hidden' }}>
+              <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(circle,rgba(0,0,0,0.06) 1.2px,transparent 1.2px)', backgroundSize: '12px 12px', pointerEvents: 'none' }} />
+              <span className="bc" style={{ fontSize: 52, lineHeight: 1, color: isActive ? 'var(--white)' : 'var(--ink)', position: 'relative' }}>{counts[c]}</span>
+              <span style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: isActive ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.5)', position: 'relative' }}>{c}</span>
+            </button>
+          );
+        })}
       </div>
 
       {/* Filtres */}
-      <div className="flex items-center gap-3 flex-wrap">
-        <div className="relative flex-1 min-w-[200px]">
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+        <div style={{ position: 'relative', flex: 1, minWidth: 200 }}>
+          <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 14, pointerEvents: 'none' }}>🔍</span>
           <input type="text" value={recherche} onChange={e => setRecherche(e.target.value)}
             placeholder="Rechercher un jeu…"
-            className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-4 py-2.5 pl-10 font-medium text-sm outline-none focus:border-black transition-colors" />
-          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm">🔍</span>
+            className="pop-input" style={{ width: '100%', paddingLeft: 38 }} />
         </div>
         <select value={filtreStatut} onChange={e => setFiltreStatut(e.target.value)}
-          className="bg-slate-50 border-2 border-slate-100 rounded-2xl px-4 py-2.5 text-sm font-medium outline-none focus:border-black transition-colors">
+          className="pop-input" style={{ cursor: 'pointer' }}>
           <option value="tous">Tous statuts</option>
           <option value="disponible">Disponible</option>
           <option value="selection">En sélection</option>
           <option value="maintenance">Maintenance</option>
           <option value="retire">Retiré</option>
         </select>
-        <span className="text-sm text-slate-400 font-medium">{filtered.length} jeu{filtered.length > 1 ? "x" : ""}</span>
-        <button onClick={onAdd}
-          className="flex items-center gap-2 px-5 py-2.5 bg-black text-white rounded-2xl text-sm font-bold hover:bg-slate-800 transition-colors">
+        <span className="pop-sticker" style={{ background: 'var(--cream2)' }}>
+          {filtered.length} jeu{filtered.length > 1 ? "x" : ""}
+        </span>
+        <button onClick={onAdd} className="pop-btn pop-btn-dark">
           + Ajouter
         </button>
       </div>
 
       {/* Liste */}
-      <div className="flex flex-col gap-2 overflow-y-auto custom-scroll" style={{ maxHeight: "calc(100vh - 420px)" }}>
+      <div className="custom-scroll" style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 'calc(100vh - 400px)', overflowY: 'auto' }}>
         {filtered.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-20 gap-3 text-slate-300">
-            <span className="text-5xl">🎮</span>
-            <p className="font-medium text-sm">Aucun jeu trouvé</p>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '60px 0', gap: 10 }}>
+            <span style={{ fontSize: 48 }}>🎮</span>
+            <p style={{ fontWeight: 600, color: 'rgba(0,0,0,0.3)' }}>Aucun jeu trouvé</p>
           </div>
         )}
         {filtered.map(jeu => (
-          <div key={jeu.id}
-            className="flex items-center gap-3 p-3 rounded-2xl border-2 border-slate-100 hover:border-slate-200 bg-white transition-all">
-            <div className="w-12 h-12 rounded-xl overflow-hidden bg-slate-100 shrink-0 flex items-center justify-center">
+          <div key={jeu.id} className="pop-card pop-card-hover"
+            style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 14, background: 'var(--white)' }}>
+            <div style={{ width: 48, height: 48, borderRadius: 8, overflow: 'hidden', background: 'var(--cream2)', border: '2px solid var(--ink)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               {jeu.image_url
-                ? <img src={jeu.image_url} alt={jeu.titre} className="w-full h-full object-cover" loading="lazy" />
-                : <span className="text-xl">🎮</span>}
+                ? <img src={jeu.image_url} alt={jeu.titre} style={{ width: '100%', height: '100%', objectFit: 'cover' }} loading="lazy" />
+                : <span style={{ fontSize: 20 }}>🎮</span>}
             </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-bold text-sm text-black truncate">{jeu.titre}</span>
-                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${CONSOLE_COLORS[jeu.console]}`}>{jeu.console}</span>
-                {jeu.genre && <span className="text-[10px] text-slate-400 font-medium">{jeu.genre}</span>}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
+                <span style={{ fontWeight: 700, fontSize: 15 }}>{jeu.titre}</span>
+                <span style={{ background: CONSOLE_BG[jeu.console], border: '2px solid var(--ink)', borderRadius: 6, padding: '2px 8px', fontSize: 12, fontWeight: 700, boxShadow: '2px 2px 0 var(--ink)', whiteSpace: 'nowrap' }}>{jeu.console}</span>
+                {jeu.genre && <span style={{ background: 'var(--cream2)', border: '1.5px solid rgba(0,0,0,0.15)', borderRadius: 20, padding: '1px 8px', fontSize: 11, fontWeight: 600 }}>{jeu.genre}</span>}
               </div>
-              <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                {jeu.editeur && <span className="text-[10px] text-slate-400">{jeu.editeur}</span>}
-                {jeu.annee && <><span className="text-slate-200 text-[10px]">·</span><span className="text-[10px] text-slate-400">{jeu.annee}</span></>}
-                {jeu.pegi && <span className="text-[10px] bg-slate-100 text-slate-500 font-bold px-1.5 py-0.5 rounded">PEGI {jeu.pegi}</span>}
-                {jeu.nb_joueurs && <span className="text-[10px] bg-slate-100 text-slate-500 font-bold px-1.5 py-0.5 rounded">👥 {jeu.nb_joueurs}</span>}
-                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
-                  jeu.statut === "disponible" ? "bg-emerald-50 text-emerald-600" :
-                  jeu.statut === "selection" ? "bg-[#baff29]/30 text-black" :
-                  jeu.statut === "maintenance" ? "bg-amber-50 text-amber-600" :
-                  "bg-slate-100 text-slate-400"
-                }`}>{jeu.statut}</span>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                {jeu.editeur && <span style={{ fontSize: 12, color: 'rgba(0,0,0,0.4)' }}>{jeu.editeur}</span>}
+                {jeu.annee && <><span style={{ fontSize: 11, color: 'rgba(0,0,0,0.15)' }}>·</span><span style={{ fontSize: 12, color: 'rgba(0,0,0,0.4)' }}>{jeu.annee}</span></>}
+                {jeu.pegi && <span style={{ background: 'var(--cream2)', border: '1.5px solid var(--ink)', borderRadius: 4, padding: '1px 6px', fontSize: 11, fontWeight: 700 }}>PEGI {jeu.pegi}</span>}
+                {jeu.nb_joueurs && <span style={{ background: 'var(--cream2)', border: '1.5px solid var(--ink)', borderRadius: 4, padding: '1px 6px', fontSize: 11, fontWeight: 700 }}>👥 {jeu.nb_joueurs}</span>}
+                <span style={{ background: STATUS_BG[jeu.statut] ?? 'var(--cream2)', border: '2px solid var(--ink)', borderRadius: 6, padding: '2px 8px', fontSize: 11, fontWeight: 700, boxShadow: '2px 2px 0 var(--ink)' }}>
+                  {jeu.statut}
+                </span>
               </div>
             </div>
             <button onClick={() => onEdit(jeu)}
-              className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-black hover:text-white text-slate-600 rounded-xl text-xs font-bold transition-colors shrink-0">
-              ✏️ Modifier
+              className="pop-btn pop-btn-outline"
+              style={{ flexShrink: 0, padding: '8px 12px' }}>
+              ✏️
             </button>
           </div>
         ))}
@@ -1687,80 +1864,79 @@ function ModalCorrectionSemaine({
     onClose();
   };
 
-  return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-start justify-center p-4 pt-8 overflow-y-auto"
-      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden mb-8">
+  const CONSOLE_BG_CS: Record<string, string> = { PS5: 'var(--bleu)', Switch: 'var(--rouge)', PC: 'var(--cream2)' };
 
-        <div className="flex items-center gap-3 p-6 border-b border-slate-100">
-          <div className={`w-8 h-8 rounded-full ${CONSOLE_DOT[consoleName]}`} />
-          <div className="flex-1">
-            <h2 className="font-black text-xl text-black">Corriger les réservations</h2>
-            <p className="text-xs text-slate-400 font-medium mt-0.5">{SLOT_LABEL[slot]} · modifier le jeu des créneaux passés</p>
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 50, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '80px 16px 16px', overflowY: 'auto' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="pop-card" style={{ background: 'var(--cream)', width: '100%', maxWidth: 520, display: 'flex', flexDirection: 'column', maxHeight: 'calc(100vh - 96px)', overflow: 'hidden', marginBottom: 32 }}>
+
+        {/* Header */}
+        <div style={{ background: CONSOLE_BG_CS[consoleName] ?? 'var(--cream2)', padding: '20px 24px', display: 'flex', alignItems: 'center', gap: 12, borderBottom: '2.5px solid var(--ink)', flexShrink: 0 }}>
+          <div style={{ flex: 1 }}>
+            <h2 className="bc" style={{ fontSize: 24, color: 'var(--ink)', margin: 0, lineHeight: 1 }}>Corriger les réservations</h2>
+            <p style={{ fontSize: 11, fontWeight: 700, color: 'rgba(0,0,0,0.45)', marginTop: 4 }}>{SLOT_LABEL[slot]} · modifier le jeu des créneaux passés</p>
           </div>
-          <button onClick={onClose}
-            className="w-9 h-9 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 font-bold">✕</button>
+          <button onClick={onClose} style={{ width: 36, height: 36, border: '2.5px solid var(--ink)', borderRadius: 8, background: 'var(--white)', fontWeight: 900, fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>✕</button>
         </div>
 
         {/* Sélecteur de semaine */}
-        <div className="flex items-center justify-between px-6 py-3 border-b border-slate-100 bg-slate-50">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px', borderBottom: '2.5px solid var(--ink)', background: 'var(--cream2)', flexShrink: 0 }}>
           <button onClick={() => setSemaine(d => addDays(d, -7))}
-            className="w-8 h-8 flex items-center justify-center rounded-xl bg-white border border-slate-200 hover:border-slate-400 text-slate-600 font-bold transition-colors">‹</button>
-          <span className="text-sm font-bold text-black">
+            style={{ width: 32, height: 32, border: '2.5px solid var(--ink)', borderRadius: 8, background: 'var(--white)', fontWeight: 900, cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>‹</button>
+          <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--ink)' }}>
             {format(addDays(lundi, 1), "d MMM", { locale: fr })} – {format(addDays(lundi, 4), "d MMM yyyy", { locale: fr })}
           </span>
           <button onClick={() => setSemaine(d => addDays(d, 7))}
-            className="w-8 h-8 flex items-center justify-center rounded-xl bg-white border border-slate-200 hover:border-slate-400 text-slate-600 font-bold transition-colors">›</button>
+            style={{ width: 32, height: 32, border: '2.5px solid var(--ink)', borderRadius: 8, background: 'var(--white)', fontWeight: 900, cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>›</button>
         </div>
 
         {/* Appliquer à tous */}
         {resasSemaine.length > 1 && (
-          <div className="flex items-center gap-2 px-6 py-3 border-b border-slate-100">
-            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest shrink-0">Tout mettre sur</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderBottom: '2px solid var(--cream2)', flexShrink: 0 }}>
+            <span style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.07em', color: 'rgba(0,0,0,0.4)', flexShrink: 0 }}>Tout mettre sur</span>
             <select value={bulkJeuId} onChange={e => setBulkJeuId(e.target.value)}
-              className="flex-1 bg-slate-50 border-2 border-slate-100 rounded-xl px-3 py-1.5 text-xs font-medium outline-none focus:border-black transition-colors">
+              className="pop-input" style={{ flex: 1, padding: '6px 10px', fontSize: 12 }}>
               <option value="">— choisir un jeu —</option>
               {consolJeux.map(j => <option key={j.id} value={j.id}>{j.titre}</option>)}
             </select>
             <button onClick={applyBulk} disabled={!bulkJeuId}
-              className="px-3 py-1.5 bg-black text-white rounded-xl text-xs font-bold disabled:opacity-30 hover:bg-slate-800 transition-colors shrink-0">
+              className="pop-btn pop-btn-dark"
+              style={{ fontSize: 11, padding: '6px 12px', opacity: !bulkJeuId ? 0.35 : 1, cursor: !bulkJeuId ? 'not-allowed' : 'pointer', flexShrink: 0 }}>
               Appliquer
             </button>
           </div>
         )}
 
         {/* Liste des réservations */}
-        <div className="overflow-y-auto custom-scroll" style={{ maxHeight: "50vh" }}>
+        <div className="custom-scroll" style={{ flex: 1, overflowY: 'auto' }}>
           {resasSemaine.length === 0 ? (
-            <p className="text-sm text-slate-400 font-medium text-center py-12">Aucune réservation cette semaine</p>
+            <p style={{ fontSize: 13, color: 'rgba(0,0,0,0.35)', textAlign: 'center', padding: '40px 0', fontWeight: 600 }}>Aucune réservation cette semaine</p>
           ) : (
-            resasSemaine.map(r => {
-              const poste = POSTES.find(p => p.id === r.poste);
+            resasSemaine.map((r, idx) => {
+              const posteItem = POSTES.find(p => p.id === r.poste);
               const currentJeuId = jeuMap[r.id] ?? r.jeu_id;
               const isModified = currentJeuId !== r.jeu_id;
               return (
-                <div key={r.id} className="flex items-center gap-3 px-6 py-3 border-b border-slate-50 last:border-b-0">
-                  <div className="shrink-0 w-24">
-                    <p className="text-[10px] font-black text-black capitalize">
+                <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 20px', borderBottom: idx < resasSemaine.length - 1 ? '1.5px solid var(--cream2)' : 'none' }}>
+                  <div style={{ flexShrink: 0, width: 90 }}>
+                    <p style={{ fontSize: 10, fontWeight: 900, textTransform: 'capitalize', margin: 0 }}>
                       {format(parseISO(r.date_creneau), "EEE d MMM", { locale: fr })}
                     </p>
-                    <p className="text-[9px] text-slate-400 font-medium">{r.creneau}</p>
-                    <p className="text-[9px] text-slate-500">{poste?.label} · {r.adherent_nom} · {r.nb_joueurs}J</p>
+                    <p style={{ fontSize: 9, color: 'rgba(0,0,0,0.4)', margin: 0 }}>{r.creneau}</p>
+                    <p style={{ fontSize: 9, color: 'rgba(0,0,0,0.5)', margin: 0 }}>{posteItem?.label} · {r.adherent_nom} · {r.nb_joueurs}J</p>
                   </div>
-                  <div className="flex-1 min-w-0">
+                  <div style={{ flex: 1, minWidth: 0 }}>
                     <select
                       value={currentJeuId}
                       onChange={e => setJeuMap(prev => ({ ...prev, [r.id]: e.target.value }))}
-                      className={`w-full border-2 rounded-xl px-3 py-2 text-xs font-medium outline-none transition-colors ${
-                        isModified
-                          ? "bg-amber-50 border-amber-300 focus:border-amber-500"
-                          : "bg-slate-50 border-slate-100 focus:border-black"
-                      }`}>
+                      className="pop-input"
+                      style={{ width: '100%', padding: '6px 10px', fontSize: 12, background: isModified ? 'var(--yellow)' : undefined, borderColor: isModified ? 'var(--ink)' : undefined }}>
                       {consolJeux.map(j => <option key={j.id} value={j.id}>{j.titre}</option>)}
                     </select>
                   </div>
                   {isModified && (
-                    <span className="text-[9px] bg-amber-100 text-amber-600 font-bold px-1.5 py-0.5 rounded shrink-0">modifié</span>
+                    <span className="pop-sticker" style={{ fontSize: 9, padding: '2px 6px', background: 'var(--orange)', flexShrink: 0 }}>modifié</span>
                   )}
                 </div>
               );
@@ -1768,13 +1944,13 @@ function ModalCorrectionSemaine({
           )}
         </div>
 
-        <div className="flex gap-3 p-6 border-t border-slate-100">
-          <button onClick={onClose}
-            className="flex-1 py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-sm transition-colors">
+        <div style={{ display: 'flex', gap: 10, padding: '16px 20px', borderTop: '2.5px solid var(--ink)', flexShrink: 0, background: 'var(--cream2)' }}>
+          <button onClick={onClose} className="pop-btn pop-btn-outline" style={{ flex: 1, justifyContent: 'center' }}>
             Annuler
           </button>
           <button onClick={save} disabled={isSaving || !hasChanges}
-            className="flex-1 py-3 rounded-2xl bg-black text-white font-bold text-sm hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-all">
+            className="pop-btn pop-btn-dark"
+            style={{ flex: 1, justifyContent: 'center', opacity: (isSaving || !hasChanges) ? 0.4 : 1, cursor: (isSaving || !hasChanges) ? 'not-allowed' : 'pointer' }}>
             {isSaving ? "Sauvegarde…" : "Enregistrer"}
           </button>
         </div>
@@ -1800,29 +1976,30 @@ function TabSelections({
   onPlanningOpen: () => void;
   onCorrectionOpen: (slot: SelectionSlot) => void;
 }) {
+  const SLOT_BG: Record<SelectionSlot, string> = { PS5: 'var(--bleu)', Switch_Multi: 'var(--rouge)', Switch_Solo: 'var(--rouge)', PC: 'var(--cream2)' };
+
   return (
-    <div className="flex flex-col gap-6">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
       {/* Cycle de rotation */}
-      <div className="flex items-center gap-2 p-4 bg-slate-50 rounded-2xl border-2 border-slate-100 flex-wrap">
-        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest shrink-0 mr-1">Cycle de rotation</span>
+      <div className="pop-card" style={{ background: 'var(--cream2)', display: 'flex', alignItems: 'center', gap: 10, padding: '14px 18px', flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.08em', color: 'rgba(0,0,0,0.4)', flexShrink: 0 }}>Cycle de rotation</span>
         {ROTATION_ORDER.map((slot, idx) => (
-          <span key={slot} className="flex items-center gap-2">
-            <span className={`text-xs font-bold px-3 py-1.5 rounded-xl border-2 ${CONSOLE_COLORS[SLOT_CONSOLE[slot]]}`}>
+          <span key={slot} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span className="pop-sticker" style={{ fontSize: 11, padding: '4px 10px', background: SLOT_BG[slot] }}>
               {SLOT_LABEL[slot]}
             </span>
-            {idx < ROTATION_ORDER.length - 1 && <span className="text-slate-300 font-bold text-sm">→</span>}
+            {idx < ROTATION_ORDER.length - 1 && <span style={{ fontWeight: 900, color: 'rgba(0,0,0,0.3)' }}>→</span>}
           </span>
         ))}
-        <span className="text-slate-300 font-bold text-sm">→ …</span>
-        <button onClick={onPlanningOpen}
-          className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-white border-2 border-slate-200 hover:border-black rounded-xl text-xs font-bold text-slate-600 hover:text-black transition-colors">
-          📅 Planning global
+        <span style={{ fontWeight: 900, color: 'rgba(0,0,0,0.3)' }}>→ …</span>
+        <button onClick={onPlanningOpen} className="pop-btn pop-btn-outline" style={{ marginLeft: 'auto', fontSize: 12, padding: '6px 14px' }}>
+          Planning global
         </button>
       </div>
 
       {/* Cartes par slot */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 14 }}>
         {ROTATION_ORDER.map(slot => {
           const console = SLOT_CONSOLE[slot];
           const actifSels = selections.filter(s => s.slot === slot && s.statut === "actif" && !s.permanent);
@@ -1840,25 +2017,22 @@ function TabSelections({
           );
 
           return (
-            <div key={slot} className="bg-slate-50 rounded-2xl p-4 border-2 border-slate-100 flex flex-col gap-4">
+            <div key={slot} className="pop-card" style={{ background: 'var(--cream)', padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
 
               {/* Header */}
-              <div className="flex items-center justify-between gap-1">
-                <div className="flex items-center gap-2">
-                  <div className={`w-3 h-3 rounded-full ${CONSOLE_DOT[console]}`} />
-                  <span className="font-black text-sm text-black">{SLOT_LABEL[slot]}</span>
-                </div>
-                <div className="flex items-center gap-1">
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+                <span className="pop-sticker" style={{ fontSize: 12, padding: '5px 12px', background: SLOT_BG[slot] }}>{SLOT_LABEL[slot]}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                   <button onClick={() => onCorrectionOpen(slot)}
                     title="Corriger les jeux d'une semaine passée"
-                    className="w-8 h-8 flex items-center justify-center bg-white border-2 border-slate-200 hover:border-slate-400 rounded-xl text-xs text-slate-400 hover:text-slate-700 transition-colors">
-                    📋
+                    style={{ width: 30, height: 30, border: '2px solid var(--ink)', borderRadius: 8, background: 'var(--white)', cursor: 'pointer', fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    ✎
                   </button>
                   <button onClick={() => onRotationOpen(slot)}
-                    className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white border-2 border-slate-200 hover:border-black rounded-xl text-xs font-bold text-slate-600 hover:text-black transition-colors">
+                    style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', border: '2px solid var(--ink)', borderRadius: 8, background: planifies > 0 ? '#baff29' : 'var(--white)', cursor: 'pointer', fontWeight: 800, fontSize: 12 }}>
                     🔄
                     {planifies > 0 && (
-                      <span className="min-w-[16px] h-4 bg-black text-white text-[9px] font-black rounded-full flex items-center justify-center px-0.5">
+                      <span style={{ background: 'var(--ink)', color: 'var(--white)', fontSize: 9, fontWeight: 900, borderRadius: '50%', width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         {planifies}
                       </span>
                     )}
@@ -1866,30 +2040,31 @@ function TabSelections({
                 </div>
               </div>
 
-              {/* Jeux permanents (PS5 / PC) — sans limite */}
+              {/* Permanents */}
               {SLOT_HAS_PERMANENT[slot] && (
-                <div className="flex flex-col gap-1.5">
-                  <span className="text-[10px] font-black text-amber-500 uppercase tracking-widest">Permanents</span>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <span style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.07em', color: 'var(--orange)' }}>Permanents</span>
                   {permanentSels.map(pSel => {
                     const pJeu = jeux.find(j => j.id === pSel.jeu_id);
                     if (!pJeu) return null;
                     return (
-                      <div key={pSel.id} className="flex items-center gap-2 p-2.5 bg-amber-50 rounded-xl border border-amber-200">
-                        <div className="w-8 h-8 rounded-lg overflow-hidden bg-slate-100 shrink-0 flex items-center justify-center">
+                      <div key={pSel.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'var(--yellow)', border: '2px solid var(--ink)', borderRadius: 10 }}>
+                        <div style={{ width: 32, height: 32, borderRadius: 6, overflow: 'hidden', background: 'var(--cream2)', flexShrink: 0, border: '1.5px solid var(--ink)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                           {pJeu.image_url
-                            ? <img src={pJeu.image_url} alt={pJeu.titre} className="w-full h-full object-cover" />
-                            : <span className="text-sm">🎮</span>}
+                            ? <img src={pJeu.image_url} alt={pJeu.titre} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            : <span style={{ fontSize: 12 }}>🎮</span>}
                         </div>
-                        <p className="font-bold text-xs flex-1 truncate text-black">{pJeu.titre}</p>
+                        <p style={{ fontWeight: 700, fontSize: 12, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', margin: 0 }}>{pJeu.titre}</p>
                         <button onClick={() => onToggleActif(pJeu.id, slot, true, pSel)}
-                          className="text-[11px] text-amber-400 hover:text-rose-500 font-black transition-colors shrink-0 ml-1">✕</button>
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', fontWeight: 900, fontSize: 12, color: 'var(--rouge)', flexShrink: 0 }}>✕</button>
                       </div>
                     );
                   })}
                   <select
                     defaultValue=""
                     onChange={e => { if (e.target.value) onToggleActif(e.target.value, slot, true, undefined); }}
-                    className="bg-white border-2 border-dashed border-amber-200 rounded-xl px-3 py-2 text-xs font-medium outline-none focus:border-amber-400 transition-colors text-slate-500">
+                    className="pop-input"
+                    style={{ border: '2px dashed var(--ink)', background: 'transparent', cursor: 'pointer', fontSize: 12, color: 'rgba(0,0,0,0.4)' }}>
                     <option value="">+ Ajouter un jeu permanent…</option>
                     {jeux.filter(j => j.console === console && j.statut !== "retire" && !usedIds.has(j.id))
                       .map(j => <option key={j.id} value={j.id}>{j.titre}</option>)}
@@ -1897,24 +2072,24 @@ function TabSelections({
                 </div>
               )}
 
-              {/* Sélection rotation (3 jeux) */}
-              <div className="flex flex-col gap-1.5">
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                  Sélection <span className="normal-case font-medium">({actifSels.length}/3)</span>
+              {/* Sélection rotation */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <span style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.07em', color: 'rgba(0,0,0,0.4)' }}>
+                  Sélection ({actifSels.length}/3)
                 </span>
                 {actifSels.map(sel => {
                   const jeu = jeux.find(j => j.id === sel.jeu_id);
                   if (!jeu) return null;
                   return (
-                    <div key={sel.id} className="flex items-center gap-2 p-2.5 bg-white rounded-xl border-2 border-[#baff29]">
-                      <div className="w-8 h-8 rounded-lg overflow-hidden bg-slate-100 shrink-0 flex items-center justify-center">
+                    <div key={sel.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'var(--white)', border: '2.5px solid var(--ink)', borderRadius: 10, boxShadow: '2px 2px 0 var(--ink)' }}>
+                      <div style={{ width: 32, height: 32, borderRadius: 6, overflow: 'hidden', background: 'var(--cream2)', flexShrink: 0, border: '1.5px solid var(--ink)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         {jeu.image_url
-                          ? <img src={jeu.image_url} alt={jeu.titre} className="w-full h-full object-cover" />
-                          : <span className="text-sm">🎮</span>}
+                          ? <img src={jeu.image_url} alt={jeu.titre} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          : <span style={{ fontSize: 12 }}>🎮</span>}
                       </div>
-                      <p className="font-bold text-xs flex-1 truncate text-black">{jeu.titre}</p>
+                      <p style={{ fontWeight: 700, fontSize: 12, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', margin: 0 }}>{jeu.titre}</p>
                       <button onClick={() => onToggleActif(jeu.id, slot, false, sel)}
-                        className="text-[11px] text-slate-300 hover:text-rose-500 font-black transition-colors shrink-0 ml-1">✕</button>
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', fontWeight: 900, fontSize: 12, color: 'var(--rouge)', flexShrink: 0 }}>✕</button>
                     </div>
                   );
                 })}
@@ -1922,50 +2097,51 @@ function TabSelections({
                   <select
                     defaultValue=""
                     onChange={e => { if (e.target.value) onToggleActif(e.target.value, slot, false, undefined); }}
-                    className="bg-white border-2 border-dashed border-slate-200 rounded-xl px-3 py-2 text-xs font-medium outline-none focus:border-[#baff29] transition-colors text-slate-500">
+                    className="pop-input"
+                    style={{ border: '2px dashed var(--ink)', background: 'transparent', cursor: 'pointer', fontSize: 12, color: 'rgba(0,0,0,0.4)' }}>
                     <option value="">+ Ajouter ({3 - actifSels.length} place{3 - actifSels.length > 1 ? "s" : ""})…</option>
                     {disponibles.map(j => <option key={j.id} value={j.id}>{j.titre}</option>)}
                   </select>
                 )}
               </div>
 
-              {/* File planifiée — groupes de 3 vignettes */}
+              {/* File planifiée */}
               {planifies > 0 && (() => {
                 const planifiesSorted = selections
                   .filter(s => s.slot === slot && s.statut === "planifie")
                   .sort((a, b) => a.groupe - b.groupe || a.ordre - b.ordre);
                 const gNums = [...new Set(planifiesSorted.map(s => s.groupe))].sort((a, b) => a - b);
                 return (
-                  <div className="flex flex-col gap-2">
-                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <span style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.07em', color: 'rgba(0,0,0,0.4)' }}>
                       À venir · {gNums.length} groupe{gNums.length > 1 ? "s" : ""}
                     </span>
                     {gNums.map((g, gIdx) => {
                       const gSels = planifiesSorted.filter(s => s.groupe === g);
                       return (
-                        <div key={g} className="flex flex-col gap-1">
-                          <span className="text-[9px] font-black text-slate-300 uppercase tracking-wider">Groupe {gIdx + 1}</span>
-                          <div className="flex gap-1.5">
+                        <div key={g} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          <span style={{ fontSize: 9, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.07em', color: 'rgba(0,0,0,0.3)' }}>Groupe {gIdx + 1}</span>
+                          <div style={{ display: 'flex', gap: 5 }}>
                             {gSels.map(sel => {
                               const j = jeux.find(x => x.id === sel.jeu_id);
                               return (
                                 <div key={sel.id} title={j?.titre}
-                                  className="w-11 h-14 rounded-xl overflow-hidden bg-slate-100 border border-slate-200 shrink-0 flex items-center justify-center">
+                                  style={{ width: 44, height: 56, borderRadius: 8, overflow: 'hidden', background: 'var(--cream2)', border: '2px solid var(--ink)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                   {j?.image_url
-                                    ? <img src={j.image_url} alt={j.titre} className="w-full h-full object-cover" />
-                                    : <span className="text-lg">🎮</span>}
+                                    ? <img src={j.image_url} alt={j.titre} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                    : <span style={{ fontSize: 16 }}>🎮</span>}
                                 </div>
                               );
                             })}
                             {Array.from({ length: 3 - gSels.length }).map((_, i) => (
-                              <div key={i} className="w-11 h-14 rounded-xl border-2 border-dashed border-slate-200 shrink-0" />
+                              <div key={i} style={{ width: 44, height: 56, borderRadius: 8, border: '2px dashed var(--ink)', flexShrink: 0, background: 'transparent' }} />
                             ))}
                           </div>
                         </div>
                       );
                     })}
                     <button onClick={() => onRotationOpen(slot)}
-                      className="text-[10px] text-slate-400 font-medium text-left hover:text-black transition-colors mt-0.5">
+                      style={{ fontSize: 10, fontWeight: 700, color: 'rgba(0,0,0,0.45)', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', textDecoration: 'underline', padding: 0, marginTop: 2 }}>
                       Gérer la file →
                     </button>
                   </div>
@@ -2035,75 +2211,76 @@ function TabReservations({
   const enCoursResas = sidebarResas.filter(r => getDisplayStatus(r) === "en_cours");
   const aVenirResas  = sidebarResas.filter(r => getDisplayStatus(r) === "a_venir");
 
+  const POSTE_BG: Record<string, string> = { ps5: 'var(--bleu)', switch_multi: 'var(--rouge)', switch_solo: 'var(--rouge)', pc: 'var(--cream2)' };
+
   return (
-    <div className="flex flex-col gap-6">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-3">
-        <div className="bg-[#baff29]/20 rounded-2xl p-4 border-2 border-[#baff29]/40 flex items-center gap-3">
-          {countByStatus.en_cours > 0 && <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse shrink-0" />}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+        <div className="pop-card" style={{ background: '#baff29', padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 10 }}>
+          {countByStatus.en_cours > 0 && <span className="pulse" style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--vert)', flexShrink: 0, display: 'inline-block' }} />}
           <div>
-            <p className="text-3xl font-black text-black">{countByStatus.en_cours}</p>
-            <p className="text-xs text-slate-500 font-bold mt-1">En cours</p>
+            <p className="bc" style={{ fontSize: 40, lineHeight: 1, margin: 0 }}>{countByStatus.en_cours}</p>
+            <p style={{ fontSize: 11, fontWeight: 700, color: 'rgba(0,0,0,0.5)', margin: 0, marginTop: 2 }}>En cours</p>
           </div>
         </div>
-        <div className="bg-slate-50 rounded-2xl p-4 border-2 border-slate-100">
-          <p className="text-3xl font-black text-black">{countByStatus.a_venir}</p>
-          <p className="text-xs text-slate-400 font-bold mt-1">À venir</p>
+        <div className="pop-card" style={{ background: 'var(--cream2)', padding: '16px 20px' }}>
+          <p className="bc" style={{ fontSize: 40, lineHeight: 1, margin: 0 }}>{countByStatus.a_venir}</p>
+          <p style={{ fontSize: 11, fontWeight: 700, color: 'rgba(0,0,0,0.4)', margin: 0, marginTop: 2 }}>À venir</p>
         </div>
-        <div className="bg-slate-50 rounded-2xl p-4 border-2 border-slate-100">
-          <p className="text-3xl font-black text-black">{countByStatus.passee}</p>
-          <p className="text-xs text-slate-400 font-bold mt-1">Passées</p>
+        <div className="pop-card" style={{ background: 'var(--cream2)', padding: '16px 20px' }}>
+          <p className="bc" style={{ fontSize: 40, lineHeight: 1, margin: 0 }}>{countByStatus.passee}</p>
+          <p style={{ fontSize: 11, fontWeight: 700, color: 'rgba(0,0,0,0.4)', margin: 0, marginTop: 2 }}>Passées</p>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 20 }} className="xl:grid-cols-3">
 
         {/* Planning */}
-        <div className="xl:col-span-2 flex flex-col gap-4">
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            <h3 className="font-black text-base text-black">Planning semaine</h3>
-            <div className="flex items-center gap-2">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }} className="xl:col-span-2">
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+            <span className="bc" style={{ fontSize: 20 }}>Planning semaine</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <button onClick={() => setSemaine(d => addDays(d, -7))}
-                className="w-8 h-8 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold transition-colors">‹</button>
-              <span className="text-xs font-bold text-slate-500 min-w-[100px] text-center">
+                style={{ width: 32, height: 32, border: '2.5px solid var(--ink)', borderRadius: 8, background: 'var(--white)', fontWeight: 900, cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>‹</button>
+              <span style={{ fontSize: 12, fontWeight: 700, color: 'rgba(0,0,0,0.5)', minWidth: 110, textAlign: 'center' }}>
                 {format(addDays(lundi, 1), "d MMM", { locale: fr })} – {format(addDays(lundi, 4), "d MMM", { locale: fr })}
               </span>
               <button onClick={() => setSemaine(d => addDays(d, 7))}
-                className="w-8 h-8 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold transition-colors">›</button>
+                style={{ width: 32, height: 32, border: '2.5px solid var(--ink)', borderRadius: 8, background: 'var(--white)', fontWeight: 900, cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>›</button>
             </div>
-            <button onClick={() => onNouvelle()}
-              className="px-4 py-2 bg-black text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition-colors">
+            <button onClick={() => onNouvelle()} className="pop-btn pop-btn-dark" style={{ fontSize: 12, padding: '7px 16px' }}>
               + Réserver
             </button>
           </div>
 
           {/* Légende postes */}
-          <div className="flex gap-2 flex-wrap">
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {POSTES.map(p => (
-              <span key={p.id} className={`text-[10px] font-bold px-2 py-1 rounded-lg border ${POSTE_COLORS[p.id]}`}>
+              <span key={p.id} className="pop-sticker" style={{ fontSize: 10, padding: '3px 8px', background: POSTE_BG[p.id] ?? 'var(--cream2)' }}>
                 {p.label}
               </span>
             ))}
           </div>
 
           {/* Jours */}
-          <div className="flex flex-col gap-4">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {joursOuverts.map(d => {
               const dow = getDay(d);
               const creneaux = CRENEAUX_PAR_JOUR[dow] ?? [];
               const dateStr = format(d, "yyyy-MM-dd");
               return (
-                <div key={dateStr} className={`rounded-2xl border-2 overflow-hidden ${isToday(d) ? "border-black" : "border-slate-100"}`}>
-                  <div className={`flex items-center justify-between px-4 py-2.5 ${isToday(d) ? "bg-black text-white" : "bg-slate-50 text-slate-700"}`}>
-                    <span className="font-black text-sm capitalize">{format(d, "EEEE d MMMM", { locale: fr })}</span>
-                    {isToday(d) && <span className="text-[10px] font-bold bg-white/20 px-2 py-0.5 rounded-full">Aujourd'hui</span>}
+                <div key={dateStr} className="pop-card" style={{ overflow: 'hidden', background: 'var(--cream)', outline: isToday(d) ? '3px solid var(--ink)' : 'none', outlineOffset: isToday(d) ? 2 : 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', borderBottom: '2px solid var(--ink)', background: isToday(d) ? 'var(--ink)' : 'var(--cream2)' }}>
+                    <span style={{ fontWeight: 900, fontSize: 13, color: isToday(d) ? 'var(--white)' : 'var(--ink)', textTransform: 'capitalize' }}>{format(d, "EEEE d MMMM", { locale: fr })}</span>
+                    {isToday(d) && <span className="pop-sticker" style={{ fontSize: 9, padding: '2px 8px', background: '#baff29' }}>Aujourd&apos;hui</span>}
                   </div>
-                  <div className="divide-y divide-slate-100">
-                    {creneaux.map(cr => (
-                      <div key={cr} className="flex items-start gap-3 px-4 py-3">
-                        <span className="text-xs font-black text-slate-400 w-16 pt-1 shrink-0">{cr}</span>
-                        <div className="flex gap-2 flex-wrap flex-1">
+                  <div>
+                    {creneaux.map((cr, crIdx) => (
+                      <div key={cr} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 16px', borderBottom: crIdx < creneaux.length - 1 ? '1.5px solid var(--cream2)' : 'none' }}>
+                        <span style={{ fontSize: 11, fontWeight: 900, color: 'rgba(0,0,0,0.4)', width: 64, paddingTop: 2, flexShrink: 0 }}>{cr}</span>
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', flex: 1 }}>
                           {POSTES.map(p => {
                             const resa = getResaPoste(d, cr, p.id);
                             const jeu = resa ? jeux.find(j => j.id === resa.jeu_id) : null;
@@ -2114,30 +2291,34 @@ function TabReservations({
                               return (
                                 <button key={p.id}
                                   onClick={() => onOpenDetail(resa)}
-                                  className={`flex flex-col gap-0.5 px-2.5 py-2 rounded-xl border-2 min-w-[90px] max-w-[130px] text-left transition-all hover:brightness-95 ${
-                                    isEnCours ? "ring-2 ring-green-400 ring-offset-1" : ""
-                                  } ${POSTE_COLORS[p.id]}`}>
-                                  <div className="flex items-center gap-1">
-                                    {isEnCours && <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse shrink-0" />}
-                                    <span className="text-[9px] font-black uppercase tracking-wide opacity-60">{p.label}</span>
+                                  style={{
+                                    display: 'flex', flexDirection: 'column', gap: 2, padding: '6px 10px', textAlign: 'left',
+                                    border: isEnCours ? '2.5px solid var(--vert)' : '2px solid var(--ink)',
+                                    borderRadius: 10, background: POSTE_BG[p.id] ?? 'var(--cream2)',
+                                    minWidth: 90, maxWidth: 130, cursor: 'pointer',
+                                    boxShadow: isEnCours ? '0 0 0 2px var(--vert)' : '2px 2px 0 var(--ink)',
+                                  }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                    {isEnCours && <span className="pulse" style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--vert)', flexShrink: 0, display: 'inline-block' }} />}
+                                    <span style={{ fontSize: 9, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.05em', opacity: 0.6 }}>{p.label}</span>
                                   </div>
                                   {jeu2 ? (
-                                    <span className="text-[11px] font-bold leading-tight truncate">
-                                      {jeu?.titre ?? "?"} <span className="opacity-50">→</span> {jeu2.titre}
+                                    <span style={{ fontSize: 10, fontWeight: 700, lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                      {jeu?.titre ?? "?"} → {jeu2.titre}
                                     </span>
                                   ) : (
-                                    <span className="text-[11px] font-bold leading-tight truncate">{jeu?.titre ?? "?"}</span>
+                                    <span style={{ fontSize: 10, fontWeight: 700, lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{jeu?.titre ?? "?"}</span>
                                   )}
-                                  <span className="text-[10px] font-medium opacity-70 truncate">{resa.adherent_nom} · {resa.nb_joueurs}J</span>
+                                  <span style={{ fontSize: 9, fontWeight: 600, opacity: 0.7, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{resa.adherent_nom} · {resa.nb_joueurs}J</span>
                                 </button>
                               );
                             }
                             return (
                               <button key={p.id}
                                 onClick={() => onNouvelle(dateStr, cr, p.id)}
-                                className="flex flex-col items-center justify-center gap-0.5 px-2.5 py-2 rounded-xl border-2 border-dashed border-slate-200 hover:border-slate-400 hover:bg-slate-50 transition-all min-w-[90px] text-slate-300 hover:text-slate-500">
-                                <span className="text-[9px] font-black uppercase tracking-wide">{p.label}</span>
-                                <span className="text-lg leading-none">+</span>
+                                style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, padding: '8px 10px', border: '2px dashed rgba(0,0,0,0.2)', borderRadius: 10, background: 'transparent', cursor: 'pointer', minWidth: 90, color: 'rgba(0,0,0,0.25)' }}>
+                                <span style={{ fontSize: 9, fontWeight: 900, textTransform: 'uppercase' }}>{p.label}</span>
+                                <span style={{ fontSize: 18, lineHeight: 1 }}>+</span>
                               </button>
                             );
                           })}
@@ -2151,28 +2332,28 @@ function TabReservations({
           </div>
         </div>
 
-        {/* Sidebar : top jeux + résa en cours / à venir */}
-        <div className="flex flex-col gap-4">
-          <h3 className="font-black text-base text-black">Jeux les + joués</h3>
+        {/* Sidebar */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <span className="bc" style={{ fontSize: 18 }}>Jeux les + joués</span>
           {stats.length === 0 ? (
-            <p className="text-sm text-slate-400 font-medium">Aucune donnée pour l'instant</p>
+            <p style={{ fontSize: 13, color: 'rgba(0,0,0,0.35)', fontWeight: 600 }}>Aucune donnée pour l&apos;instant</p>
           ) : (
-            <div className="flex flex-col gap-2">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {stats.slice(0, 8).map((s, idx) => (
-                <div key={s.jeu_id} className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100">
-                  <span className="text-sm font-black text-slate-300 w-5 text-center">{idx + 1}</span>
-                  <div className="w-8 h-8 rounded-lg overflow-hidden bg-slate-200 shrink-0">
+                <div key={s.jeu_id} className="pop-card" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: 'var(--cream)' }}>
+                  <span className="bc" style={{ fontSize: 18, color: 'rgba(0,0,0,0.2)', width: 20, textAlign: 'center', flexShrink: 0 }}>{idx + 1}</span>
+                  <div style={{ width: 32, height: 32, borderRadius: 6, overflow: 'hidden', background: 'var(--cream2)', flexShrink: 0, border: '1.5px solid var(--ink)' }}>
                     {s.image_url
-                      ? <img src={s.image_url} alt={s.titre} className="w-full h-full object-cover" />
-                      : <span className="w-full h-full flex items-center justify-center text-sm">🎮</span>}
+                      ? <img src={s.image_url} alt={s.titre} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      : <span style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12 }}>🎮</span>}
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-bold text-black truncate">{s.titre}</p>
-                    <span className={`text-[9px] font-bold px-1 py-0.5 rounded border ${CONSOLE_COLORS[s.console]}`}>{s.console}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ fontSize: 12, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', margin: 0 }}>{s.titre}</p>
+                    <span className="pop-sticker" style={{ fontSize: 9, padding: '2px 6px', background: 'var(--cream2)' }}>{s.console}</span>
                   </div>
-                  <div className="flex flex-col items-end shrink-0">
-                    <span className="text-base font-black text-black">{s.nb_reservations}</span>
-                    <span className="text-[9px] text-slate-400 font-medium">fois</span>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', flexShrink: 0 }}>
+                    <span className="bc" style={{ fontSize: 22 }}>{s.nb_reservations}</span>
+                    <span style={{ fontSize: 9, color: 'rgba(0,0,0,0.35)', fontWeight: 600 }}>fois</span>
                   </div>
                 </div>
               ))}
@@ -2181,24 +2362,25 @@ function TabReservations({
 
           {enCoursResas.length > 0 && (
             <>
-              <h3 className="font-black text-base text-black mt-2 flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+              <span className="bc" style={{ fontSize: 18, marginTop: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span className="pulse" style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--vert)', display: 'inline-block' }} />
                 En cours
-              </h3>
-              <div className="flex flex-col gap-2">
+              </span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {enCoursResas.map(r => {
                   const jeu = jeux.find(j => j.id === r.jeu_id);
                   const poste = POSTES.find(p => p.id === r.poste);
                   return (
                     <button key={r.id} onClick={() => onOpenDetail(r)}
-                      className="flex items-center gap-3 p-3 bg-[#baff29]/20 rounded-xl border border-[#baff29]/40 text-left hover:bg-[#baff29]/30 transition-colors w-full">
-                      <div className="flex flex-col items-center shrink-0 w-12">
-                        <span className="text-[10px] font-black text-black">{format(parseISO(r.date_creneau), "d MMM", { locale: fr })}</span>
-                        <span className="text-[9px] text-slate-500 font-medium">{r.creneau}</span>
+                      className="pop-card pop-card-hover"
+                      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: '#baff29', textAlign: 'left', width: '100%', cursor: 'pointer' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0, width: 48 }}>
+                        <span style={{ fontSize: 10, fontWeight: 900 }}>{format(parseISO(r.date_creneau), "d MMM", { locale: fr })}</span>
+                        <span style={{ fontSize: 9, color: 'rgba(0,0,0,0.5)', fontWeight: 600 }}>{r.creneau}</span>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-bold text-black truncate">{jeu?.titre ?? "?"}</p>
-                        <p className="text-[10px] text-slate-500">{r.adherent_nom} · {r.nb_joueurs}J · {poste?.label ?? r.poste}</p>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ fontSize: 12, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', margin: 0 }}>{jeu?.titre ?? "?"}</p>
+                        <p style={{ fontSize: 10, color: 'rgba(0,0,0,0.5)', margin: 0 }}>{r.adherent_nom} · {r.nb_joueurs}J · {poste?.label ?? r.poste}</p>
                       </div>
                     </button>
                   );
@@ -2207,24 +2389,25 @@ function TabReservations({
             </>
           )}
 
-          <h3 className="font-black text-base text-black mt-2">À venir</h3>
+          <span className="bc" style={{ fontSize: 18, marginTop: 6 }}>À venir</span>
           {aVenirResas.length === 0 ? (
-            <p className="text-sm text-slate-400 font-medium">Aucune réservation à venir</p>
+            <p style={{ fontSize: 13, color: 'rgba(0,0,0,0.35)', fontWeight: 600 }}>Aucune réservation à venir</p>
           ) : (
-            <div className="flex flex-col gap-2">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {aVenirResas.slice(0, 8).map(r => {
                 const jeu = jeux.find(j => j.id === r.jeu_id);
                 const poste = POSTES.find(p => p.id === r.poste);
                 return (
                   <button key={r.id} onClick={() => onOpenDetail(r)}
-                    className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100 text-left hover:bg-slate-100 transition-colors w-full">
-                    <div className="flex flex-col items-center shrink-0 w-12">
-                      <span className="text-[10px] font-black text-black">{format(parseISO(r.date_creneau), "d MMM", { locale: fr })}</span>
-                      <span className="text-[9px] text-slate-400 font-medium">{r.creneau}</span>
+                    className="pop-card pop-card-hover"
+                    style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: 'var(--cream)', textAlign: 'left', width: '100%', cursor: 'pointer' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0, width: 48 }}>
+                      <span style={{ fontSize: 10, fontWeight: 900 }}>{format(parseISO(r.date_creneau), "d MMM", { locale: fr })}</span>
+                      <span style={{ fontSize: 9, color: 'rgba(0,0,0,0.4)', fontWeight: 600 }}>{r.creneau}</span>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-bold text-black truncate">{jeu?.titre ?? "?"}</p>
-                      <p className="text-[10px] text-slate-400">{r.adherent_nom} · {r.nb_joueurs}J · {poste?.label ?? r.poste}</p>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ fontSize: 12, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', margin: 0 }}>{jeu?.titre ?? "?"}</p>
+                      <p style={{ fontSize: 10, color: 'rgba(0,0,0,0.4)', margin: 0 }}>{r.adherent_nom} · {r.nb_joueurs}J · {poste?.label ?? r.poste}</p>
                     </div>
                   </button>
                 );
@@ -2237,10 +2420,260 @@ function TabReservations({
   );
 }
 
+// ─── Onglet Stats ─────────────────────────────────────────────────────────────
+
+const MOIS_LABELS = ["Jan", "Fév", "Mar", "Avr", "Mai", "Jun", "Jul", "Aoû", "Sep", "Oct", "Nov", "Déc"];
+
+function TabStats({ reservations, jeux }: { reservations: JvReservation[]; jeux: JvJeu[] }) {
+  const actives = reservations.filter(r => r.statut !== "annulee");
+
+  const currentYear = new Date().getFullYear();
+  const [selectedYear, setSelectedYear] = useState(currentYear);
+  const [chronoView, setChronoView] = useState<"mois" | "annee">("mois");
+
+  const allJoueurs = actives.flatMap(r =>
+    r.joueurs_details && r.joueurs_details.length > 0
+      ? r.joueurs_details
+      : Array.from({ length: r.nb_joueurs }, () => ({ nom: "", sexe: null, age: null } as JoueurDetail))
+  );
+
+  const totalJoueurs = allJoueurs.length;
+  const totalResas   = actives.length;
+
+  const years = useMemo(() => {
+    const ys = new Set(actives.map(r => parseInt(r.date_creneau.slice(0, 4))));
+    return [...ys].sort();
+  }, [actives]);
+
+  const monthlyData = useMemo(() => {
+    const data = Array.from({ length: 12 }, (_, i) => ({ mois: i, resas: 0, joueurs: 0 }));
+    actives
+      .filter(r => parseInt(r.date_creneau.slice(0, 4)) === selectedYear)
+      .forEach(r => {
+        const m = parseInt(r.date_creneau.slice(5, 7)) - 1;
+        data[m].resas++;
+        data[m].joueurs += r.joueurs_details?.length || r.nb_joueurs;
+      });
+    return data;
+  }, [actives, selectedYear]);
+
+  const yearlyData = useMemo(() => {
+    const map: Record<number, { resas: number; joueurs: number }> = {};
+    actives.forEach(r => {
+      const y = parseInt(r.date_creneau.slice(0, 4));
+      if (!map[y]) map[y] = { resas: 0, joueurs: 0 };
+      map[y].resas++;
+      map[y].joueurs += r.joueurs_details?.length || r.nb_joueurs;
+    });
+    return Object.entries(map).map(([y, v]) => ({ annee: parseInt(y), ...v })).sort((a, b) => a.annee - b.annee);
+  }, [actives]);
+
+  const sexeCounts = { H: 0, F: 0, N: 0, "?": 0 };
+  allJoueurs.forEach(j => {
+    if (j.sexe === "H" || j.sexe === "F" || j.sexe === "N") sexeCounts[j.sexe]++;
+    else sexeCounts["?"]++;
+  });
+
+  const ageCounts: Record<string, number> = { "11-16": 0, "16-18": 0, "18+": 0, parent: 0, "?": 0 };
+  allJoueurs.forEach(j => {
+    if (j.age && ageCounts[j.age] !== undefined) ageCounts[j.age]++;
+    else ageCounts["?"]++;
+  });
+
+  const jeuMap: Record<string, { titre: string; console: Console; image_url: string | null; count: number }> = {};
+  actives.forEach(r => {
+    const addJ = (id: string) => {
+      const jeu = jeux.find(j => j.id === id);
+      if (!jeu) return;
+      if (!jeuMap[id]) jeuMap[id] = { titre: jeu.titre, console: jeu.console, image_url: jeu.image_url, count: 0 };
+      jeuMap[id].count++;
+    };
+    addJ(r.jeu_id);
+    if (r.jeu2_id) addJ(r.jeu2_id);
+  });
+  const topJeux = Object.entries(jeuMap).map(([id, v]) => ({ id, ...v })).sort((a, b) => b.count - a.count).slice(0, 10);
+  const maxCount = topJeux[0]?.count || 1;
+
+  const CONSOLE_BG_S: Record<string, string> = { PS5: 'var(--bleu)', Switch: 'var(--rouge)', PC: 'var(--cream2)' };
+
+  const StatBar = ({ label, count, total, color }: { label: string; count: number; total: number; color: string }) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      <span style={{ fontSize: 12, fontWeight: 700, width: 120, flexShrink: 0, color: 'rgba(0,0,0,0.55)' }}>{label}</span>
+      <div style={{ flex: 1, background: 'var(--cream2)', borderRadius: 99, height: 10, overflow: 'hidden', border: '1.5px solid var(--ink)' }}>
+        <div style={{ height: '100%', borderRadius: 99, background: color, width: total > 0 ? `${(count / total) * 100}%` : '0%' }} />
+      </div>
+      <span style={{ fontSize: 13, fontWeight: 900, width: 28, textAlign: 'right', flexShrink: 0 }}>{count}</span>
+      <span style={{ fontSize: 10, color: 'rgba(0,0,0,0.35)', width: 32 }}>{total > 0 ? `${Math.round((count / total) * 100)}%` : '—'}</span>
+    </div>
+  );
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+      {/* KPIs */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }} className="sm:grid-cols-4">
+        {[
+          { label: "Réservations", value: totalResas, bg: 'var(--cream2)' },
+          { label: "Joueurs total", value: totalJoueurs, bg: '#baff29' },
+          { label: "Avec profil", value: allJoueurs.filter(j => j.sexe || j.age).length, bg: 'var(--bleu)' },
+          { label: "Jeux distincts", value: Object.keys(jeuMap).length, bg: 'var(--purple)' },
+        ].map(k => (
+          <div key={k.label} className="pop-card" style={{ background: k.bg, padding: '16px 20px' }}>
+            <p className="bc" style={{ fontSize: 44, lineHeight: 1, margin: 0 }}>{k.value}</p>
+            <p style={{ fontSize: 11, fontWeight: 700, color: 'rgba(0,0,0,0.5)', margin: 0, marginTop: 2 }}>{k.label}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Activité chronologique */}
+      <div className="pop-card" style={{ background: 'var(--cream)', padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+          <span className="bc" style={{ fontSize: 18 }}>Activité</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 2, padding: 3, background: 'var(--cream2)', border: '2px solid var(--ink)', borderRadius: 10 }}>
+              {(["mois", "annee"] as const).map(v => (
+                <button key={v} onClick={() => setChronoView(v)}
+                  style={{ padding: '5px 12px', borderRadius: 7, fontSize: 11, fontWeight: 700, border: 'none', cursor: 'pointer', background: chronoView === v ? 'var(--ink)' : 'transparent', color: chronoView === v ? 'var(--white)' : 'rgba(0,0,0,0.5)' }}>
+                  {v === "mois" ? "Par mois" : "Par année"}
+                </button>
+              ))}
+            </div>
+            {chronoView === "mois" && years.length > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <button onClick={() => setSelectedYear(y => Math.max(years[0], y - 1))} disabled={selectedYear <= years[0]}
+                  style={{ width: 28, height: 28, border: '2px solid var(--ink)', borderRadius: 7, background: 'var(--white)', fontWeight: 900, cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: selectedYear <= years[0] ? 0.3 : 1 }}>‹</button>
+                <span style={{ fontSize: 13, fontWeight: 900, minWidth: 44, textAlign: 'center' }}>{selectedYear}</span>
+                <button onClick={() => setSelectedYear(y => Math.min(currentYear, y + 1))} disabled={selectedYear >= currentYear}
+                  style={{ width: 28, height: 28, border: '2px solid var(--ink)', borderRadius: 7, background: 'var(--white)', fontWeight: 900, cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: selectedYear >= currentYear ? 0.3 : 1 }}>›</button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {chronoView === "mois" ? (() => {
+          const maxVal = Math.max(...monthlyData.map(d => d.resas), 1);
+          const totalAnnee = monthlyData.reduce((s, d) => s + d.resas, 0);
+          const joueursTotalAnnee = monthlyData.reduce((s, d) => s + d.joueurs, 0);
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: 120 }}>
+                {monthlyData.map((d, i) => {
+                  const pct = (d.resas / maxVal) * 100;
+                  const isCurMonth = selectedYear === currentYear && i === new Date().getMonth();
+                  return (
+                    <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, position: 'relative' }} className="group">
+                      <div style={{ width: '100%', display: 'flex', alignItems: 'flex-end', height: 96 }}>
+                        <div style={{ width: '100%', borderRadius: '4px 4px 0 0', background: isCurMonth ? 'var(--ink)' : 'var(--cream2)', border: '1.5px solid var(--ink)', height: `${Math.max(pct, d.resas > 0 ? 4 : 0)}%`, transition: 'height .3s' }} />
+                      </div>
+                      <span style={{ fontSize: 8, fontWeight: 700, color: isCurMonth ? 'var(--ink)' : 'rgba(0,0,0,0.35)' }}>{MOIS_LABELS[i]}</span>
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{ display: 'flex', gap: 20, paddingTop: 8, borderTop: '2px solid var(--cream2)' }}>
+                <div><span className="bc" style={{ fontSize: 22 }}>{totalAnnee}</span> <span style={{ fontSize: 11, color: 'rgba(0,0,0,0.4)', fontWeight: 600 }}>réservations</span></div>
+                <div><span className="bc" style={{ fontSize: 22 }}>{joueursTotalAnnee}</span> <span style={{ fontSize: 11, color: 'rgba(0,0,0,0.4)', fontWeight: 600 }}>joueurs</span></div>
+                <div><span className="bc" style={{ fontSize: 22 }}>{totalAnnee > 0 ? (joueursTotalAnnee / totalAnnee).toFixed(1) : "—"}</span> <span style={{ fontSize: 11, color: 'rgba(0,0,0,0.4)', fontWeight: 600 }}>moy./rés.</span></div>
+              </div>
+            </div>
+          );
+        })() : (() => {
+          const maxVal = Math.max(...yearlyData.map(d => d.resas), 1);
+          return yearlyData.length === 0 ? (
+            <p style={{ fontSize: 13, color: 'rgba(0,0,0,0.35)', fontWeight: 600 }}>Aucune donnée</p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, height: 120 }}>
+                {yearlyData.map(d => {
+                  const pct = (d.resas / maxVal) * 100;
+                  const isCurrent = d.annee === currentYear;
+                  return (
+                    <div key={d.annee} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                      <div style={{ width: '100%', display: 'flex', alignItems: 'flex-end', height: 96 }}>
+                        <div style={{ width: '100%', borderRadius: '4px 4px 0 0', background: isCurrent ? 'var(--ink)' : 'var(--cream2)', border: '1.5px solid var(--ink)', height: `${Math.max(pct, d.resas > 0 ? 4 : 0)}%`, transition: 'height .3s' }} />
+                      </div>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: isCurrent ? 'var(--ink)' : 'rgba(0,0,0,0.4)' }}>{d.annee}</span>
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 8, borderTop: '2px solid var(--cream2)' }}>
+                {yearlyData.map(d => (
+                  <div key={d.annee} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12 }}>
+                    <span style={{ fontWeight: 900, width: 40 }}>{d.annee}</span>
+                    <span style={{ fontWeight: 700 }}>{d.resas} rés.</span>
+                    <span style={{ color: 'rgba(0,0,0,0.3)' }}>·</span>
+                    <span style={{ fontWeight: 700 }}>{d.joueurs} joueurs</span>
+                    <span style={{ color: 'rgba(0,0,0,0.3)' }}>·</span>
+                    <span style={{ color: 'rgba(0,0,0,0.45)' }}>{d.resas > 0 ? (d.joueurs / d.resas).toFixed(1) : "—"} moy.</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 16 }} className="xl:grid-cols-2">
+
+        {/* Démographie */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div className="pop-card" style={{ background: 'var(--cream)', padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <span className="bc" style={{ fontSize: 18 }}>Répartition par sexe</span>
+            <StatBar label="Homme (H)" count={sexeCounts.H} total={totalJoueurs} color="var(--bleu)" />
+            <StatBar label="Femme (F)" count={sexeCounts.F} total={totalJoueurs} color="var(--rose)" />
+            <StatBar label="Non-binaire (N)" count={sexeCounts.N} total={totalJoueurs} color="var(--purple)" />
+            <StatBar label="Non renseigné" count={sexeCounts["?"]} total={totalJoueurs} color="var(--cream2)" />
+          </div>
+          <div className="pop-card" style={{ background: 'var(--cream)', padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <span className="bc" style={{ fontSize: 18 }}>Tranche d&apos;âge</span>
+            <StatBar label="11 – 16 ans" count={ageCounts["11-16"]} total={totalJoueurs} color="var(--vert)" />
+            <StatBar label="16 – 18 ans" count={ageCounts["16-18"]} total={totalJoueurs} color="var(--yellow)" />
+            <StatBar label="18 ans +" count={ageCounts["18+"]} total={totalJoueurs} color="var(--orange)" />
+            <StatBar label="Parent / Adulte" count={ageCounts["parent"]} total={totalJoueurs} color="var(--rouge)" />
+            <StatBar label="Non renseigné" count={ageCounts["?"]} total={totalJoueurs} color="var(--cream2)" />
+          </div>
+        </div>
+
+        {/* Top jeux */}
+        <div className="pop-card" style={{ background: 'var(--cream)', padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <span className="bc" style={{ fontSize: 18 }}>Jeux les + joués</span>
+          {topJeux.length === 0 ? (
+            <p style={{ fontSize: 13, color: 'rgba(0,0,0,0.35)', fontWeight: 600 }}>Aucune donnée</p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {topJeux.map((s, idx) => (
+                <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span className="bc" style={{ fontSize: 18, color: 'rgba(0,0,0,0.2)', width: 22, textAlign: 'right', flexShrink: 0 }}>{idx + 1}</span>
+                  <div style={{ width: 28, height: 28, borderRadius: 6, overflow: 'hidden', background: 'var(--cream2)', flexShrink: 0, border: '1.5px solid var(--ink)' }}>
+                    {s.image_url
+                      ? <img src={s.image_url} alt={s.titre} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      : <span style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12 }}>🎮</span>}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+                      <p style={{ fontSize: 12, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', margin: 0, flex: 1 }}>{s.titre}</p>
+                      <span className="pop-sticker" style={{ fontSize: 9, padding: '2px 6px', background: CONSOLE_BG_S[s.console] ?? 'var(--cream2)', flexShrink: 0 }}>{s.console}</span>
+                    </div>
+                    <div style={{ background: 'var(--cream2)', borderRadius: 99, height: 6, overflow: 'hidden', border: '1px solid var(--ink)' }}>
+                      <div style={{ height: '100%', borderRadius: 99, background: 'var(--ink)', width: `${(s.count / maxCount) * 100}%` }} />
+                    </div>
+                  </div>
+                  <span className="bc" style={{ fontSize: 20, flexShrink: 0, width: 28, textAlign: 'right' }}>{s.count}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Page principale ──────────────────────────────────────────────────────────
 
 export default function JvPage() {
-  const [onglet, setOnglet] = useState<"catalogue" | "selections" | "reservations">("catalogue");
+  const [onglet, setOnglet] = useState<"catalogue" | "selections" | "reservations" | "stats">("catalogue");
   const [jeux, setJeux] = useState<JvJeu[]>([]);
   const [selections, setSelections] = useState<JvSelection[]>([]);
   const [reservations, setReservations] = useState<JvReservation[]>([]);
@@ -2441,65 +2874,61 @@ export default function JvPage() {
   const totalResasVenir = reservations.filter(r => { const ds = getDisplayStatus(r); return ds === "a_venir" || ds === "en_cours"; }).length;
 
   return (
-    <div className="min-h-screen bg-[#e5e5e5] flex flex-col items-center p-4 sm:p-8 gap-6" style={{ paddingTop: 64 }}>
+    <div style={{ minHeight: '100vh' }}>
       <style>{`
         .custom-scroll::-webkit-scrollbar{width:4px}
         .custom-scroll::-webkit-scrollbar-track{background:transparent}
-        .custom-scroll::-webkit-scrollbar-thumb{background:#d1d5db;border-radius:999px}
+        .custom-scroll::-webkit-scrollbar-thumb{background:rgba(0,0,0,0.15);border-radius:999px}
       `}</style>
 
-      {/* Nav */}
-      <header className="flex justify-between items-center w-full max-w-[96%] mx-auto shrink-0 relative">
-        <div className="w-10 h-10 bg-black rounded flex items-center justify-center text-white font-black text-xl italic">+</div>
-        <NavBar current="jv" />
-        <div className="w-10" />
-      </header>
+      <NavBar current="jv" />
 
-      <main className="bg-white rounded-[3rem] p-8 lg:p-10 w-full max-w-[96%] mx-auto flex-1 shadow-md flex flex-col gap-6">
+      <div className="pop-page">
 
-        {/* Titre + stats rapides */}
-        <div className="flex items-start justify-between gap-4 flex-wrap">
+        {/* ── PAGE HEADER ── */}
+        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 28, flexWrap: 'wrap', gap: 16 }}>
           <div>
-            <h1 className="text-4xl font-black text-black">Jeux Vidéo</h1>
-            <p className="text-slate-400 font-medium mt-1">Catalogue, sélections par console et réservations</p>
+            <div className="bc" style={{ fontSize: 80, lineHeight: 0.9, textTransform: 'uppercase', letterSpacing: '-1px', background: 'linear-gradient(135deg, #0d0d0d 40%, #60a5fa)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+              Jeux<br/>Vidéo
+            </div>
+            <div style={{ fontSize: 14, color: 'rgba(0,0,0,0.4)', marginTop: 6 }}>Catalogue · Sélections · Réservations</div>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="flex flex-col items-center px-4 py-2 bg-slate-50 rounded-2xl border border-slate-100">
-              <span className="text-xl font-black text-black">{totalJeux}</span>
-              <span className="text-[10px] text-slate-400 font-bold">Jeux</span>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <div className="pop-card" style={{ padding: '12px 18px', textAlign: 'center', background: 'var(--cream2)', minWidth: 70 }}>
+              <div className="bc" style={{ fontSize: 36, lineHeight: 1 }}>{totalJeux}</div>
+              <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: 'rgba(0,0,0,0.4)', letterSpacing: '.07em', marginTop: 4 }}>Jeux</div>
             </div>
-            <div className="flex flex-col items-center px-4 py-2 bg-slate-50 rounded-2xl border border-slate-100">
-              <span className="text-xl font-black text-black">{totalConsolesActives}</span>
-              <span className="text-[10px] text-slate-400 font-bold">Consoles</span>
+            <div className="pop-card" style={{ padding: '12px 18px', textAlign: 'center', background: 'var(--bleu)', minWidth: 70 }}>
+              <div className="bc" style={{ fontSize: 36, lineHeight: 1 }}>{totalConsolesActives}</div>
+              <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: 'rgba(0,0,0,0.4)', letterSpacing: '.07em', marginTop: 4 }}>Consoles</div>
             </div>
-            <div className="flex flex-col items-center px-4 py-2 bg-[#baff29]/20 rounded-2xl border border-[#baff29]/40">
-              <span className="text-xl font-black text-black">{totalResasVenir}</span>
-              <span className="text-[10px] text-slate-500 font-bold">Résa à venir</span>
+            <div className="pop-card" style={{ padding: '12px 18px', textAlign: 'center', background: '#baff29', minWidth: 70 }}>
+              <div className="bc" style={{ fontSize: 36, lineHeight: 1 }}>{totalResasVenir}</div>
+              <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: 'rgba(0,0,0,0.4)', letterSpacing: '.07em', marginTop: 4 }}>Résa</div>
             </div>
           </div>
         </div>
 
-        {/* Onglets */}
-        <div className="flex gap-1 p-1 bg-slate-100 rounded-2xl w-fit">
+        {/* ── ONGLETS ── */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 24, flexWrap: 'wrap' }}>
           {([
-            { key: "catalogue", label: "🗂 Catalogue" },
-            { key: "selections", label: "⭐ Sélections" },
-            { key: "reservations", label: "📅 Réservations" },
+            { key: "catalogue", label: "Catalogue" },
+            { key: "selections", label: "Sélections" },
+            { key: "reservations", label: "Réservations" },
+            { key: "stats", label: "Stats" },
           ] as const).map(t => (
             <button key={t.key} onClick={() => setOnglet(t.key)}
-              className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-all ${
-                onglet === t.key ? "bg-white text-black shadow-sm" : "text-slate-500 hover:text-slate-700"
-              }`}>
+              className={onglet === t.key ? 'pop-btn pop-btn-dark' : 'pop-btn pop-btn-outline'}>
               {t.label}
             </button>
           ))}
         </div>
 
-        {/* Contenu */}
+        {/* ── CONTENU ── */}
         {isLoading ? (
-          <div className="flex flex-col items-center justify-center py-20 gap-3">
-            <div className="w-8 h-8 border-2 border-slate-200 border-t-black rounded-full animate-spin" />
-            <p className="text-slate-400 font-medium text-sm">Chargement…</p>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 200, gap: 12 }}>
+            <div className="spin" style={{ width: 32, height: 32, border: '3px solid var(--cream2)', borderTopColor: 'var(--ink)', borderRadius: '50%' }} />
+            <p style={{ color: 'rgba(0,0,0,0.4)', fontWeight: 600 }}>Chargement…</p>
           </div>
         ) : (
           <>
@@ -2528,9 +2957,12 @@ export default function JvPage() {
                 onOpenDetail={r => setModalResaDetail(r)}
               />
             )}
+            {onglet === "stats" && (
+              <TabStats reservations={reservations} jeux={jeux} />
+            )}
           </>
         )}
-      </main>
+      </div>
 
       {/* Modals */}
       {modalJeu.open && (
@@ -2546,6 +2978,7 @@ export default function JvPage() {
           slot={modalRotation}
           selections={selections}
           jeux={jeux}
+          reservations={reservations}
           onClose={() => setModalRotation(null)}
           onAddToGroup={(jeuId, groupe) => handleAddToGroup(jeuId, modalRotation, groupe)}
           onRemoveSelection={handleRemoveSelection}

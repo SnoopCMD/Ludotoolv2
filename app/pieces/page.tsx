@@ -28,14 +28,14 @@ type CommandeGroupe = {
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
 const TYPES_PIECES = [
-  { id: "carte",   label: "🃏 Cartes",   keywords: ["carte", "cartes"] },
-  { id: "pion",    label: "♟️ Pions",    keywords: ["pion", "pions", "meeple", "figurine", "personnage", "jeton personnage"] },
-  { id: "jeton",   label: "🪙 Jetons",   keywords: ["jeton", "jetons", "pièce", "piece", "ressource", "marqueur"] },
-  { id: "de",      label: "🎲 Dés",      keywords: ["dé", "dés", "de", "des"] },
-  { id: "plateau", label: "🗺️ Plateaux", keywords: ["plateau", "plateaux", "support", "tuile", "tuiles", "planche"] },
-  { id: "regle",   label: "📖 Règles",   keywords: ["règle", "regle", "livret", "notice"] },
-  { id: "cube",    label: "🧊 Cubes",    keywords: ["cube", "cubes", "bloc"] },
-  { id: "bille",   label: "🔮 Billes",   keywords: ["bille", "billes", "boule"] },
+  { id: "carte",   label: "Cartes",   keywords: ["carte", "cartes"] },
+  { id: "pion",    label: "Pions",    keywords: ["pion", "pions", "meeple", "figurine", "personnage", "jeton personnage"] },
+  { id: "jeton",   label: "Jetons",   keywords: ["jeton", "jetons", "pièce", "piece", "ressource", "marqueur"] },
+  { id: "de",      label: "Dés",      keywords: ["dé", "dés", "de", "des"] },
+  { id: "plateau", label: "Plateaux", keywords: ["plateau", "plateaux", "support", "tuile", "tuiles", "planche"] },
+  { id: "regle",   label: "Règles",   keywords: ["règle", "regle", "livret", "notice"] },
+  { id: "cube",    label: "Cubes",    keywords: ["cube", "cubes", "bloc"] },
+  { id: "bille",   label: "Billes",   keywords: ["bille", "billes", "boule"] },
 ];
 
 const TYPE_LABELS: Record<Editeur["type_commande"], string> = {
@@ -593,7 +593,7 @@ export default function PiecesPage() {
             borderRadius: 6, padding: "5px 12px", fontSize: 14, fontWeight: 700,
             cursor: "pointer", boxShadow: "2px 2px 0 var(--ink)", fontFamily: "inherit",
           }}>
-          ⚙️ Éditeurs
+          Éditeurs
         </button>
       </header>
 
@@ -689,8 +689,8 @@ export default function PiecesPage() {
                       <span style={{ fontWeight: 700, fontSize: 16, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.nom}</span>
                       {m.ean && <span style={{ fontSize: 12, color: "rgba(0,0,0,0.35)" }}>{m.ean.slice(-4)}</span>}
                       {isImpossible && <span style={{ fontSize: 12, fontWeight: 800, background: "#fff0f0", color: "var(--rouge)", border: "1.5px solid var(--rouge)", borderRadius: 6, padding: "1px 7px" }}>🚫 Indisponible</span>}
-                      {isCommande && <span style={{ fontSize: 12, fontWeight: 800, background: "var(--orange)", color: "var(--ink)", border: "1.5px solid var(--ink)", borderRadius: 6, padding: "1px 7px", boxShadow: "1px 1px 0 var(--ink)" }}>📦 Commandé</span>}
-                      {m.hasMatch && !isSuggestion && !isCommande && <span title="Une pièce correspondante a été trouvée !">💡</span>}
+                      {isCommande && <span style={{ fontSize: 12, fontWeight: 800, background: "var(--orange)", color: "var(--ink)", border: "1.5px solid var(--ink)", borderRadius: 6, padding: "1px 7px", boxShadow: "1px 1px 0 var(--ink)" }}>Commandé</span>}
+                      {m.hasMatch && !isSuggestion && !isCommande && <span title="Une pièce correspondante a été trouvée !" style={{ fontSize: 11, fontWeight: 700, color: "var(--vert)", border: "1.5px solid var(--vert)", borderRadius: 4, padding: "1px 6px" }}>Match</span>}
                       {isSuggestion && !isCommande && <span style={{ fontSize: 12, fontWeight: 800, background: "var(--white)", color: "var(--rouge)", border: "1.5px solid var(--rouge)", borderRadius: 20, padding: "1px 8px" }}>✨ Suggestion</span>}
                     </div>
                     <p style={{ color: isCommande ? "rgba(0,0,0,0.4)" : "var(--rouge)", fontWeight: 700, fontSize: 14, margin: 0 }}>{m.element_manquant}</p>
@@ -806,7 +806,7 @@ export default function PiecesPage() {
           display: "flex", alignItems: "center", gap: 20, zIndex: 50,
           border: "2.5px solid var(--ink)",
         }}>
-          <span style={{ fontWeight: 700, fontSize: 18, whiteSpace: "nowrap" }}>🔗 Lier 1 jeu et {selectedTrouvees.length} pièce(s) ?</span>
+          <span style={{ fontWeight: 700, fontSize: 18, whiteSpace: "nowrap" }}>Lier 1 jeu et {selectedTrouvees.length} pièce(s) ?</span>
           <button onClick={lierElements}
             style={{ background: "var(--vert)", color: "var(--ink)", border: "2px solid var(--vert)", borderRadius: 10, padding: "8px 20px", fontWeight: 900, fontSize: 15, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>
             Valider la fusion ✓
@@ -880,7 +880,7 @@ export default function PiecesPage() {
               <div style={{ display: "flex", gap: 8 }}>
                 <button onClick={() => { chargerEditeurs(); setIsEditeursOpen(true); }}
                   style={{ padding: "6px 14px", fontSize: 13, fontWeight: 700, background: "var(--cream2)", border: "2px solid var(--ink)", borderRadius: 8, cursor: "pointer", fontFamily: "inherit", boxShadow: "2px 2px 0 var(--ink)" }}>
-                  ⚙️ Gérer éditeurs
+                  Gérer éditeurs
                 </button>
                 <button onClick={() => { setIsCommandeOpen(false); setEmailGroupeIdx(null); }}
                   style={{ width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--cream2)", border: "2px solid var(--ink)", borderRadius: 8, fontWeight: 900, cursor: "pointer", boxShadow: "2px 2px 0 var(--ink)", fontFamily: "inherit" }}>
@@ -930,7 +930,7 @@ export default function PiecesPage() {
                           {tc === "formulaire" && groupe.editeur?.url_formulaire && (
                             <a href={groupe.editeur.url_formulaire} target="_blank" rel="noopener noreferrer"
                               style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 14px", borderRadius: 8, background: "var(--bleu)", color: "var(--white)", border: "2px solid var(--ink)", fontSize: 13, fontWeight: 700, textDecoration: "none", boxShadow: "2px 2px 0 var(--ink)" }}>
-                              🔗 Ouvrir le formulaire ↗
+                              Ouvrir le formulaire ↗
                             </a>
                           )}
                           {tc === "email" && (
