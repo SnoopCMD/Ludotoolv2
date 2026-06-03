@@ -1,6 +1,5 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
-import { supabase } from "../../lib/supabase";
 import type { JeuRecherche } from "../api/store/recherche/route";
 import NavBar from "../../components/NavBar";
 
@@ -59,14 +58,14 @@ export default function StorePage() {
   // ─── Chargement ──────────────────────────────────────────────────────────────
 
   const chargerPaniers = async () => {
-    const { data } = await supabase.from("paniers").select("*").order("created_at", { ascending: false });
-    if (data) setPaniers(data as Panier[]);
+    const data = await fetch('/api/paniers').then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []);
+    setPaniers(data as Panier[]);
     setIsLoading(false);
   };
 
   const chargerLignes = async (id: string) => {
-    const { data } = await supabase.from("panier_lignes").select("*").eq("panier_id", id).order("created_at");
-    if (data) setLignes(data as PanierLigne[]);
+    const data = await fetch(`/api/panier-lignes?panier_id=${id}`).then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []);
+    setLignes(data as PanierLigne[]);
   };
 
   useEffect(() => { chargerPaniers(); }, []);
@@ -85,19 +84,31 @@ export default function StorePage() {
   const creerPanier = async () => {
     if (!nouveauNom.trim()) return;
     setIsSavingPanier(true);
-    const { data } = await supabase.from("paniers").insert({ nom: nouveauNom.trim() }).select().single();
-    if (data) { setPaniers(prev => [data as Panier, ...prev]); setPanierId((data as Panier).id); }
+    const res = await fetch('/api/paniers', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nom: nouveauNom.trim() }),
+    }).then(r => r.json()).catch(() => null);
+    if (res?.id) {
+      const newPanier: Panier = { id: res.id, nom: nouveauNom.trim(), statut: 'En cours', notes: null, created_at: new Date().toISOString() };
+      setPaniers(prev => [newPanier, ...prev]);
+      setPanierId(res.id);
+    }
     setNouveauNom(""); setIsNouveauOpen(false); setIsSavingPanier(false);
   };
 
   const changerStatut = async (id: string, statut: Panier["statut"]) => {
-    await supabase.from("paniers").update({ statut }).eq("id", id);
+    await fetch(`/api/paniers/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ statut }),
+    });
     setPaniers(prev => prev.map(p => p.id === id ? { ...p, statut } : p));
   };
 
   const supprimerPanier = async (id: string) => {
     if (!confirm("Supprimer ce panier et toutes ses lignes ?")) return;
-    await supabase.from("paniers").delete().eq("id", id);
+    await fetch(`/api/paniers/${id}`, { method: 'DELETE' });
     setPaniers(prev => prev.filter(p => p.id !== id));
     if (panierId === id) setPanierId(null);
   };
@@ -121,41 +132,53 @@ export default function StorePage() {
 
   const ajouterJeu = async (jeu: JeuRecherche) => {
     if (!panierId) return;
-    const { data } = await supabase.from("panier_lignes").insert({
-      panier_id: panierId, nom: jeu.nom, editeur: jeu.editeur,
-      image_url: jeu.image_url, prix_unitaire: jeu.prix, quantite: 1,
-      notes: jeu.url_source ?? null,
-    }).select().single();
-    if (data) setLignes(prev => [...prev, data as PanierLigne]);
+    const payload = { panier_id: panierId, nom: jeu.nom, editeur: jeu.editeur, image_url: jeu.image_url, prix_unitaire: jeu.prix, quantite: 1, notes: jeu.url_source ?? null };
+    const res = await fetch('/api/panier-lignes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }).then(r => r.json()).catch(() => null);
+    if (res?.id) setLignes(prev => [...prev, { ...payload, id: res.id, ean: null } as PanierLigne]);
     setRecherche(""); setResultats([]); setShowResultats(false);
   };
 
   const ajouterJeuManuel = async () => {
     if (!panierId || !recherche.trim()) return;
-    const { data } = await supabase.from("panier_lignes").insert({
-      panier_id: panierId, nom: recherche.trim(), quantite: 1,
-    }).select().single();
-    if (data) setLignes(prev => [...prev, data as PanierLigne]);
+    const payload = { panier_id: panierId, nom: recherche.trim(), quantite: 1 };
+    const res = await fetch('/api/panier-lignes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }).then(r => r.json()).catch(() => null);
+    if (res?.id) setLignes(prev => [...prev, { ...payload, id: res.id, editeur: null, image_url: null, ean: null, prix_unitaire: null, notes: null } as PanierLigne]);
     setRecherche(""); setResultats([]); setShowResultats(false);
   };
 
   // ─── Lignes CRUD ─────────────────────────────────────────────────────────────
 
   const supprimerLigne = async (id: string) => {
-    await supabase.from("panier_lignes").delete().eq("id", id);
+    await fetch(`/api/panier-lignes/${id}`, { method: 'DELETE' });
     setLignes(prev => prev.filter(l => l.id !== id));
   };
 
   const sauvegarderPrix = async (id: string, valeur: string) => {
     const prix = valeur.trim() ? parseFloat(valeur.replace(",", ".")) : null;
     if (isNaN(prix as number) && prix !== null) return;
-    await supabase.from("panier_lignes").update({ prix_unitaire: prix }).eq("id", id);
+    await fetch(`/api/panier-lignes/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prix_unitaire: prix }),
+    });
     setLignes(prev => prev.map(l => l.id === id ? { ...l, prix_unitaire: prix } : l));
   };
 
   const sauvegarderQte = async (id: string, valeur: string) => {
     const qte = Math.max(1, parseInt(valeur) || 1);
-    await supabase.from("panier_lignes").update({ quantite: qte }).eq("id", id);
+    await fetch(`/api/panier-lignes/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ quantite: qte }),
+    });
     setLignes(prev => prev.map(l => l.id === id ? { ...l, quantite: qte } : l));
   };
 

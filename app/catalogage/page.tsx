@@ -1,7 +1,6 @@
 "use client";
 import { useState, useEffect, useMemo, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { supabase } from "../../lib/supabase";
 import Link from "next/link";
 import NavBar from "../../components/NavBar";
 
@@ -304,9 +303,12 @@ function ModalCatalogage({ game: initGame, onClose, onSaved }: {
       boite_format: game.boite_format, editeur: game.editeur,
       auteurs_json: JSON.stringify(filteredAuteurs), auteurs: auteursText,
     };
-    const { error } = await supabase.from("catalogue").update(payload).eq("ean", game.ean);
-    if (error) { alert("Erreur de sauvegarde : " + error.message); setIsSaving(false); return; }
-    await supabase.from("jeux").update({ etape_notice: true }).eq("ean", game.ean);
+    const res = await fetch(`/api/catalogue/${encodeURIComponent(game.ean)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    if (!res.ok) { alert("Erreur de sauvegarde"); setIsSaving(false); return; }
+    const jeuxRows = await fetch(`/api/jeux?ean=${encodeURIComponent(game.ean)}&fields=id`).then(r => r.json()).catch(() => []);
+    if (Array.isArray(jeuxRows)) {
+      for (const j of jeuxRows) await fetch(`/api/jeux/${j.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ etape_notice: 1 }) });
+    }
     onSaved({ ...game, ...payload });
     setIsSaving(false);
     onClose();
@@ -543,12 +545,12 @@ function CataloguePageInner() {
 
   const loadCatalogue = async () => {
     setIsLoading(true);
-    const [{ data: catData }, { data: jeuxData }] = await Promise.all([
-      supabase.from("catalogue").select("ean, nom, auteurs, auteurs_json, editeur, description, resume, contenu, boite_format, couleur, mecanique, nb_de_joueurs, temps_de_jeu, etoiles, coop_versus, image_url").order("nom"),
-      supabase.from("jeux").select("ean, code_syracuse").not("code_syracuse", "is", null).neq("code_syracuse", ""),
+    const [catData, jeuxData]: [any[], any[]] = await Promise.all([
+      fetch('/api/catalogue?fields=ean,nom,auteurs,auteurs_json,editeur,description,resume,contenu,boite_format,couleur,mecanique,nb_de_joueurs,temps_de_jeu,etoiles,coop_versus,image_url').then(r => r.json()).catch(() => []),
+      fetch('/api/jeux?code_syracuse=notnull&fields=ean,code_syracuse').then(r => r.json()).catch(() => []),
     ]);
-    if (catData) setCatalogue(catData as CatalogueEntry[]);
-    if (jeuxData) {
+    if (Array.isArray(catData)) setCatalogue(catData as CatalogueEntry[]);
+    if (Array.isArray(jeuxData)) {
       const map: Record<string, string[]> = {};
       for (const j of jeuxData) { if (!map[j.ean]) map[j.ean] = []; map[j.ean].push(j.code_syracuse); }
       setCodesMap(map);
@@ -587,9 +589,9 @@ function CataloguePageInner() {
     setIsExporting(true);
     try {
       const eans = selectedGames.map(g => g.ean);
-      const { data: jeux } = await supabase.from("jeux").select("ean, code_syracuse").in("ean", eans).not("code_syracuse", "is", null).neq("code_syracuse", "");
+      const jeux = await fetch(`/api/jeux?eans=${encodeURIComponent(eans.join(','))}&code_syracuse=notnull&fields=ean,code_syracuse`).then(r => r.json()).catch(() => []);
       const copiesMap: Record<string, JeuCopie[]> = {};
-      for (const j of (jeux ?? [])) { if (!copiesMap[j.ean]) copiesMap[j.ean] = []; copiesMap[j.ean].push(j as JeuCopie); }
+      for (const j of (Array.isArray(jeux) ? jeux : [])) { if (!copiesMap[j.ean]) copiesMap[j.ean] = []; copiesMap[j.ean].push(j as JeuCopie); }
       const totalExemplaires = Object.values(copiesMap).reduce((s, arr) => s + arr.length, 0);
       setExportInfo(`${selectedGames.length} notice${selectedGames.length > 1 ? "s" : ""} · ${totalExemplaires} exemplaire${totalExemplaires > 1 ? "s" : ""} inclus`);
       const blob = buildMrcFile(selectedGames, copiesMap);

@@ -1,6 +1,5 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
-import { supabase } from "../../lib/supabase";
 import Link from "next/link";
 import NavBar from "../../components/NavBar";
 
@@ -123,29 +122,19 @@ export default function Home() {
   }, {});
 
   const fetchHistorique = async () => {
-    const { data } = await supabase
-      .from('commandes')
-      .select('*')
-      .order('date_commande', { ascending: false });
-    if (data) setHistoriqueEntrees(data as ReceptionEntreeType[]);
+    const data = await fetch('/api/commandes').then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []);
+    setHistoriqueEntrees(data as ReceptionEntreeType[]);
   };
 
   const fetchDashboardData = async () => {
-    const { data: jeuxData, error: jeuxError } = await supabase
-      .from('jeux')
-      .select('*')
-      .eq('statut', 'En préparation')
-      .order('id', { ascending: false });
-
-    if (jeuxError) { console.error("Erreur Supabase jeux:", jeuxError.message); return; }
-
+    const jeuxData = await fetch(`/api/jeux?statut=${encodeURIComponent('En préparation')}`).then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []);
     const jeuxBruts = (jeuxData as JeuType[]).sort((a, b) => a.nom.localeCompare(b.nom));
     const eans = [...new Set(jeuxBruts.map(j => j.ean))];
 
     let colorMap: Record<string, string> = {};
     if (eans.length > 0) {
-      const { data: catData } = await supabase.from('catalogue').select('ean, couleur').in('ean', eans);
-      if (catData) catData.forEach(item => { if (item.couleur) colorMap[item.ean] = item.couleur; });
+      const catData = await fetch(`/api/catalogue?eans=${encodeURIComponent(eans.join(','))}&fields=ean,couleur`).then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []);
+      (catData as any[]).forEach(item => { if (item.couleur) colorMap[item.ean] = item.couleur; });
     }
 
     const jeux = jeuxBruts.map(j => ({ ...j, couleur: colorMap[j.ean] || "" }));
@@ -161,12 +150,15 @@ export default function Home() {
       etape_nouveaute:  jeux.filter(j => !j.is_double && !j.etape_nouveaute).length,
     });
 
-    const { count: countRep  } = await supabase.from('reparations').select('*', { count: 'exact', head: true }).eq('statut', 'À faire');
-    const { count: countManq } = await supabase.from('pieces_manquantes').select('*', { count: 'exact', head: true }).in('statut', ['Manquant', 'Commandé']);
-    const { count: countOrp  } = await supabase.from('pieces_trouvees').select('*', { count: 'exact', head: true }).eq('statut', 'En attente');
-    setNbReparations(countRep || 0);
-    setNbManquants(countManq || 0);
-    setNbOrphelines(countOrp || 0);
+    const toArr = (d: any) => Array.isArray(d) ? d : [];
+    const [repsData, manqData, orphData] = await Promise.all([
+      fetch('/api/reparations').then(r => r.json()).then(toArr).catch(() => []),
+      fetch('/api/pieces-manquantes').then(r => r.json()).then(toArr).catch(() => []),
+      fetch('/api/pieces-trouvees').then(r => r.json()).then(toArr).catch(() => []),
+    ]);
+    setNbReparations((repsData as any[]).filter(r => r.statut === 'À faire').length);
+    setNbManquants((manqData as any[]).filter(m => ['Manquant', 'Commandé'].includes(m.statut)).length);
+    setNbOrphelines((orphData as any[]).filter(o => o.statut === 'En attente').length);
   };
 
   useEffect(() => { fetchDashboardData(); fetchHistorique(); }, []);
@@ -191,16 +183,16 @@ export default function Home() {
     const uid = nextUid();
     setter(prev => [{ uid, ean: codeScan, nom: "⏳ Recherche en cours...", typeAjout: "nouveaute", etapes: { ...defaultEtapes }, couleur: "" }, ...prev]);
 
-    const [apiData, dbResult, catResult] = await Promise.all([
+    const [apiData, jeuxData, catData] = await Promise.all([
       fetch(`/api/recherche?ean=${codeScan}`).then(r => r.json()).catch(() => ({ nom: null })),
-      supabase.from('jeux').select('nom', { count: 'exact' }).eq('ean', codeScan).limit(1),
-      supabase.from('catalogue').select('nom, couleur').eq('ean', codeScan).maybeSingle()
+      fetch(`/api/jeux?fields=nom&ean=${encodeURIComponent(codeScan)}`).then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []),
+      fetch(`/api/catalogue?ean=${encodeURIComponent(codeScan)}&fields=nom,couleur`).then(r => r.json()).then((d: any[]) => d[0] ?? null).catch(() => null),
     ]);
 
-    const doublesCount = dbResult.count ?? 0;
-    const nomFromDb  = dbResult.data?.[0]?.nom ?? null;
-    const nomFromCat = catResult.data?.nom ?? null;
-    const couleurFromCat = catResult.data?.couleur ?? "";
+    const doublesCount = (jeuxData as any[]).length;
+    const nomFromDb  = (jeuxData as any[])[0]?.nom ?? null;
+    const nomFromCat = catData?.nom ?? null;
+    const couleurFromCat = catData?.couleur ?? "";
     setter(prev => prev.map(j => j.uid === uid ? {
       ...j,
       nom: (apiData as { nom?: string | null })?.nom || nomFromCat || nomFromDb || "",
@@ -268,28 +260,33 @@ export default function Home() {
     const isDouble   = jeu.typeAjout === "double";
     const basesOk    = Object.values(jeu.etapes).every(Boolean);
     const isTermine  = isExistant || (isDouble && basesOk);
+    const b = (v: boolean) => v ? 1 : 0;
     return {
       nom: jeu.nom, ean: jeu.ean,
       statut: isTermine ? "En stock" : "En préparation",
-      is_double: isDouble || isExistant,
-      etape_nouveaute: false,
-      etape_plastifier: isExistant || jeu.etapes.etape_plastifier,
-      etape_contenu:    isExistant || jeu.etapes.etape_contenu,
-      etape_etiquette:  isExistant || jeu.etapes.etape_etiquette,
-      etape_equiper:    isExistant || jeu.etapes.etape_equiper,
-      etape_encoder:    isExistant || jeu.etapes.etape_encoder,
-      etape_notice:     isExistant || jeu.etapes.etape_notice,
+      is_double: b(isDouble || isExistant),
+      etape_nouveaute: 0,
+      etape_plastifier: b(isExistant || jeu.etapes.etape_plastifier),
+      etape_contenu:    b(isExistant || jeu.etapes.etape_contenu),
+      etape_etiquette:  b(isExistant || jeu.etapes.etape_etiquette),
+      etape_equiper:    b(isExistant || jeu.etapes.etape_equiper),
+      etape_encoder:    b(isExistant || jeu.etapes.etape_encoder),
+      etape_notice:     b(isExistant || jeu.etapes.etape_notice),
     };
   });
 
   const validerEtEnvoyer = async () => {
-    const { error } = await supabase.from('jeux').insert(construireJeuxAInserer(jeuxAttente));
-    if (error) { alert("Erreur : " + error.message); return; }
+    for (const row of construireJeuxAInserer(jeuxAttente)) {
+      const res = await fetch('/api/jeux', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(row) }).then(r => r.json()).catch(() => ({ error: 'réseau' }));
+      if (res.error) { alert("Erreur : " + res.error); return; }
+    }
 
     const catMap = new Map<string, { ean: string; nom: string; couleur: string }>();
     jeuxAttente.filter(j => j.ean !== "Manuel").forEach(j => catMap.set(j.ean, { ean: j.ean, nom: j.nom, couleur: j.couleur }));
     const catUpdates = [...catMap.values()];
-    if (catUpdates.length > 0) await supabase.from('catalogue').upsert(catUpdates, { onConflict: 'ean' });
+    if (catUpdates.length > 0) {
+      await fetch('/api/catalogue', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(catUpdates) });
+    }
 
     setJeuxAttente([]); setIsModalOpen(false); fetchDashboardData();
   };
@@ -298,24 +295,26 @@ export default function Home() {
   const validerReception = async () => {
     if (jeuxReception.length === 0) return;
 
-    const { error: jeuxError } = await supabase.from('jeux').insert(construireJeuxAInserer(jeuxReception));
-    if (jeuxError) { alert("Erreur : " + jeuxError.message); return; }
+    for (const row of construireJeuxAInserer(jeuxReception)) {
+      const res = await fetch('/api/jeux', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(row) }).then(r => r.json()).catch(() => ({ error: 'réseau' }));
+      if (res.error) { alert("Erreur : " + res.error); return; }
+    }
 
-    // Enregistrement dans l'historique
     const maintenant = new Date().toISOString();
-    const entrees = jeuxReception.map(j => ({
-      ean: j.ean,
-      nom: j.nom,
-      quantite: 1,
-      statut: 'Reçu',
-      date_commande: maintenant,
-    }));
-    await supabase.from('commandes').insert(entrees);
+    for (const j of jeuxReception) {
+      await fetch('/api/commandes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ean: j.ean, nom: j.nom, quantite: 1, statut: 'Reçu', date_commande: maintenant }),
+      });
+    }
 
     const catMap = new Map<string, { ean: string; nom: string; couleur: string }>();
     jeuxReception.filter(j => j.ean !== "Manuel").forEach(j => catMap.set(j.ean, { ean: j.ean, nom: j.nom, couleur: j.couleur }));
     const catUpdates = [...catMap.values()];
-    if (catUpdates.length > 0) await supabase.from('catalogue').upsert(catUpdates, { onConflict: 'ean' });
+    if (catUpdates.length > 0) {
+      await fetch('/api/catalogue', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(catUpdates) });
+    }
 
     setJeuxReception([]);
     fetchDashboardData();
@@ -323,7 +322,7 @@ export default function Home() {
   };
 
   const supprimerEntreeHistorique = async (id: number) => {
-    await supabase.from('commandes').delete().eq('id', id);
+    await fetch(`/api/commandes/${id}`, { method: 'DELETE' });
     fetchHistorique();
   };
 
@@ -346,8 +345,12 @@ export default function Home() {
     if (estFini) { setJeuxEnPrepa(prev => prev.filter(j => j.id !== id)); setTotalEnPrepa(prev => prev - 1); }
     else { setJeuxEnPrepa(prev => prev.map(j => j.id === id ? updatedJeu : j)); }
 
-    const { error } = await supabase.from('jeux').update({ [colonne]: updatedVal, statut: newStatut }).eq('id', id);
-    if (error) alert("Erreur de synchronisation !");
+    const res = await fetch(`/api/jeux/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ [colonne]: updatedVal ? 1 : 0, statut: newStatut }),
+    }).then(r => r.json()).catch(() => ({ error: 'réseau' }));
+    if (res.error) alert("Erreur de synchronisation !");
     fetchDashboardData();
   };
 
@@ -359,7 +362,11 @@ export default function Home() {
       if (!jeuActuel) continue;
       const updatedJeu = { ...jeuActuel, [etapeActive]: true };
       const estFini = verifierSiTermine(updatedJeu);
-      await supabase.from('jeux').update({ [etapeActive]: true, statut: estFini ? "En stock" : "En préparation" }).eq('id', id);
+      await fetch(`/api/jeux/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [etapeActive]: 1, statut: estFini ? "En stock" : "En préparation" }),
+      });
       jeuxValides.push(jeuActuel);
     }
     setEtapeActive(null); setJeuxSelectionnes([]); fetchDashboardData();
@@ -372,7 +379,14 @@ export default function Home() {
     const code = scanInput.trim();
     const jeu = scanQueue[scanIdx];
     if (!jeu) return;
-    if (code) { await supabase.from('jeux').update({ code_syracuse: code }).eq('id', jeu.id); setScanDone(prev => [...prev, { nom: jeu.nom, code }]); }
+    if (code) {
+      await fetch(`/api/jeux/${jeu.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code_syracuse: code }),
+      });
+      setScanDone(prev => [...prev, { nom: jeu.nom, code }]);
+    }
     setScanIdx(prev => prev + 1); setScanInput("");
     setTimeout(() => scanInputRef.current?.focus(), 50);
   };
@@ -389,7 +403,11 @@ export default function Home() {
 
   const changerCouleurJeu = async (idJeu: string | number, ean: string, nom: string, nouvelleCouleur: string) => {
     setJeuxEnPrepa(prev => prev.map(j => j.id === idJeu ? { ...j, couleur: nouvelleCouleur } : j));
-    await supabase.from('catalogue').upsert({ ean, nom, couleur: nouvelleCouleur }, { onConflict: 'ean' });
+    await fetch('/api/catalogue', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ean, nom, couleur: nouvelleCouleur }),
+    });
   };
 
   const jeuxEnPrepaFiltres = jeuxEnPrepa.filter(jeu =>
@@ -742,9 +760,9 @@ export default function Home() {
                   </div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
                     {etapesVisuelles.map(etape => {
-                      const estFait = jeu[etape.id] === true;
+                      const estFait = !!jeu[etape.id];
                       const isNouv = etape.id === 'etape_nouveaute';
-                      const isDouble = isNouv && jeu.is_double;
+                      const isDouble = isNouv && !!jeu.is_double;
                       return (
                         <button key={etape.id} disabled={isDouble}
                           onClick={() => !isDouble && toggleEtapeUnique(jeu.id, etape.id, estFait)}

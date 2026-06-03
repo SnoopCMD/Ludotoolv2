@@ -24,10 +24,13 @@
 		// see https://opennext.js.org/cloudflare/howtos/image
 		"binding": "IMAGES"
 	},
-	"vars": {
-		"NEXT_PUBLIC_SUPABASE_URL": "https://tpaofmsnlkhqruohsnvk.supabase.co",
-		"NEXT_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_PruZG4nS0LjVZf7mhW0Gqg_KJq29-_B"
-	}
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "ludotool-db",
+			"database_id": "e7f95196-5ea8-4453-8852-090bb661f30c"
+		}
+	]
 	// TWITCH_CLIENT_ID et TWITCH_CLIENT_SECRET doivent être ajoutés comme secrets :
 	// wrangler secret put TWITCH_CLIENT_ID
 	// wrangler secret put TWITCH_CLIENT_SECRET

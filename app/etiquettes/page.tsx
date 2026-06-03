@@ -1,7 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { supabase } from "../../lib/supabase";
 import { PDFDownloadLink } from "@react-pdf/renderer";
 import { EtiquettesPDF } from "../../components/EtiquettesPDF";
 
@@ -84,8 +83,8 @@ export default function EtiquettesPage() {
   }, []);
 
   const chargerCatalogue = async () => {
-    const { data } = await supabase.from('catalogue').select('*');
-    if (data) {
+    const data = await fetch('/api/catalogue').then(r => r.json()).catch(() => null);
+    if (Array.isArray(data)) {
       const dbEtiquettes: Record<string, Etiquette[]> = { vert: [], rose: [], bleu: [], rouge: [], jaune: [] };
       data.forEach(item => {
         const couleur = item.couleur && dbEtiquettes[item.couleur] ? item.couleur : "vert";
@@ -135,25 +134,17 @@ export default function EtiquettesPage() {
       coop_versus: eti.coop_versus === "" ? null : eti.coop_versus,
       temps_de_jeu: eti.temps_de_jeu, etoiles: eti.etoiles === "" ? null : eti.etoiles, couleur: couleurId
     };
-    const { error } = await supabase.from('catalogue').upsert(dataToSave);
-    if (error) console.error("Erreur auto-save catalogue:", error.message);
+    await fetch(`/api/catalogue/${encodeURIComponent(eti.ean)}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(dataToSave)
+    }).catch(() => fetch('/api/catalogue', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify([dataToSave]) }));
 
-    const { data: jeuxExistants } = await supabase.from('jeux').select('id').eq('ean', eti.ean).limit(1);
-    if (!jeuxExistants || jeuxExistants.length === 0) {
-      const { error: errJeu } = await supabase.from('jeux').insert([{
-        ean: eti.ean,
-        nom: eti.nom,
-        statut: 'En préparation',
-        is_double: false,
-        etape_nouveaute: false,
-        etape_plastifier: false,
-        etape_contenu: false,
-        etape_etiquette: false,
-        etape_equiper: false,
-        etape_encoder: false,
-        etape_notice: false
-      }]);
-      if (errJeu) console.error("Erreur création auto inventaire:", errJeu.message);
+    const jeuxExistants = await fetch(`/api/jeux?ean=${encodeURIComponent(eti.ean)}&fields=id&limit=1`).then(r => r.json()).catch(() => []);
+    if (!Array.isArray(jeuxExistants) || jeuxExistants.length === 0) {
+      await fetch('/api/jeux', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+        ean: eti.ean, nom: eti.nom, statut: 'En préparation', is_double: 0,
+        etape_nouveaute: 0, etape_plastifier: 0, etape_contenu: 0,
+        etape_etiquette: 0, etape_equiper: 0, etape_encoder: 0, etape_notice: 0
+      }) }).catch(console.error);
     }
   };
 
@@ -183,11 +174,11 @@ export default function EtiquettesPage() {
     let nomTrouve = "";
     let dataCatalogue = null;
 
-    const { data } = await supabase.from('catalogue').select('*').eq('ean', ean).single();
-    if (data) { dataCatalogue = data; nomTrouve = data.nom; }
+    const catRow = await fetch(`/api/catalogue/${encodeURIComponent(ean)}`).then(r => r.json()).catch(() => null);
+    if (catRow && !catRow.error) { dataCatalogue = catRow; nomTrouve = catRow.nom; }
     else {
-      const { data: dataJeux } = await supabase.from('jeux').select('nom').eq('ean', ean).limit(1).single();
-      if (dataJeux) nomTrouve = dataJeux.nom;
+      const jeuxRows = await fetch(`/api/jeux?ean=${encodeURIComponent(ean)}&fields=nom&limit=1`).then(r => r.json()).catch(() => []);
+      if (Array.isArray(jeuxRows) && jeuxRows[0]) nomTrouve = jeuxRows[0].nom;
     }
 
     setEtiquettes(prev => ({
@@ -227,14 +218,16 @@ export default function EtiquettesPage() {
     });
 
     const uniqueCatalogue = Array.from(new Map(catalogueData.map(item => [item.ean, item])).values());
-    if (uniqueCatalogue.length > 0) await supabase.from('catalogue').upsert(uniqueCatalogue);
+    if (uniqueCatalogue.length > 0) {
+      await fetch('/api/catalogue', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(uniqueCatalogue) });
+    }
 
     if (eansCompletsAImprimer.length > 0) {
-      const { data: jeuxEnPrepa } = await supabase.from('jeux').select('*').in('ean', eansCompletsAImprimer).eq('statut', 'En préparation');
-      if (jeuxEnPrepa && jeuxEnPrepa.length > 0) {
+      const jeuxEnPrepa = await fetch(`/api/jeux?eans=${encodeURIComponent(eansCompletsAImprimer.join(','))}&statut=En+pr%C3%A9paration`).then(r => r.json()).catch(() => []);
+      if (Array.isArray(jeuxEnPrepa) && jeuxEnPrepa.length > 0) {
         for (const jeu of jeuxEnPrepa) {
-          const isTermine = jeu.etape_plastifier && jeu.etape_contenu && true && jeu.etape_equiper && jeu.etape_encoder && jeu.etape_notice && jeu.etape_nouveaute;
-          await supabase.from('jeux').update({ etape_etiquette: true, statut: isTermine ? 'En stock' : 'En préparation' }).eq('id', jeu.id);
+          const isTermine = jeu.etape_plastifier && jeu.etape_contenu && jeu.etape_equiper && jeu.etape_encoder && jeu.etape_notice && jeu.etape_nouveaute;
+          await fetch(`/api/jeux/${jeu.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ etape_etiquette: 1, statut: isTermine ? 'En stock' : 'En préparation' }) });
         }
       }
     }

@@ -1,7 +1,6 @@
 "use client";
 import { useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
-import { supabase } from "../../lib/supabase";
 import NavBar from "../../components/NavBar";
 import { format, addMonths, subMonths, addWeeks, subWeeks, startOfWeek, endOfWeek, eachDayOfInterval, startOfMonth, endOfMonth, isSameMonth, isToday, subDays, setMonth, setYear, getISOWeek, getYear, addDays } from "date-fns";
 import { fr } from "date-fns/locale";
@@ -576,8 +575,8 @@ useEffect(() => {
 
   useEffect(() => {
     const key = format(startOfWeek(dateActuelle, { weekStartsOn: 1 }), 'yyyy-MM-dd');
-    supabase.from('planning_semaine').select('slots').eq('semaine_key', key).single()
-      .then(({ data }) => setViewPlanningSlots((data?.slots ?? []) as PlanningSlot[]));
+    fetch(`/api/planning-semaine?key=${key}`).then(r => r.json())
+      .then(data => setViewPlanningSlots((data?.slots ?? []) as PlanningSlot[]));
   }, [dateActuelle]);
 
   const planningWeekKey = (d: Date) => format(startOfWeek(d, { weekStartsOn: 1 }), 'yyyy-MM-dd');
@@ -586,7 +585,7 @@ useEffect(() => {
     const days = eachDayOfInterval({ start: startOfWeek(planningDate, { weekStartsOn: 1 }), end: endOfWeek(planningDate, { weekStartsOn: 1 }) });
     const key = planningWeekKey(planningDate);
     (async () => {
-      const { data } = await supabase.from('planning_semaine').select('slots,vacataires').eq('semaine_key', key).single();
+      const data = await fetch(`/api/planning-semaine?key=${key}`).then(r => r.json()).catch(() => null);
       let slots: PlanningSlot[];
       let vacs: Vacataire[];
       if (data?.slots?.length) {
@@ -608,7 +607,7 @@ useEffect(() => {
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     autoSaveTimerRef.current = setTimeout(() => {
       const key = planningWeekKey(planningDate);
-      supabase.from('planning_semaine').upsert({ semaine_key: key, slots: planningSlots, vacataires, updated_at: new Date().toISOString() });
+      fetch('/api/planning-semaine', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ semaine_key: key, slots: planningSlots, vacataires, updated_at: new Date().toISOString() }) });
       lastLoadedPlanningRef.current = { slots: planningSlots, vacataires };
     }, 800);
     return () => { if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current); };
@@ -618,7 +617,7 @@ useEffect(() => {
   const savePlanningWeek = async () => {
     setSavingPlanning(true);
     const key = planningWeekKey(planningDate);
-    await supabase.from('planning_semaine').upsert({ semaine_key: key, slots: planningSlots, vacataires, updated_at: new Date().toISOString() });
+    await fetch('/api/planning-semaine', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ semaine_key: key, slots: planningSlots, vacataires, updated_at: new Date().toISOString() }) });
     lastLoadedPlanningRef.current = { slots: planningSlots, vacataires };
     setSavingPlanning(false);
   };
@@ -719,12 +718,12 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
     setIsGeneratingPdf(true);
     const currentKey = planningWeekKey(planningDate);
     if (pdfSemaines.some(s => planningWeekKey(s) === currentKey)) {
-      await supabase.from('planning_semaine').upsert({ semaine_key: currentKey, slots: planningSlots, vacataires, updated_at: new Date().toISOString() });
+      await fetch('/api/planning-semaine', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ semaine_key: currentKey, slots: planningSlots, vacataires, updated_at: new Date().toISOString() }) });
     }
     const semainesData: Array<{ semaine: Date; slots: PlanningSlot[]; vacataires: Vacataire[] }> = [];
     for (const sem of pdfSemaines) {
       const key = planningWeekKey(sem);
-      const { data } = await supabase.from('planning_semaine').select('slots,vacataires').eq('semaine_key', key).single();
+      const data = await fetch(`/api/planning-semaine?key=${key}`).then(r => r.json()).catch(() => null);
       semainesData.push({ semaine: sem, slots: (data?.slots ?? []) as PlanningSlot[], vacataires: (data?.vacataires ?? []) as Vacataire[] });
     }
     const html = buildPlanningHTML(semainesData);
@@ -801,16 +800,14 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
     setNouvelEvent({...nouvelEvent, date_debut: newDebut, date_fin: newFin});
   };
 
-  const chargerEquipe = async () => { 
-    const { data, error } = await supabase.from('equipe').select('*').order('nom'); 
-    if (error) console.error("Erreur Equipe:", error.message);
-    if (data) setEquipe(data); 
+  const chargerEquipe = async () => {
+    const data = await fetch('/api/equipe').then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []);
+    setEquipe(data);
   };
 
-  const chargerEvenements = async () => { 
-    const { data, error } = await supabase.from('evenements').select('*').order('date_debut'); 
-    if (error) console.error("Erreur Événements:", error.message);
-    if (data) setEvenements(data); 
+  const chargerEvenements = async () => {
+    const data = await fetch('/api/evenements').then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []);
+    setEvenements(data);
   };
 
   useEffect(() => {
@@ -821,13 +818,6 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
       .then(res => res.json())
       .then(data => setJoursFeries(data as Record<string, string>))
       .catch(console.error);
-
-    const channel = supabase.channel('agenda_realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'equipe' }, () => { chargerEquipe(); })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'evenements' }, () => { chargerEvenements(); })
-      .subscribe();
-
-    return () => { supabase.removeChannel(channel); };
   }, [dateActuelle.getFullYear()]);
 
   useEffect(() => {
@@ -861,18 +851,20 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
       for (const m of draftEquipe) {
         if (m.id.startsWith('draft-')) {
           const { id, ...rest } = m;
-          await supabase.from('equipe').insert([rest]);
-        } else await supabase.from('equipe').update({ nom: m.nom, role: m.role, groupe: m.groupe, heures_hebdo_base: m.heures_hebdo_base, solde_conges: m.solde_conges, solde_rtt: m.solde_rtt, solde_recup: m.solde_recup, horaires: m.horaires }).eq('id', m.id);
+          await fetch('/api/equipe', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(rest) });
+        } else {
+          await fetch(`/api/equipe/${m.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nom: m.nom, role: m.role, groupe: m.groupe, heures_hebdo_base: m.heures_hebdo_base, solde_conges: m.solde_conges, solde_rtt: m.solde_rtt, solde_recup: m.solde_recup, horaires: m.horaires }) });
+        }
       }
       for (const ev of draftEvenements) {
         if (ev.id && ev.id.startsWith('draft-')) {
           const { id, ...rest } = ev;
-          await supabase.from('evenements').insert([rest]);
+          await fetch('/api/evenements', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(rest) });
         } else if (ev.id) {
-          await supabase.from('evenements').update({ titre: ev.titre, type: ev.type, date_debut: ev.date_debut, date_fin: ev.date_fin, heure_debut: ev.heure_debut, heure_fin: ev.heure_fin, membres: ev.membres, parent_id: ev.parent_id }).eq('id', ev.id);
+          await fetch(`/api/evenements/${ev.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ titre: ev.titre, type: ev.type, date_debut: ev.date_debut, date_fin: ev.date_fin, heure_debut: ev.heure_debut, heure_fin: ev.heure_fin, membres: ev.membres, parent_id: ev.parent_id }) });
         }
       }
-      for (const delId of draftDeletedEvents) await supabase.from('evenements').delete().eq('id', delId);
+      for (const delId of draftDeletedEvents) await fetch(`/api/evenements/${delId}`, { method: 'DELETE' });
       setIsDraftMode(false); await chargerEquipe(); await chargerEvenements(); alert("✅ Le planning a été mis à jour avec succès !");
     } catch (e: any) { alert("Erreur lors de la sauvegarde : " + e.message); }
   };
@@ -886,8 +878,11 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
       else setDraftEquipe([...draftEquipe, { ...membreActif, id: `draft-${Date.now()}` }]);
       setMembreActif(null);
     } else {
-      if (membreActif.id === 'nouveau') await supabase.from('equipe').insert([payload]);
-      else await supabase.from('equipe').update(payload).eq('id', membreActif.id);
+      if (membreActif.id === 'nouveau') {
+        await fetch('/api/equipe', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      } else {
+        await fetch(`/api/equipe/${membreActif.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      }
       setMembreActif(null);
       chargerEquipe();
     }
@@ -905,19 +900,18 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
       setDraftEquipe(prev => prev.map(m => m.id === membreActif.id ? { ...m, ...patch } : m));
       return;
     }
-    const { error } = await supabase.from('equipe').update(patch).eq('id', membreActif.id);
-    if (error) { alert('Erreur sauvegarde soldes : ' + error.message); return; }
+    const res = await fetch(`/api/equipe/${membreActif.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) }).then(r => r.json()).catch(() => ({ error: 'réseau' }));
+    if (res.error) { alert('Erreur sauvegarde soldes : ' + res.error); return; }
     chargerEquipe();
   };
 
   const sauvegarderQuickEdit = async () => {
     if (!quickEditEv?.id) return;
-    await supabase.from('evenements').update({
-      type: quickEditEv.type,
-      titre: quickEditEv.titre,
-      date_debut: quickEditEv.date_debut,
-      date_fin: quickEditEv.date_fin,
-    }).eq('id', quickEditEv.id);
+    await fetch(`/api/evenements/${quickEditEv.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: quickEditEv.type, titre: quickEditEv.titre, date_debut: quickEditEv.date_debut, date_fin: quickEditEv.date_fin }),
+    });
     setQuickEditEv(null);
     chargerEvenements();
   };
@@ -1040,39 +1034,38 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
     } else {
       
       if (editMode === 'series' && nouvelEvent.parent_id) {
-         await supabase.from('evenements').delete().eq('parent_id', nouvelEvent.parent_id).neq('id', nouvelEvent.id || '0');
+        const idsToDelete = evenements.filter(e => e.parent_id === nouvelEvent.parent_id && e.id !== (nouvelEvent.id || '')).map(e => e.id!);
+        await Promise.all(idsToDelete.map(id => fetch(`/api/evenements/${id}`, { method: 'DELETE' })));
       }
 
       const toUpdate = occurrences.filter(o => o.id);
       const toInsert = occurrences.filter(o => !o.id);
 
-      if (toUpdate.length > 0) {
-         for (const upd of toUpdate) {
-           const { error } = await supabase.from('evenements').update(upd).eq('id', upd.id);
-           if (error) { console.error("Erreur mise à jour événement:", error); alert("Erreur lors de la mise à jour : " + error.message); return; }
-         }
+      for (const upd of toUpdate) {
+        const res = await fetch(`/api/evenements/${upd.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(upd),
+        }).then(r => r.json()).catch(() => ({ error: 'réseau' }));
+        if (res.error) { console.error("Erreur mise à jour événement:", res.error); alert("Erreur lors de la mise à jour : " + res.error); return; }
       }
-      if (toInsert.length > 0) {
-         const toInsertClean = toInsert.map(occ => {
-           // eslint-disable-next-line @typescript-eslint/no-unused-vars
-           const { id, ...rest } = occ as Record<string, unknown>;
-           if (rest.parent_id === undefined || rest.parent_id === null) {
-             // eslint-disable-next-line @typescript-eslint/no-unused-vars
-             const { parent_id, ...restWithoutParent } = rest;
-             return restWithoutParent;
-           }
-           return rest;
-         });
-         const { error } = await supabase.from('evenements').insert(toInsertClean);
-         if (error) { console.error("Erreur insertion événement:", error); alert("Erreur lors de la création : " + error.message); return; }
+      for (const occ of toInsert) {
+        const { id, ...rest } = occ as Record<string, unknown>;
+        const payload = (rest.parent_id === undefined || rest.parent_id === null) ? (() => { const { parent_id, ...r } = rest; return r; })() : rest;
+        const res = await fetch('/api/evenements', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        }).then(r => r.json()).catch(() => ({ error: 'réseau' }));
+        if (res.error) { console.error("Erreur insertion événement:", res.error); alert("Erreur lors de la création : " + res.error); return; }
       }
 
       if (hasEquipeChanges) {
-        const results = await Promise.all(
-          newEquipeState.filter(m => membresToUpdate.includes(m.id)).map(m => supabase.from('equipe').update({ horaires: m.horaires }).eq('id', m.id))
+        await Promise.all(
+          newEquipeState.filter(m => membresToUpdate.includes(m.id)).map(m =>
+            fetch(`/api/equipe/${m.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ horaires: m.horaires }) })
+          )
         );
-        const equipeError = results.find(r => r.error);
-        if (equipeError?.error) console.error("Erreur mise à jour équipe:", equipeError.error);
         chargerEquipe();
       }
       setShowEventModal(false); setNouvelEvent(eventParDefaut); setRep({...rep, active: false}); chargerEvenements();
@@ -1094,9 +1087,10 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
       }
     } else {
       if (deleteSeries && parentId) {
-         await supabase.from('evenements').delete().eq('parent_id', parentId);
+        const idsToDelete = evenements.filter(e => e.parent_id === parentId).map(e => e.id!);
+        await Promise.all(idsToDelete.map(id => fetch(`/api/evenements/${id}`, { method: 'DELETE' })));
       } else {
-         await supabase.from('evenements').delete().eq('id', id);
+        await fetch(`/api/evenements/${id}`, { method: 'DELETE' });
       }
       chargerEvenements();
     }
@@ -1226,12 +1220,12 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
       setSwapSession({ active: false, step: 1, selectedDates: [], m1Id: '', m2Id: '' });
     } else {
       await Promise.all([
-        supabase.from('equipe').update({ horaires: eq1.horaires }).eq('id', eq1.id),
-        supabase.from('equipe').update({ horaires: eq2.horaires }).eq('id', eq2.id)
+        fetch(`/api/equipe/${eq1.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ horaires: eq1.horaires }) }),
+        fetch(`/api/equipe/${eq2.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ horaires: eq2.horaires }) }),
       ]);
-      
+
       const evsToUpdate = newEvenements.filter(ev => ev.id && JSON.stringify(ev.membres) !== JSON.stringify(evenements.find(e => e.id === ev.id)?.membres));
-      await Promise.all(evsToUpdate.map(ev => supabase.from('evenements').update({ membres: ev.membres }).eq('id', ev.id)));
+      await Promise.all(evsToUpdate.map(ev => fetch(`/api/evenements/${ev.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ membres: ev.membres }) })));
 
       chargerEquipe(); chargerEvenements();
       setSwapSession({ active: false, step: 1, selectedDates: [], m1Id: '', m2Id: '' });
@@ -3023,7 +3017,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
                         const targetWeekStart = week[0];
                         const targetKey = weekKey;
                         const selectedSlots = planningSlots.filter(s => selectedSlotIds.has(s.id));
-                        const { data } = await supabase.from('planning_semaine').select('slots,vacataires').eq('semaine_key', targetKey).single();
+                        const data = await fetch(`/api/planning-semaine?key=${targetKey}`).then(r => r.json()).catch(() => null);
                         const existingSlots: PlanningSlot[] = (data?.slots ?? []) as PlanningSlot[];
                         const updatedSlots = existingSlots.map(target => {
                           const targetDayOfWeek = (new Date(target.dateKey).getDay() + 6) % 7;
@@ -3034,7 +3028,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
                           if (!match) return target;
                           return { ...target, membreIds: [...new Set([...target.membreIds, ...match.membreIds])] };
                         });
-                        await supabase.from('planning_semaine').upsert({ semaine_key: targetKey, slots: updatedSlots, vacataires: data?.vacataires ?? [], updated_at: new Date().toISOString() });
+                        await fetch('/api/planning-semaine', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ semaine_key: targetKey, slots: updatedSlots, vacataires: data?.vacataires ?? [], updated_at: new Date().toISOString() }) });
                         setShowPasteCalendar(false);
                         setSelectedSlotIds(new Set());
                         setSelectionMode(false);

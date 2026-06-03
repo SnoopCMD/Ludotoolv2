@@ -1,6 +1,5 @@
 "use client";
 import { useState, useEffect, useMemo, useRef } from "react";
-import { supabase } from "../../lib/supabase";
 import Link from "next/link";
 import NavBar from "../../components/NavBar";
 
@@ -395,65 +394,54 @@ export default function InventairePage() {
 
   const fetchInventaire = async () => {
     setIsLoading(true);
-    const { data: jeuxData, error: jeuxError } = await supabase
-      .from('jeux')
-      .select('id, nom, ean, code_syracuse, statut, is_double, etape_nouveaute, date_entree, date_sortie, etape_plastifier, etape_contenu, etape_etiquette, etape_equiper, etape_encoder, etape_notice, notes, notes_rappel')
-      .order('id', { ascending: false });
+    const fields = 'id,nom,ean,code_syracuse,statut,is_double,etape_nouveaute,date_entree,date_sortie,etape_plastifier,etape_contenu,etape_etiquette,etape_equiper,etape_encoder,etape_notice,notes,notes_rappel';
+    const toArr = (d: any) => Array.isArray(d) ? d : [];
+    const [jeuxData, repsData, manqData, selData, catData] = await Promise.all([
+      fetch(`/api/jeux?fields=${fields}`).then(r => r.json()).then(toArr).catch(() => []),
+      fetch('/api/reparations').then(r => r.json()).then(toArr).catch(() => []),
+      fetch('/api/pieces-manquantes').then(r => r.json()).then(toArr).catch(() => []),
+      fetch('/api/selections').then(r => r.json()).then(toArr).catch(() => []),
+      fetch('/api/catalogue?fields=ean,couleur,mecanique,nb_de_joueurs,etoiles,temps_de_jeu,coop_versus,image_url').then(r => r.json()).then(toArr).catch(() => []),
+    ]);
 
-    const { count: countRep } = await supabase.from('reparations').select('*', { count: 'exact', head: true }).eq('statut', 'À faire');
-    const { count: countManq } = await supabase.from('pieces_manquantes').select('*', { count: 'exact', head: true }).eq('statut', 'Manquant');
-    setNbReparations(countRep || 0);
-    setNbManquants(countManq || 0);
+    setNbReparations((repsData as any[]).filter(r => r.statut === 'À faire').length);
+    setNbManquants((manqData as any[]).filter(m => m.statut === 'Manquant').length);
 
-    const { data: selData } = await supabase.from('selections').select('*').order('is_permanent', { ascending: false });
+    const jeuxBruts = (jeuxData as any[]).map(j => ({
+      ...j,
+      notes: typeof j.notes === 'string' ? (j.notes ? JSON.parse(j.notes) : null) : (j.notes ?? null),
+      notes_rappel: !!j.notes_rappel,
+      is_double: !!j.is_double,
+      etape_nouveaute: !!j.etape_nouveaute,
+      etape_plastifier: !!j.etape_plastifier,
+      etape_contenu: !!j.etape_contenu,
+      etape_etiquette: !!j.etape_etiquette,
+      etape_equiper: !!j.etape_equiper,
+      etape_encoder: !!j.etape_encoder,
+      etape_notice: !!j.etape_notice,
+    })) as JeuType[];
 
-    if (jeuxError) {
-      console.error("Erreur chargement:", jeuxError);
-      setIsLoading(false);
-      return;
-    }
+    const catMap = new Map();
+    (catData as any[]).forEach(c => catMap.set(c.ean, c));
+    const imgMap: Record<string, string> = {};
+    (catData as any[]).forEach(c => { if (c.image_url) imgMap[c.ean] = c.image_url; });
+    setCatalogueImages(imgMap);
 
-    const jeuxBruts = jeuxData as JeuType[];
-    const { data: catData } = await supabase.from('catalogue').select('ean, couleur, mecanique, nb_de_joueurs, etoiles, temps_de_jeu, coop_versus, image_url');
-
-    let jeuxFrais = jeuxBruts;
-
-    if (catData) {
-      const catMap = new Map();
-      catData.forEach(c => catMap.set(c.ean, c));
-
-      // Map EAN → image_url accessible directement dans le rendu
-      const imgMap: Record<string, string> = {};
-      catData.forEach(c => { if (c.image_url) imgMap[c.ean] = c.image_url; });
-      setCatalogueImages(imgMap);
-
-      jeuxFrais = jeuxBruts.map(j => {
-        const catInfo = catMap.get(j.ean);
-        return {
-          ...j,
-          couleur: catInfo?.couleur || "",
-          mecanique: catInfo?.mecanique || "",
-          nb_de_joueurs: catInfo?.nb_de_joueurs || "",
-          etoiles: catInfo?.etoiles || "",
-          temps_de_jeu: catInfo?.temps_de_jeu || "",
-          coop_versus: catInfo?.coop_versus || "",
-          image_url: catInfo?.image_url || "",
-        };
-      });
-    } 
+    const jeuxFrais = jeuxBruts.map(j => {
+      const catInfo = catMap.get(j.ean);
+      return { ...j, couleur: catInfo?.couleur || "", mecanique: catInfo?.mecanique || "", nb_de_joueurs: catInfo?.nb_de_joueurs || "", etoiles: catInfo?.etoiles || "", temps_de_jeu: catInfo?.temps_de_jeu || "", coop_versus: catInfo?.coop_versus || "", image_url: catInfo?.image_url || "" };
+    });
 
     setJeux(jeuxFrais);
 
-    if (selData) {
-      const selectionsAjour = (selData as SelectionThematique[]).map(sel => ({
-        ...sel,
-        jeux: sel.jeux.map(jSel => {
-          const fresh = jeuxFrais.find(jFresh => String(jFresh.id) === String(jSel.id));
-          return fresh ? { ...jSel, ...fresh } : jSel;
-        })
-      }));
-      setSelections(selectionsAjour);
-    }
+    const selectionsAjour = (selData as SelectionThematique[]).map(sel => ({
+      ...sel,
+      jeux: sel.jeux.map(jSel => {
+        const fresh = jeuxFrais.find(jFresh => String(jFresh.id) === String(jSel.id));
+        return fresh ? { ...jSel, ...fresh } : jSel;
+      })
+    }));
+    setSelections(selectionsAjour);
 
     setIsLoading(false);
   };
@@ -490,14 +478,19 @@ export default function InventairePage() {
     const item = vignettesQueue[vignettesIdx];
     if (!item || !vignettesManualUrl.trim()) return;
     const url = vignettesManualUrl.trim();
-    // Tenter d'abord un update (la ligne existe probablement déjà)
-    const { error: errUpdate } = await supabase.from('catalogue').update({ image_url: url }).eq('ean', item.ean);
-    if (errUpdate) {
-      // Si update échoue, tenter un insert
-      const { error: errInsert } = await supabase.from('catalogue').insert({ ean: item.ean, image_url: url });
-      if (errInsert) {
-        console.error('Erreur vignette:', errUpdate, errInsert);
-        alert(`Erreur lors de l'enregistrement : ${errInsert.message}`);
+    const resUpdate = await fetch(`/api/catalogue/${encodeURIComponent(item.ean)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image_url: url }),
+    }).then(r => r.json()).catch(() => ({ error: 'réseau' }));
+    if (resUpdate.error) {
+      const resInsert = await fetch('/api/catalogue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ean: item.ean, image_url: url }),
+      }).then(r => r.json()).catch(() => ({ error: 'réseau' }));
+      if (resInsert.error) {
+        alert(`Erreur lors de l'enregistrement : ${resInsert.error}`);
         return;
       }
     }
@@ -560,7 +553,7 @@ export default function InventairePage() {
   const supprimerDoublonsSelectionnes = async () => {
     if (doublonsSelectionnes.length === 0) return;
     setIsDeletingDoublons(true);
-    await supabase.from('jeux').delete().in('id', doublonsSelectionnes);
+    await Promise.all(doublonsSelectionnes.map(id => fetch(`/api/jeux/${id}`, { method: 'DELETE' })));
     setIsDeletingDoublons(false);
     setIsDoublonsModalOpen(false);
     setDoublonGroupes([]);
@@ -575,16 +568,16 @@ export default function InventairePage() {
 
     const isTempEan = (e: string) => /^(TEMP|SYR)-/i.test(e);
 
-    const { data: jeuxData } = await supabase.from('jeux').select('*');
-    const { data: catData } = await supabase.from('catalogue').select('*');
-    if (!jeuxData || !catData) { setIsTempLoading(false); return; }
-
+    const [jeuxData, catData] = await Promise.all([
+      fetch('/api/jeux').then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []),
+      fetch('/api/catalogue').then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []),
+    ]);
     const allCat = catData as Record<string, string | null>[];
     const realCat = allCat.filter(c => !isTempEan(c.ean ?? ""));
-    const tempEans = [...new Set(jeuxData.filter(j => isTempEan(j.ean)).map(j => j.ean))];
+    const tempEans = [...new Set((jeuxData as any[]).filter(j => isTempEan(j.ean)).map(j => j.ean))];
 
     const items: TempEanItem[] = tempEans.map(tempEan => {
-      const copies = jeuxData.filter(j => j.ean === tempEan);
+      const copies = (jeuxData as any[]).filter(j => j.ean === tempEan);
       const tempCat = allCat.find(c => c.ean === tempEan) ?? null;
       const nom: string = (tempCat?.nom ?? copies[0]?.nom ?? tempEan) as string;
       const normNom = normalizeStr(nom);
@@ -614,23 +607,30 @@ export default function InventairePage() {
     const item = tempEanItems.find(i => i.tempEan === tempEan);
     if (!item) return;
 
-    // 1. Mettre à jour les copies dans jeux
-    await supabase.from('jeux').update({ ean: realEan }).eq('ean', tempEan);
+    const jeuxAvecTempEan = jeux.filter(j => j.ean === tempEan);
+    await Promise.all(jeuxAvecTempEan.map(j => fetch(`/api/jeux/${j.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ean: realEan }),
+    })));
 
-    // 2. Récupérer la notice réelle existante (si elle existe)
-    const { data: realCatRow } = await supabase.from('catalogue').select('*').eq('ean', realEan).maybeSingle();
-
-    // 3. Merger ou créer la notice
+    const realCatRow = await fetch(`/api/catalogue/${encodeURIComponent(realEan)}`).then(r => r.json()).catch(() => null);
     const merged = mergeCatFields(realCatRow as Record<string, string | null> | null, item.tempCat);
-    const { data: existingReal } = await supabase.from('catalogue').select('ean').eq('ean', realEan).maybeSingle();
-    if (existingReal) {
-      await supabase.from('catalogue').update({ ...merged, nom: item.nom }).eq('ean', realEan);
+    if (realCatRow) {
+      await fetch(`/api/catalogue/${encodeURIComponent(realEan)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...merged, nom: item.nom }),
+      });
     } else {
-      await supabase.from('catalogue').insert([{ ...merged, ean: realEan, nom: item.nom }]);
+      await fetch('/api/catalogue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...merged, ean: realEan, nom: item.nom }),
+      });
     }
 
-    // 4. Supprimer l'entrée catalogue temp
-    await supabase.from('catalogue').delete().eq('ean', tempEan);
+    await fetch(`/api/catalogue/${encodeURIComponent(tempEan)}`, { method: 'DELETE' });
 
     setTempEanItems(prev => prev.map(i => i.tempEan === tempEan ? { ...i, status: "done", processing: false } : i));
     fetchInventaire();
@@ -639,9 +639,13 @@ export default function InventairePage() {
   const validerCorrectionsMeca = async () => {
     setIsFixingMeca(true);
     const updates = Object.entries(mecaUpdates).filter(([ean, meca]) => meca !== "");
-    
+
     for (const [ean, meca] of updates) {
-      await supabase.from('catalogue').update({ mecanique: meca }).eq('ean', ean);
+      await fetch(`/api/catalogue/${encodeURIComponent(ean)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mecanique: meca }),
+      });
     }
     
     setIsFixingMeca(false);
@@ -653,24 +657,24 @@ export default function InventairePage() {
   const handleColorFixScan = async (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && colorFixEan.trim() !== "") {
       const scannedEan = colorFixEan.trim();
-      setColorFixEan(""); 
+      setColorFixEan("");
 
       if (!colorFixSelected) {
         setColorFixLogs(prev => [{msg: `❌ EAN scanné (${scannedEan}) mais aucune couleur n'est sélectionnée.`, isError: true}, ...prev]);
         return;
       }
 
-      const { data: jeuData } = await supabase.from('jeux').select('nom').eq('ean', scannedEan).limit(1).maybeSingle();
-      const nomJeu = jeuData ? jeuData.nom : "Jeu Inconnu";
+      const jeuxData = await fetch(`/api/jeux?fields=nom&ean=${encodeURIComponent(scannedEan)}&limit=1`).then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []);
+      const nomJeu = (jeuxData as any[])[0]?.nom ?? "Jeu Inconnu";
 
-      const { error } = await supabase.from('catalogue').upsert({
-        ean: scannedEan,
-        nom: nomJeu,
-        couleur: colorFixSelected
-      }, { onConflict: 'ean' });
+      const res = await fetch('/api/catalogue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ean: scannedEan, nom: nomJeu, couleur: colorFixSelected }),
+      }).then(r => r.json()).catch(() => ({ error: 'réseau' }));
 
-      if (error) {
-        setColorFixLogs(prev => [{msg: `❌ Erreur pour ${scannedEan}: ${error.message}`, isError: true}, ...prev]);
+      if (res.error) {
+        setColorFixLogs(prev => [{msg: `❌ Erreur pour ${scannedEan}: ${res.error}`, isError: true}, ...prev]);
       } else {
         setColorFixLogs(prev => [{msg: `✅ ${nomJeu} (${scannedEan}) assigné à la couleur ${colorFixSelected}.`, isError: false}, ...prev]);
         setJeux(prev => prev.map(j => j.ean === scannedEan ? { ...j, couleur: colorFixSelected } : j));
@@ -789,8 +793,8 @@ export default function InventairePage() {
     }
 
     const newImportData: ImportItem[] = [];
-    const { data: fullCatData } = await supabase.from('catalogue').select('*');
-    const existingCatalogue = fullCatData || [];
+    const fullCatData = await fetch('/api/catalogue').then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []);
+    const existingCatalogue = (fullCatData as any[]) || [];
     const existingJeuxNorm = existingCatalogue.map(c => ({ ean: c.ean, nom: c.nom, norm: normalizeStr(c.nom) }));
 
     const compareWithExisting = (
@@ -1000,10 +1004,15 @@ export default function InventairePage() {
       }
 
       if (item.isUpdateOnly) {
-        if (item.couleur) await supabase.from('catalogue').update({ couleur: item.couleur }).eq('ean', targetEan);
+        if (item.couleur) {
+          await fetch(`/api/catalogue/${encodeURIComponent(targetEan)}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ couleur: item.couleur }),
+          });
+        }
       } else {
         const catPayload: any = { ean: targetEan, nom: item.titre };
-        
         const conflicts = item.diffs?.map(d => d.field) || [];
         const shouldKeep = (field: string) => item.userChoice === 'overwrite' || !conflicts.includes(field);
 
@@ -1019,33 +1028,37 @@ export default function InventairePage() {
           if (item.temps_de_jeu && shouldKeep('temps_de_jeu')) catPayload.temps_de_jeu = item.temps_de_jeu;
           if (item.etoiles && shouldKeep('etoiles')) catPayload.etoiles = item.etoiles;
           if (item.coop_versus && shouldKeep('coop_versus')) catPayload.coop_versus = item.coop_versus;
-          
-          const { error: catErr } = await supabase.from('catalogue').upsert(catPayload, { onConflict: 'ean' });
-          if (catErr) { console.error("Erreur Catalogue:", catErr); errorCount++; continue; }
+
+          const catRes = await fetch('/api/catalogue', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(catPayload),
+          }).then(r => r.json()).catch(() => ({ error: 'réseau' }));
+          if (catRes.error) { console.error("Erreur Catalogue:", catRes.error); errorCount++; continue; }
         }
       }
 
       if (!item.isUpdateOnly) {
+        const etapesOk = { etape_nouveaute: 0, etape_plastifier: 1, etape_contenu: 1, etape_etiquette: 1, etape_equiper: 1, etape_encoder: 1, etape_notice: 1 };
         if (item.codes.length > 0) {
           for (let cIdx = 0; cIdx < item.codes.length; cIdx++) {
             const code = item.codes[cIdx];
-            const { data: ex } = await supabase.from('jeux').select('id').eq('code_syracuse', code).maybeSingle();
-            if (!ex) {
-              await supabase.from('jeux').insert({
-                ean: targetEan, nom: item.titre, code_syracuse: code, statut: 'En stock', 
-                is_double: cIdx > 0 || item.userChoice === 'link',
-                etape_nouveaute: false, etape_plastifier: true, etape_contenu: true,
-                etape_etiquette: true, etape_equiper: true, etape_encoder: true, etape_notice: true
+            const exData = await fetch(`/api/jeux?fields=id&code_syracuse=${encodeURIComponent(code)}&limit=1`).then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []);
+            if (!(exData as any[]).length) {
+              await fetch('/api/jeux', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ean: targetEan, nom: item.titre, code_syracuse: code, statut: 'En stock', is_double: cIdx > 0 || item.userChoice === 'link' ? 1 : 0, ...etapesOk }),
               });
             }
           }
         } else {
-          const { data: ex } = await supabase.from('jeux').select('id').eq('ean', targetEan).limit(1);
-          if (!ex || ex.length === 0) {
-            await supabase.from('jeux').insert({
-              ean: targetEan, nom: item.titre, statut: 'En stock', is_double: false,
-              etape_nouveaute: false, etape_plastifier: true, etape_contenu: true,
-              etape_etiquette: true, etape_equiper: true, etape_encoder: true, etape_notice: true
+          const exData = await fetch(`/api/jeux?fields=id&ean=${encodeURIComponent(targetEan)}&limit=1`).then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []);
+          if (!(exData as any[]).length) {
+            await fetch('/api/jeux', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ ean: targetEan, nom: item.titre, statut: 'En stock', is_double: 0, ...etapesOk }),
             });
           }
         }
@@ -1065,13 +1078,28 @@ export default function InventairePage() {
   const ouvrirModificationSelection = (sel: SelectionThematique) => { setEditSelection({ ...sel }); setIsSelectionModalOpen(true); };
   const sauvegarderSelection = async () => {
     if (!editSelection || !editSelection.titre) return alert("Veuillez donner un titre à la sélection.");
-    const { error } = await supabase.from('selections').upsert({ id: editSelection.id, titre: editSelection.titre, is_permanent: editSelection.is_permanent, date_fin: editSelection.is_permanent ? null : editSelection.date_fin, jeux: editSelection.jeux });
-    if (error) alert("Erreur de sauvegarde : " + error.message);
+    const payload = { id: editSelection.id, titre: editSelection.titre, is_permanent: editSelection.is_permanent ? 1 : 0, date_fin: editSelection.is_permanent ? null : editSelection.date_fin, jeux: editSelection.jeux };
+    const isExisting = selections.some(s => s.id === editSelection.id);
+    let res: any;
+    if (isExisting) {
+      res = await fetch(`/api/selections/${editSelection.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ titre: payload.titre, is_permanent: payload.is_permanent, date_fin: payload.date_fin, jeux: payload.jeux }),
+      }).then(r => r.json()).catch(() => ({ error: 'réseau' }));
+    } else {
+      res = await fetch('/api/selections', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }).then(r => r.json()).catch(() => ({ error: 'réseau' }));
+    }
+    if (res.error) alert("Erreur de sauvegarde : " + res.error);
     else { setIsSelectionModalOpen(false); fetchInventaire(); }
   };
   const supprimerSelection = async (id: string) => {
     if (!confirm("Voulez-vous vraiment supprimer cette sélection ?")) return;
-    await supabase.from('selections').delete().eq('id', id);
+    await fetch(`/api/selections/${id}`, { method: 'DELETE' });
     if(isSelectionModalOpen) setIsSelectionModalOpen(false);
     fetchInventaire();
   };
@@ -1108,21 +1136,24 @@ export default function InventairePage() {
     setFicheJeu({ ...jeu, copies, activeCopyIndex: activeIndex >= 0 ? activeIndex : 0 });
 
     try {
-      const [{ data: catData }, { data: manqData }, { data: repData }, { data: alertesData }] = await Promise.all([
-        supabase.from('catalogue').select('*').eq('ean', jeu.ean).maybeSingle(),
-        supabase.from('pieces_manquantes').select('*').eq('ean', jeu.ean).order('id', { ascending: false }),
-        supabase.from('reparations').select('*').eq('nom_jeu', jeu.nom).order('id', { ascending: false }),
-        supabase.from('alertes').select('*').eq('jeu_nom', jeu.nom).eq('statut', 'active').order('created_at', { ascending: false }),
+      const [catData, manqAll, repAll, alertesAll] = await Promise.all([
+        fetch(`/api/catalogue/${encodeURIComponent(jeu.ean)}`).then(r => r.json()).catch(() => null),
+        fetch('/api/pieces-manquantes').then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []),
+        fetch('/api/reparations').then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []),
+        fetch('/api/alertes?statut=active').then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []),
       ]);
+      const manqData = (manqAll as any[]).filter(m => m.ean === jeu.ean);
+      const repData = (repAll as any[]).filter(r => r.nom_jeu === jeu.nom || r.nom === jeu.nom);
+      const alertesData = (alertesAll as any[]).filter(a => a.jeu_nom === jeu.nom);
 
-      setFicheAlertes((alertesData as Alerte[]) || []);
+      setFicheAlertes((alertesData as Alerte[]));
       setFicheJeu(prev => {
         if (!prev) return null;
         return {
           ...prev,
           contenu_boite: catData?.contenu || "",
-          historique_manquants: manqData || [],
-          historique_reparations: repData || [],
+          historique_manquants: manqData,
+          historique_reparations: repData,
           image_url: catData?.image_url || "",
           auteurs: catData?.auteurs || "",
           editeur: catData?.editeur || "",
@@ -1172,18 +1203,19 @@ export default function InventairePage() {
       etape_notice: false
     };
 
-    const { data, error } = await supabase.from('jeux').insert([newJeu]).select().single();
-    if (error) {
-      alert("Erreur: " + error.message);
-    } else if (data) {
+    const b = (v: boolean) => v ? 1 : 0;
+    const res = await fetch('/api/jeux', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...newJeu, is_double: b(newJeu.is_double), etape_nouveaute: b(newJeu.etape_nouveaute), etape_plastifier: b(newJeu.etape_plastifier), etape_contenu: b(newJeu.etape_contenu), etape_etiquette: b(newJeu.etape_etiquette), etape_equiper: b(newJeu.etape_equiper), etape_encoder: b(newJeu.etape_encoder), etape_notice: b(newJeu.etape_notice) }),
+    }).then(r => r.json()).catch(() => ({ error: 'réseau' }));
+    if (res.error) {
+      alert("Erreur: " + res.error);
+    } else {
       fetchInventaire();
-      const updatedCopies = [...ficheJeu.copies, data];
-      setFicheJeu({
-        ...ficheJeu,
-        copies: updatedCopies,
-        activeCopyIndex: updatedCopies.length - 1,
-        ...data 
-      });
+      const createdJeu = { ...newJeu, id: res.id };
+      const updatedCopies = [...ficheJeu.copies, createdJeu];
+      setFicheJeu({ ...ficheJeu, copies: updatedCopies, activeCopyIndex: updatedCopies.length - 1, ...createdJeu });
       alert("Nouvel exemplaire créé !");
     }
   };
@@ -1192,9 +1224,9 @@ export default function InventairePage() {
     if (!ficheJeu) return;
     if (!confirm("Voulez-vous vraiment supprimer cet exemplaire de l'inventaire ? Cette action est irréversible.")) return;
 
-    const { error } = await supabase.from('jeux').delete().eq('id', idJeu);
-    if (error) {
-      alert("Erreur lors de la suppression : " + error.message);
+    const res = await fetch(`/api/jeux/${idJeu}`, { method: 'DELETE' }).then(r => r.json()).catch(() => ({ error: 'réseau' }));
+    if (res.error) {
+      alert("Erreur lors de la suppression : " + res.error);
       return;
     }
 
@@ -1220,7 +1252,11 @@ export default function InventairePage() {
     const current: JeuNote[] = (activeCopy?.notes as JeuNote[]) || [];
     const newNotes = current.filter((_, i) => i !== index);
     const newRappel = newNotes.some(n => n.rappel);
-    await supabase.from('jeux').update({ notes: newNotes, notes_rappel: newRappel }).eq('id', activeCopy.id);
+    await fetch(`/api/jeux/${activeCopy.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ notes: JSON.stringify(newNotes), notes_rappel: newRappel ? 1 : 0 }),
+    });
     const newCopies = ficheJeu.copies.map((c, i) =>
       i === ficheJeu.activeCopyIndex ? { ...c, notes: newNotes, notes_rappel: newRappel } : c
     );
@@ -1233,7 +1269,11 @@ export default function InventairePage() {
     const current: JeuNote[] = (activeCopy?.notes as JeuNote[]) || [];
     const newNotes = [...current, { texte: texte.trim(), rappel }];
     const newRappel = newNotes.some(n => n.rappel);
-    await supabase.from('jeux').update({ notes: newNotes, notes_rappel: newRappel }).eq('id', activeCopy.id);
+    await fetch(`/api/jeux/${activeCopy.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ notes: JSON.stringify(newNotes), notes_rappel: newRappel ? 1 : 0 }),
+    });
     const newCopies = ficheJeu.copies.map((c, i) =>
       i === ficheJeu.activeCopyIndex ? { ...c, notes: newNotes, notes_rappel: newRappel } : c
     );
@@ -1243,14 +1283,11 @@ export default function InventairePage() {
   const sauvegarderFicheJeu = async () => {
     if (!editedFiche) return;
 
-    const { error: errJeux } = await supabase.from('jeux').update({
-      nom: editedFiche.nom,
-      ean: editedFiche.ean,
-      code_syracuse: editedFiche.code_syracuse || null,
-      statut: editedFiche.statut,
-      is_double: editedFiche.is_double,
-      etape_nouveaute: editedFiche.etape_nouveaute,
-    }).eq('id', editedFiche.id);
+    const errJeux = await fetch(`/api/jeux/${editedFiche.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nom: editedFiche.nom, ean: editedFiche.ean, code_syracuse: editedFiche.code_syracuse || null, statut: editedFiche.statut, is_double: editedFiche.is_double ? 1 : 0, etape_nouveaute: editedFiche.etape_nouveaute ? 1 : 0 }),
+    }).then(r => r.json()).then(r => r.error ? r.error : null).catch(e => e.message);
 
     const catalogueData = {
       ean: editedFiche.ean,
@@ -1268,19 +1305,27 @@ export default function InventairePage() {
       pdf_url: editedFiche.pdf_url || null,
     };
 
-    const { data: existingCat } = await supabase.from('catalogue').select('ean').eq('ean', editedFiche.ean).maybeSingle();
-    
+    const existingCat = await fetch(`/api/catalogue/${encodeURIComponent(editedFiche.ean)}`).then(r => r.json()).catch(() => null);
+
     let errCat: any = null;
     if (existingCat) {
-      const { error } = await supabase.from('catalogue').update(catalogueData).eq('ean', editedFiche.ean);
-      errCat = error;
+      const res = await fetch(`/api/catalogue/${encodeURIComponent(editedFiche.ean)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(catalogueData),
+      }).then(r => r.json()).catch(e => ({ error: e.message }));
+      errCat = res.error ?? null;
     } else {
-      const { error } = await supabase.from('catalogue').insert([catalogueData]);
-      errCat = error;
+      const res = await fetch('/api/catalogue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(catalogueData),
+      }).then(r => r.json()).catch(e => ({ error: e.message }));
+      errCat = res.error ?? null;
     }
 
-    const hasJeuxError = errJeux && Object.keys(errJeux).length > 0;
-    const hasCatError = errCat && Object.keys(errCat).length > 0;
+    const hasJeuxError = !!errJeux;
+    const hasCatError = !!errCat;
 
     if (hasJeuxError || hasCatError) {
       alert("Erreur lors de la sauvegarde. Consultez la console.");

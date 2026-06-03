@@ -1,6 +1,5 @@
 "use client";
 import { useState, useEffect } from "react";
-import { supabase } from "../../lib/supabase";
 import Link from "next/link";
 
 type Reparation = {
@@ -26,13 +25,13 @@ export default function ReparationsPage() {
   useEffect(() => { chargerReparations(); }, []);
 
   const chargerReparations = async () => {
-    const { data } = await supabase.from("reparations").select("*").order("id", { ascending: false });
-    if (data) setReparations(data);
+    const data = await fetch('/api/reparations').then(r => r.json()).catch(() => []);
+    if (Array.isArray(data)) setReparations(data);
   };
 
   const appliquerFiltresTypes = async (ean: string | undefined) => {
     if (!ean) { setTypesDispos(["Boîte", "Plateau", "Cartes", "Autre"]); setTypeRep("Boîte"); return; }
-    const { data: catData } = await supabase.from("catalogue").select("contenu").eq("ean", ean).limit(1).maybeSingle();
+    const catData = await fetch(`/api/catalogue/${encodeURIComponent(ean)}`).then(r => r.json()).catch(() => null);
     const contenuTexte = catData?.contenu ? catData.contenu.toLowerCase() : "";
     const nouveauxTypes = ["Boîte"];
     if (contenuTexte.includes("plateau")) nouveauxTypes.push("Plateau");
@@ -46,7 +45,8 @@ export default function ReparationsPage() {
     if (!code || code.trim() === "") return;
     let codeFormate = code.trim();
     if (/^\d+$/.test(codeFormate) && codeFormate.length < 8) { codeFormate = codeFormate.padStart(8, "0"); setEanJeu(codeFormate); }
-    const { data: jeuData } = await supabase.from("jeux").select("nom, ean").eq("code_syracuse", codeFormate).limit(1).maybeSingle();
+    const data = await fetch(`/api/jeux?code_syracuse=${encodeURIComponent(codeFormate)}&fields=nom,ean&limit=1`).then(r => r.json()).catch(() => []);
+    const jeuData = Array.isArray(data) ? data[0] : null;
     if (jeuData?.nom) { setNomJeu(jeuData.nom); appliquerFiltresTypes(jeuData.ean); }
     else { setTypesDispos(["Boîte", "Plateau", "Cartes", "Autre"]); }
   };
@@ -54,8 +54,8 @@ export default function ReparationsPage() {
   const handleRechercheNom = async (text: string) => {
     setNomJeu(text);
     if (text.length > 2) {
-      const { data } = await supabase.from("jeux").select("nom, code_syracuse, ean").ilike("nom", `%${text}%`).limit(5);
-      if (data) setSuggestionsNom(data.filter((v, i, a) => a.findIndex(t => t.nom === v.nom) === i));
+      const data = await fetch(`/api/jeux?nom_like=${encodeURIComponent(text)}&fields=nom,code_syracuse,ean&limit=5`).then(r => r.json()).catch(() => []);
+      if (Array.isArray(data)) setSuggestionsNom(data.filter((v: any, i: number, a: any[]) => a.findIndex((t: any) => t.nom === v.nom) === i));
     } else setSuggestionsNom([]);
   };
 
@@ -69,7 +69,7 @@ export default function ReparationsPage() {
   const ajouterReparation = async () => {
     if (!nomJeu && !eanJeu) return;
     const typeFinal = typeRep === "Autre" && customType ? customType : typeRep;
-    await supabase.from("reparations").insert([{ ean: eanJeu, nom: nomJeu, type_reparation: typeFinal, description: desc }]);
+    await fetch('/api/reparations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ean: eanJeu, nom: nomJeu, type_reparation: typeFinal, description: desc }) });
     setEanJeu(""); setNomJeu(""); setDesc(""); setCustomType(""); setTypeRep("Boîte");
     setTypesDispos(["Boîte", "Plateau", "Cartes", "Autre"]);
     setSuggestionsNom([]);
@@ -78,12 +78,12 @@ export default function ReparationsPage() {
 
   const changerStatut = async (id: number, statutActuel: string) => {
     const nouveauStatut = statutActuel === "À faire" ? "Terminé" : "À faire";
-    await supabase.from("reparations").update({ statut: nouveauStatut }).eq("id", id);
+    await fetch(`/api/reparations/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ statut: nouveauStatut }) });
     chargerReparations();
   };
 
   const supprimer = async (id: number) => {
-    await supabase.from("reparations").delete().eq("id", id);
+    await fetch(`/api/reparations/${id}`, { method: 'DELETE' });
     chargerReparations();
   };
 

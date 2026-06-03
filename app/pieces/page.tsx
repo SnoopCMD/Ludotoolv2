@@ -1,6 +1,5 @@
 "use client";
 import { useState, useEffect, useMemo } from "react";
-import { supabase } from "../../lib/supabase";
 import Link from "next/link";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -130,16 +129,21 @@ export default function PiecesPage() {
   useEffect(() => { chargerDonnees(); }, []);
 
   const chargerDonnees = async () => {
-    const { data: d1 } = await supabase.from("pieces_manquantes").select("*").in("statut", ["Manquant", "Commandé"]).order("id", { ascending: false });
-    const { data: d2 } = await supabase.from("pieces_trouvees").select("*").eq("statut", "En attente").order("id", { ascending: false });
-    if (d1) setManquantes(d1);
-    if (d2) setTrouvees(d2);
-    if (d1) resoudreTypesEditeurs(d1);
+    const toArr = (d: any) => Array.isArray(d) ? d : [];
+    const [d1, d2] = await Promise.all([
+      fetch('/api/pieces-manquantes').then(r => r.json()).then(toArr).catch(() => []),
+      fetch('/api/pieces-trouvees').then(r => r.json()).then(toArr).catch(() => []),
+    ]);
+    const manq = (d1 as any[]).filter(p => ['Manquant', 'Commandé'].includes(p.statut));
+    const trouvs = (d2 as any[]).filter(p => p.statut === 'En attente');
+    setManquantes(manq);
+    setTrouvees(trouvs);
+    resoudreTypesEditeurs(manq);
   };
 
   const resoudreTypesEditeurs = async (pieces: PieceManquante[]) => {
-    const { data: editeursData } = await supabase.from("editeurs").select("*");
-    const listeEditeurs = (editeursData ?? []) as Editeur[];
+    const editeursData = await fetch('/api/editeurs').then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []);
+    const listeEditeurs = editeursData as Editeur[];
     const types: Record<number, Editeur["type_commande"] | null> = {};
     await Promise.all(pieces.filter(p => p.statut === "Manquant").map(async p => {
       const nomCat = await trouverEditeurPourPiece(p);
@@ -150,25 +154,25 @@ export default function PiecesPage() {
   };
 
   const chargerEditeurs = async () => {
-    const { data } = await supabase.from("editeurs").select("*").order("nom");
-    if (data) setEditeurs(data as Editeur[]);
+    const data = await fetch('/api/editeurs').then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []);
+    setEditeurs(data as Editeur[]);
   };
 
   // ─── Recherche éditeur pour une pièce ────────────────────────────────────
 
   const trouverEditeurPourPiece = async (piece: PieceManquante): Promise<string | null> => {
-    // 1. Via code_syracuse stocké dans piece.ean
     if (piece.ean) {
-      const { data: jeu } = await supabase.from("jeux").select("ean").eq("code_syracuse", piece.ean).limit(1).maybeSingle();
-      if (jeu?.ean) {
-        const { data: cat } = await supabase.from("catalogue").select("editeur").eq("ean", jeu.ean).maybeSingle();
+      const jeux = await fetch(`/api/jeux?fields=ean&code_syracuse=${encodeURIComponent(piece.ean)}&limit=1`).then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []);
+      const jeuEan = (jeux as any[])[0]?.ean;
+      if (jeuEan) {
+        const cat = await fetch(`/api/catalogue/${encodeURIComponent(jeuEan)}?fields=editeur`).then(r => r.json()).catch(() => null);
         if (cat?.editeur) return cat.editeur;
       }
     }
-    // 2. Fallback via nom du jeu
-    const { data: jeuParNom } = await supabase.from("jeux").select("ean").ilike("nom", piece.nom).limit(1).maybeSingle();
-    if (jeuParNom?.ean) {
-      const { data: cat } = await supabase.from("catalogue").select("editeur").eq("ean", jeuParNom.ean).maybeSingle();
+    const jeux2 = await fetch(`/api/jeux?fields=ean&nom_like=${encodeURIComponent(piece.nom)}&limit=1`).then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []);
+    const jeuEan2 = (jeux2 as any[])[0]?.ean;
+    if (jeuEan2) {
+      const cat = await fetch(`/api/catalogue/${encodeURIComponent(jeuEan2)}?fields=editeur`).then(r => r.json()).catch(() => null);
       if (cat?.editeur) return cat.editeur;
     }
     return null;
@@ -187,8 +191,8 @@ export default function PiecesPage() {
     setEmailGroupeIdx(null);
 
     const piecesMandantes = manquantes.filter(m => m.statut === "Manquant");
-    const { data: editeursData } = await supabase.from("editeurs").select("*").order("nom");
-    const listeEditeurs = (editeursData ?? []) as Editeur[];
+    const editeursData = await fetch('/api/editeurs').then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []);
+    const listeEditeurs = editeursData as Editeur[];
 
     // Résoudre l'éditeur pour chaque pièce
     const resolved: { piece: PieceManquante; nomEditeur: string; editeur: Editeur | null }[] = [];
@@ -247,7 +251,11 @@ export default function PiecesPage() {
 
   const marquerGroupeCommande = async (groupe: CommandeGroupe) => {
     for (const piece of groupe.pieces) {
-      await supabase.from("pieces_manquantes").update({ statut: "Commandé" }).eq("id", piece.id);
+      await fetch(`/api/pieces-manquantes/${piece.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ statut: "Commandé" }),
+      });
     }
     setCommandeGroupes(prev => prev.map(g =>
       g.nomEditeur === groupe.nomEditeur
@@ -260,8 +268,8 @@ export default function PiecesPage() {
   // ─── Ouvrir config éditeur depuis modal Commander ─────────────────────────
 
   const ouvrirConfigEditeur = async (groupe: CommandeGroupe) => {
-    const { data } = await supabase.from("editeurs").select("*").order("nom");
-    const liste = (data ?? []) as Editeur[];
+    const data = await fetch('/api/editeurs').then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []);
+    const liste = data as Editeur[];
     setEditeurs(liste);
     if (groupe.editeur) {
       setEditeurEdit({ ...groupe.editeur, _nomOriginal: groupe.editeur.nom });
@@ -278,27 +286,36 @@ export default function PiecesPage() {
     setIsSavingEditeur(true);
     const nomOriginal = editeurEdit._nomOriginal;
     const nomNouveau  = editeurEdit.nom.trim();
+    const payload = {
+      nom: nomNouveau, type_commande: editeurEdit.type_commande ?? "inconnu",
+      url_formulaire: editeurEdit.url_formulaire || null,
+      email_contact: editeurEdit.email_contact || null,
+      sujet_email: editeurEdit.sujet_email || null,
+      corps_email: editeurEdit.corps_email || null,
+      notes: editeurEdit.notes || null,
+    };
     if (editeurEdit.id) {
-      await supabase.from("editeurs").update({
-        nom: nomNouveau, type_commande: editeurEdit.type_commande,
-        url_formulaire: editeurEdit.url_formulaire || null,
-        email_contact: editeurEdit.email_contact || null,
-        sujet_email: editeurEdit.sujet_email || null,
-        corps_email: editeurEdit.corps_email || null,
-        notes: editeurEdit.notes || null,
-      }).eq("id", editeurEdit.id);
-      // Propager le renommage dans le catalogue
+      await fetch(`/api/editeurs/${editeurEdit.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
       if (nomOriginal && nomOriginal !== nomNouveau) {
-        await supabase.from("catalogue").update({ editeur: nomNouveau }).eq("editeur", nomOriginal);
+        const allCat = await fetch('/api/catalogue').then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []);
+        const toUpdate = (allCat as any[]).filter(c => c.editeur === nomOriginal);
+        for (const c of toUpdate) {
+          await fetch(`/api/catalogue/${encodeURIComponent(c.ean)}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ editeur: nomNouveau }),
+          });
+        }
       }
     } else {
-      await supabase.from("editeurs").insert({
-        nom: nomNouveau, type_commande: editeurEdit.type_commande ?? "inconnu",
-        url_formulaire: editeurEdit.url_formulaire || null,
-        email_contact: editeurEdit.email_contact || null,
-        sujet_email: editeurEdit.sujet_email || null,
-        corps_email: editeurEdit.corps_email || null,
-        notes: editeurEdit.notes || null,
+      await fetch('/api/editeurs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
       });
     }
     await chargerEditeurs();
@@ -314,10 +331,16 @@ export default function PiecesPage() {
     if (!source || !cible) return;
     if (!confirm(`Fusionner "${source.nom}" → "${cible.nom}" ?\nToutes les fiches catalogue seront mises à jour.`)) return;
     setIsFusioning(true);
-    // Mettre à jour le catalogue
-    await supabase.from("catalogue").update({ editeur: cible.nom }).eq("editeur", source.nom);
-    // Supprimer l'éditeur source
-    await supabase.from("editeurs").delete().eq("id", fusionSourceId);
+    const allCat = await fetch('/api/catalogue').then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []);
+    const toUpdate = (allCat as any[]).filter(c => c.editeur === source.nom);
+    for (const c of toUpdate) {
+      await fetch(`/api/catalogue/${encodeURIComponent(c.ean)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ editeur: cible.nom }),
+      });
+    }
+    await fetch(`/api/editeurs/${fusionSourceId}`, { method: 'DELETE' });
     setFusionSourceId(null);
     setFusionCibleId("");
     await chargerEditeurs();
@@ -326,7 +349,7 @@ export default function PiecesPage() {
 
   const supprimerEditeur = async (id: string) => {
     if (!confirm("Supprimer cet éditeur ?")) return;
-    await supabase.from("editeurs").delete().eq("id", id);
+    await fetch(`/api/editeurs/${id}`, { method: 'DELETE' });
     chargerEditeurs();
   };
 
@@ -334,11 +357,11 @@ export default function PiecesPage() {
 
   const importerEditeursDepuisCatalogue = async () => {
     setIsImporting(true);
-    // 1. Récupérer tous les éditeurs du catalogue
-    const { data: catData } = await supabase.from("catalogue").select("editeur").not("editeur", "is", null).neq("editeur", "");
-    // 2. Récupérer les éditeurs déjà en base
-    const { data: existants } = await supabase.from("editeurs").select("nom");
-    const nomsExistants = new Set((existants ?? []).map((e: { nom: string }) => normaliserEditeur(e.nom)));
+    const [catData, existants] = await Promise.all([
+      fetch('/api/catalogue?fields=editeur').then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []),
+      fetch('/api/editeurs').then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []),
+    ]);
+    const nomsExistants = new Set((existants as any[]).map((e: { nom: string }) => normaliserEditeur(e.nom)));
 
     // 3. Dédupliquer : normaliser, garder la première occurrence "propre" de chaque nom
     const vus = new Map<string, string>(); // normalisé → nom affiché
@@ -355,8 +378,12 @@ export default function PiecesPage() {
       .filter(([norm]) => !nomsExistants.has(norm))
       .map(([, nom]) => ({ nom, type_commande: "inconnu" as const }));
 
-    if (aInserer.length > 0) {
-      await supabase.from("editeurs").insert(aInserer);
+    for (const ed of aInserer) {
+      await fetch('/api/editeurs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(ed),
+      });
     }
 
     await chargerEditeurs();
@@ -407,7 +434,7 @@ export default function PiecesPage() {
 
   const fetchContenuJeu = async (ean: string) => {
     if (!ean) { setContenuJeu([]); return; }
-    const { data } = await supabase.from("catalogue").select("contenu").eq("ean", ean).maybeSingle();
+    const data = await fetch(`/api/catalogue/${encodeURIComponent(ean)}`).then(r => r.json()).catch(() => null);
     if (data?.contenu) {
       const items = data.contenu.split("\n").map((l: string) => l.replace(/^[\s\-\*\u2022]*\d*\s*/, "").trim()).filter((l: string) => l.length > 0);
       setContenuJeu(items);
@@ -419,15 +446,15 @@ export default function PiecesPage() {
     if (!code) return;
     let codeF = code.trim();
     if (/^\d+$/.test(codeF) && codeF.length < 8) codeF = codeF.padStart(8, "0");
-    const { data } = await supabase.from("jeux").select("nom, ean").eq("code_syracuse", codeF).limit(1).maybeSingle();
+    const data = await fetch(`/api/jeux?fields=nom,ean&code_syracuse=${encodeURIComponent(codeF)}&limit=1`).then(r => r.json()).then((d: any[]) => d[0] ?? null).catch(() => null);
     if (data?.nom) { setNomManq(data.nom); if (data.ean) fetchContenuJeu(data.ean); }
   };
 
   const handleRechercheNom = async (text: string) => {
     setNomManq(text);
     if (text.length > 2) {
-      const { data } = await supabase.from("jeux").select("nom, code_syracuse, ean").ilike("nom", `%${text}%`).order("nom").limit(20);
-      if (data) setSuggestionsNom(data);
+      const data = await fetch(`/api/jeux?fields=nom,code_syracuse,ean&nom_like=${encodeURIComponent(text)}&limit=20`).then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []);
+      setSuggestionsNom(data);
     } else setSuggestionsNom([]);
   };
 
@@ -449,7 +476,11 @@ export default function PiecesPage() {
       if (!/^\d+/.test(elemManqManuel.trim())) { alert("⚠️ L'élément doit commencer par un chiffre."); return; }
       pieceFinale = elemManqManuel;
     }
-    await supabase.from("pieces_manquantes").insert([{ ean: codeManq, nom: nomManq, element_manquant: pieceFinale }]);
+    await fetch('/api/pieces-manquantes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ean: codeManq, nom: nomManq, element_manquant: pieceFinale }),
+    });
     setCodeManq(""); setNomManq(""); setElemManqManuel(""); setQteManq(""); setContenuJeu([]); setSuggestionsNom([]);
     chargerDonnees();
   };
@@ -457,13 +488,17 @@ export default function PiecesPage() {
   const ajouterTrouve = async () => {
     if (!descTrouvee) return;
     if (!/^\d+/.test(descTrouvee.trim())) { alert("⚠️ La description doit commencer par un chiffre."); return; }
-    await supabase.from("pieces_trouvees").insert([{ description: descTrouvee, nom_suppose: nomSuppo }]);
+    await fetch('/api/pieces-trouvees', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ description: descTrouvee, nom_suppose: nomSuppo }),
+    });
     setDescTrouvee(""); setNomSuppo(""); chargerDonnees();
   };
 
   const commanderPieceDirecte = async (piece: PieceManquante) => {
-    const { data: editeursData } = await supabase.from("editeurs").select("*").order("nom");
-    const listeEditeurs = (editeursData ?? []) as Editeur[];
+    const editeursData = await fetch('/api/editeurs').then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []);
+    const listeEditeurs = editeursData as Editeur[];
     const nomEditeurCat = await trouverEditeurPourPiece(piece);
     const editeur = nomEditeurCat ? matcherEditeur(nomEditeurCat, listeEditeurs) : null;
 
@@ -479,25 +514,41 @@ export default function PiecesPage() {
 
   const confirmerCommande = async (id: number, confirme: boolean) => {
     if (confirme) {
-      await supabase.from("pieces_manquantes").update({ statut: "Commandé" }).eq("id", id);
+      await fetch(`/api/pieces-manquantes/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ statut: "Commandé" }),
+      });
       chargerDonnees();
     }
     setPendingConfirmId(null);
   };
 
   const annulerCommande = async (id: number) => {
-    await supabase.from("pieces_manquantes").update({ statut: "Manquant" }).eq("id", id);
+    await fetch(`/api/pieces-manquantes/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ statut: "Manquant" }),
+    });
     chargerDonnees();
   };
 
   const resoudreManquant = async (id: number) => {
-    await supabase.from("pieces_manquantes").update({ statut: "Résolu" }).eq("id", id);
+    await fetch(`/api/pieces-manquantes/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ statut: "Résolu" }),
+    });
     if (selectedManquant === id) setSelectedManquant(null);
     chargerDonnees();
   };
 
   const resoudreTrouve = async (id: number) => {
-    await supabase.from("pieces_trouvees").update({ statut: "Réaffecté" }).eq("id", id);
+    await fetch(`/api/pieces-trouvees/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ statut: "Réaffecté" }),
+    });
     setSelectedTrouvees(prev => prev.filter(tId => tId !== id));
     chargerDonnees();
   };
@@ -524,14 +575,26 @@ export default function PiecesPage() {
   const confirmerLien = async (total: boolean) => {
     if (!selectedManquant || !lienConfirm) return;
     for (const tId of selectedTrouvees) {
-      await supabase.from("pieces_trouvees").update({ statut: "Réaffecté" }).eq("id", tId);
+      await fetch(`/api/pieces-trouvees/${tId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ statut: "Réaffecté" }),
+      });
     }
     if (total) {
-      await supabase.from("pieces_manquantes").update({ statut: "Résolu" }).eq("id", selectedManquant);
+      await fetch(`/api/pieces-manquantes/${selectedManquant}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ statut: "Résolu" }),
+      });
     } else {
       const reste = lienConfirm.qteManquante - lienConfirm.qteTrouvee;
       const nouveauTexte = `${Math.max(reste, 1)} ${lienConfirm.nomPiece}`;
-      await supabase.from("pieces_manquantes").update({ element_manquant: nouveauTexte }).eq("id", selectedManquant);
+      await fetch(`/api/pieces-manquantes/${selectedManquant}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ element_manquant: nouveauTexte }),
+      });
     }
     setLienConfirm(null);
     setSelectedManquant(null);

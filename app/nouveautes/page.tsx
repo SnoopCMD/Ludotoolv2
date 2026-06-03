@@ -1,6 +1,5 @@
 "use client";
 import { useState, useEffect, useMemo } from "react";
-import { supabase } from "../../lib/supabase";
 import Link from "next/link";
 
 type JeuNouveaute = {
@@ -45,18 +44,15 @@ export default function NouveautesPage() {
 
   const fetchDatas = async () => {
     setIsLoading(true);
-    const { data: stockData, error } = await supabase
-      .from('jeux')
-      .select('id, nom, ean, etape_nouveaute, date_entree, date_sortie')
-      .eq('statut', 'En stock')
-      .order('id', { ascending: true });
+    const [bruts, catData]: [any[], any[]] = await Promise.all([
+      fetch('/api/jeux?statut=En+stock&fields=id,nom,ean,etape_nouveaute,date_entree,date_sortie').then(r => r.json()).catch(() => []),
+      fetch('/api/catalogue?fields=ean,couleur').then(r => r.json()).catch(() => []),
+    ]);
 
-    if (error) { setIsLoading(false); return; }
+    if (!Array.isArray(bruts)) { setIsLoading(false); return; }
 
-    const bruts = stockData as any[];
     let colorMap: Record<string, string> = {};
-    const { data: catData } = await supabase.from('catalogue').select('ean, couleur');
-    if (catData) catData.forEach(item => { if (item.couleur) colorMap[item.ean] = item.couleur; });
+    if (Array.isArray(catData)) catData.forEach((item: any) => { if (item.couleur) colorMap[item.ean] = item.couleur; });
 
     const tousLesJeux = bruts.map(j => ({ ...j, couleur: colorMap[j.ean] || "" }));
     setJeux(tousLesJeux.filter(j => j.etape_nouveaute));
@@ -68,8 +64,7 @@ export default function NouveautesPage() {
 
   const mettreEnAttente = async (id: string | number) => {
     setRechercheAjout("");
-    const { error } = await supabase.from('jeux').update({ etape_nouveaute: true }).eq('id', id);
-    if (error) alert("Erreur d'ajout à la file.");
+    await fetch(`/api/jeux/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ etape_nouveaute: 1 }) });
     fetchDatas();
   };
 
@@ -77,17 +72,15 @@ export default function NouveautesPage() {
     const aujourdhui = new Date();
     const sortie = new Date();
     sortie.setDate(aujourdhui.getDate() + 14);
-    const { error } = await supabase.from('jeux').update({
+    await fetch(`/api/jeux/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
       date_entree: aujourdhui.toISOString().split('T')[0],
       date_sortie: sortie.toISOString().split('T')[0],
-    }).eq('id', id);
-    if (error) alert("Erreur lors de l'entrée en salle.");
+    }) });
     fetchDatas();
   };
 
   const retirerDesNouveautes = async (id: string | number) => {
-    const { error } = await supabase.from('jeux').update({ etape_nouveaute: false, date_entree: null, date_sortie: null }).eq('id', id);
-    if (error) alert("Erreur lors du retrait.");
+    await fetch(`/api/jeux/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ etape_nouveaute: 0, date_entree: null, date_sortie: null }) });
     fetchDatas();
   };
 

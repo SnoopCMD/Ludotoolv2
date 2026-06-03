@@ -2,7 +2,6 @@
 import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { supabase } from "../../lib/supabase";
 import { PDFDownloadLink } from "@react-pdf/renderer";
 import { ContenuPDF } from "../../components/ContenuPDF";
 
@@ -44,8 +43,8 @@ function ContenuPageInner() {
   }, []);
 
   const chargerCatalogue = async () => {
-    const { data } = await supabase.from('catalogue').select('*');
-    if (data) {
+    const data = await fetch('/api/catalogue').then(r => r.json()).catch(() => null);
+    if (Array.isArray(data)) {
       const dbContenus: Record<string, ContenuType[]> = { vert: [], rose: [], bleu: [], rouge: [], jaune: [] };
       data.forEach(item => {
         const couleur = item.couleur && dbContenus[item.couleur] ? item.couleur : "vert";
@@ -67,19 +66,20 @@ function ContenuPageInner() {
 
   const sauvegarderJeuDansBDD = async (jeu: ContenuType, couleurId: string) => {
     if (!jeu.ean || !jeu.nom) return;
-    const { error } = await supabase.from('catalogue').upsert({
-      ean: jeu.ean, nom: jeu.nom, contenu: jeu.elements, couleur: couleurId
+    await fetch(`/api/catalogue/${encodeURIComponent(jeu.ean)}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nom: jeu.nom, contenu: jeu.elements, couleur: couleurId })
+    }).catch(async () => {
+      await fetch('/api/catalogue', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify([{ ean: jeu.ean, nom: jeu.nom, contenu: jeu.elements, couleur: couleurId }]) });
     });
-    if (error) console.error("Erreur auto-save catalogue:", error);
 
-    const { data: jeuxExistants } = await supabase.from('jeux').select('id').eq('ean', jeu.ean).limit(1);
-    if (!jeuxExistants || jeuxExistants.length === 0) {
-      const { error: errJeu } = await supabase.from('jeux').insert([{
-        ean: jeu.ean, nom: jeu.nom, statut: 'En préparation', is_double: false,
-        etape_nouveaute: false, etape_plastifier: false, etape_contenu: false,
-        etape_etiquette: false, etape_equiper: false, etape_encoder: false, etape_notice: false
-      }]);
-      if (errJeu) console.error("Erreur création auto inventaire:", errJeu.message);
+    const jeuxExistants = await fetch(`/api/jeux?ean=${encodeURIComponent(jeu.ean)}&fields=id&limit=1`).then(r => r.json()).catch(() => []);
+    if (!Array.isArray(jeuxExistants) || jeuxExistants.length === 0) {
+      await fetch('/api/jeux', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+        ean: jeu.ean, nom: jeu.nom, statut: 'En préparation', is_double: 0,
+        etape_nouveaute: 0, etape_plastifier: 0, etape_contenu: 0,
+        etape_etiquette: 0, etape_equiper: 0, etape_encoder: 0, etape_notice: 0
+      }) }).catch(console.error);
     }
   };
 
@@ -149,11 +149,11 @@ function ContenuPageInner() {
       });
     });
     if (eansCompletsAImprimer.length > 0) {
-      const { data: jeuxEnPrepa } = await supabase.from('jeux').select('*').in('ean', eansCompletsAImprimer).eq('statut', 'En préparation');
-      if (jeuxEnPrepa && jeuxEnPrepa.length > 0) {
+      const jeuxEnPrepa = await fetch(`/api/jeux?eans=${encodeURIComponent(eansCompletsAImprimer.join(','))}&statut=En+pr%C3%A9paration`).then(r => r.json()).catch(() => []);
+      if (Array.isArray(jeuxEnPrepa) && jeuxEnPrepa.length > 0) {
         for (const jeu of jeuxEnPrepa) {
-          const isTermine = jeu.etape_plastifier && true && jeu.etape_etiquette && jeu.etape_equiper && jeu.etape_encoder && jeu.etape_notice && jeu.etape_nouveaute;
-          await supabase.from('jeux').update({ etape_contenu: true, statut: isTermine ? 'En stock' : 'En préparation' }).eq('id', jeu.id);
+          const isTermine = jeu.etape_plastifier && jeu.etape_etiquette && jeu.etape_equiper && jeu.etape_encoder && jeu.etape_notice && jeu.etape_nouveaute;
+          await fetch(`/api/jeux/${jeu.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ etape_contenu: 1, statut: isTermine ? 'En stock' : 'En préparation' }) });
         }
       }
     }

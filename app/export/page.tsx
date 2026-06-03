@@ -1,6 +1,5 @@
 "use client";
 import { useState, useEffect, useMemo } from "react";
-import { supabase } from "../../lib/supabase";
 import Link from "next/link";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -344,11 +343,8 @@ export default function ExportPage() {
 
   const loadCatalogue = async () => {
     setIsLoading(true);
-    const { data } = await supabase
-      .from("catalogue")
-      .select("ean, nom, auteurs, editeur, description, contenu, couleur, mecanique, nb_de_joueurs, temps_de_jeu, etoiles, coop_versus, image_url")
-      .order("nom");
-    if (data) setCatalogue(data as CatalogueEntry[]);
+    const data = await fetch('/api/catalogue?fields=ean,nom,auteurs,editeur,description,contenu,couleur,mecanique,nb_de_joueurs,temps_de_jeu,etoiles,coop_versus,image_url').then(r => r.json()).catch(() => []);
+    if (Array.isArray(data)) setCatalogue(data as CatalogueEntry[]);
     setIsLoading(false);
   };
 

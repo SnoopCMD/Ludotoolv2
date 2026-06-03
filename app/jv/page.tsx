@@ -1,6 +1,5 @@
 "use client";
 import { useState, useEffect, useRef, useMemo, useCallback, Fragment } from "react";
-import { supabase } from "../../lib/supabase";
 import NavBar from "../../components/NavBar";
 import { format, addDays, startOfWeek, eachDayOfInterval, isToday, parseISO, getDay } from "date-fns";
 import { fr } from "date-fns/locale";
@@ -300,14 +299,25 @@ function ModalJeu({
       igdb_id: form.igdb_id ?? null,
       cote_syracuse: form.cote_syracuse ?? null,
     };
-    let result;
+    let savedJeu: JvJeu;
     if (isNew) {
-      result = await supabase.from("jv_jeux").insert(payload).select().single();
+      const res = await fetch('/api/jv-jeux', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }).then(r => r.json()).catch(() => ({ error: 'réseau' }));
+      if (res.error) { alert("Erreur : " + res.error); setIsSaving(false); return; }
+      savedJeu = { ...payload, id: res.id, created_at: new Date().toISOString() } as JvJeu;
     } else {
-      result = await supabase.from("jv_jeux").update(payload).eq("id", jeu!.id).select().single();
+      const res = await fetch(`/api/jv-jeux/${jeu!.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }).then(r => r.json()).catch(() => ({ error: 'réseau' }));
+      if (res.error) { alert("Erreur : " + res.error); setIsSaving(false); return; }
+      savedJeu = { ...jeu!, ...payload } as JvJeu;
     }
-    if (result.error) { alert("Erreur : " + result.error.message); setIsSaving(false); return; }
-    onSaved(result.data as JvJeu);
+    onSaved(savedJeu);
     setIsSaving(false);
     onClose();
   };
@@ -315,7 +325,7 @@ function ModalJeu({
   const del = async () => {
     if (!jeu) return;
     setIsDeleting(true);
-    await supabase.from("jv_jeux").delete().eq("id", jeu.id);
+    await fetch(`/api/jv-jeux/${jeu.id}`, { method: 'DELETE' });
     onDeleted?.(jeu.id);
     setIsDeleting(false);
     onClose();
@@ -1203,14 +1213,19 @@ function ModalReservation({
     const nomPrincipal = joueurs[0]?.nom.trim() ?? "";
     if (!jeuId || !nomPrincipal || !creneau || !isJourOuvert || !posteId) return;
     setIsSaving(true);
-    const { data, error } = await supabase.from("jv_reservations").insert({
+    const payload = {
       jeu_id: jeuId, poste: posteId, date_creneau: date, creneau,
       adherent_nom: nomPrincipal, nb_joueurs: nbJoueurs,
-      joueurs_details: joueurs,
+      joueurs_details: JSON.stringify(joueurs),
       notes: notes.trim() || null, statut: "confirmee",
-    }).select().single();
-    if (error) { alert("Erreur : " + error.message); setIsSaving(false); return; }
-    onSaved(data as JvReservation);
+    };
+    const res = await fetch('/api/jv-reservations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }).then(r => r.json()).catch(() => ({ error: 'réseau' }));
+    if (res.error) { alert("Erreur : " + res.error); setIsSaving(false); return; }
+    onSaved({ ...payload, id: res.id, jeu2_id: null, joueurs_details: joueurs, created_at: new Date().toISOString() } as JvReservation);
     setIsSaving(false);
     onClose();
   };
@@ -1475,17 +1490,24 @@ function ModalReservationDetail({
     const nomPrincipal = joueurs[0]?.nom.trim() ?? "";
     if (!nomPrincipal) return;
     setIsSaving(true);
-    const { data, error } = await supabase.from("jv_reservations")
-      .update({ adherent_nom: nomPrincipal, nb_joueurs: nbJoueurs, joueurs_details: joueurs, notes: notes.trim() || null, jeu_id: jeuId, jeu2_id: jeu2Id })
-      .eq("id", reservation.id).select().single();
-    if (error) { alert("Erreur : " + error.message); setIsSaving(false); return; }
-    onSaved(data as JvReservation);
+    const patch = { adherent_nom: nomPrincipal, nb_joueurs: nbJoueurs, joueurs_details: JSON.stringify(joueurs), notes: notes.trim() || null, jeu_id: jeuId, jeu2_id: jeu2Id };
+    const res = await fetch(`/api/jv-reservations/${reservation.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    }).then(r => r.json()).catch(() => ({ error: 'réseau' }));
+    if (res.error) { alert("Erreur : " + res.error); setIsSaving(false); return; }
+    onSaved({ ...reservation, ...patch, joueurs_details: joueurs } as JvReservation);
     setIsSaving(false);
     onClose();
   };
 
   const cancel = async () => {
-    await supabase.from("jv_reservations").update({ statut: "annulee" }).eq("id", reservation.id);
+    await fetch(`/api/jv-reservations/${reservation.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ statut: "annulee" }),
+    });
     onCancelled(reservation.id);
     onClose();
   };
@@ -1857,7 +1879,11 @@ function ModalCorrectionSemaine({
     setIsSaving(true);
     const toUpdate = resasSemaine.filter(r => jeuMap[r.id] && jeuMap[r.id] !== r.jeu_id);
     await Promise.all(toUpdate.map(r =>
-      supabase.from("jv_reservations").update({ jeu_id: jeuMap[r.id] }).eq("id", r.id)
+      fetch(`/api/jv-reservations/${r.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jeu_id: jeuMap[r.id] }),
+      })
     ));
     onSaved(resasSemaine.map(r => ({ ...r, jeu_id: jeuMap[r.id] ?? r.jeu_id })));
     setIsSaving(false);
@@ -2692,15 +2718,19 @@ export default function JvPage() {
   useEffect(() => {
     const load = async () => {
       setIsLoading(true);
-      const [{ data: j }, { data: s }, { data: r }, { data: cfg }] = await Promise.all([
-        supabase.from("jv_jeux").select("*").order("titre"),
-        supabase.from("jv_selections").select("*").order("groupe").order("ordre"),
-        supabase.from("jv_reservations").select("*").order("date_creneau", { ascending: false }),
-        supabase.from("jv_rotation_config").select("*").eq("id", "main").single(),
+      const toArr = (d: any) => Array.isArray(d) ? d : [];
+      const [j, s, r, cfg] = await Promise.all([
+        fetch('/api/jv-jeux').then(res => res.json()).then(toArr).catch(() => []),
+        fetch('/api/jv-selections').then(res => res.json()).then(toArr).catch(() => []),
+        fetch('/api/jv-reservations').then(res => res.json()).then(toArr).catch(() => []),
+        fetch('/api/jv-rotation-config').then(res => res.json()).catch(() => null),
       ]);
-      if (j) setJeux(j as JvJeu[]);
-      if (s) setSelections(s as JvSelection[]);
-      if (r) setReservations(r as JvReservation[]);
+      setJeux(j as JvJeu[]);
+      setSelections((s as any[]).map(sel => ({ ...sel, permanent: !!sel.permanent })) as JvSelection[]);
+      setReservations((r as any[]).map(res => ({
+        ...res,
+        joueurs_details: typeof res.joueurs_details === 'string' && res.joueurs_details ? JSON.parse(res.joueurs_details) : (res.joueurs_details ?? null),
+      })) as JvReservation[]);
       if (cfg) setRotationConfig(cfg as JvRotationConfig);
       setIsLoading(false);
     };
@@ -2725,22 +2755,24 @@ export default function JvPage() {
 
   const handleToggleActif = useCallback(async (jeuId: string, slot: SelectionSlot, isPermanent: boolean, currentSel: JvSelection | undefined) => {
     if (currentSel) {
-      await supabase.from("jv_selections").delete().eq("id", currentSel.id);
+      await fetch(`/api/jv-selections/${currentSel.id}`, { method: 'DELETE' });
       setSelections(prev => {
         const next = prev.filter(s => s.id !== currentSel.id);
         if (!next.some(s => s.jeu_id === jeuId && s.statut === "actif")) {
-          supabase.from("jv_jeux").update({ statut: "disponible" }).eq("id", jeuId);
+          fetch(`/api/jv-jeux/${jeuId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ statut: "disponible" }) });
           setJeux(j => j.map(x => x.id === jeuId ? { ...x, statut: "disponible" } : x));
         }
         return next;
       });
     } else {
-      const { data } = await supabase.from("jv_selections").insert({
-        jeu_id: jeuId, slot, console: SLOT_CONSOLE[slot],
-        statut: "actif", permanent: isPermanent, groupe: 0, ordre: 0,
-      }).select().single();
-      if (data) setSelections(prev => [...prev, data as JvSelection]);
-      await supabase.from("jv_jeux").update({ statut: "selection" }).eq("id", jeuId);
+      const payload = { jeu_id: jeuId, slot, console: SLOT_CONSOLE[slot], statut: "actif", permanent: isPermanent ? 1 : 0, groupe: 0, ordre: 0 };
+      const res = await fetch('/api/jv-selections', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }).then(r => r.json()).catch(() => null);
+      if (res?.id) setSelections(prev => [...prev, { ...payload, id: res.id, permanent: isPermanent, date_debut: null, date_fin: null } as JvSelection]);
+      await fetch(`/api/jv-jeux/${jeuId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ statut: "selection" }) });
       setJeux(prev => prev.map(j => j.id === jeuId ? { ...j, statut: "selection" } : j));
     }
   }, []);
@@ -2750,15 +2782,17 @@ export default function JvPage() {
     const groupSels = selections.filter(s => s.slot === slot && s.statut === "planifie" && s.groupe === groupe);
     if (groupSels.length >= 3) return;
     const ordre = groupSels.length + 1;
-    const { data } = await supabase.from("jv_selections").insert({
-      jeu_id: jeuId, slot, console: SLOT_CONSOLE[slot],
-      statut: "planifie", permanent: false, groupe, ordre,
-    }).select().single();
-    if (data) setSelections(prev => [...prev, data as JvSelection]);
+    const payload = { jeu_id: jeuId, slot, console: SLOT_CONSOLE[slot], statut: "planifie", permanent: 0, groupe, ordre };
+    const res = await fetch('/api/jv-selections', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }).then(r => r.json()).catch(() => null);
+    if (res?.id) setSelections(prev => [...prev, { ...payload, id: res.id, permanent: false, date_debut: null, date_fin: null } as JvSelection]);
   }, [selections]);
 
   const handleRemoveSelection = useCallback(async (selId: string) => {
-    await supabase.from("jv_selections").delete().eq("id", selId);
+    await fetch(`/api/jv-selections/${selId}`, { method: 'DELETE' });
     setSelections(prev => prev.filter(s => s.id !== selId));
   }, []);
 
@@ -2767,15 +2801,10 @@ export default function JvPage() {
     const TEMP = -9999;
     const fromIds = selections.filter(s => s.slot === slot && s.groupe === fromGroupe).map(s => s.id);
     const toIds = selections.filter(s => s.slot === slot && s.groupe === toGroupe).map(s => s.id);
-    await Promise.all([
-      ...fromIds.map(id => supabase.from("jv_selections").update({ groupe: TEMP }).eq("id", id)),
-    ]);
-    await Promise.all([
-      ...toIds.map(id => supabase.from("jv_selections").update({ groupe: fromGroupe }).eq("id", id)),
-    ]);
-    await Promise.all([
-      ...fromIds.map(id => supabase.from("jv_selections").update({ groupe: toGroupe }).eq("id", id)),
-    ]);
+    const put = (id: string, groupe: number) => fetch(`/api/jv-selections/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ groupe }) });
+    await Promise.all(fromIds.map(id => put(id, TEMP)));
+    await Promise.all(toIds.map(id => put(id, fromGroupe)));
+    await Promise.all(fromIds.map(id => put(id, toGroupe)));
     setSelections(prev => prev.map(s => {
       if (s.slot === slot && s.groupe === fromGroupe) return { ...s, groupe: toGroupe };
       if (s.slot === slot && s.groupe === toGroupe) return { ...s, groupe: fromGroupe };
@@ -2785,9 +2814,11 @@ export default function JvPage() {
 
   // Met à jour le point de départ de la rotation
   const handleUpdateRotationConfig = useCallback(async (slotIndex: number, weekStart: string) => {
-    await supabase.from("jv_rotation_config")
-      .update({ current_slot_index: slotIndex, week_start: weekStart })
-      .eq("id", "main");
+    await fetch('/api/jv-rotation-config', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ current_slot_index: slotIndex, week_start: weekStart }),
+    });
     setRotationConfig(prev => ({ ...prev, current_slot_index: slotIndex, week_start: weekStart }));
   }, []);
 
@@ -2812,24 +2843,24 @@ export default function JvPage() {
 
     // 1. Supprimer les actifs non-permanents du prochain slot
     if (activeIds.length > 0) {
-      await supabase.from("jv_selections").delete().in("id", activeIds);
+      await Promise.all(activeIds.map(id => fetch(`/api/jv-selections/${id}`, { method: 'DELETE' })));
     }
 
-    // 2. Promouvoir le premier groupe planifié en actif
     if (nextGroupIds.length > 0) {
-      await supabase.from("jv_selections")
-        .update({ statut: "actif", groupe: 0, ordre: 0 })
-        .in("id", nextGroupIds);
+      await Promise.all(nextGroupIds.map(id => fetch(`/api/jv-selections/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ statut: "actif", groupe: 0, ordre: 0 }),
+      })));
     }
 
-    // 3. Mettre à jour les statuts des jeux
     const removedJeuIds = activeSels.map(s => s.jeu_id);
     const addedJeuIds = nextGroupSels.map(s => s.jeu_id);
     const toDisponible = removedJeuIds.filter(id => !addedJeuIds.includes(id));
     const toSelection = addedJeuIds.filter(id => !removedJeuIds.includes(id));
     await Promise.all([
-      ...toDisponible.map(id => supabase.from("jv_jeux").update({ statut: "disponible" }).eq("id", id)),
-      ...toSelection.map(id => supabase.from("jv_jeux").update({ statut: "selection" }).eq("id", id)),
+      ...toDisponible.map(id => fetch(`/api/jv-jeux/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ statut: "disponible" }) })),
+      ...toSelection.map(id => fetch(`/api/jv-jeux/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ statut: "selection" }) })),
     ]);
 
     // 4. Avancer la config

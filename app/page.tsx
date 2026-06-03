@@ -1,6 +1,5 @@
 "use client";
 import { useState, useEffect, useMemo } from "react";
-import { supabase } from "../lib/supabase";
 import NavBar from "../components/NavBar";
 import {
   format, startOfWeek, endOfWeek, eachDayOfInterval,
@@ -265,6 +264,8 @@ export default function AccueilPage() {
   const getMemberDotColor = (m: { groupe?: string; couleur?: string }): string =>
     m.couleur || (m.groupe === 'A' ? agendaCouleurs.equipeA : m.groupe === 'B' ? agendaCouleurs.equipeB : agendaCouleurs.accent);
 
+  const [jeuxNotesCache, setJeuxNotesCache] = useState<Record<string, JeuNote[]>>({});
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [form, setForm] = useState({ titre: "", description: "", type: "info", jeu_nom: "", jeu_id: "" });
   const [isSaving, setIsSaving] = useState(false);
@@ -276,33 +277,42 @@ export default function AccueilPage() {
   useEffect(() => { chargerEvenements(); }, [semaineRef]);
   useEffect(() => {
     const key = format(startOfWeek(semaineRef, { weekStartsOn: 1 }), 'yyyy-MM-dd');
-    supabase.from('planning_semaine').select('slots').eq('semaine_key', key).single()
-      .then(({ data }) => setWeekPlanningSlots((data?.slots ?? []) as PlanningSlot[]));
+    fetch(`/api/planning-semaine?key=${key}`).then(r => r.json())
+      .then(data => setWeekPlanningSlots((data?.slots ?? []) as PlanningSlot[]));
   }, [semaineRef]);
 
   const chargerAlertes = async () => {
-    const [{ data: alertesData }, { data: rappelsData }] = await Promise.all([
-      supabase.from("alertes").select("*").eq("statut", "active").order("created_at", { ascending: false }),
-      supabase.from("jeux").select("id, nom, notes, code_syracuse").eq("notes_rappel", true),
+    const toArr = (d: any) => Array.isArray(d) ? d : [];
+    const [alertesData, rappelsData] = await Promise.all([
+      fetch('/api/alertes?statut=active').then(r => r.json()).then(toArr).catch(() => []),
+      fetch('/api/jeux?fields=id,nom,notes,code_syracuse&notes_rappel=true').then(r => r.json()).then(toArr).catch(() => []),
     ]);
-    if (alertesData) setAlertes(alertesData as Alerte[]);
+    setAlertes(alertesData as Alerte[]);
+    const notesCache: Record<string, JeuNote[]> = {};
     const flat: RappelItem[] = [];
-    for (const r of (rappelsData ?? []) as any[]) {
-      for (const note of ((r.notes as JeuNote[]) || [])) {
+    for (const r of rappelsData as any[]) {
+      const notes: JeuNote[] = typeof r.notes === 'string' ? (r.notes ? JSON.parse(r.notes) : []) : (r.notes ?? []);
+      notesCache[String(r.id)] = notes;
+      for (const note of notes) {
         if (note.rappel) flat.push({ jeu_id: r.id, nom: r.nom, texte: note.texte, code_syracuse: r.code_syracuse || undefined });
       }
     }
+    setJeuxNotesCache(notesCache);
     setRappels(flat);
     setIsLoading(false);
   };
 
   const resolveRappel = async (jeu_id: string | number, texte: string) => {
-    const { data } = await supabase.from("jeux").select("notes").eq("id", jeu_id).maybeSingle();
-    const current: JeuNote[] = (data?.notes as JeuNote[]) || [];
+    const current = jeuxNotesCache[String(jeu_id)] ?? [];
     const idx = current.findIndex(n => n.rappel && n.texte === texte);
     if (idx >= 0) {
       const newNotes = current.filter((_, i) => i !== idx);
-      await supabase.from("jeux").update({ notes: newNotes, notes_rappel: newNotes.some(n => n.rappel) }).eq("id", jeu_id);
+      await fetch(`/api/jeux/${jeu_id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notes: JSON.stringify(newNotes), notes_rappel: newNotes.some(n => n.rappel) ? 1 : 0 }),
+      });
+      setJeuxNotesCache(prev => ({ ...prev, [String(jeu_id)]: newNotes }));
     }
     setRappels(prev => {
       const i = prev.findIndex(r => r.jeu_id === jeu_id && r.texte === texte);
@@ -311,21 +321,21 @@ export default function AccueilPage() {
   };
 
   const chargerEquipe = async () => {
-    const { data } = await supabase.from("equipe").select("*").order("nom");
-    if (data) setEquipe(data as MembreEquipe[]);
+    const data = await fetch('/api/equipe').then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []);
+    setEquipe(data as MembreEquipe[]);
   };
 
   const chargerNouveautes = async () => {
-    const { data: jeuxData } = await supabase.from("jeux").select("id, nom, ean, date_sortie")
-      .eq("statut", "En stock").eq("etape_nouveaute", true).not("date_sortie", "is", null).order("id", { ascending: false });
-    if (!jeuxData || jeuxData.length === 0) return;
-    const eans = [...new Set(jeuxData.map((j: any) => j.ean))];
-    const { data: catData } = await supabase.from("catalogue").select("ean, image_url, couleur").in("ean", eans);
+    const allJeux = await fetch(`/api/jeux?fields=id,nom,ean,date_sortie,etape_nouveaute&statut=${encodeURIComponent('En stock')}`).then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []);
+    const jeuxData = (allJeux as any[]).filter(j => j.etape_nouveaute && j.date_sortie);
+    if (!jeuxData.length) return;
+    const eans = [...new Set(jeuxData.map((j: any) => j.ean))].join(',');
+    const catData = await fetch(`/api/catalogue?eans=${encodeURIComponent(eans)}&fields=ean,image_url,couleur`).then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []);
     const catMap: Record<string, { image_url?: string; couleur?: string }> = {};
-    if (catData) catData.forEach((c: any) => { catMap[c.ean] = c; });
+    (catData as any[]).forEach(c => { catMap[c.ean] = c; });
     const seen = new Set<string>();
     const list: Nouveaute[] = [];
-    for (const j of jeuxData as any[]) {
+    for (const j of jeuxData) {
       if (seen.has(j.ean)) continue;
       seen.add(j.ean);
       list.push({ id: j.id, nom: j.nom, ean: j.ean, couleur: catMap[j.ean]?.couleur, date_sortie: j.date_sortie, image_url: catMap[j.ean]?.image_url });
@@ -336,11 +346,13 @@ export default function AccueilPage() {
   const chargerEvenements = async () => {
     const debut = startOfWeek(semaineRef, { weekStartsOn: 1 });
     const fin = endOfWeek(semaineRef, { weekStartsOn: 1 });
-    const { data } = await supabase.from("evenements")
-      .select("id, titre, type, date_debut, date_fin, heure_debut, heure_fin, membres")
-      .lte("date_debut", format(fin, "yyyy-MM-dd")).gte("date_fin", format(debut, "yyyy-MM-dd"))
-      .order("heure_debut", { ascending: true });
-    if (data) setEvenements(data as Evenement[]);
+    const debutStr = format(debut, "yyyy-MM-dd");
+    const finStr = format(fin, "yyyy-MM-dd");
+    const allEvents = await fetch('/api/evenements').then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []);
+    const data = (allEvents as any[])
+      .filter(e => e.date_debut <= finStr && e.date_fin >= debutStr)
+      .sort((a, b) => (a.heure_debut ?? '').localeCompare(b.heure_debut ?? ''));
+    setEvenements(data as Evenement[]);
   };
 
   const ouvrirModal = () => { setScanCode(""); setScanError(null); setIsModalOpen(true); };
@@ -355,9 +367,14 @@ export default function AccueilPage() {
     if (!code) return;
     setScanError(null);
     const codeF = /^\d+$/.test(code) && code.length < 8 ? code.padStart(8, "0") : code;
-    const { data } = await supabase.from("jeux").select("id, nom, code_syracuse")
-      .or(`code_syracuse.eq.${codeF},ean.eq.${codeF}`).limit(1).maybeSingle();
+    const [bySyracuse, byEan] = await Promise.all([
+      fetch(`/api/jeux?fields=id,nom,code_syracuse,notes&code_syracuse=${encodeURIComponent(codeF)}&limit=1`).then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []),
+      fetch(`/api/jeux?fields=id,nom,code_syracuse,notes&ean=${encodeURIComponent(codeF)}&limit=1`).then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []),
+    ]);
+    const data = (bySyracuse as any[])[0] ?? (byEan as any[])[0] ?? null;
     if (data?.nom) {
+      const notes: JeuNote[] = typeof data.notes === 'string' ? (data.notes ? JSON.parse(data.notes) : []) : (data.notes ?? []);
+      setJeuxNotesCache(prev => ({ ...prev, [String(data.id)]: notes }));
       const suffix = data.code_syracuse ? ` (${String(data.code_syracuse).slice(-4)})` : "";
       setForm(f => ({ ...f, jeu_nom: data.nom + suffix, type: "jeu", jeu_id: String(data.id) }));
       setScanCode("");
@@ -371,17 +388,25 @@ export default function AccueilPage() {
     setIsSaving(true);
     if (form.type === "jeu" && form.jeu_id) {
       const noteText = [form.titre.trim(), form.description.trim()].filter(Boolean).join("\n");
-      const { data: jeuData } = await supabase.from("jeux").select("notes").eq("id", form.jeu_id).maybeSingle();
-      const existing: JeuNote[] = (jeuData?.notes as JeuNote[]) || [];
+      const existing: JeuNote[] = jeuxNotesCache[form.jeu_id] ?? [];
       const newNotes: JeuNote[] = [...existing, { texte: noteText, rappel: true }];
-      await supabase.from("jeux").update({ notes: newNotes, notes_rappel: true }).eq("id", form.jeu_id);
+      await fetch(`/api/jeux/${form.jeu_id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notes: JSON.stringify(newNotes), notes_rappel: 1 }),
+      });
+      setJeuxNotesCache(prev => ({ ...prev, [form.jeu_id]: newNotes }));
       await chargerAlertes();
     } else {
       const payload: Record<string, string> = { titre: form.titre.trim(), type: form.type, statut: "active" };
       if (form.description.trim()) payload.description = form.description.trim();
       if (form.jeu_nom.trim()) payload.jeu_nom = form.jeu_nom.trim();
-      const { data } = await supabase.from("alertes").insert([payload]).select().single();
-      if (data) setAlertes([data as Alerte, ...alertes]);
+      const data = await fetch('/api/alertes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }).then(r => r.json()).catch(() => null);
+      if (data && !data.error) setAlertes([data as Alerte, ...alertes]);
     }
     setForm({ titre: "", description: "", type: "info", jeu_nom: "", jeu_id: "" });
     setScanCode(""); setScanError(null); setIsModalOpen(false); setIsSaving(false);
@@ -389,7 +414,11 @@ export default function AccueilPage() {
 
   const resoudreAlerte = async (id: string) => {
     setResolvingId(id);
-    await supabase.from("alertes").update({ statut: "resolue", resolved_at: new Date().toISOString() }).eq("id", id);
+    await fetch(`/api/alertes/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ statut: "resolue", resolved_at: new Date().toISOString() }),
+    });
     setTimeout(() => { setAlertes(prev => prev.filter(a => a.id !== id)); setResolvingId(null); }, 350);
   };
 
