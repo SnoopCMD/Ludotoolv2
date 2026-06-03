@@ -603,7 +603,9 @@ useEffect(() => {
 
   useEffect(() => {
     const last = lastLoadedPlanningRef.current;
-    if (last && last.slots === planningSlots && last.vacataires === vacataires) return;
+    // Ne pas sauvegarder avant que le chargement initial soit terminé
+    if (!last) return;
+    if (last.slots === planningSlots && last.vacataires === vacataires) return;
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     autoSaveTimerRef.current = setTimeout(() => {
       const key = planningWeekKey(planningDate);
