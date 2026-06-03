@@ -73,7 +73,9 @@ type JvReservation = {
   jeu2_id: string | null;
   poste: string;
   date_creneau: string;
-  creneau: string;
+  creneau?: string;       // legacy – conservé pour la rétro-compat
+  heure_debut: string;    // "16:00"
+  heure_fin: string;      // "16:45"
   adherent_nom: string;
   nb_joueurs: number;
   joueurs_details: JoueurDetail[] | null;
@@ -137,12 +139,12 @@ const POSTE_SLOT: Record<string, SelectionSlot> = {
   pc2: "PC",
 };
 
-// Créneaux par jour (getDay : 2=Mar, 3=Mer, 4=Jeu, 5=Ven)
-const CRENEAUX_PAR_JOUR: Record<number, string[]> = {
-  2: ["16h-17h", "17h-18h"],
-  3: ["15h-16h", "16h-17h"],
-  4: ["15h-16h", "16h-17h"],
-  5: ["16h-17h", "17h-18h"],
+// Plage horaire par jour (getDay : 2=Mar, 3=Mer, 4=Jeu, 5=Ven)
+const PLAGE_PAR_JOUR: Record<number, { debut: string; fin: string }> = {
+  2: { debut: "16:00", fin: "18:00" },
+  3: { debut: "15:00", fin: "17:00" },
+  4: { debut: "15:00", fin: "17:00" },
+  5: { debut: "16:00", fin: "18:00" },
 };
 const JOURS_OUVERTS = [2, 3, 4, 5];
 
@@ -170,6 +172,60 @@ function nextOpenDay(): string {
 
 const normalizeStr = (s: string) =>
   s?.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]/g, "") ?? "";
+
+// ─── Helpers horaires ─────────────────────────────────────────────────────────
+
+function parseTime(t: string): number {
+  if (!t) return 0;
+  const [h, m] = t.split(":").map(Number);
+  return h * 60 + (m || 0);
+}
+
+function minsToTime(mins: number): string {
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+function heureLabel(t: string): string {
+  if (!t) return "";
+  const [h, m] = t.split(":").map(Number);
+  return m === 0 ? `${h}h` : `${h}h${String(m).padStart(2, "0")}`;
+}
+
+function timesOverlap(s1: string, e1: string, s2: string, e2: string): boolean {
+  return parseTime(s1) < parseTime(e2) && parseTime(e1) > parseTime(s2);
+}
+
+// Retourne les heures de début disponibles (granularité 15 min) pour un poste+jour donné
+function getAvailableStartTimes(
+  posResas: JvReservation[],
+  windowDebut: string,
+  windowFin: string,
+  minDuration = 15
+): string[] {
+  const wStart = parseTime(windowDebut);
+  const wEnd   = parseTime(windowFin);
+  const occupied = posResas
+    .filter(r => r.statut !== "annulee")
+    .map(r => ({ start: parseTime(r.heure_debut), end: parseTime(r.heure_fin) }));
+  const result: string[] = [];
+  for (let t = wStart; t + minDuration <= wEnd; t += 15) {
+    const isFree = !occupied.some(o => t >= o.start && t < o.end);
+    if (isFree) result.push(minsToTime(t));
+  }
+  return result;
+}
+
+// Première heure disponible (pour pré-remplir le modal depuis le planning)
+function getFirstAvailableTime(
+  posResas: JvReservation[],
+  windowDebut: string,
+  windowFin: string
+): string | null {
+  const slots = getAvailableStartTimes(posResas, windowDebut, windowFin);
+  return slots[0] ?? null;
+}
 
 // ─── Modal : Fiche / Ajout Jeu (avec recherche EAN + PS Store/Nintendo/Steam) ─
 
@@ -1152,23 +1208,26 @@ function ModalRotationPlanning({
 function ModalReservation({
   jeux,
   selections,
+  reservations,
   preDate,
-  preCreneau,
+  preHeureDebut,
   prePoste,
   onClose,
   onSaved,
 }: {
   jeux: JvJeu[];
   selections: JvSelection[];
+  reservations: JvReservation[];
   preDate?: string;
-  preCreneau?: string;
+  preHeureDebut?: string;
   prePoste?: string;
   onClose: () => void;
   onSaved: (r: JvReservation) => void;
 }) {
   const [posteId, setPosteId] = useState(prePoste ?? "ps5");
   const [date, setDate] = useState(preDate ?? nextOpenDay());
-  const [creneau, setCreneau] = useState("");
+  const [heureDebut, setHeureDebut] = useState("");
+  const [durationMins, setDurationMins] = useState(60);
   const [jeuId, setJeuId] = useState("");
   const [nbJoueurs, setNbJoueurs] = useState(1);
   const [joueurs, setJoueurs] = useState<JoueurDetail[]>([{ nom: "", sexe: null, age: null }]);
@@ -1178,26 +1237,66 @@ function ModalReservation({
   const poste = POSTES.find(p => p.id === posteId)!;
   const slot = POSTE_SLOT[posteId];
   const dayOfWeek = getDay(parseISO(date));
-  const creneauxDispo = CRENEAUX_PAR_JOUR[dayOfWeek] ?? [];
+  const plage = PLAGE_PAR_JOUR[dayOfWeek];
   const isJourOuvert = JOURS_OUVERTS.includes(dayOfWeek);
 
-  // Initialise le créneau quand la date change
-  useEffect(() => {
-    if (preCreneau && creneauxDispo.includes(preCreneau)) setCreneau(preCreneau);
-    else setCreneau(creneauxDispo[0] ?? "");
-  }, [date]);
+  // Réservations existantes pour ce poste + cette date
+  const posResas = useMemo(() =>
+    reservations.filter(r => r.poste === posteId && r.date_creneau === date && r.statut !== "annulee"),
+    [reservations, posteId, date]
+  );
 
-  // Jeux de la sélection active pour ce slot (rotation + permanent)
+  // Heures de début disponibles
+  const availableStartTimes = useMemo(() =>
+    plage ? getAvailableStartTimes(posResas, plage.debut, plage.fin) : [],
+    [posResas, plage]
+  );
+
+  // Initialise l'heure de début quand date/poste change
+  useEffect(() => {
+    if (!plage) return;
+    if (preHeureDebut && availableStartTimes.includes(preHeureDebut)) {
+      setHeureDebut(preHeureDebut);
+    } else {
+      setHeureDebut(availableStartTimes[0] ?? "");
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [date, posteId]);
+
+  // Durée maximale possible pour l'heure de début sélectionnée
+  const maxDurationMins = useMemo(() => {
+    if (!plage || !heureDebut) return 60;
+    const startMins  = parseTime(heureDebut);
+    const windowEnd  = parseTime(plage.fin);
+    // Prochaine réservation qui commence après heureDebut
+    const nextStart  = posResas
+      .map(r => parseTime(r.heure_debut))
+      .filter(t => t > startMins)
+      .sort((a, b) => a - b)[0];
+    return Math.min(60, (nextStart ?? windowEnd) - startMins);
+  }, [heureDebut, posResas, plage]);
+
+  // Durées disponibles
+  const availableDurations = [15, 30, 45, 60].filter(d => d <= maxDurationMins);
+
+  // Recale la durée si elle dépasse le max
+  useEffect(() => {
+    if (durationMins > maxDurationMins && maxDurationMins > 0)
+      setDurationMins(availableDurations[availableDurations.length - 1] ?? maxDurationMins);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [maxDurationMins]);
+
+  const heureFin = heureDebut ? minsToTime(parseTime(heureDebut) + durationMins) : "";
+
+  // Jeux de la sélection active pour ce slot
   const activeSelections = selections.filter(s => s.slot === slot && s.statut === "actif");
   const jeuxDispo = activeSelections
     .map(s => ({ sel: s, jeu: jeux.find(j => j.id === s.jeu_id) }))
     .filter((x): x is { sel: JvSelection; jeu: JvJeu } => !!x.jeu)
     .filter(x => slot !== "Switch_Multi" || (x.jeu.nb_joueurs && x.jeu.nb_joueurs !== "1"));
 
-  // Reset jeu + joueurs quand le poste change
   useEffect(() => { setJeuId(""); setNbJoueurs(1); setJoueurs([{ nom: "", sexe: null, age: null }]); }, [posteId]);
 
-  // Ajuste le tableau joueurs quand nbJoueurs change
   useEffect(() => {
     setJoueurs(prev => {
       if (nbJoueurs > prev.length)
@@ -1209,12 +1308,15 @@ function ModalReservation({
   const updateJoueur = (i: number, patch: Partial<JoueurDetail>) =>
     setJoueurs(prev => prev.map((j, idx) => idx === i ? { ...j, ...patch } : j));
 
+  const canSave = !!(jeuId && joueurs[0]?.nom.trim() && heureDebut && heureFin && isJourOuvert && posteId);
+
   const save = async () => {
-    const nomPrincipal = joueurs[0]?.nom.trim() ?? "";
-    if (!jeuId || !nomPrincipal || !creneau || !isJourOuvert || !posteId) return;
+    if (!canSave) return;
     setIsSaving(true);
+    const nomPrincipal = joueurs[0].nom.trim();
     const payload = {
-      jeu_id: jeuId, poste: posteId, date_creneau: date, creneau,
+      jeu_id: jeuId, poste: posteId, date_creneau: date,
+      heure_debut: heureDebut, heure_fin: heureFin,
       adherent_nom: nomPrincipal, nb_joueurs: nbJoueurs,
       joueurs_details: JSON.stringify(joueurs),
       notes: notes.trim() || null, statut: "confirmee",
@@ -1264,27 +1366,63 @@ function ModalReservation({
             )}
           </div>
 
-          {/* Date + créneau */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <div>
-              <label style={Slabel}>Date *</label>
-              <input type="date" value={date} onChange={e => setDate(e.target.value)}
-                className="pop-input"
-                style={{ width: '100%', background: isJourOuvert ? undefined : 'var(--rose)', borderColor: isJourOuvert ? undefined : 'var(--ink)' }} />
-              {!isJourOuvert && <p style={{ fontSize: 10, color: 'var(--rouge)', marginTop: 4, fontWeight: 700 }}>Ouvert Mar · Mer · Jeu · Ven uniquement</p>}
-            </div>
-            <div>
-              <label style={Slabel}>Créneau *</label>
-              {creneauxDispo.length > 0 ? (
-                <select value={creneau} onChange={e => setCreneau(e.target.value)}
-                  className="pop-input" style={{ width: '100%', cursor: 'pointer' }}>
-                  {creneauxDispo.map(cr => <option key={cr} value={cr}>{cr}</option>)}
-                </select>
-              ) : (
-                <div className="pop-input" style={{ color: 'rgba(0,0,0,0.3)' }}>—</div>
-              )}
-            </div>
+          {/* Date */}
+          <div>
+            <label style={Slabel}>Date *</label>
+            <input type="date" value={date} onChange={e => setDate(e.target.value)}
+              className="pop-input"
+              style={{ width: '100%', background: isJourOuvert ? undefined : 'var(--rose)', borderColor: isJourOuvert ? undefined : 'var(--ink)' }} />
+            {!isJourOuvert && <p style={{ fontSize: 10, color: 'var(--rouge)', marginTop: 4, fontWeight: 700 }}>Ouvert Mar · Mer · Jeu · Ven uniquement</p>}
+            {isJourOuvert && plage && (
+              <p style={{ fontSize: 10, color: 'rgba(0,0,0,0.4)', marginTop: 4, fontWeight: 600 }}>Plage : {heureLabel(plage.debut)} – {heureLabel(plage.fin)}</p>
+            )}
           </div>
+
+          {/* Heure début + durée */}
+          {isJourOuvert && plage && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <div>
+                <label style={Slabel}>Début *</label>
+                {availableStartTimes.length > 0 ? (
+                  <select value={heureDebut} onChange={e => setHeureDebut(e.target.value)}
+                    className="pop-input" style={{ width: '100%', cursor: 'pointer' }}>
+                    {availableStartTimes.map(t => (
+                      <option key={t} value={t}>{heureLabel(t)}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <div className="pop-input" style={{ color: 'var(--rouge)', fontWeight: 700, fontSize: 12 }}>Complet</div>
+                )}
+              </div>
+              <div>
+                <label style={Slabel}>Durée *</label>
+                {availableDurations.length > 0 ? (
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    {availableDurations.map(d => (
+                      <button key={d} onClick={() => setDurationMins(d)}
+                        className={durationMins === d ? "pop-btn pop-btn-dark" : "pop-btn pop-btn-outline"}
+                        style={{ flex: 1, justifyContent: 'center', fontSize: 11, padding: '7px 4px' }}>
+                        {d < 60 ? `${d}m` : "1h"}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="pop-input" style={{ color: 'rgba(0,0,0,0.3)' }}>—</div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Résumé horaire */}
+          {heureDebut && heureFin && (
+            <div style={{ background: 'var(--cream2)', border: '2px solid var(--ink)', borderRadius: 10, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 22 }}>⏱</span>
+              <div>
+                <p style={{ fontWeight: 900, fontSize: 15, margin: 0 }}>{heureLabel(heureDebut)} → {heureLabel(heureFin)}</p>
+                <p style={{ fontSize: 10, color: 'rgba(0,0,0,0.45)', margin: 0 }}>{durationMins} min · {poste.label}</p>
+              </div>
+            </div>
+          )}
 
           {/* Jeu */}
           <div>
@@ -1390,9 +1528,9 @@ function ModalReservation({
           <button onClick={onClose} className="pop-btn pop-btn-outline" style={{ flex: 1, justifyContent: 'center' }}>
             Annuler
           </button>
-          <button onClick={save} disabled={isSaving || !jeuId || !joueurs[0]?.nom.trim() || !creneau || !isJourOuvert}
+          <button onClick={save} disabled={isSaving || !canSave}
             className="pop-btn pop-btn-dark"
-            style={{ flex: 1, justifyContent: 'center', opacity: (isSaving || !jeuId || !joueurs[0]?.nom.trim() || !creneau || !isJourOuvert) ? 0.4 : 1, cursor: (isSaving || !jeuId || !joueurs[0]?.nom.trim() || !creneau || !isJourOuvert) ? 'not-allowed' : 'pointer' }}>
+            style={{ flex: 1, justifyContent: 'center', opacity: (isSaving || !canSave) ? 0.4 : 1, cursor: (isSaving || !canSave) ? 'not-allowed' : 'pointer' }}>
             {isSaving ? "Sauvegarde…" : "Confirmer"}
           </button>
         </div>
@@ -1403,22 +1541,33 @@ function ModalReservation({
 
 // ─── Statut calculé automatiquement ──────────────────────────────────────────
 
-function parseCreneau(creneau: string): { startH: number; endH: number } {
-  const parts = creneau.split("-");
-  return { startH: parseInt(parts[0]), endH: parseInt(parts[1]) };
-}
-
 type DisplayStatus = "a_venir" | "en_cours" | "passee" | "annulee";
 
 function getDisplayStatus(r: JvReservation): DisplayStatus {
   if (r.statut === "annulee") return "annulee";
   const today = format(new Date(), "yyyy-MM-dd");
-  const nowH = new Date().getHours();
+  const now = new Date();
+  const nowMins = now.getHours() * 60 + now.getMinutes();
   if (r.date_creneau < today) return "passee";
   if (r.date_creneau > today) return "a_venir";
-  const { startH, endH } = parseCreneau(r.creneau);
-  if (nowH >= startH && nowH < endH) return "en_cours";
-  if (nowH >= endH) return "passee";
+
+  // Utilise heure_debut/heure_fin si disponibles, sinon fallback legacy creneau
+  if (r.heure_debut && r.heure_fin) {
+    const startMins = parseTime(r.heure_debut);
+    const endMins   = parseTime(r.heure_fin);
+    if (nowMins >= startMins && nowMins < endMins) return "en_cours";
+    if (nowMins >= endMins) return "passee";
+    return "a_venir";
+  }
+
+  // Legacy : "16h-17h"
+  if (r.creneau) {
+    const parts = r.creneau.split("-");
+    const startH = parseInt(parts[0]);
+    const endH   = parseInt(parts[1]);
+    if (nowMins >= startH * 60 && nowMins < endH * 60) return "en_cours";
+    if (nowMins >= endH * 60) return "passee";
+  }
   return "a_venir";
 }
 
@@ -1459,8 +1608,22 @@ function ModalReservationDetail({
   const [notes, setNotes] = useState(reservation.notes ?? "");
   const [jeuId, setJeuId] = useState(reservation.jeu_id);
   const [jeu2Id, setJeu2Id] = useState<string | null>(reservation.jeu2_id ?? null);
+  const [heureFin, setHeureFin] = useState(reservation.heure_fin ?? "");
   const [isSaving, setIsSaving] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
+
+  // Options de fin disponibles : de heure_debut+15 à heure_debut+60, par 15 min
+  const heureFinOptions = useMemo(() => {
+    if (!reservation.heure_debut) return [];
+    const start = parseTime(reservation.heure_debut);
+    const dayOfWeek = getDay(parseISO(reservation.date_creneau));
+    const plage = PLAGE_PAR_JOUR[dayOfWeek];
+    const windowEnd = plage ? parseTime(plage.fin) : start + 60;
+    const opts: string[] = [];
+    for (let d = 15; d <= 60 && start + d <= windowEnd; d += 15)
+      opts.push(minsToTime(start + d));
+    return opts;
+  }, [reservation.heure_debut, reservation.date_creneau]);
 
   useEffect(() => {
     setJoueurs(prev => {
@@ -1490,14 +1653,19 @@ function ModalReservationDetail({
     const nomPrincipal = joueurs[0]?.nom.trim() ?? "";
     if (!nomPrincipal) return;
     setIsSaving(true);
-    const patch = { adherent_nom: nomPrincipal, nb_joueurs: nbJoueurs, joueurs_details: JSON.stringify(joueurs), notes: notes.trim() || null, jeu_id: jeuId, jeu2_id: jeu2Id };
+    const patch: Record<string, any> = {
+      adherent_nom: nomPrincipal, nb_joueurs: nbJoueurs,
+      joueurs_details: JSON.stringify(joueurs), notes: notes.trim() || null,
+      jeu_id: jeuId, jeu2_id: jeu2Id,
+    };
+    if (heureFin && heureFin !== reservation.heure_fin) patch.heure_fin = heureFin;
     const res = await fetch(`/api/jv-reservations/${reservation.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(patch),
     }).then(r => r.json() as Promise<any>).catch(() => ({ error: 'réseau' }));
     if (res.error) { alert("Erreur : " + res.error); setIsSaving(false); return; }
-    onSaved({ ...reservation, ...patch, joueurs_details: joueurs } as JvReservation);
+    onSaved({ ...reservation, ...patch, joueurs_details: joueurs, heure_fin: patch.heure_fin ?? reservation.heure_fin } as JvReservation);
     setIsSaving(false);
     onClose();
   };
@@ -1528,7 +1696,9 @@ function ModalReservationDetail({
             </p>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 5, flexWrap: 'wrap' }}>
               <span className="pop-sticker" style={{ fontSize: 11, padding: '3px 10px', background: 'var(--white)' }}>{poste?.label ?? reservation.poste}</span>
-              <span style={{ fontSize: 12, fontWeight: 600, color: 'rgba(0,0,0,0.5)' }}>{reservation.creneau}</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: 'rgba(0,0,0,0.6)' }}>
+                {reservation.heure_debut ? `${heureLabel(reservation.heure_debut)} – ${heureLabel(heureFin || reservation.heure_fin)}` : (reservation.creneau ?? "")}
+              </span>
               <span className="pop-sticker" style={{ fontSize: 10, padding: '3px 8px', background: 'var(--white)', display: 'flex', alignItems: 'center', gap: 4 }}>
                 {displayStatus === "en_cours" && <span className="pulse" style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--vert)', display: 'inline-block' }} />}
                 {STATUS_LABEL[displayStatus]}
@@ -1666,6 +1836,30 @@ function ModalReservationDetail({
               </div>
             ))}
           </div>
+
+          {/* Raccourcir la session */}
+          {reservation.statut !== "annulee" && reservation.heure_debut && heureFinOptions.length > 0 && (
+            <div>
+              <label style={SlabelD}>Fin de session</label>
+              <p style={{ fontSize: 10, color: 'rgba(0,0,0,0.4)', fontWeight: 600, marginBottom: 6 }}>
+                Ajuste l&apos;heure de fin si la session s&apos;est terminée plus tôt (max 1h)
+              </p>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {heureFinOptions.map(t => (
+                  <button key={t} onClick={() => setHeureFin(t)}
+                    className={heureFin === t ? "pop-btn pop-btn-dark" : "pop-btn pop-btn-outline"}
+                    style={{ fontSize: 12, padding: '6px 12px' }}>
+                    {heureLabel(t)}
+                  </button>
+                ))}
+              </div>
+              {heureFin && heureFin !== reservation.heure_fin && (
+                <p style={{ fontSize: 10, color: 'var(--orange)', fontWeight: 700, marginTop: 6 }}>
+                  Session raccourcie : {heureLabel(reservation.heure_debut)} → {heureLabel(heureFin)} ({parseTime(heureFin) - parseTime(reservation.heure_debut)} min)
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Notes */}
           <div>
@@ -1856,7 +2050,10 @@ function ModalCorrectionSemaine({
 
   const resasSemaine = reservations
     .filter(r => postes.some(p => p.id === r.poste) && r.statut !== "annulee" && r.date_creneau >= weekStart && r.date_creneau <= weekEnd)
-    .sort((a, b) => a.date_creneau.localeCompare(b.date_creneau) || a.creneau.localeCompare(b.creneau));
+    .sort((a, b) =>
+      a.date_creneau.localeCompare(b.date_creneau) ||
+      (a.heure_debut ?? a.creneau ?? "").localeCompare(b.heure_debut ?? b.creneau ?? "")
+    );
 
   const [jeuMap, setJeuMap] = useState<Record<string, string>>({});
   const weekKey = format(lundi, "yyyy-MM-dd");
@@ -1949,7 +2146,9 @@ function ModalCorrectionSemaine({
                     <p style={{ fontSize: 10, fontWeight: 900, textTransform: 'capitalize', margin: 0 }}>
                       {format(parseISO(r.date_creneau), "EEE d MMM", { locale: fr })}
                     </p>
-                    <p style={{ fontSize: 9, color: 'rgba(0,0,0,0.4)', margin: 0 }}>{r.creneau}</p>
+                    <p style={{ fontSize: 9, color: 'rgba(0,0,0,0.4)', margin: 0 }}>
+                      {r.heure_debut ? `${heureLabel(r.heure_debut)}-${heureLabel(r.heure_fin)}` : (r.creneau ?? "")}
+                    </p>
                     <p style={{ fontSize: 9, color: 'rgba(0,0,0,0.5)', margin: 0 }}>{posteItem?.label} · {r.adherent_nom} · {r.nb_joueurs}J</p>
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -2191,7 +2390,7 @@ function TabReservations({
 }: {
   jeux: JvJeu[];
   reservations: JvReservation[];
-  onNouvelle: (date?: string, creneau?: string, poste?: string) => void;
+  onNouvelle: (date?: string, heureDebut?: string, poste?: string) => void;
   onOpenDetail: (r: JvReservation) => void;
 }) {
   const [semaine, setSemaine] = useState(new Date());
@@ -2215,12 +2414,6 @@ function TabReservations({
       .sort((a, b) => b.nb_reservations - a.nb_reservations);
   }, [reservations, jeux]);
 
-  const getResaPoste = (date: Date, cr: string, posteId: string) =>
-    reservations.find(r =>
-      r.date_creneau === format(date, "yyyy-MM-dd") &&
-      r.creneau === cr && r.poste === posteId && r.statut !== "annulee"
-    );
-
   const countByStatus = useMemo(() => ({
     en_cours: reservations.filter(r => getDisplayStatus(r) === "en_cours").length,
     a_venir:  reservations.filter(r => getDisplayStatus(r) === "a_venir").length,
@@ -2231,13 +2424,17 @@ function TabReservations({
     const today = format(new Date(), "yyyy-MM-dd");
     return reservations
       .filter(r => r.statut !== "annulee" && r.date_creneau >= today)
-      .sort((a, b) => a.date_creneau.localeCompare(b.date_creneau) || a.creneau.localeCompare(b.creneau));
+      .sort((a, b) =>
+        a.date_creneau.localeCompare(b.date_creneau) ||
+        (a.heure_debut ?? a.creneau ?? "").localeCompare(b.heure_debut ?? b.creneau ?? "")
+      );
   }, [reservations]);
 
   const enCoursResas = sidebarResas.filter(r => getDisplayStatus(r) === "en_cours");
   const aVenirResas  = sidebarResas.filter(r => getDisplayStatus(r) === "a_venir");
 
-  const POSTE_BG: Record<string, string> = { ps5: 'var(--bleu)', switch_multi: 'var(--rouge)', switch_solo: 'var(--rouge)', pc: 'var(--cream2)' };
+  const POSTE_BG: Record<string, string> = { ps5: 'var(--bleu)', switch_multi: 'var(--rouge)', switch_solo: 'var(--rouge)', pc1: 'var(--cream2)', pc2: 'var(--cream2)' };
+  const POSTE_BLOCK_BG: Record<string, string> = { ps5: '#bfdbfe', switch_multi: '#fecaca', switch_solo: '#fbcfe8', pc1: '#e2e8f0', pc2: '#e2e8f0' };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -2281,76 +2478,148 @@ function TabReservations({
             </button>
           </div>
 
-          {/* Légende postes */}
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {POSTES.map(p => (
-              <span key={p.id} className="pop-sticker" style={{ fontSize: 10, padding: '3px 8px', background: POSTE_BG[p.id] ?? 'var(--cream2)' }}>
-                {p.label}
-              </span>
-            ))}
-          </div>
-
-          {/* Jours */}
+          {/* Jours — timeline */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {joursOuverts.map(d => {
               const dow = getDay(d);
-              const creneaux = CRENEAUX_PAR_JOUR[dow] ?? [];
+              const plage = PLAGE_PAR_JOUR[dow];
               const dateStr = format(d, "yyyy-MM-dd");
+              if (!plage) return null;
+
+              const wStart = parseTime(plage.debut);
+              const wEnd   = parseTime(plage.fin);
+              const wDur   = wEnd - wStart;
+
+              // Marques horaires (chaque heure)
+              const heureMarks: number[] = [];
+              for (let h = wStart; h <= wEnd; h += 60) heureMarks.push(h);
+
               return (
                 <div key={dateStr} className="pop-card" style={{ overflow: 'hidden', background: 'var(--cream)', outline: isToday(d) ? '3px solid var(--ink)' : 'none', outlineOffset: isToday(d) ? 2 : 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', borderBottom: '2px solid var(--ink)', background: isToday(d) ? 'var(--ink)' : 'var(--cream2)' }}>
-                    <span style={{ fontWeight: 900, fontSize: 13, color: isToday(d) ? 'var(--white)' : 'var(--ink)', textTransform: 'capitalize' }}>{format(d, "EEEE d MMMM", { locale: fr })}</span>
-                    {isToday(d) && <span className="pop-sticker" style={{ fontSize: 9, padding: '2px 8px', background: '#baff29' }}>Aujourd&apos;hui</span>}
+                  {/* En-tête jour */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderBottom: '2px solid var(--ink)', background: isToday(d) ? 'var(--ink)' : 'var(--cream2)' }}>
+                    <span style={{ fontWeight: 900, fontSize: 13, color: isToday(d) ? 'var(--white)' : 'var(--ink)', textTransform: 'capitalize' }}>
+                      {format(d, "EEEE d MMMM", { locale: fr })}
+                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {isToday(d) && <span className="pop-sticker" style={{ fontSize: 9, padding: '2px 8px', background: '#baff29' }}>Aujourd&apos;hui</span>}
+                      <span style={{ fontSize: 10, fontWeight: 700, color: isToday(d) ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.4)' }}>
+                        {heureLabel(plage.debut)} – {heureLabel(plage.fin)}
+                      </span>
+                    </div>
                   </div>
-                  <div>
-                    {creneaux.map((cr, crIdx) => (
-                      <div key={cr} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 16px', borderBottom: crIdx < creneaux.length - 1 ? '1.5px solid var(--cream2)' : 'none' }}>
-                        <span style={{ fontSize: 11, fontWeight: 900, color: 'rgba(0,0,0,0.4)', width: 64, paddingTop: 2, flexShrink: 0 }}>{cr}</span>
-                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', flex: 1 }}>
-                          {POSTES.map(p => {
-                            const resa = getResaPoste(d, cr, p.id);
-                            const jeu = resa ? jeux.find(j => j.id === resa.jeu_id) : null;
-                            const jeu2 = resa?.jeu2_id ? jeux.find(j => j.id === resa.jeu2_id) : null;
-                            if (resa) {
+
+                  {/* Repères horaires */}
+                  <div style={{ display: 'flex', padding: '4px 14px 2px', paddingLeft: 80 }}>
+                    <div style={{ flex: 1, position: 'relative', height: 14 }}>
+                      {heureMarks.map(h => (
+                        <span key={h} style={{
+                          position: 'absolute',
+                          left: `${(h - wStart) / wDur * 100}%`,
+                          transform: h === wEnd ? 'translateX(-100%)' : h === wStart ? 'none' : 'translateX(-50%)',
+                          fontSize: 9, fontWeight: 800, color: 'rgba(0,0,0,0.35)',
+                        }}>
+                          {heureLabel(minsToTime(h))}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Lignes postes */}
+                  <div style={{ padding: '4px 14px 10px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {POSTES.map(p => {
+                      const posResas = reservations
+                        .filter(r => r.poste === p.id && r.date_creneau === dateStr && r.statut !== "annulee")
+                        .sort((a, b) => {
+                          const sa = a.heure_debut ? parseTime(a.heure_debut) : (a.creneau ? parseInt(a.creneau.split("-")[0]) * 60 : 0);
+                          const sb = b.heure_debut ? parseTime(b.heure_debut) : (b.creneau ? parseInt(b.creneau.split("-")[0]) * 60 : 0);
+                          return sa - sb;
+                        });
+
+                      const firstAvail = getFirstAvailableTime(posResas, plage.debut, plage.fin);
+
+                      return (
+                        <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 40 }}>
+                          {/* Label poste */}
+                          <span style={{ fontSize: 9, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.04em', color: 'rgba(0,0,0,0.5)', width: 58, flexShrink: 0, textAlign: 'right' }}>
+                            {p.label}
+                          </span>
+
+                          {/* Timeline */}
+                          <div style={{ flex: 1, position: 'relative', height: 40, background: 'rgba(0,0,0,0.04)', borderRadius: 8, border: '1.5px solid rgba(0,0,0,0.1)', overflow: 'hidden' }}>
+                            {/* Ligne médiane de référence */}
+                            {heureMarks.slice(1, -1).map(h => (
+                              <div key={h} style={{
+                                position: 'absolute', top: 0, bottom: 0,
+                                left: `${(h - wStart) / wDur * 100}%`,
+                                width: 1, background: 'rgba(0,0,0,0.08)',
+                              }} />
+                            ))}
+
+                            {/* Blocs de réservation */}
+                            {posResas.map(resa => {
+                              // Fallback legacy : dériver depuis creneau si heure_debut/heure_fin manquants
+                              const rStart = resa.heure_debut
+                                ? parseTime(resa.heure_debut)
+                                : (resa.creneau ? parseInt(resa.creneau.split("-")[0]) * 60 : wStart);
+                              const rEnd = resa.heure_fin
+                                ? parseTime(resa.heure_fin)
+                                : (resa.creneau ? parseInt(resa.creneau.split("-")[1]) * 60 : wStart + 60);
+                              const leftPct  = Math.max(0, (rStart - wStart) / wDur * 100);
+                              const widthPct = Math.max(1, (rEnd - rStart) / wDur * 100);
                               const ds = getDisplayStatus(resa);
                               const isEnCours = ds === "en_cours";
+                              const jeu = jeux.find(j => j.id === resa.jeu_id);
+                              const jeu2 = resa.jeu2_id ? jeux.find(j => j.id === resa.jeu2_id) : null;
                               return (
-                                <button key={p.id}
+                                <button key={resa.id}
                                   onClick={() => onOpenDetail(resa)}
+                                  title={`${resa.adherent_nom} · ${jeu?.titre ?? "?"} · ${heureLabel(resa.heure_debut)}-${heureLabel(resa.heure_fin)}`}
                                   style={{
-                                    display: 'flex', flexDirection: 'column', gap: 2, padding: '6px 10px', textAlign: 'left',
-                                    border: isEnCours ? '2.5px solid var(--vert)' : '2px solid var(--ink)',
-                                    borderRadius: 10, background: POSTE_BG[p.id] ?? 'var(--cream2)',
-                                    minWidth: 90, maxWidth: 130, cursor: 'pointer',
-                                    boxShadow: isEnCours ? '0 0 0 2px var(--vert)' : '2px 2px 0 var(--ink)',
+                                    position: 'absolute', top: 3, bottom: 3,
+                                    left: `${leftPct}%`, width: `${widthPct}%`,
+                                    borderRadius: 6,
+                                    background: POSTE_BLOCK_BG[p.id] ?? '#e2e8f0',
+                                    border: isEnCours ? '2px solid var(--vert)' : '1.5px solid var(--ink)',
+                                    boxShadow: isEnCours ? '0 0 0 2px var(--vert)' : '1px 1px 0 var(--ink)',
+                                    cursor: 'pointer', overflow: 'hidden',
+                                    display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '0 6px',
                                   }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                    {isEnCours && <span className="pulse" style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--vert)', flexShrink: 0, display: 'inline-block' }} />}
-                                    <span style={{ fontSize: 9, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.05em', opacity: 0.6 }}>{p.label}</span>
-                                  </div>
-                                  {jeu2 ? (
-                                    <span style={{ fontSize: 10, fontWeight: 700, lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                      {jeu?.titre ?? "?"} → {jeu2.titre}
-                                    </span>
-                                  ) : (
-                                    <span style={{ fontSize: 10, fontWeight: 700, lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{jeu?.titre ?? "?"}</span>
+                                  {isEnCours && (
+                                    <span className="pulse" style={{ position: 'absolute', top: 4, right: 4, width: 5, height: 5, borderRadius: '50%', background: 'var(--vert)', display: 'inline-block' }} />
                                   )}
-                                  <span style={{ fontSize: 9, fontWeight: 600, opacity: 0.7, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{resa.adherent_nom} · {resa.nb_joueurs}J</span>
+                                  <span style={{ fontSize: 9, fontWeight: 900, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.2 }}>
+                                    {resa.adherent_nom}
+                                  </span>
+                                  <span style={{ fontSize: 8, fontWeight: 700, opacity: 0.7, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.2 }}>
+                                    {jeu2 ? `${jeu?.titre ?? "?"} → ${jeu2.titre}` : (jeu?.titre ?? "?")}
+                                  </span>
+                                  <span style={{ fontSize: 8, opacity: 0.55, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.2 }}>
+                                    {resa.heure_debut ? `${heureLabel(resa.heure_debut)}-${heureLabel(resa.heure_fin)}` : (resa.creneau ?? "")} · {resa.nb_joueurs}J
+                                  </span>
                                 </button>
                               );
-                            }
-                            return (
-                              <button key={p.id}
-                                onClick={() => onNouvelle(dateStr, cr, p.id)}
-                                style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, padding: '8px 10px', border: '2px dashed rgba(0,0,0,0.2)', borderRadius: 10, background: 'transparent', cursor: 'pointer', minWidth: 90, color: 'rgba(0,0,0,0.25)' }}>
-                                <span style={{ fontSize: 9, fontWeight: 900, textTransform: 'uppercase' }}>{p.label}</span>
-                                <span style={{ fontSize: 18, lineHeight: 1 }}>+</span>
-                              </button>
-                            );
-                          })}
+                            })}
+                          </div>
+
+                          {/* Bouton ajouter */}
+                          <button
+                            onClick={() => onNouvelle(dateStr, firstAvail ?? plage.debut, p.id)}
+                            disabled={!firstAvail}
+                            title={firstAvail ? `Ajouter à partir de ${heureLabel(firstAvail)}` : "Plage complète"}
+                            style={{
+                              width: 28, height: 28, flexShrink: 0,
+                              border: firstAvail ? '2px solid var(--ink)' : '2px dashed rgba(0,0,0,0.2)',
+                              borderRadius: 7, background: firstAvail ? 'var(--vert)' : 'transparent',
+                              color: firstAvail ? 'var(--ink)' : 'rgba(0,0,0,0.2)',
+                              fontWeight: 900, fontSize: 14, cursor: firstAvail ? 'pointer' : 'default',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            }}>
+                            {firstAvail ? "+" : "–"}
+                          </button>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               );
@@ -2396,13 +2665,14 @@ function TabReservations({
                 {enCoursResas.map(r => {
                   const jeu = jeux.find(j => j.id === r.jeu_id);
                   const poste = POSTES.find(p => p.id === r.poste);
+                  const timeStr = r.heure_debut ? `${heureLabel(r.heure_debut)}-${heureLabel(r.heure_fin)}` : (r.creneau ?? "");
                   return (
                     <button key={r.id} onClick={() => onOpenDetail(r)}
                       className="pop-card pop-card-hover"
                       style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: '#baff29', textAlign: 'left', width: '100%', cursor: 'pointer' }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0, width: 48 }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0, width: 52 }}>
                         <span style={{ fontSize: 10, fontWeight: 900 }}>{format(parseISO(r.date_creneau), "d MMM", { locale: fr })}</span>
-                        <span style={{ fontSize: 9, color: 'rgba(0,0,0,0.5)', fontWeight: 600 }}>{r.creneau}</span>
+                        <span style={{ fontSize: 9, color: 'rgba(0,0,0,0.5)', fontWeight: 700 }}>{timeStr}</span>
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <p style={{ fontSize: 12, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', margin: 0 }}>{jeu?.titre ?? "?"}</p>
@@ -2423,13 +2693,14 @@ function TabReservations({
               {aVenirResas.slice(0, 8).map(r => {
                 const jeu = jeux.find(j => j.id === r.jeu_id);
                 const poste = POSTES.find(p => p.id === r.poste);
+                const timeStr = r.heure_debut ? `${heureLabel(r.heure_debut)}-${heureLabel(r.heure_fin)}` : (r.creneau ?? "");
                 return (
                   <button key={r.id} onClick={() => onOpenDetail(r)}
                     className="pop-card pop-card-hover"
                     style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: 'var(--cream)', textAlign: 'left', width: '100%', cursor: 'pointer' }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0, width: 48 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0, width: 52 }}>
                       <span style={{ fontSize: 10, fontWeight: 900 }}>{format(parseISO(r.date_creneau), "d MMM", { locale: fr })}</span>
-                      <span style={{ fontSize: 9, color: 'rgba(0,0,0,0.4)', fontWeight: 600 }}>{r.creneau}</span>
+                      <span style={{ fontSize: 9, color: 'rgba(0,0,0,0.4)', fontWeight: 700 }}>{timeStr}</span>
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <p style={{ fontSize: 12, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', margin: 0 }}>{jeu?.titre ?? "?"}</p>
@@ -2711,7 +2982,7 @@ export default function JvPage() {
   const [modalJeu, setModalJeu] = useState<{ open: boolean; jeu: JvJeu | null }>({ open: false, jeu: null });
   const [modalRotation, setModalRotation] = useState<SelectionSlot | null>(null);
   const [modalPlanning, setModalPlanning] = useState(false);
-  const [modalResa, setModalResa] = useState<{ open: boolean; date?: string; creneau?: string; poste?: string }>({ open: false });
+  const [modalResa, setModalResa] = useState<{ open: boolean; date?: string; heureDebut?: string; poste?: string }>({ open: false });
   const [modalResaDetail, setModalResaDetail] = useState<JvReservation | null>(null);
   const [modalCorrection, setModalCorrection] = useState<SelectionSlot | null>(null);
 
@@ -2984,7 +3255,7 @@ export default function JvPage() {
               <TabReservations
                 jeux={jeux}
                 reservations={reservations}
-                onNouvelle={(date, creneau, poste) => setModalResa({ open: true, date, creneau, poste })}
+                onNouvelle={(date, heureDebut, poste) => setModalResa({ open: true, date, heureDebut, poste })}
                 onOpenDetail={r => setModalResaDetail(r)}
               />
             )}
@@ -3030,8 +3301,9 @@ export default function JvPage() {
         <ModalReservation
           jeux={jeux}
           selections={selections}
+          reservations={reservations}
           preDate={modalResa.date}
-          preCreneau={modalResa.creneau}
+          preHeureDebut={modalResa.heureDebut}
           prePoste={modalResa.poste}
           onClose={() => setModalResa({ open: false })}
           onSaved={handleResaSaved}
