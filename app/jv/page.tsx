@@ -1317,6 +1317,7 @@ function ModalReservation({
     const payload = {
       jeu_id: jeuId, poste: posteId, date_creneau: date,
       heure_debut: heureDebut, heure_fin: heureFin,
+      creneau: `${heureLabel(heureDebut)}-${heureLabel(heureFin)}`,
       adherent_nom: nomPrincipal, nb_joueurs: nbJoueurs,
       joueurs_details: JSON.stringify(joueurs),
       notes: notes.trim() || null, statut: "confirmee",
