@@ -305,7 +305,7 @@ function ModalCatalogage({ game: initGame, onClose, onSaved }: {
     };
     const res = await fetch(`/api/catalogue/${encodeURIComponent(game.ean)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     if (!res.ok) { alert("Erreur de sauvegarde"); setIsSaving(false); return; }
-    const jeuxRows = await fetch(`/api/jeux?ean=${encodeURIComponent(game.ean)}&fields=id`).then(r => r.json()).catch(() => []);
+    const jeuxRows = await fetch(`/api/jeux?ean=${encodeURIComponent(game.ean)}&fields=id`).then(r => r.json() as Promise<any>).catch(() => []);
     if (Array.isArray(jeuxRows)) {
       for (const j of jeuxRows) await fetch(`/api/jeux/${j.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ etape_notice: 1 }) });
     }
@@ -546,8 +546,8 @@ function CataloguePageInner() {
   const loadCatalogue = async () => {
     setIsLoading(true);
     const [catData, jeuxData]: [any[], any[]] = await Promise.all([
-      fetch('/api/catalogue?fields=ean,nom,auteurs,auteurs_json,editeur,description,resume,contenu,boite_format,couleur,mecanique,nb_de_joueurs,temps_de_jeu,etoiles,coop_versus,image_url').then(r => r.json()).catch(() => []),
-      fetch('/api/jeux?code_syracuse=notnull&fields=ean,code_syracuse').then(r => r.json()).catch(() => []),
+      fetch('/api/catalogue?fields=ean,nom,auteurs,auteurs_json,editeur,description,resume,contenu,boite_format,couleur,mecanique,nb_de_joueurs,temps_de_jeu,etoiles,coop_versus,image_url').then(r => r.json() as Promise<any>).catch(() => []),
+      fetch('/api/jeux?code_syracuse=notnull&fields=ean,code_syracuse').then(r => r.json() as Promise<any>).catch(() => []),
     ]);
     if (Array.isArray(catData)) setCatalogue(catData as CatalogueEntry[]);
     if (Array.isArray(jeuxData)) {
@@ -589,7 +589,7 @@ function CataloguePageInner() {
     setIsExporting(true);
     try {
       const eans = selectedGames.map(g => g.ean);
-      const jeux = await fetch(`/api/jeux?eans=${encodeURIComponent(eans.join(','))}&code_syracuse=notnull&fields=ean,code_syracuse`).then(r => r.json()).catch(() => []);
+      const jeux = await fetch(`/api/jeux?eans=${encodeURIComponent(eans.join(','))}&code_syracuse=notnull&fields=ean,code_syracuse`).then(r => r.json() as Promise<any>).catch(() => []);
       const copiesMap: Record<string, JeuCopie[]> = {};
       for (const j of (Array.isArray(jeux) ? jeux : [])) { if (!copiesMap[j.ean]) copiesMap[j.ean] = []; copiesMap[j.ean].push(j as JeuCopie); }
       const totalExemplaires = Object.values(copiesMap).reduce((s, arr) => s + arr.length, 0);

@@ -17,7 +17,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const db = await getDB();
-    const body = await request.json();
+    const body = await request.json() as any;
     const normalized = { ...body };
     if ('jeux_ids' in normalized && typeof normalized.jeux_ids !== 'string') {
       normalized.jeux_ids = JSON.stringify(normalized.jeux_ids ?? []);

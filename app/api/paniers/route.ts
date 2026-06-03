@@ -14,7 +14,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const db = await getDB();
-    const body = await request.json();
+    const body = await request.json() as any;
     const { nom, statut = 'En cours', notes = null } = body;
     const id = crypto.randomUUID();
     await db.prepare(

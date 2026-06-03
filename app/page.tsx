@@ -277,15 +277,15 @@ export default function AccueilPage() {
   useEffect(() => { chargerEvenements(); }, [semaineRef]);
   useEffect(() => {
     const key = format(startOfWeek(semaineRef, { weekStartsOn: 1 }), 'yyyy-MM-dd');
-    fetch(`/api/planning-semaine?key=${key}`).then(r => r.json())
+    fetch(`/api/planning-semaine?key=${key}`).then(r => r.json() as Promise<any>)
       .then(data => setWeekPlanningSlots((data?.slots ?? []) as PlanningSlot[]));
   }, [semaineRef]);
 
   const chargerAlertes = async () => {
     const toArr = (d: any) => Array.isArray(d) ? d : [];
     const [alertesData, rappelsData] = await Promise.all([
-      fetch('/api/alertes?statut=active').then(r => r.json()).then(toArr).catch(() => []),
-      fetch('/api/jeux?fields=id,nom,notes,code_syracuse&notes_rappel=true').then(r => r.json()).then(toArr).catch(() => []),
+      fetch('/api/alertes?statut=active').then(r => r.json() as Promise<any>).then(toArr).catch(() => []),
+      fetch('/api/jeux?fields=id,nom,notes,code_syracuse&notes_rappel=true').then(r => r.json() as Promise<any>).then(toArr).catch(() => []),
     ]);
     setAlertes(alertesData as Alerte[]);
     const notesCache: Record<string, JeuNote[]> = {};
@@ -321,16 +321,16 @@ export default function AccueilPage() {
   };
 
   const chargerEquipe = async () => {
-    const data = await fetch('/api/equipe').then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []);
+    const data = await fetch('/api/equipe').then(r => r.json() as Promise<any>).then(d => Array.isArray(d) ? d : []).catch(() => []);
     setEquipe(data as MembreEquipe[]);
   };
 
   const chargerNouveautes = async () => {
-    const allJeux = await fetch(`/api/jeux?fields=id,nom,ean,date_sortie,etape_nouveaute&statut=${encodeURIComponent('En stock')}`).then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []);
+    const allJeux = await fetch(`/api/jeux?fields=id,nom,ean,date_sortie,etape_nouveaute&statut=${encodeURIComponent('En stock')}`).then(r => r.json() as Promise<any>).then(d => Array.isArray(d) ? d : []).catch(() => []);
     const jeuxData = (allJeux as any[]).filter(j => j.etape_nouveaute && j.date_sortie);
     if (!jeuxData.length) return;
     const eans = [...new Set(jeuxData.map((j: any) => j.ean))].join(',');
-    const catData = await fetch(`/api/catalogue?eans=${encodeURIComponent(eans)}&fields=ean,image_url,couleur`).then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []);
+    const catData = await fetch(`/api/catalogue?eans=${encodeURIComponent(eans)}&fields=ean,image_url,couleur`).then(r => r.json() as Promise<any>).then(d => Array.isArray(d) ? d : []).catch(() => []);
     const catMap: Record<string, { image_url?: string; couleur?: string }> = {};
     (catData as any[]).forEach(c => { catMap[c.ean] = c; });
     const seen = new Set<string>();
@@ -348,7 +348,7 @@ export default function AccueilPage() {
     const fin = endOfWeek(semaineRef, { weekStartsOn: 1 });
     const debutStr = format(debut, "yyyy-MM-dd");
     const finStr = format(fin, "yyyy-MM-dd");
-    const allEvents = await fetch('/api/evenements').then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []);
+    const allEvents = await fetch('/api/evenements').then(r => r.json() as Promise<any>).then(d => Array.isArray(d) ? d : []).catch(() => []);
     const data = (allEvents as any[])
       .filter(e => e.date_debut <= finStr && e.date_fin >= debutStr)
       .sort((a, b) => (a.heure_debut ?? '').localeCompare(b.heure_debut ?? ''));
@@ -368,8 +368,8 @@ export default function AccueilPage() {
     setScanError(null);
     const codeF = /^\d+$/.test(code) && code.length < 8 ? code.padStart(8, "0") : code;
     const [bySyracuse, byEan] = await Promise.all([
-      fetch(`/api/jeux?fields=id,nom,code_syracuse,notes&code_syracuse=${encodeURIComponent(codeF)}&limit=1`).then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []),
-      fetch(`/api/jeux?fields=id,nom,code_syracuse,notes&ean=${encodeURIComponent(codeF)}&limit=1`).then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []),
+      fetch(`/api/jeux?fields=id,nom,code_syracuse,notes&code_syracuse=${encodeURIComponent(codeF)}&limit=1`).then(r => r.json() as Promise<any>).then(d => Array.isArray(d) ? d : []).catch(() => []),
+      fetch(`/api/jeux?fields=id,nom,code_syracuse,notes&ean=${encodeURIComponent(codeF)}&limit=1`).then(r => r.json() as Promise<any>).then(d => Array.isArray(d) ? d : []).catch(() => []),
     ]);
     const data = (bySyracuse as any[])[0] ?? (byEan as any[])[0] ?? null;
     if (data?.nom) {
@@ -405,7 +405,7 @@ export default function AccueilPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
-      }).then(r => r.json()).catch(() => null);
+      }).then(r => r.json() as Promise<any>).catch(() => null);
       if (data && !data.error) setAlertes([data as Alerte, ...alertes]);
     }
     setForm({ titre: "", description: "", type: "info", jeu_nom: "", jeu_id: "" });

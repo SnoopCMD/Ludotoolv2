@@ -343,7 +343,7 @@ export default function ExportPage() {
 
   const loadCatalogue = async () => {
     setIsLoading(true);
-    const data = await fetch('/api/catalogue?fields=ean,nom,auteurs,editeur,description,contenu,couleur,mecanique,nb_de_joueurs,temps_de_jeu,etoiles,coop_versus,image_url').then(r => r.json()).catch(() => []);
+    const data = await fetch('/api/catalogue?fields=ean,nom,auteurs,editeur,description,contenu,couleur,mecanique,nb_de_joueurs,temps_de_jeu,etoiles,coop_versus,image_url').then(r => r.json() as Promise<any>).catch(() => []);
     if (Array.isArray(data)) setCatalogue(data as CatalogueEntry[]);
     setIsLoading(false);
   };

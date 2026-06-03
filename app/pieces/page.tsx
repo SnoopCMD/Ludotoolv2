@@ -131,8 +131,8 @@ export default function PiecesPage() {
   const chargerDonnees = async () => {
     const toArr = (d: any) => Array.isArray(d) ? d : [];
     const [d1, d2] = await Promise.all([
-      fetch('/api/pieces-manquantes').then(r => r.json()).then(toArr).catch(() => []),
-      fetch('/api/pieces-trouvees').then(r => r.json()).then(toArr).catch(() => []),
+      fetch('/api/pieces-manquantes').then(r => r.json() as Promise<any>).then(toArr).catch(() => []),
+      fetch('/api/pieces-trouvees').then(r => r.json() as Promise<any>).then(toArr).catch(() => []),
     ]);
     const manq = (d1 as any[]).filter(p => ['Manquant', 'Commandé'].includes(p.statut));
     const trouvs = (d2 as any[]).filter(p => p.statut === 'En attente');
@@ -142,7 +142,7 @@ export default function PiecesPage() {
   };
 
   const resoudreTypesEditeurs = async (pieces: PieceManquante[]) => {
-    const editeursData = await fetch('/api/editeurs').then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []);
+    const editeursData = await fetch('/api/editeurs').then(r => r.json() as Promise<any>).then(d => Array.isArray(d) ? d : []).catch(() => []);
     const listeEditeurs = editeursData as Editeur[];
     const types: Record<number, Editeur["type_commande"] | null> = {};
     await Promise.all(pieces.filter(p => p.statut === "Manquant").map(async p => {
@@ -154,7 +154,7 @@ export default function PiecesPage() {
   };
 
   const chargerEditeurs = async () => {
-    const data = await fetch('/api/editeurs').then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []);
+    const data = await fetch('/api/editeurs').then(r => r.json() as Promise<any>).then(d => Array.isArray(d) ? d : []).catch(() => []);
     setEditeurs(data as Editeur[]);
   };
 
@@ -162,17 +162,17 @@ export default function PiecesPage() {
 
   const trouverEditeurPourPiece = async (piece: PieceManquante): Promise<string | null> => {
     if (piece.ean) {
-      const jeux = await fetch(`/api/jeux?fields=ean&code_syracuse=${encodeURIComponent(piece.ean)}&limit=1`).then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []);
+      const jeux = await fetch(`/api/jeux?fields=ean&code_syracuse=${encodeURIComponent(piece.ean)}&limit=1`).then(r => r.json() as Promise<any>).then(d => Array.isArray(d) ? d : []).catch(() => []);
       const jeuEan = (jeux as any[])[0]?.ean;
       if (jeuEan) {
-        const cat = await fetch(`/api/catalogue/${encodeURIComponent(jeuEan)}?fields=editeur`).then(r => r.json()).catch(() => null);
+        const cat = await fetch(`/api/catalogue/${encodeURIComponent(jeuEan)}?fields=editeur`).then(r => r.json() as Promise<any>).catch(() => null);
         if (cat?.editeur) return cat.editeur;
       }
     }
-    const jeux2 = await fetch(`/api/jeux?fields=ean&nom_like=${encodeURIComponent(piece.nom)}&limit=1`).then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []);
+    const jeux2 = await fetch(`/api/jeux?fields=ean&nom_like=${encodeURIComponent(piece.nom)}&limit=1`).then(r => r.json() as Promise<any>).then(d => Array.isArray(d) ? d : []).catch(() => []);
     const jeuEan2 = (jeux2 as any[])[0]?.ean;
     if (jeuEan2) {
-      const cat = await fetch(`/api/catalogue/${encodeURIComponent(jeuEan2)}?fields=editeur`).then(r => r.json()).catch(() => null);
+      const cat = await fetch(`/api/catalogue/${encodeURIComponent(jeuEan2)}?fields=editeur`).then(r => r.json() as Promise<any>).catch(() => null);
       if (cat?.editeur) return cat.editeur;
     }
     return null;
@@ -191,7 +191,7 @@ export default function PiecesPage() {
     setEmailGroupeIdx(null);
 
     const piecesMandantes = manquantes.filter(m => m.statut === "Manquant");
-    const editeursData = await fetch('/api/editeurs').then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []);
+    const editeursData = await fetch('/api/editeurs').then(r => r.json() as Promise<any>).then(d => Array.isArray(d) ? d : []).catch(() => []);
     const listeEditeurs = editeursData as Editeur[];
 
     // Résoudre l'éditeur pour chaque pièce
@@ -268,7 +268,7 @@ export default function PiecesPage() {
   // ─── Ouvrir config éditeur depuis modal Commander ─────────────────────────
 
   const ouvrirConfigEditeur = async (groupe: CommandeGroupe) => {
-    const data = await fetch('/api/editeurs').then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []);
+    const data = await fetch('/api/editeurs').then(r => r.json() as Promise<any>).then(d => Array.isArray(d) ? d : []).catch(() => []);
     const liste = data as Editeur[];
     setEditeurs(liste);
     if (groupe.editeur) {
@@ -301,7 +301,7 @@ export default function PiecesPage() {
         body: JSON.stringify(payload),
       });
       if (nomOriginal && nomOriginal !== nomNouveau) {
-        const allCat = await fetch('/api/catalogue').then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []);
+        const allCat = await fetch('/api/catalogue').then(r => r.json() as Promise<any>).then(d => Array.isArray(d) ? d : []).catch(() => []);
         const toUpdate = (allCat as any[]).filter(c => c.editeur === nomOriginal);
         for (const c of toUpdate) {
           await fetch(`/api/catalogue/${encodeURIComponent(c.ean)}`, {
@@ -331,7 +331,7 @@ export default function PiecesPage() {
     if (!source || !cible) return;
     if (!confirm(`Fusionner "${source.nom}" → "${cible.nom}" ?\nToutes les fiches catalogue seront mises à jour.`)) return;
     setIsFusioning(true);
-    const allCat = await fetch('/api/catalogue').then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []);
+    const allCat = await fetch('/api/catalogue').then(r => r.json() as Promise<any>).then(d => Array.isArray(d) ? d : []).catch(() => []);
     const toUpdate = (allCat as any[]).filter(c => c.editeur === source.nom);
     for (const c of toUpdate) {
       await fetch(`/api/catalogue/${encodeURIComponent(c.ean)}`, {
@@ -358,8 +358,8 @@ export default function PiecesPage() {
   const importerEditeursDepuisCatalogue = async () => {
     setIsImporting(true);
     const [catData, existants] = await Promise.all([
-      fetch('/api/catalogue?fields=editeur').then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []),
-      fetch('/api/editeurs').then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []),
+      fetch('/api/catalogue?fields=editeur').then(r => r.json() as Promise<any>).then(d => Array.isArray(d) ? d : []).catch(() => []),
+      fetch('/api/editeurs').then(r => r.json() as Promise<any>).then(d => Array.isArray(d) ? d : []).catch(() => []),
     ]);
     const nomsExistants = new Set((existants as any[]).map((e: { nom: string }) => normaliserEditeur(e.nom)));
 
@@ -434,7 +434,7 @@ export default function PiecesPage() {
 
   const fetchContenuJeu = async (ean: string) => {
     if (!ean) { setContenuJeu([]); return; }
-    const data = await fetch(`/api/catalogue/${encodeURIComponent(ean)}`).then(r => r.json()).catch(() => null);
+    const data = await fetch(`/api/catalogue/${encodeURIComponent(ean)}`).then(r => r.json() as Promise<any>).catch(() => null);
     if (data?.contenu) {
       const items = data.contenu.split("\n").map((l: string) => l.replace(/^[\s\-\*\u2022]*\d*\s*/, "").trim()).filter((l: string) => l.length > 0);
       setContenuJeu(items);
@@ -446,14 +446,14 @@ export default function PiecesPage() {
     if (!code) return;
     let codeF = code.trim();
     if (/^\d+$/.test(codeF) && codeF.length < 8) codeF = codeF.padStart(8, "0");
-    const data = await fetch(`/api/jeux?fields=nom,ean&code_syracuse=${encodeURIComponent(codeF)}&limit=1`).then(r => r.json()).then((d: any[]) => d[0] ?? null).catch(() => null);
+    const data = await fetch(`/api/jeux?fields=nom,ean&code_syracuse=${encodeURIComponent(codeF)}&limit=1`).then(r => r.json() as Promise<any>).then((d: any[]) => d[0] ?? null).catch(() => null);
     if (data?.nom) { setNomManq(data.nom); if (data.ean) fetchContenuJeu(data.ean); }
   };
 
   const handleRechercheNom = async (text: string) => {
     setNomManq(text);
     if (text.length > 2) {
-      const data = await fetch(`/api/jeux?fields=nom,code_syracuse,ean&nom_like=${encodeURIComponent(text)}&limit=20`).then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []);
+      const data = await fetch(`/api/jeux?fields=nom,code_syracuse,ean&nom_like=${encodeURIComponent(text)}&limit=20`).then(r => r.json() as Promise<any>).then(d => Array.isArray(d) ? d : []).catch(() => []);
       setSuggestionsNom(data);
     } else setSuggestionsNom([]);
   };
@@ -497,7 +497,7 @@ export default function PiecesPage() {
   };
 
   const commanderPieceDirecte = async (piece: PieceManquante) => {
-    const editeursData = await fetch('/api/editeurs').then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []);
+    const editeursData = await fetch('/api/editeurs').then(r => r.json() as Promise<any>).then(d => Array.isArray(d) ? d : []).catch(() => []);
     const listeEditeurs = editeursData as Editeur[];
     const nomEditeurCat = await trouverEditeurPourPiece(piece);
     const editeur = nomEditeurCat ? matcherEditeur(nomEditeurCat, listeEditeurs) : null;

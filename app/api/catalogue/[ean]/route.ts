@@ -28,7 +28,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ ean:
   try {
     const db = await getDB();
     const { ean } = await params;
-    const body = await request.json();
+    const body = await request.json() as any;
     const keys = Object.keys(body);
     if (!keys.length) return NextResponse.json({ error: 'no fields' }, { status: 400 });
     const sets = keys.map(k => `${k} = ?`).join(', ');

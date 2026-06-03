@@ -14,7 +14,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const db = await getDB();
-    const body = await request.json();
+    const body = await request.json() as any;
     const normalized = { ...body };
     for (const k of ['plateformes', 'photos']) {
       if (k in normalized && typeof normalized[k] !== 'string') {

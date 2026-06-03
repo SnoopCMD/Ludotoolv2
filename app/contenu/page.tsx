@@ -43,7 +43,7 @@ function ContenuPageInner() {
   }, []);
 
   const chargerCatalogue = async () => {
-    const data = await fetch('/api/catalogue').then(r => r.json()).catch(() => null);
+    const data = await fetch('/api/catalogue').then(r => r.json() as Promise<any>).catch(() => null);
     if (Array.isArray(data)) {
       const dbContenus: Record<string, ContenuType[]> = { vert: [], rose: [], bleu: [], rouge: [], jaune: [] };
       data.forEach(item => {
@@ -73,7 +73,7 @@ function ContenuPageInner() {
       await fetch('/api/catalogue', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify([{ ean: jeu.ean, nom: jeu.nom, contenu: jeu.elements, couleur: couleurId }]) });
     });
 
-    const jeuxExistants = await fetch(`/api/jeux?ean=${encodeURIComponent(jeu.ean)}&fields=id&limit=1`).then(r => r.json()).catch(() => []);
+    const jeuxExistants = await fetch(`/api/jeux?ean=${encodeURIComponent(jeu.ean)}&fields=id&limit=1`).then(r => r.json() as Promise<any>).catch(() => []);
     if (!Array.isArray(jeuxExistants) || jeuxExistants.length === 0) {
       await fetch('/api/jeux', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
         ean: jeu.ean, nom: jeu.nom, statut: 'En préparation', is_double: 0,
@@ -149,7 +149,7 @@ function ContenuPageInner() {
       });
     });
     if (eansCompletsAImprimer.length > 0) {
-      const jeuxEnPrepa = await fetch(`/api/jeux?eans=${encodeURIComponent(eansCompletsAImprimer.join(','))}&statut=En+pr%C3%A9paration`).then(r => r.json()).catch(() => []);
+      const jeuxEnPrepa = await fetch(`/api/jeux?eans=${encodeURIComponent(eansCompletsAImprimer.join(','))}&statut=En+pr%C3%A9paration`).then(r => r.json() as Promise<any>).catch(() => []);
       if (Array.isArray(jeuxEnPrepa) && jeuxEnPrepa.length > 0) {
         for (const jeu of jeuxEnPrepa) {
           const isTermine = jeu.etape_plastifier && jeu.etape_etiquette && jeu.etape_equiper && jeu.etape_encoder && jeu.etape_notice && jeu.etape_nouveaute;

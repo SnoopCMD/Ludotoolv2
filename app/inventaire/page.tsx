@@ -397,11 +397,11 @@ export default function InventairePage() {
     const fields = 'id,nom,ean,code_syracuse,statut,is_double,etape_nouveaute,date_entree,date_sortie,etape_plastifier,etape_contenu,etape_etiquette,etape_equiper,etape_encoder,etape_notice,notes,notes_rappel';
     const toArr = (d: any) => Array.isArray(d) ? d : [];
     const [jeuxData, repsData, manqData, selData, catData] = await Promise.all([
-      fetch(`/api/jeux?fields=${fields}`).then(r => r.json()).then(toArr).catch(() => []),
-      fetch('/api/reparations').then(r => r.json()).then(toArr).catch(() => []),
-      fetch('/api/pieces-manquantes').then(r => r.json()).then(toArr).catch(() => []),
-      fetch('/api/selections').then(r => r.json()).then(toArr).catch(() => []),
-      fetch('/api/catalogue?fields=ean,couleur,mecanique,nb_de_joueurs,etoiles,temps_de_jeu,coop_versus,image_url').then(r => r.json()).then(toArr).catch(() => []),
+      fetch(`/api/jeux?fields=${fields}`).then(r => r.json() as Promise<any>).then(toArr).catch(() => []),
+      fetch('/api/reparations').then(r => r.json() as Promise<any>).then(toArr).catch(() => []),
+      fetch('/api/pieces-manquantes').then(r => r.json() as Promise<any>).then(toArr).catch(() => []),
+      fetch('/api/selections').then(r => r.json() as Promise<any>).then(toArr).catch(() => []),
+      fetch('/api/catalogue?fields=ean,couleur,mecanique,nb_de_joueurs,etoiles,temps_de_jeu,coop_versus,image_url').then(r => r.json() as Promise<any>).then(toArr).catch(() => []),
     ]);
 
     setNbReparations((repsData as any[]).filter(r => r.statut === 'À faire').length);
@@ -482,13 +482,13 @@ export default function InventairePage() {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ image_url: url }),
-    }).then(r => r.json()).catch(() => ({ error: 'réseau' }));
+    }).then(r => r.json() as Promise<any>).catch(() => ({ error: 'réseau' }));
     if (resUpdate.error) {
       const resInsert = await fetch('/api/catalogue', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ean: item.ean, image_url: url }),
-      }).then(r => r.json()).catch(() => ({ error: 'réseau' }));
+      }).then(r => r.json() as Promise<any>).catch(() => ({ error: 'réseau' }));
       if (resInsert.error) {
         alert(`Erreur lors de l'enregistrement : ${resInsert.error}`);
         return;
@@ -569,8 +569,8 @@ export default function InventairePage() {
     const isTempEan = (e: string) => /^(TEMP|SYR)-/i.test(e);
 
     const [jeuxData, catData] = await Promise.all([
-      fetch('/api/jeux').then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []),
-      fetch('/api/catalogue').then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []),
+      fetch('/api/jeux').then(r => r.json() as Promise<any>).then(d => Array.isArray(d) ? d : []).catch(() => []),
+      fetch('/api/catalogue').then(r => r.json() as Promise<any>).then(d => Array.isArray(d) ? d : []).catch(() => []),
     ]);
     const allCat = catData as Record<string, string | null>[];
     const realCat = allCat.filter(c => !isTempEan(c.ean ?? ""));
@@ -614,7 +614,7 @@ export default function InventairePage() {
       body: JSON.stringify({ ean: realEan }),
     })));
 
-    const realCatRow = await fetch(`/api/catalogue/${encodeURIComponent(realEan)}`).then(r => r.json()).catch(() => null);
+    const realCatRow = await fetch(`/api/catalogue/${encodeURIComponent(realEan)}`).then(r => r.json() as Promise<any>).catch(() => null);
     const merged = mergeCatFields(realCatRow as Record<string, string | null> | null, item.tempCat);
     if (realCatRow) {
       await fetch(`/api/catalogue/${encodeURIComponent(realEan)}`, {
@@ -664,14 +664,14 @@ export default function InventairePage() {
         return;
       }
 
-      const jeuxData = await fetch(`/api/jeux?fields=nom&ean=${encodeURIComponent(scannedEan)}&limit=1`).then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []);
+      const jeuxData = await fetch(`/api/jeux?fields=nom&ean=${encodeURIComponent(scannedEan)}&limit=1`).then(r => r.json() as Promise<any>).then(d => Array.isArray(d) ? d : []).catch(() => []);
       const nomJeu = (jeuxData as any[])[0]?.nom ?? "Jeu Inconnu";
 
       const res = await fetch('/api/catalogue', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ean: scannedEan, nom: nomJeu, couleur: colorFixSelected }),
-      }).then(r => r.json()).catch(() => ({ error: 'réseau' }));
+      }).then(r => r.json() as Promise<any>).catch(() => ({ error: 'réseau' }));
 
       if (res.error) {
         setColorFixLogs(prev => [{msg: `❌ Erreur pour ${scannedEan}: ${res.error}`, isError: true}, ...prev]);
@@ -793,7 +793,7 @@ export default function InventairePage() {
     }
 
     const newImportData: ImportItem[] = [];
-    const fullCatData = await fetch('/api/catalogue').then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []);
+    const fullCatData = await fetch('/api/catalogue').then(r => r.json() as Promise<any>).then(d => Array.isArray(d) ? d : []).catch(() => []);
     const existingCatalogue = (fullCatData as any[]) || [];
     const existingJeuxNorm = existingCatalogue.map(c => ({ ean: c.ean, nom: c.nom, norm: normalizeStr(c.nom) }));
 
@@ -1033,7 +1033,7 @@ export default function InventairePage() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(catPayload),
-          }).then(r => r.json()).catch(() => ({ error: 'réseau' }));
+          }).then(r => r.json() as Promise<any>).catch(() => ({ error: 'réseau' }));
           if (catRes.error) { console.error("Erreur Catalogue:", catRes.error); errorCount++; continue; }
         }
       }
@@ -1043,7 +1043,7 @@ export default function InventairePage() {
         if (item.codes.length > 0) {
           for (let cIdx = 0; cIdx < item.codes.length; cIdx++) {
             const code = item.codes[cIdx];
-            const exData = await fetch(`/api/jeux?fields=id&code_syracuse=${encodeURIComponent(code)}&limit=1`).then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []);
+            const exData = await fetch(`/api/jeux?fields=id&code_syracuse=${encodeURIComponent(code)}&limit=1`).then(r => r.json() as Promise<any>).then(d => Array.isArray(d) ? d : []).catch(() => []);
             if (!(exData as any[]).length) {
               await fetch('/api/jeux', {
                 method: 'POST',
@@ -1053,7 +1053,7 @@ export default function InventairePage() {
             }
           }
         } else {
-          const exData = await fetch(`/api/jeux?fields=id&ean=${encodeURIComponent(targetEan)}&limit=1`).then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []);
+          const exData = await fetch(`/api/jeux?fields=id&ean=${encodeURIComponent(targetEan)}&limit=1`).then(r => r.json() as Promise<any>).then(d => Array.isArray(d) ? d : []).catch(() => []);
           if (!(exData as any[]).length) {
             await fetch('/api/jeux', {
               method: 'POST',
@@ -1086,13 +1086,13 @@ export default function InventairePage() {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ titre: payload.titre, is_permanent: payload.is_permanent, date_fin: payload.date_fin, jeux: payload.jeux }),
-      }).then(r => r.json()).catch(() => ({ error: 'réseau' }));
+      }).then(r => r.json() as Promise<any>).catch(() => ({ error: 'réseau' }));
     } else {
       res = await fetch('/api/selections', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
-      }).then(r => r.json()).catch(() => ({ error: 'réseau' }));
+      }).then(r => r.json() as Promise<any>).catch(() => ({ error: 'réseau' }));
     }
     if (res.error) alert("Erreur de sauvegarde : " + res.error);
     else { setIsSelectionModalOpen(false); fetchInventaire(); }
@@ -1137,10 +1137,10 @@ export default function InventairePage() {
 
     try {
       const [catData, manqAll, repAll, alertesAll] = await Promise.all([
-        fetch(`/api/catalogue/${encodeURIComponent(jeu.ean)}`).then(r => r.json()).catch(() => null),
-        fetch('/api/pieces-manquantes').then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []),
-        fetch('/api/reparations').then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []),
-        fetch('/api/alertes?statut=active').then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []),
+        fetch(`/api/catalogue/${encodeURIComponent(jeu.ean)}`).then(r => r.json() as Promise<any>).catch(() => null),
+        fetch('/api/pieces-manquantes').then(r => r.json() as Promise<any>).then(d => Array.isArray(d) ? d : []).catch(() => []),
+        fetch('/api/reparations').then(r => r.json() as Promise<any>).then(d => Array.isArray(d) ? d : []).catch(() => []),
+        fetch('/api/alertes?statut=active').then(r => r.json() as Promise<any>).then(d => Array.isArray(d) ? d : []).catch(() => []),
       ]);
       const manqData = (manqAll as any[]).filter(m => m.ean === jeu.ean);
       const repData = (repAll as any[]).filter(r => r.nom_jeu === jeu.nom || r.nom === jeu.nom);
@@ -1208,7 +1208,7 @@ export default function InventairePage() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...newJeu, is_double: b(newJeu.is_double), etape_nouveaute: b(newJeu.etape_nouveaute), etape_plastifier: b(newJeu.etape_plastifier), etape_contenu: b(newJeu.etape_contenu), etape_etiquette: b(newJeu.etape_etiquette), etape_equiper: b(newJeu.etape_equiper), etape_encoder: b(newJeu.etape_encoder), etape_notice: b(newJeu.etape_notice) }),
-    }).then(r => r.json()).catch(() => ({ error: 'réseau' }));
+    }).then(r => r.json() as Promise<any>).catch(() => ({ error: 'réseau' }));
     if (res.error) {
       alert("Erreur: " + res.error);
     } else {
@@ -1224,7 +1224,7 @@ export default function InventairePage() {
     if (!ficheJeu) return;
     if (!confirm("Voulez-vous vraiment supprimer cet exemplaire de l'inventaire ? Cette action est irréversible.")) return;
 
-    const res = await fetch(`/api/jeux/${idJeu}`, { method: 'DELETE' }).then(r => r.json()).catch(() => ({ error: 'réseau' }));
+    const res = await fetch(`/api/jeux/${idJeu}`, { method: 'DELETE' }).then(r => r.json() as Promise<any>).catch(() => ({ error: 'réseau' }));
     if (res.error) {
       alert("Erreur lors de la suppression : " + res.error);
       return;
@@ -1287,7 +1287,7 @@ export default function InventairePage() {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ nom: editedFiche.nom, ean: editedFiche.ean, code_syracuse: editedFiche.code_syracuse || null, statut: editedFiche.statut, is_double: editedFiche.is_double ? 1 : 0, etape_nouveaute: editedFiche.etape_nouveaute ? 1 : 0 }),
-    }).then(r => r.json()).then(r => r.error ? r.error : null).catch(e => e.message);
+    }).then(r => r.json() as Promise<any>).then(r => r.error ? r.error : null).catch(e => e.message);
 
     const catalogueData = {
       ean: editedFiche.ean,
@@ -1305,7 +1305,7 @@ export default function InventairePage() {
       pdf_url: editedFiche.pdf_url || null,
     };
 
-    const existingCat = await fetch(`/api/catalogue/${encodeURIComponent(editedFiche.ean)}`).then(r => r.json()).catch(() => null);
+    const existingCat = await fetch(`/api/catalogue/${encodeURIComponent(editedFiche.ean)}`).then(r => r.json() as Promise<any>).catch(() => null);
 
     let errCat: any = null;
     if (existingCat) {
@@ -1313,14 +1313,14 @@ export default function InventairePage() {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(catalogueData),
-      }).then(r => r.json()).catch(e => ({ error: e.message }));
+      }).then(r => r.json() as Promise<any>).catch(e => ({ error: e.message }));
       errCat = res.error ?? null;
     } else {
       const res = await fetch('/api/catalogue', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(catalogueData),
-      }).then(r => r.json()).catch(e => ({ error: e.message }));
+      }).then(r => r.json() as Promise<any>).catch(e => ({ error: e.message }));
       errCat = res.error ?? null;
     }
 

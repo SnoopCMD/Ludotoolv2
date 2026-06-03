@@ -18,7 +18,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const db = await getDB();
-    const body = await request.json();
+    const body = await request.json() as any;
     const { titre, is_permanent = true, date_fin = null, jeux = [] } = body;
     const id = crypto.randomUUID();
     await db.prepare(

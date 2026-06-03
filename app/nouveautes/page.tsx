@@ -45,8 +45,8 @@ export default function NouveautesPage() {
   const fetchDatas = async () => {
     setIsLoading(true);
     const [bruts, catData]: [any[], any[]] = await Promise.all([
-      fetch('/api/jeux?statut=En+stock&fields=id,nom,ean,etape_nouveaute,date_entree,date_sortie').then(r => r.json()).catch(() => []),
-      fetch('/api/catalogue?fields=ean,couleur').then(r => r.json()).catch(() => []),
+      fetch('/api/jeux?statut=En+stock&fields=id,nom,ean,etape_nouveaute,date_entree,date_sortie').then(r => r.json() as Promise<any>).catch(() => []),
+      fetch('/api/catalogue?fields=ean,couleur').then(r => r.json() as Promise<any>).catch(() => []),
     ]);
 
     if (!Array.isArray(bruts)) { setIsLoading(false); return; }

@@ -83,7 +83,7 @@ export default function EtiquettesPage() {
   }, []);
 
   const chargerCatalogue = async () => {
-    const data = await fetch('/api/catalogue').then(r => r.json()).catch(() => null);
+    const data = await fetch('/api/catalogue').then(r => r.json() as Promise<any>).catch(() => null);
     if (Array.isArray(data)) {
       const dbEtiquettes: Record<string, Etiquette[]> = { vert: [], rose: [], bleu: [], rouge: [], jaune: [] };
       data.forEach(item => {
@@ -138,7 +138,7 @@ export default function EtiquettesPage() {
       method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(dataToSave)
     }).catch(() => fetch('/api/catalogue', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify([dataToSave]) }));
 
-    const jeuxExistants = await fetch(`/api/jeux?ean=${encodeURIComponent(eti.ean)}&fields=id&limit=1`).then(r => r.json()).catch(() => []);
+    const jeuxExistants = await fetch(`/api/jeux?ean=${encodeURIComponent(eti.ean)}&fields=id&limit=1`).then(r => r.json() as Promise<any>).catch(() => []);
     if (!Array.isArray(jeuxExistants) || jeuxExistants.length === 0) {
       await fetch('/api/jeux', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
         ean: eti.ean, nom: eti.nom, statut: 'En préparation', is_double: 0,
@@ -174,10 +174,10 @@ export default function EtiquettesPage() {
     let nomTrouve = "";
     let dataCatalogue = null;
 
-    const catRow = await fetch(`/api/catalogue/${encodeURIComponent(ean)}`).then(r => r.json()).catch(() => null);
+    const catRow = await fetch(`/api/catalogue/${encodeURIComponent(ean)}`).then(r => r.json() as Promise<any>).catch(() => null);
     if (catRow && !catRow.error) { dataCatalogue = catRow; nomTrouve = catRow.nom; }
     else {
-      const jeuxRows = await fetch(`/api/jeux?ean=${encodeURIComponent(ean)}&fields=nom&limit=1`).then(r => r.json()).catch(() => []);
+      const jeuxRows = await fetch(`/api/jeux?ean=${encodeURIComponent(ean)}&fields=nom&limit=1`).then(r => r.json() as Promise<any>).catch(() => []);
       if (Array.isArray(jeuxRows) && jeuxRows[0]) nomTrouve = jeuxRows[0].nom;
     }
 
@@ -223,7 +223,7 @@ export default function EtiquettesPage() {
     }
 
     if (eansCompletsAImprimer.length > 0) {
-      const jeuxEnPrepa = await fetch(`/api/jeux?eans=${encodeURIComponent(eansCompletsAImprimer.join(','))}&statut=En+pr%C3%A9paration`).then(r => r.json()).catch(() => []);
+      const jeuxEnPrepa = await fetch(`/api/jeux?eans=${encodeURIComponent(eansCompletsAImprimer.join(','))}&statut=En+pr%C3%A9paration`).then(r => r.json() as Promise<any>).catch(() => []);
       if (Array.isArray(jeuxEnPrepa) && jeuxEnPrepa.length > 0) {
         for (const jeu of jeuxEnPrepa) {
           const isTermine = jeu.etape_plastifier && jeu.etape_contenu && jeu.etape_equiper && jeu.etape_encoder && jeu.etape_notice && jeu.etape_nouveaute;

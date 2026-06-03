@@ -17,7 +17,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const db = await getDB();
-    const body = await request.json();
+    const body = await request.json() as any;
     const keys = Object.keys(body);
     const normalized = { ...body };
     if ('lignes' in normalized && typeof normalized.lignes !== 'string') {

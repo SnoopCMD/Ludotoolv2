@@ -14,7 +14,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const db = await getDB();
-    const body = await request.json();
+    const body = await request.json() as any;
     const { ean, nom, type_reparation, description } = body;
     await db.prepare(
       `INSERT INTO reparations (ean,nom,type_reparation,description) VALUES (?,?,?,?)`

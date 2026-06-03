@@ -18,7 +18,7 @@ export async function GET() {
 export async function PUT(request: Request) {
   try {
     const db = await getDB();
-    const body = await request.json();
+    const body = await request.json() as any;
     const normalized = { ...body };
     if ('config' in normalized && typeof normalized.config !== 'string') {
       normalized.config = JSON.stringify(normalized.config ?? {});

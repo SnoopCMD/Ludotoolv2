@@ -25,13 +25,13 @@ export default function ReparationsPage() {
   useEffect(() => { chargerReparations(); }, []);
 
   const chargerReparations = async () => {
-    const data = await fetch('/api/reparations').then(r => r.json()).catch(() => []);
+    const data = await fetch('/api/reparations').then(r => r.json() as Promise<any>).catch(() => []);
     if (Array.isArray(data)) setReparations(data);
   };
 
   const appliquerFiltresTypes = async (ean: string | undefined) => {
     if (!ean) { setTypesDispos(["Boîte", "Plateau", "Cartes", "Autre"]); setTypeRep("Boîte"); return; }
-    const catData = await fetch(`/api/catalogue/${encodeURIComponent(ean)}`).then(r => r.json()).catch(() => null);
+    const catData = await fetch(`/api/catalogue/${encodeURIComponent(ean)}`).then(r => r.json() as Promise<any>).catch(() => null);
     const contenuTexte = catData?.contenu ? catData.contenu.toLowerCase() : "";
     const nouveauxTypes = ["Boîte"];
     if (contenuTexte.includes("plateau")) nouveauxTypes.push("Plateau");
@@ -45,7 +45,7 @@ export default function ReparationsPage() {
     if (!code || code.trim() === "") return;
     let codeFormate = code.trim();
     if (/^\d+$/.test(codeFormate) && codeFormate.length < 8) { codeFormate = codeFormate.padStart(8, "0"); setEanJeu(codeFormate); }
-    const data = await fetch(`/api/jeux?code_syracuse=${encodeURIComponent(codeFormate)}&fields=nom,ean&limit=1`).then(r => r.json()).catch(() => []);
+    const data = await fetch(`/api/jeux?code_syracuse=${encodeURIComponent(codeFormate)}&fields=nom,ean&limit=1`).then(r => r.json() as Promise<any>).catch(() => []);
     const jeuData = Array.isArray(data) ? data[0] : null;
     if (jeuData?.nom) { setNomJeu(jeuData.nom); appliquerFiltresTypes(jeuData.ean); }
     else { setTypesDispos(["Boîte", "Plateau", "Cartes", "Autre"]); }
@@ -54,7 +54,7 @@ export default function ReparationsPage() {
   const handleRechercheNom = async (text: string) => {
     setNomJeu(text);
     if (text.length > 2) {
-      const data = await fetch(`/api/jeux?nom_like=${encodeURIComponent(text)}&fields=nom,code_syracuse,ean&limit=5`).then(r => r.json()).catch(() => []);
+      const data = await fetch(`/api/jeux?nom_like=${encodeURIComponent(text)}&fields=nom,code_syracuse,ean&limit=5`).then(r => r.json() as Promise<any>).catch(() => []);
       if (Array.isArray(data)) setSuggestionsNom(data.filter((v: any, i: number, a: any[]) => a.findIndex((t: any) => t.nom === v.nom) === i));
     } else setSuggestionsNom([]);
   };

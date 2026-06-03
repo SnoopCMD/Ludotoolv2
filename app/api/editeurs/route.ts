@@ -14,7 +14,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const db = await getDB();
-    const body = await request.json();
+    const body = await request.json() as any;
     const { nom, type_commande = 'inconnu', url_formulaire = null, email_contact = null,
       sujet_email = null, corps_email = null, notes = null } = body;
     const id = crypto.randomUUID();

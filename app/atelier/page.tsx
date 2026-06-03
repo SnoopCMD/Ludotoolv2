@@ -122,18 +122,18 @@ export default function Home() {
   }, {});
 
   const fetchHistorique = async () => {
-    const data = await fetch('/api/commandes').then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []);
+    const data = await fetch('/api/commandes').then(r => r.json() as Promise<any>).then(d => Array.isArray(d) ? d : []).catch(() => []);
     setHistoriqueEntrees(data as ReceptionEntreeType[]);
   };
 
   const fetchDashboardData = async () => {
-    const jeuxData = await fetch(`/api/jeux?statut=${encodeURIComponent('En préparation')}`).then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []);
+    const jeuxData = await fetch(`/api/jeux?statut=${encodeURIComponent('En préparation')}`).then(r => r.json() as Promise<any>).then(d => Array.isArray(d) ? d : []).catch(() => []);
     const jeuxBruts = (jeuxData as JeuType[]).sort((a, b) => a.nom.localeCompare(b.nom));
     const eans = [...new Set(jeuxBruts.map(j => j.ean))];
 
     let colorMap: Record<string, string> = {};
     if (eans.length > 0) {
-      const catData = await fetch(`/api/catalogue?eans=${encodeURIComponent(eans.join(','))}&fields=ean,couleur`).then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []);
+      const catData = await fetch(`/api/catalogue?eans=${encodeURIComponent(eans.join(','))}&fields=ean,couleur`).then(r => r.json() as Promise<any>).then(d => Array.isArray(d) ? d : []).catch(() => []);
       (catData as any[]).forEach(item => { if (item.couleur) colorMap[item.ean] = item.couleur; });
     }
 
@@ -152,9 +152,9 @@ export default function Home() {
 
     const toArr = (d: any) => Array.isArray(d) ? d : [];
     const [repsData, manqData, orphData] = await Promise.all([
-      fetch('/api/reparations').then(r => r.json()).then(toArr).catch(() => []),
-      fetch('/api/pieces-manquantes').then(r => r.json()).then(toArr).catch(() => []),
-      fetch('/api/pieces-trouvees').then(r => r.json()).then(toArr).catch(() => []),
+      fetch('/api/reparations').then(r => r.json() as Promise<any>).then(toArr).catch(() => []),
+      fetch('/api/pieces-manquantes').then(r => r.json() as Promise<any>).then(toArr).catch(() => []),
+      fetch('/api/pieces-trouvees').then(r => r.json() as Promise<any>).then(toArr).catch(() => []),
     ]);
     setNbReparations((repsData as any[]).filter(r => r.statut === 'À faire').length);
     setNbManquants((manqData as any[]).filter(m => ['Manquant', 'Commandé'].includes(m.statut)).length);
@@ -184,9 +184,9 @@ export default function Home() {
     setter(prev => [{ uid, ean: codeScan, nom: "⏳ Recherche en cours...", typeAjout: "nouveaute", etapes: { ...defaultEtapes }, couleur: "" }, ...prev]);
 
     const [apiData, jeuxData, catData] = await Promise.all([
-      fetch(`/api/recherche?ean=${codeScan}`).then(r => r.json()).catch(() => ({ nom: null })),
-      fetch(`/api/jeux?fields=nom&ean=${encodeURIComponent(codeScan)}`).then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []),
-      fetch(`/api/catalogue?ean=${encodeURIComponent(codeScan)}&fields=nom,couleur`).then(r => r.json()).then((d: any[]) => d[0] ?? null).catch(() => null),
+      fetch(`/api/recherche?ean=${codeScan}`).then(r => r.json() as Promise<any>).catch(() => ({ nom: null })),
+      fetch(`/api/jeux?fields=nom&ean=${encodeURIComponent(codeScan)}`).then(r => r.json() as Promise<any>).then(d => Array.isArray(d) ? d : []).catch(() => []),
+      fetch(`/api/catalogue?ean=${encodeURIComponent(codeScan)}&fields=nom,couleur`).then(r => r.json() as Promise<any>).then((d: any[]) => d[0] ?? null).catch(() => null),
     ]);
 
     const doublesCount = (jeuxData as any[]).length;
@@ -277,7 +277,7 @@ export default function Home() {
 
   const validerEtEnvoyer = async () => {
     for (const row of construireJeuxAInserer(jeuxAttente)) {
-      const res = await fetch('/api/jeux', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(row) }).then(r => r.json()).catch(() => ({ error: 'réseau' }));
+      const res = await fetch('/api/jeux', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(row) }).then(r => r.json() as Promise<any>).catch(() => ({ error: 'réseau' }));
       if (res.error) { alert("Erreur : " + res.error); return; }
     }
 
@@ -296,7 +296,7 @@ export default function Home() {
     if (jeuxReception.length === 0) return;
 
     for (const row of construireJeuxAInserer(jeuxReception)) {
-      const res = await fetch('/api/jeux', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(row) }).then(r => r.json()).catch(() => ({ error: 'réseau' }));
+      const res = await fetch('/api/jeux', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(row) }).then(r => r.json() as Promise<any>).catch(() => ({ error: 'réseau' }));
       if (res.error) { alert("Erreur : " + res.error); return; }
     }
 
@@ -349,7 +349,7 @@ export default function Home() {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ [colonne]: updatedVal ? 1 : 0, statut: newStatut }),
-    }).then(r => r.json()).catch(() => ({ error: 'réseau' }));
+    }).then(r => r.json() as Promise<any>).catch(() => ({ error: 'réseau' }));
     if (res.error) alert("Erreur de synchronisation !");
     fetchDashboardData();
   };

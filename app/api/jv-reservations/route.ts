@@ -14,7 +14,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const db = await getDB();
-    const body = await request.json();
+    const body = await request.json() as any;
     const id = body.id ?? crypto.randomUUID();
     const keys = Object.keys({ ...body, id });
     const vals = keys.map(k => k === 'id' ? id : (body[k] ?? null));

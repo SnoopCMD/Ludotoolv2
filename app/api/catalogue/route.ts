@@ -31,7 +31,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const db = await getDB();
-    const body = await request.json();
+    const body = await request.json() as any;
     const rows: any[] = Array.isArray(body) ? body : [body];
     for (const row of rows) {
       const keys = Object.keys(row);

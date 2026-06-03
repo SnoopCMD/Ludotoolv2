@@ -21,7 +21,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const db = await getDB();
-    const body = await request.json();
+    const body = await request.json() as any;
     const { panier_id, nom, editeur = null, image_url = null, ean = null,
       prix_unitaire = null, quantite = 1, notes = null } = body;
     const id = crypto.randomUUID();

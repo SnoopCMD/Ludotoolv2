@@ -305,7 +305,7 @@ function ModalJeu({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
-      }).then(r => r.json()).catch(() => ({ error: 'réseau' }));
+      }).then(r => r.json() as Promise<any>).catch(() => ({ error: 'réseau' }));
       if (res.error) { alert("Erreur : " + res.error); setIsSaving(false); return; }
       savedJeu = { ...payload, id: res.id, created_at: new Date().toISOString() } as JvJeu;
     } else {
@@ -313,7 +313,7 @@ function ModalJeu({
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
-      }).then(r => r.json()).catch(() => ({ error: 'réseau' }));
+      }).then(r => r.json() as Promise<any>).catch(() => ({ error: 'réseau' }));
       if (res.error) { alert("Erreur : " + res.error); setIsSaving(false); return; }
       savedJeu = { ...jeu!, ...payload } as JvJeu;
     }
@@ -1223,7 +1223,7 @@ function ModalReservation({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
-    }).then(r => r.json()).catch(() => ({ error: 'réseau' }));
+    }).then(r => r.json() as Promise<any>).catch(() => ({ error: 'réseau' }));
     if (res.error) { alert("Erreur : " + res.error); setIsSaving(false); return; }
     onSaved({ ...payload, id: res.id, jeu2_id: null, joueurs_details: joueurs, created_at: new Date().toISOString() } as JvReservation);
     setIsSaving(false);
@@ -1495,7 +1495,7 @@ function ModalReservationDetail({
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(patch),
-    }).then(r => r.json()).catch(() => ({ error: 'réseau' }));
+    }).then(r => r.json() as Promise<any>).catch(() => ({ error: 'réseau' }));
     if (res.error) { alert("Erreur : " + res.error); setIsSaving(false); return; }
     onSaved({ ...reservation, ...patch, joueurs_details: joueurs } as JvReservation);
     setIsSaving(false);
@@ -2770,7 +2770,7 @@ export default function JvPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
-      }).then(r => r.json()).catch(() => null);
+      }).then(r => r.json() as Promise<any>).catch(() => null);
       if (res?.id) setSelections(prev => [...prev, { ...payload, id: res.id, permanent: isPermanent, date_debut: null, date_fin: null } as JvSelection]);
       await fetch(`/api/jv-jeux/${jeuId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ statut: "selection" }) });
       setJeux(prev => prev.map(j => j.id === jeuId ? { ...j, statut: "selection" } : j));
@@ -2787,7 +2787,7 @@ export default function JvPage() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
-    }).then(r => r.json()).catch(() => null);
+    }).then(r => r.json() as Promise<any>).catch(() => null);
     if (res?.id) setSelections(prev => [...prev, { ...payload, id: res.id, permanent: false, date_debut: null, date_fin: null } as JvSelection]);
   }, [selections]);
 

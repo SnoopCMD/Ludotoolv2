@@ -575,7 +575,7 @@ useEffect(() => {
 
   useEffect(() => {
     const key = format(startOfWeek(dateActuelle, { weekStartsOn: 1 }), 'yyyy-MM-dd');
-    fetch(`/api/planning-semaine?key=${key}`).then(r => r.json())
+    fetch(`/api/planning-semaine?key=${key}`).then(r => r.json() as Promise<{ slots?: PlanningSlot[] }>)
       .then(data => setViewPlanningSlots((data?.slots ?? []) as PlanningSlot[]));
   }, [dateActuelle]);
 
@@ -585,7 +585,7 @@ useEffect(() => {
     const days = eachDayOfInterval({ start: startOfWeek(planningDate, { weekStartsOn: 1 }), end: endOfWeek(planningDate, { weekStartsOn: 1 }) });
     const key = planningWeekKey(planningDate);
     (async () => {
-      const data = await fetch(`/api/planning-semaine?key=${key}`).then(r => r.json()).catch(() => null);
+      const data = await fetch(`/api/planning-semaine?key=${key}`).then(r => r.json() as Promise<any>).catch(() => null);
       let slots: PlanningSlot[];
       let vacs: Vacataire[];
       if (data?.slots?.length) {
@@ -723,7 +723,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
     const semainesData: Array<{ semaine: Date; slots: PlanningSlot[]; vacataires: Vacataire[] }> = [];
     for (const sem of pdfSemaines) {
       const key = planningWeekKey(sem);
-      const data = await fetch(`/api/planning-semaine?key=${key}`).then(r => r.json()).catch(() => null);
+      const data = await fetch(`/api/planning-semaine?key=${key}`).then(r => r.json() as Promise<any>).catch(() => null);
       semainesData.push({ semaine: sem, slots: (data?.slots ?? []) as PlanningSlot[], vacataires: (data?.vacataires ?? []) as Vacataire[] });
     }
     const html = buildPlanningHTML(semainesData);
@@ -801,12 +801,12 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
   };
 
   const chargerEquipe = async () => {
-    const data = await fetch('/api/equipe').then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []);
+    const data = await fetch('/api/equipe').then(r => r.json() as Promise<any>).then(d => Array.isArray(d) ? d : []).catch(() => []);
     setEquipe(data);
   };
 
   const chargerEvenements = async () => {
-    const data = await fetch('/api/evenements').then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []);
+    const data = await fetch('/api/evenements').then(r => r.json() as Promise<any>).then(d => Array.isArray(d) ? d : []).catch(() => []);
     setEvenements(data);
   };
 
@@ -900,7 +900,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
       setDraftEquipe(prev => prev.map(m => m.id === membreActif.id ? { ...m, ...patch } : m));
       return;
     }
-    const res = await fetch(`/api/equipe/${membreActif.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) }).then(r => r.json()).catch(() => ({ error: 'réseau' }));
+    const res = await fetch(`/api/equipe/${membreActif.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) }).then(r => r.json() as Promise<any>).catch(() => ({ error: 'réseau' }));
     if (res.error) { alert('Erreur sauvegarde soldes : ' + res.error); return; }
     chargerEquipe();
   };
@@ -1046,7 +1046,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(upd),
-        }).then(r => r.json()).catch(() => ({ error: 'réseau' }));
+        }).then(r => r.json() as Promise<any>).catch(() => ({ error: 'réseau' }));
         if (res.error) { console.error("Erreur mise à jour événement:", res.error); alert("Erreur lors de la mise à jour : " + res.error); return; }
       }
       for (const occ of toInsert) {
@@ -1056,7 +1056,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
-        }).then(r => r.json()).catch(() => ({ error: 'réseau' }));
+        }).then(r => r.json() as Promise<any>).catch(() => ({ error: 'réseau' }));
         if (res.error) { console.error("Erreur insertion événement:", res.error); alert("Erreur lors de la création : " + res.error); return; }
       }
 
@@ -3017,7 +3017,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
                         const targetWeekStart = week[0];
                         const targetKey = weekKey;
                         const selectedSlots = planningSlots.filter(s => selectedSlotIds.has(s.id));
-                        const data = await fetch(`/api/planning-semaine?key=${targetKey}`).then(r => r.json()).catch(() => null);
+                        const data = await fetch(`/api/planning-semaine?key=${targetKey}`).then(r => r.json() as Promise<any>).catch(() => null);
                         const existingSlots: PlanningSlot[] = (data?.slots ?? []) as PlanningSlot[];
                         const updatedSlots = existingSlots.map(target => {
                           const targetDayOfWeek = (new Date(target.dateKey).getDay() + 6) % 7;

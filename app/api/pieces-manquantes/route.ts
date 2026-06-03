@@ -21,7 +21,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const db = await getDB();
-    const body = await request.json();
+    const body = await request.json() as any;
     const keys = Object.keys(body);
     const placeholders = keys.map(() => '?').join(',');
     const values = keys.map(k => body[k] ?? null);

@@ -45,7 +45,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const db = await getDB();
-    const body = await request.json();
+    const body = await request.json() as any;
     const {
       ean, statut = 'En préparation', nom = '',
       etape_notice = 0, etape_plastifier = 0, etape_contenu = 0,

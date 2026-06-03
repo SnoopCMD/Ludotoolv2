@@ -34,7 +34,7 @@ export async function GET(request: Request) {
 export async function PUT(request: Request) {
   try {
     const db = await getDB();
-    const body = await request.json();
+    const body = await request.json() as any;
     const { semaine_key, slots, vacataires, updated_at } = body;
     await db.prepare(
       `INSERT OR REPLACE INTO planning_semaine (semaine_key, slots, vacataires, updated_at)

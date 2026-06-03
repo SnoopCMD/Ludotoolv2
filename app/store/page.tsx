@@ -58,13 +58,13 @@ export default function StorePage() {
   // ─── Chargement ──────────────────────────────────────────────────────────────
 
   const chargerPaniers = async () => {
-    const data = await fetch('/api/paniers').then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []);
+    const data = await fetch('/api/paniers').then(r => r.json() as Promise<any>).then(d => Array.isArray(d) ? d : []).catch(() => []);
     setPaniers(data as Panier[]);
     setIsLoading(false);
   };
 
   const chargerLignes = async (id: string) => {
-    const data = await fetch(`/api/panier-lignes?panier_id=${id}`).then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => []);
+    const data = await fetch(`/api/panier-lignes?panier_id=${id}`).then(r => r.json() as Promise<any>).then(d => Array.isArray(d) ? d : []).catch(() => []);
     setLignes(data as PanierLigne[]);
   };
 
@@ -88,7 +88,7 @@ export default function StorePage() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ nom: nouveauNom.trim() }),
-    }).then(r => r.json()).catch(() => null);
+    }).then(r => r.json() as Promise<any>).catch(() => null);
     if (res?.id) {
       const newPanier: Panier = { id: res.id, nom: nouveauNom.trim(), statut: 'En cours', notes: null, created_at: new Date().toISOString() };
       setPaniers(prev => [newPanier, ...prev]);
@@ -137,7 +137,7 @@ export default function StorePage() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
-    }).then(r => r.json()).catch(() => null);
+    }).then(r => r.json() as Promise<any>).catch(() => null);
     if (res?.id) setLignes(prev => [...prev, { ...payload, id: res.id, ean: null } as PanierLigne]);
     setRecherche(""); setResultats([]); setShowResultats(false);
   };
@@ -149,7 +149,7 @@ export default function StorePage() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
-    }).then(r => r.json()).catch(() => null);
+    }).then(r => r.json() as Promise<any>).catch(() => null);
     if (res?.id) setLignes(prev => [...prev, { ...payload, id: res.id, editeur: null, image_url: null, ean: null, prix_unitaire: null, notes: null } as PanierLigne]);
     setRecherche(""); setResultats([]); setShowResultats(false);
   };

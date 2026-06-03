@@ -5,7 +5,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   try {
     const db = await getDB();
     const { id } = await params;
-    const body = await request.json();
+    const body = await request.json() as any;
     const normalized = { ...body };
     if ('lignes' in normalized && typeof normalized.lignes !== 'string') {
       normalized.lignes = JSON.stringify(normalized.lignes);

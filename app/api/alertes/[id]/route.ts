@@ -5,7 +5,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   try {
     const db = await getDB();
     const { id } = await params;
-    const body = await request.json();
+    const body = await request.json() as any;
     const keys = Object.keys(body);
     const sets = keys.map(k => `${k} = ?`).join(', ');
     await db.prepare(`UPDATE alertes SET ${sets} WHERE id = ?`).bind(...keys.map(k => body[k]), id).run();
