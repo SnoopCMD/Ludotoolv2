@@ -1,0 +1,37 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"main": ".open-next/worker.js",
+	"name": "ludotool",
+	"compatibility_date": "2026-05-20",
+	"compatibility_flags": [
+		"nodejs_compat",
+		"global_fetch_strictly_public"
+	],
+	"assets": {
+		"directory": ".open-next/assets",
+		"binding": "ASSETS"
+	},
+	"services": [
+		{
+			// Self-reference service binding, the service name must match the worker name
+			// see https://opennext.js.org/cloudflare/caching
+			"binding": "WORKER_SELF_REFERENCE",
+			"service": "ludotool"
+		}
+	],
+	"images": {
+		// Enable image optimization
+		// see https://opennext.js.org/cloudflare/howtos/image
+		"binding": "IMAGES"
+	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "ludotool-db",
+			"database_id": "e7f95196-5ea8-4453-8852-090bb661f30c"
+		}
+	]
+	// TWITCH_CLIENT_ID et TWITCH_CLIENT_SECRET doivent être ajoutés comme secrets :
+	// wrangler secret put TWITCH_CLIENT_ID
+	// wrangler secret put TWITCH_CLIENT_SECRET
+}

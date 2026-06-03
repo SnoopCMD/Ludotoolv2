@@ -27,7 +27,7 @@ async function fetchParEAN(ean: string): Promise<{ image_url: string; source_url
   if (!res.ok) return null;
 
   let data: Record<string, unknown>;
-  try { data = await res.json(); } catch { return null; }
+  try { data = await res.json() as Record<string, unknown>; } catch { return null; }
 
   const items = data?.items as Array<{ images?: string[]; offers?: Array<{ domain?: string }> }> | undefined;
   const item = items?.[0];
@@ -53,7 +53,7 @@ async function fetchParNom(nom: string): Promise<{ image_url: string; source_url
   if (!res.ok) return null;
 
   let data: Record<string, unknown>;
-  try { data = await res.json(); } catch { return null; }
+  try { data = await res.json() as Record<string, unknown>; } catch { return null; }
 
   const docs = data?.docs as Array<{ cover_i?: number; key?: string; title?: string }> | undefined;
   const doc = docs?.[0];

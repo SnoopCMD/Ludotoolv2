@@ -6,7 +6,7 @@ export async function GET(request: Request) {
   
   try {
     const res = await fetch(`https://calendrier.api.gouv.fr/jours-feries/metropole/${year}.json`);
-    const data = await res.json();
+    const data = await res.json() as Record<string, string>;
     return NextResponse.json(data);
   } catch (error) {
     return NextResponse.json({}, { status: 500 });

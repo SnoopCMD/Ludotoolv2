@@ -128,7 +128,7 @@ async function searchSwitch(query: string): Promise<GameResult[]> {
     signal: AbortSignal.timeout(8000),
   });
   if (!res.ok) return [];
-  const data = await res.json();
+  const data = await res.json() as any;
   const docs = data?.response?.docs ?? [];
 
   return docs.map((doc: any): GameResult => {
@@ -166,7 +166,7 @@ async function searchPC(query: string): Promise<GameResult[]> {
     signal: AbortSignal.timeout(8000),
   });
   if (!searchRes.ok) return [];
-  const searchData = await searchRes.json();
+  const searchData = await searchRes.json() as any;
   const items: any[] = (searchData?.items ?? []).slice(0, 5);
   if (!items.length) return [];
 
@@ -180,7 +180,7 @@ async function searchPC(query: string): Promise<GameResult[]> {
         { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(8000) }
       );
       if (detailRes.ok) {
-        const dd = await detailRes.json();
+        const dd = await detailRes.json() as any;
         firstDetail = dd?.[String(firstId)]?.data ?? null;
       }
     } catch {}

@@ -33,7 +33,7 @@ async function getTwitchToken(): Promise<string> {
     { method: "POST" }
   );
   if (!res.ok) throw new Error("Échec authentification Twitch");
-  const data = await res.json();
+  const data = await res.json() as { access_token: string; expires_in: number };
 
   cachedToken = {
     access_token: data.access_token,
@@ -54,7 +54,7 @@ async function igdbFetch(endpoint: string, body: string, token: string): Promise
     body,
   });
   if (!res.ok) return [];
-  return res.json();
+  return res.json() as Promise<any[]>;
 }
 
 export async function GET(req: NextRequest) {

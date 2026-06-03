@@ -1,7 +1,6 @@
 "use client";
 import { useState, useEffect, useMemo, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { supabase } from "../../lib/supabase";
 import Link from "next/link";
 import NavBar from "../../components/NavBar";
 
@@ -107,7 +106,7 @@ function niveauCode(c?: string, e?: string) { const w = NIVEAU_COULEUR[c?.toLowe
 function minJoueursCode(n: number) { return n <= 8 ? `AP${n}` : "AP8"; }
 function maxJoueursCode(n: number) { return n <= 13 ? `JQ${n}` : "JQ13"; }
 
-// ─── ISO2709 builder (identique à /export) ───────────────────────────────────
+// ─── ISO2709 builder ─────────────────────────────────────────────────────────
 
 type SubfieldEntry = { code: string; value: string };
 type UnimarcField = { tag: string; ind1: string; ind2: string; subfields: SubfieldEntry[] };
@@ -165,11 +164,8 @@ function buildRecord(game: CatalogueEntry, copies: JeuCopie[] = []): Uint8Array 
 
   const desc = game.description?.trim() || game.resume?.trim();
   if (desc) fields.push(makeField("330", " ", " ", [{ code: "a", value: desc }]));
-
-  // 694 → type JEUS
   fields.push(makeField("694", " ", " ", [{ code: "a", value: "Jeux de société" }]));
 
-  // 700/701/702 : auteurs structurés
   const auteurs = parseAuteurs(game.auteurs_json);
   let auteurIdx = 0;
   for (const a of auteurs) {
@@ -197,7 +193,6 @@ function buildRecord(game: CatalogueEntry, copies: JeuCopie[] = []): Uint8Array 
   const niv = niveauCode(game.couleur, game.etoiles); if (niv) sf941.push({ code: "e", value: niv });
   if (sf941.length) fields.push(makeField("941", " ", " ", sf941));
 
-  // Exemplaires (915/920/930/921 par copie physique)
   const couleurLow = (game.couleur ?? "").toLowerCase();
   const couleurCode = COULEUR_CODE[couleurLow] ?? "";
   const emplacement = couleurLow === "vert" ? "PJ" : "JE";
@@ -228,17 +223,17 @@ function buildMrcFile(games: CatalogueEntry[], copiesMap: Record<string, JeuCopi
   return new Blob([res], { type: "application/octet-stream" });
 }
 
-// ─── Composants UI ────────────────────────────────────────────────────────────
+// ─── ScoreBar ─────────────────────────────────────────────────────────────────
 
 function ScoreBar({ score }: { score: number }) {
   const pct = (score / 10) * 100;
-  const color = pct >= 80 ? "bg-emerald-400" : pct >= 50 ? "bg-amber-400" : "bg-rose-400";
+  const color = pct >= 80 ? "var(--vert)" : pct >= 50 ? "var(--orange)" : "var(--rouge)";
   return (
-    <div className="flex items-center gap-1.5">
-      <div className="w-14 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-        <div className={`h-full rounded-full ${color}`} style={{ width: `${pct}%` }} />
+    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+      <div style={{ width: 56, height: 4, background: "var(--cream2)", borderRadius: 2, overflow: "hidden" }}>
+        <div style={{ height: "100%", borderRadius: 2, background: color, width: `${pct}%` }} />
       </div>
-      <span className="text-[10px] font-bold text-slate-400">{score}/10</span>
+      <span style={{ fontSize: 11, fontWeight: 700, color: "rgba(0,0,0,0.4)" }}>{score}/10</span>
     </div>
   );
 }
@@ -271,7 +266,7 @@ function ModalCatalogage({ game: initGame, onClose, onSaved }: {
       if (game.ean) params.set("ean", game.ean);
       params.set("nom", game.nom);
       const resp = await fetch(`/api/espritjeu?${params}`);
-      const data = await resp.json();
+      const data = await resp.json() as any;
       if (data.notFound) { setSearchError("Jeu introuvable sur Esprit Jeu"); return; }
       if (data.error) { setSearchError(data.error); return; }
       setEspritData(data);
@@ -304,241 +299,218 @@ function ModalCatalogage({ game: initGame, onClose, onSaved }: {
     const filteredAuteurs = auteurs.filter(a => a.nom.trim() || a.prenom.trim());
     const auteursText = filteredAuteurs.map(a => [a.prenom, a.nom].filter(Boolean).join(" ")).join(", ");
     const payload: Partial<CatalogueEntry> & { auteurs_json: string; auteurs: string } = {
-      description: game.description,
-      resume: game.resume,
-      boite_format: game.boite_format,
-      editeur: game.editeur,
-      auteurs_json: JSON.stringify(filteredAuteurs),
-      auteurs: auteursText,
+      description: game.description, resume: game.resume,
+      boite_format: game.boite_format, editeur: game.editeur,
+      auteurs_json: JSON.stringify(filteredAuteurs), auteurs: auteursText,
     };
-    const { error } = await supabase.from("catalogue").update(payload).eq("ean", game.ean);
-    if (error) { alert("Erreur de sauvegarde : " + error.message); setIsSaving(false); return; }
-    await supabase.from("jeux").update({ etape_notice: true }).eq("ean", game.ean);
+    const res = await fetch(`/api/catalogue/${encodeURIComponent(game.ean)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    if (!res.ok) { alert("Erreur de sauvegarde"); setIsSaving(false); return; }
+    const jeuxRows = await fetch(`/api/jeux?ean=${encodeURIComponent(game.ean)}&fields=id`).then(r => r.json() as Promise<any>).catch(() => []);
+    if (Array.isArray(jeuxRows)) {
+      for (const j of jeuxRows) await fetch(`/api/jeux/${j.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ etape_notice: 1 }) });
+    }
     onSaved({ ...game, ...payload });
     setIsSaving(false);
     onClose();
   };
 
+  const inpStyle: React.CSSProperties = {
+    border: "2px solid var(--cream2)", borderRadius: 8, padding: "9px 14px",
+    background: "var(--cream)", outline: "none", fontSize: 14,
+    fontFamily: "inherit", width: "100%", boxSizing: "border-box",
+    transition: "border-color 0.1s",
+  };
+
+  const sectionStyle: React.CSSProperties = {
+    padding: "18px 20px",
+    borderTop: "1px solid var(--cream2)",
+    display: "flex",
+    flexDirection: "column",
+    gap: 12,
+  };
+
+  const labelStyle: React.CSSProperties = {
+    fontSize: 11, fontWeight: 800, color: "rgba(0,0,0,0.4)",
+    textTransform: "uppercase", letterSpacing: "0.07em",
+  };
+
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-start justify-center p-4 pt-8 overflow-y-auto"
-      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="bg-white rounded-3xl w-full max-w-2xl shadow-2xl flex flex-col gap-0 overflow-hidden mb-8">
+    <div
+      style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 80, display: "flex", alignItems: "center", justifyContent: "center", padding: "80px 16px 16px" }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="pop-card" style={{ width: "100%", maxWidth: 680, maxHeight: "calc(100vh - 96px)", overflow: "hidden", display: "flex", flexDirection: "column" }}>
 
         {/* Header */}
-        <div className="flex items-center gap-4 p-6 border-b border-slate-100">
-          <div className="w-14 h-14 rounded-2xl overflow-hidden bg-slate-100 shrink-0 flex items-center justify-center">
+        <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 20px", background: "var(--ink)" }}>
+          <div style={{ width: 52, height: 52, borderRadius: 8, overflow: "hidden", background: "var(--cream2)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", border: "2px solid rgba(255,255,255,0.15)" }}>
             {game.image_url
-              ? <img src={game.image_url} alt={game.nom} className="w-full h-full object-cover" />
-              : <span className="text-2xl">🎲</span>}
+              ? <img src={game.image_url} alt={game.nom} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              : <span style={{ fontSize: 22 }}>🎲</span>}
           </div>
-          <div className="flex-1 min-w-0">
-            <h2 className="font-black text-xl text-black leading-tight truncate">{game.nom}</h2>
-            <div className="flex items-center gap-2 mt-0.5">
-              {game.editeur && <span className="text-xs text-slate-400 font-medium">{game.editeur}</span>}
-              {game.editeur && game.ean && <span className="text-slate-200">·</span>}
-              <span className="text-[10px] font-mono text-slate-300">{game.ean}</span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <h2 style={{ fontWeight: 900, fontSize: 18, color: "var(--cream)", margin: 0, lineHeight: 1.2 }}>{game.nom}</h2>
+            <div style={{ display: "flex", gap: 8, marginTop: 4, alignItems: "center" }}>
+              {game.editeur && <span style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", fontWeight: 500 }}>{game.editeur}</span>}
+              <span style={{ fontSize: 11, fontFamily: "monospace", color: "rgba(255,255,255,0.3)" }}>{game.ean}</span>
             </div>
           </div>
-          <button onClick={onClose}
-            className="w-9 h-9 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 font-bold shrink-0">✕</button>
+          <button onClick={onClose} style={{ width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", background: "rgba(255,255,255,0.12)", border: "none", cursor: "pointer", fontSize: 16, color: "var(--cream)", flexShrink: 0 }}>✕</button>
         </div>
 
         {/* Corps scrollable */}
-        <div className="overflow-y-auto flex flex-col divide-y divide-slate-100" style={{ maxHeight: "70vh" }}>
+        <div style={{ overflow: "auto", flex: 1 }}>
 
-          {/* Section Éditeur */}
-          <div className="p-6 flex flex-col gap-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-black text-slate-400 uppercase tracking-widest">
-                Éditeur (champ 210 $c)
-              </span>
+          {/* Éditeur */}
+          <div style={sectionStyle}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={labelStyle}>Éditeur (champ 210 $c)</span>
               {espritData?.editeur && (
                 <button onClick={() => setGame(g => ({ ...g, editeur: espritData.editeur! }))}
-                  className="text-xs font-bold text-black bg-[#baff29] px-3 py-1 rounded-lg hover:bg-[#a8e820] transition-colors">
-                  Importer "{espritData.editeur}" →
+                  className="pop-btn pop-btn-yellow" style={{ fontSize: 12, padding: "4px 12px" }}>
+                  Importer « {espritData.editeur} » →
                 </button>
               )}
             </div>
-            <input
-              type="text"
-              value={game.editeur ?? ""}
-              onChange={e => setGame(g => ({ ...g, editeur: e.target.value }))}
-              placeholder="Nom de l'éditeur…"
-              className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-4 py-3 text-sm font-medium outline-none focus:border-black transition-colors"
-            />
+            <input type="text" value={game.editeur ?? ""} onChange={e => setGame(g => ({ ...g, editeur: e.target.value }))}
+              placeholder="Nom de l'éditeur…" style={inpStyle} />
           </div>
 
-          {/* Section Description */}
-          <div className="p-6 flex flex-col gap-5">
-            <div className="flex flex-col gap-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Recherche Esprit Jeu</span>
-                <button onClick={searchEspritJeu} disabled={isSearching}
-                  className="flex items-center gap-2 px-4 py-2 bg-black text-white rounded-xl text-xs font-bold hover:bg-slate-800 disabled:opacity-50 transition-colors">
-                  {isSearching
-                    ? <><span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />Recherche…</>
-                    : "🔍 Chercher sur Esprit Jeu"}
-                </button>
-              </div>
-              {searchError && <p className="text-xs font-bold text-rose-500">{searchError}</p>}
-              {espritData && (
-                <div className="flex flex-col gap-3">
-                  {espritData.url && (
-                    <a href={espritData.url} target="_blank" rel="noopener noreferrer"
-                      className="text-xs text-slate-400 hover:text-black underline truncate">
-                      {espritData.url}
-                    </a>
-                  )}
-                  {espritData.resume && (
-                    <div className="border border-slate-200 rounded-2xl overflow-hidden">
-                      <div className="flex items-center justify-between px-4 py-2 bg-slate-50 border-b border-slate-100">
-                        <span className="text-xs font-bold text-slate-600">Résumé (court)</span>
-                        <button onClick={() => setGame(g => ({ ...g, description: espritData.resume! }))}
-                          className="text-xs font-bold text-black bg-[#baff29] px-3 py-1 rounded-lg hover:bg-[#a8e820] transition-colors">
-                          Utiliser →
-                        </button>
-                      </div>
-                      <p className="px-4 py-3 text-xs text-slate-600 leading-relaxed">{espritData.resume}</p>
-                    </div>
-                  )}
-                  {espritData.description && (
-                    <div className="border border-slate-200 rounded-2xl overflow-hidden">
-                      <div className="flex items-center justify-between px-4 py-2 bg-slate-50 border-b border-slate-100">
-                        <span className="text-xs font-bold text-slate-600">Description (longue)</span>
-                        <button onClick={() => setGame(g => ({ ...g, description: espritData.description! }))}
-                          className="text-xs font-bold text-black bg-[#baff29] px-3 py-1 rounded-lg hover:bg-[#a8e820] transition-colors">
-                          Utiliser →
-                        </button>
-                      </div>
-                      <p className="px-4 py-3 text-xs text-slate-600 leading-relaxed">{espritData.description}</p>
-                    </div>
-                  )}
-                  {((espritData.auteurs?.length ?? 0) > 0 || (espritData.illustrateurs?.length ?? 0) > 0) && (
-                    <div className="border border-slate-200 rounded-2xl overflow-hidden">
-                      <div className="flex items-center justify-between px-4 py-2 bg-slate-50 border-b border-slate-100">
-                        <span className="text-xs font-bold text-slate-600">Auteurs trouvés</span>
-                        <button onClick={() => importAuteursEspritJeu(espritData)}
-                          className="text-xs font-bold text-black bg-[#baff29] px-3 py-1 rounded-lg hover:bg-[#a8e820] transition-colors">
-                          Importer →
-                        </button>
-                      </div>
-                      <div className="px-4 py-3 flex flex-col gap-1">
-                        {espritData.auteurs?.map((a, i) => (
-                          <span key={i} className="text-xs text-slate-600"><span className="font-bold">Auteur</span> — {a}</span>
-                        ))}
-                        {espritData.illustrateurs?.map((a, i) => (
-                          <span key={i} className="text-xs text-slate-600"><span className="font-bold">Illustrateur</span> — {a}</span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-            <div className="flex flex-col gap-2">
-              <label className="text-xs font-black text-slate-400 uppercase tracking-widest">
-                Texte utilisé dans la notice (champ 330)
-              </label>
-              <textarea
-                value={game.description ?? ""}
-                onChange={e => setGame(g => ({ ...g, description: e.target.value }))}
-                rows={5}
-                placeholder="Résumé ou description du jeu…"
-                className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-4 py-3 text-sm font-medium outline-none focus:border-black transition-colors resize-none"
-              />
-            </div>
-          </div>
-
-          {/* Section Auteurs */}
-          <div className="p-6 flex flex-col gap-4">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-black text-slate-400 uppercase tracking-widest">
-                Auteurs (champs 700/701/702)
-              </span>
-              <button onClick={addAuteur}
-                className="flex items-center gap-1.5 px-3 py-2 bg-black text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition-colors">
-                + Ajouter
+          {/* Esprit Jeu + Description */}
+          <div style={sectionStyle}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={labelStyle}>Recherche Esprit Jeu</span>
+              <button onClick={searchEspritJeu} disabled={isSearching} className="pop-btn pop-btn-dark" style={{ fontSize: 12, padding: "6px 14px", opacity: isSearching ? 0.5 : 1 }}>
+                {isSearching ? "Recherche…" : "Chercher sur Esprit Jeu"}
               </button>
             </div>
+            {searchError && <p style={{ fontSize: 13, fontWeight: 700, color: "var(--rouge)" }}>{searchError}</p>}
+            {espritData && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {espritData.url && (
+                  <a href={espritData.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: "rgba(0,0,0,0.4)", textDecoration: "underline", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {espritData.url}
+                  </a>
+                )}
+                {espritData.resume && (
+                  <div style={{ border: "2px solid var(--cream2)", borderRadius: 8, overflow: "hidden" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 14px", background: "var(--cream)", borderBottom: "1px solid var(--cream2)" }}>
+                      <span style={{ fontSize: 12, fontWeight: 700 }}>Résumé (court)</span>
+                      <button onClick={() => setGame(g => ({ ...g, description: espritData.resume! }))}
+                        className="pop-btn pop-btn-yellow" style={{ fontSize: 11, padding: "3px 10px" }}>Utiliser →</button>
+                    </div>
+                    <p style={{ padding: "10px 14px", fontSize: 12, lineHeight: 1.6, color: "rgba(0,0,0,0.6)" }}>{espritData.resume}</p>
+                  </div>
+                )}
+                {espritData.description && (
+                  <div style={{ border: "2px solid var(--cream2)", borderRadius: 8, overflow: "hidden" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 14px", background: "var(--cream)", borderBottom: "1px solid var(--cream2)" }}>
+                      <span style={{ fontSize: 12, fontWeight: 700 }}>Description (longue)</span>
+                      <button onClick={() => setGame(g => ({ ...g, description: espritData.description! }))}
+                        className="pop-btn pop-btn-yellow" style={{ fontSize: 11, padding: "3px 10px" }}>Utiliser →</button>
+                    </div>
+                    <p style={{ padding: "10px 14px", fontSize: 12, lineHeight: 1.6, color: "rgba(0,0,0,0.6)" }}>{espritData.description}</p>
+                  </div>
+                )}
+                {((espritData.auteurs?.length ?? 0) > 0 || (espritData.illustrateurs?.length ?? 0) > 0) && (
+                  <div style={{ border: "2px solid var(--cream2)", borderRadius: 8, overflow: "hidden" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 14px", background: "var(--cream)", borderBottom: "1px solid var(--cream2)" }}>
+                      <span style={{ fontSize: 12, fontWeight: 700 }}>Auteurs trouvés</span>
+                      <button onClick={() => importAuteursEspritJeu(espritData)}
+                        className="pop-btn pop-btn-yellow" style={{ fontSize: 11, padding: "3px 10px" }}>Importer →</button>
+                    </div>
+                    <div style={{ padding: "10px 14px", display: "flex", flexDirection: "column", gap: 4 }}>
+                      {espritData.auteurs?.map((a, i) => (
+                        <span key={i} style={{ fontSize: 12, color: "rgba(0,0,0,0.6)" }}><strong>Auteur</strong> — {a}</span>
+                      ))}
+                      {espritData.illustrateurs?.map((a, i) => (
+                        <span key={i} style={{ fontSize: 12, color: "rgba(0,0,0,0.6)" }}><strong>Illustrateur</strong> — {a}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <label style={labelStyle}>Texte utilisé dans la notice (champ 330)</label>
+              <textarea value={game.description ?? ""} onChange={e => setGame(g => ({ ...g, description: e.target.value }))}
+                rows={5} placeholder="Résumé ou description du jeu…"
+                style={{ ...inpStyle, resize: "vertical" }} />
+            </div>
+          </div>
+
+          {/* Auteurs */}
+          <div style={sectionStyle}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={labelStyle}>Auteurs (champs 700/701/702)</span>
+              <button onClick={addAuteur} className="pop-btn pop-btn-dark" style={{ fontSize: 12, padding: "5px 12px" }}>+ Ajouter</button>
+            </div>
             {auteurs.length === 0 && (
-              <p className="text-xs text-slate-400 font-medium py-2">Aucun auteur renseigné</p>
+              <p style={{ fontSize: 13, color: "rgba(0,0,0,0.35)", fontWeight: 500 }}>Aucun auteur renseigné</p>
             )}
             {auteurs.map((a, i) => (
-              <div key={i} className="flex items-center gap-2 p-3 bg-slate-50 rounded-2xl">
-                <select
-                  value={a.role}
-                  onChange={e => updateAuteur(i, "role", e.target.value)}
-                  className="text-xs font-bold bg-white border-2 border-slate-200 rounded-xl px-2 py-2 outline-none focus:border-black transition-colors shrink-0">
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", background: "var(--cream)", borderRadius: 8, border: "1.5px solid var(--cream2)" }}>
+                <select value={a.role} onChange={e => updateAuteur(i, "role", e.target.value)}
+                  style={{ fontSize: 12, fontWeight: 700, background: "var(--white)", border: "2px solid var(--cream2)", borderRadius: 6, padding: "6px 8px", outline: "none", flexShrink: 0, fontFamily: "inherit" }}>
                   {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
                 </select>
-                <input type="text" value={a.prenom} onChange={e => updateAuteur(i, "prenom", e.target.value)}
-                  placeholder="Prénom"
-                  className="flex-1 bg-white border-2 border-slate-200 rounded-xl px-3 py-2 text-xs font-medium outline-none focus:border-black transition-colors" />
-                <input type="text" value={a.nom} onChange={e => updateAuteur(i, "nom", e.target.value)}
-                  placeholder="NOM"
-                  className="flex-1 bg-white border-2 border-slate-200 rounded-xl px-3 py-2 text-xs font-bold uppercase outline-none focus:border-black transition-colors" />
+                <input type="text" value={a.prenom} onChange={e => updateAuteur(i, "prenom", e.target.value)} placeholder="Prénom"
+                  style={{ flex: 1, fontSize: 13, background: "var(--white)", border: "2px solid var(--cream2)", borderRadius: 6, padding: "6px 10px", outline: "none", fontFamily: "inherit" }} />
+                <input type="text" value={a.nom} onChange={e => updateAuteur(i, "nom", e.target.value)} placeholder="NOM"
+                  style={{ flex: 1, fontSize: 13, fontWeight: 700, textTransform: "uppercase", background: "var(--white)", border: "2px solid var(--cream2)", borderRadius: 6, padding: "6px 10px", outline: "none", fontFamily: "inherit" }} />
                 <button onClick={() => removeAuteur(i)}
-                  className="w-7 h-7 flex items-center justify-center rounded-full text-slate-400 hover:text-rose-500 hover:bg-white transition-colors text-sm shrink-0">✕</button>
+                  style={{ width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", border: "none", background: "none", cursor: "pointer", fontSize: 16, color: "rgba(0,0,0,0.4)", flexShrink: 0 }}>✕</button>
               </div>
             ))}
             {auteurs.length > 0 && (
-              <p className="text-[10px] text-slate-400 font-medium pt-1 border-t border-slate-100">
+              <p style={{ fontSize: 11, color: "rgba(0,0,0,0.35)", fontWeight: 500, borderTop: "1px solid var(--cream2)", paddingTop: 8 }}>
                 Auteur → 700/701 $4 070 · Illustrateur → 702 $4 440 · Scénariste → 702 $4 275
               </p>
             )}
           </div>
 
-          {/* Section Format boîte */}
-          <div className="p-6 flex flex-col gap-4">
-            <span className="text-xs font-black text-slate-400 uppercase tracking-widest">
-              Format boîte (champ 215 $d)
-            </span>
-            <div className="flex gap-3 flex-wrap">
+          {/* Format boîte */}
+          <div style={sectionStyle}>
+            <span style={labelStyle}>Format boîte (champ 215 $d)</span>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
               {FORMATS_BOITE.map(f => (
                 <button key={f}
                   onClick={() => setGame(g => ({ ...g, boite_format: g.boite_format === f ? undefined : f }))}
-                  className={`w-16 h-16 rounded-2xl border-2 font-black text-lg transition-all ${
-                    game.boite_format === f
-                      ? "bg-black text-white border-black"
-                      : "bg-white text-slate-400 border-slate-200 hover:border-slate-400"
-                  }`}>
+                  style={{
+                    width: 60, height: 60, borderRadius: 10, fontWeight: 900, fontSize: 16,
+                    border: "2.5px solid var(--ink)", cursor: "pointer",
+                    background: game.boite_format === f ? "var(--yellow)" : "var(--white)",
+                    color: "var(--ink)", boxShadow: game.boite_format === f ? "3px 3px 0 var(--ink)" : "none",
+                    transition: "all 0.1s", fontFamily: "inherit",
+                  }}>
                   {f}
                 </button>
               ))}
             </div>
             {game.boite_format && (
-              <p className="text-xs text-slate-400 font-medium">
-                Format sélectionné : <strong className="text-black">{game.boite_format}</strong> → 215 $d "{game.boite_format}"
+              <p style={{ fontSize: 13, color: "rgba(0,0,0,0.5)", fontWeight: 500 }}>
+                Format sélectionné : <strong style={{ color: "var(--ink)" }}>{game.boite_format}</strong> → 215 $d « {game.boite_format} »
               </p>
             )}
-            <div className="pt-4 border-t border-slate-100 flex flex-col gap-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-black text-slate-400 uppercase tracking-widest">
-                  Contenu boîte (215 $a)
-                </span>
-                <Link
-                  href={`/contenu?nom=${encodeURIComponent(game.nom)}`}
-                  target="_blank"
-                  className="text-xs font-bold text-slate-500 hover:text-black underline transition-colors">
+            <div style={{ paddingTop: 12, borderTop: "1px solid var(--cream2)", display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span style={labelStyle}>Contenu boîte (215 $a)</span>
+                <Link href={`/contenu?nom=${encodeURIComponent(game.nom)}`} target="_blank"
+                  style={{ fontSize: 12, fontWeight: 700, color: "rgba(0,0,0,0.5)", textDecoration: "underline" }}>
                   Modifier →
                 </Link>
               </div>
-              <p className="text-xs text-slate-500 bg-slate-50 p-3 rounded-xl leading-relaxed">
-                {game.contenu?.trim() || <span className="text-slate-300 italic">Non renseigné — sera exporté comme "1 boîte de jeu"</span>}
+              <p style={{ fontSize: 13, color: "rgba(0,0,0,0.55)", background: "var(--cream)", padding: "10px 14px", borderRadius: 8, lineHeight: 1.6 }}>
+                {game.contenu?.trim() || <span style={{ fontStyle: "italic", color: "rgba(0,0,0,0.25)" }}>Non renseigné — sera exporté comme « 1 boîte de jeu »</span>}
               </p>
             </div>
           </div>
-
         </div>
 
         {/* Footer */}
-        <div className="flex gap-3 p-6 border-t border-slate-100">
-          <button onClick={onClose}
-            className="flex-1 px-4 py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-sm transition-colors">
-            Annuler
-          </button>
-          <button onClick={saveGame} disabled={isSaving}
-            className="flex-1 px-4 py-3 rounded-2xl bg-black text-white font-bold text-sm hover:bg-slate-800 disabled:opacity-50 transition-colors">
+        <div style={{ display: "flex", gap: 10, padding: "14px 20px", borderTop: "2.5px solid var(--ink)" }}>
+          <button onClick={onClose} className="pop-btn pop-btn-outline" style={{ flex: 1 }}>Annuler</button>
+          <button onClick={saveGame} disabled={isSaving} className="pop-btn pop-btn-dark" style={{ flex: 1, opacity: isSaving ? 0.5 : 1 }}>
             {isSaving ? "Sauvegarde…" : "Enregistrer"}
           </button>
         </div>
@@ -552,6 +524,7 @@ function ModalCatalogage({ game: initGame, onClose, onSaved }: {
 function CataloguePageInner() {
   const searchParams = useSearchParams();
   const [catalogue, setCatalogue] = useState<CatalogueEntry[]>([]);
+  const [codesMap, setCodesMap] = useState<Record<string, string[]>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [recherche, setRecherche] = useState("");
   const [editGame, setEditGame] = useState<CatalogueEntry | null>(null);
@@ -562,7 +535,6 @@ function CataloguePageInner() {
 
   useEffect(() => { loadCatalogue(); }, []);
 
-  // Auto-ouverture du modal si ?ean= dans l'URL (depuis inventaire)
   useEffect(() => {
     const eanParam = searchParams.get("ean");
     if (eanParam && catalogue.length > 0 && !editGame) {
@@ -573,22 +545,34 @@ function CataloguePageInner() {
 
   const loadCatalogue = async () => {
     setIsLoading(true);
-    const { data } = await supabase
-      .from("catalogue")
-      .select("ean, nom, auteurs, auteurs_json, editeur, description, resume, contenu, boite_format, couleur, mecanique, nb_de_joueurs, temps_de_jeu, etoiles, coop_versus, image_url")
-      .order("nom");
-    if (data) setCatalogue(data as CatalogueEntry[]);
+    const [catData, jeuxData]: [any[], any[]] = await Promise.all([
+      fetch('/api/catalogue?fields=ean,nom,auteurs,auteurs_json,editeur,description,resume,contenu,boite_format,couleur,mecanique,nb_de_joueurs,temps_de_jeu,etoiles,coop_versus,image_url').then(r => r.json() as Promise<any>).catch(() => []),
+      fetch('/api/jeux?code_syracuse=notnull&fields=ean,code_syracuse').then(r => r.json() as Promise<any>).catch(() => []),
+    ]);
+    if (Array.isArray(catData)) setCatalogue(catData as CatalogueEntry[]);
+    if (Array.isArray(jeuxData)) {
+      const map: Record<string, string[]> = {};
+      for (const j of jeuxData) { if (!map[j.ean]) map[j.ean] = []; map[j.ean].push(j.code_syracuse); }
+      setCodesMap(map);
+    }
     setIsLoading(false);
   };
 
   const filtered = useMemo(() => {
     const q = normalizeStr(recherche);
-    return catalogue.filter(g => {
-      if (q && !normalizeStr(g.nom).includes(q) && !normalizeStr(g.editeur ?? "").includes(q)) return false;
+    const result = catalogue.filter(g => {
       if (filterComplet && completenessScore(g) < 7) return false;
-      return true;
+      if (!q) return true;
+      const codes = codesMap[g.ean] ?? [];
+      return normalizeStr(g.nom).includes(q) || normalizeStr(g.editeur ?? "").includes(q) || codes.some(c => normalizeStr(c).includes(q));
     });
-  }, [catalogue, recherche, filterComplet]);
+    return result.sort((a, b) => {
+      const aS = selected.has(a.ean) ? 0 : 1;
+      const bS = selected.has(b.ean) ? 0 : 1;
+      if (aS !== bS) return aS - bS;
+      return a.nom.localeCompare(b.nom);
+    });
+  }, [catalogue, recherche, filterComplet, codesMap, selected]);
 
   const handleSaved = useCallback((updated: CatalogueEntry) => {
     setCatalogue(prev => prev.map(g => g.ean === updated.ean ? { ...g, ...updated } : g));
@@ -605,20 +589,11 @@ function CataloguePageInner() {
     setIsExporting(true);
     try {
       const eans = selectedGames.map(g => g.ean);
-      const { data: jeux } = await supabase
-        .from("jeux")
-        .select("ean, code_syracuse")
-        .in("ean", eans)
-        .not("code_syracuse", "is", null)
-        .neq("code_syracuse", "");
+      const jeux = await fetch(`/api/jeux?eans=${encodeURIComponent(eans.join(','))}&code_syracuse=notnull&fields=ean,code_syracuse`).then(r => r.json() as Promise<any>).catch(() => []);
       const copiesMap: Record<string, JeuCopie[]> = {};
-      for (const j of (jeux ?? [])) {
-        if (!copiesMap[j.ean]) copiesMap[j.ean] = [];
-        copiesMap[j.ean].push(j as JeuCopie);
-      }
+      for (const j of (Array.isArray(jeux) ? jeux : [])) { if (!copiesMap[j.ean]) copiesMap[j.ean] = []; copiesMap[j.ean].push(j as JeuCopie); }
       const totalExemplaires = Object.values(copiesMap).reduce((s, arr) => s + arr.length, 0);
       setExportInfo(`${selectedGames.length} notice${selectedGames.length > 1 ? "s" : ""} · ${totalExemplaires} exemplaire${totalExemplaires > 1 ? "s" : ""} inclus`);
-      console.log("[export mrc] copies map:", copiesMap);
       const blob = buildMrcFile(selectedGames, copiesMap);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -630,118 +605,128 @@ function CataloguePageInner() {
   };
 
   return (
-    <div className="min-h-screen bg-[#e5e5e5] flex flex-col items-center p-4 sm:p-8 gap-6">
-      <style>{`
-        .custom-scroll::-webkit-scrollbar{width:4px}
-        .custom-scroll::-webkit-scrollbar-track{background:transparent}
-        .custom-scroll::-webkit-scrollbar-thumb{background:#d1d5db;border-radius:999px}
-      `}</style>
+    <div style={{ minHeight: "100vh", background: "var(--cream)" }}>
+      <NavBar current="catalogage" />
 
-      {/* Nav */}
-      <header className="flex justify-between items-center w-full max-w-[96%] mx-auto shrink-0 relative">
-        <div className="w-10 h-10 bg-black rounded flex items-center justify-center text-white font-black text-xl italic">+</div>
-        <NavBar current="catalogage" />
-        <div className="w-10" />
-      </header>
-
-      <main className="bg-white rounded-[3rem] p-8 lg:p-10 w-full max-w-[96%] mx-auto flex-1 shadow-md flex flex-col gap-6">
+      <div className="pop-page" style={{ display: "flex", flexDirection: "column", gap: 20 }}>
 
         {/* Titre + export */}
-        <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
           <div>
-            <h1 className="text-4xl font-black text-black">Catalogage</h1>
-            <p className="text-slate-400 font-medium mt-1">Enrichis les notices et exporte-les pour Syracuse</p>
+            <div className="bc" style={{ fontSize: 80, lineHeight: 0.9, textTransform: "uppercase", letterSpacing: "-1px", background: "linear-gradient(135deg, #0d0d0d 40%, var(--orange))", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>Catalogage</div>
+            <p style={{ color: "rgba(0,0,0,0.4)", fontWeight: 500, marginTop: 6, fontSize: 15 }}>Enrichis les notices et exporte-les pour Syracuse</p>
           </div>
-          <div className="flex flex-col items-end gap-1.5 shrink-0">
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, flexShrink: 0 }}>
             <button onClick={exportMrc} disabled={selected.size === 0 || isExporting}
-              className="flex items-center gap-2 px-6 py-3.5 bg-black text-white rounded-2xl font-bold text-sm hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
-              {isExporting
-                ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Génération…</>
-                : <>⬇ Exporter {selected.size > 0 ? `(${selected.size})` : ""} notices .mrc</>}
+              className="pop-btn pop-btn-dark"
+              style={{ opacity: selected.size === 0 || isExporting ? 0.4 : 1, cursor: selected.size === 0 || isExporting ? "not-allowed" : "pointer" }}>
+              {isExporting ? "Génération…" : `⬇ Exporter ${selected.size > 0 ? `(${selected.size})` : ""} notices .mrc`}
             </button>
-            {exportInfo && (
-              <span className="text-[11px] font-bold text-slate-400">{exportInfo}</span>
-            )}
+            {exportInfo && <span style={{ fontSize: 12, fontWeight: 700, color: "rgba(0,0,0,0.4)" }}>{exportInfo}</span>}
           </div>
         </div>
 
-        {/* Sélection */}
+        {/* Sélection résumé */}
         {selected.size > 0 && (
-          <div className="flex items-center gap-3 px-5 py-3 bg-slate-50 border border-slate-100 rounded-2xl flex-wrap">
-            <span className="text-sm font-bold text-black">{selected.size} sélectionné{selected.size > 1 ? "s" : ""}</span>
-            <button onClick={() => setSelected(new Set())}
-              className="ml-auto text-xs font-bold px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-500 hover:bg-slate-100 transition-colors">
-              Tout désélectionner
-            </button>
+          <div style={{ background: "var(--cream2)", border: "2.5px solid var(--ink)", borderRadius: 10, padding: "12px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <span style={{ fontSize: 14, fontWeight: 800 }}>{selected.size} notice{selected.size > 1 ? "s" : ""} sélectionnée{selected.size > 1 ? "s" : ""}</span>
+              <button onClick={() => setSelected(new Set())} className="pop-btn pop-btn-outline" style={{ marginLeft: "auto", fontSize: 12, padding: "4px 12px" }}>
+                Tout désélectionner
+              </button>
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {selectedGames.map(g => {
+                const codes = codesMap[g.ean] ?? [];
+                return (
+                  <span key={g.ean} className="pop-sticker" style={{ background: "var(--white)", fontSize: 11 }}>
+                    {g.nom}
+                    {codes.length > 0 && <span style={{ fontWeight: 400, color: "rgba(0,0,0,0.4)", marginLeft: 4 }}>· {codes.join(", ")}</span>}
+                    <button onClick={() => toggleSelect(g.ean)} style={{ marginLeft: 6, background: "none", border: "none", cursor: "pointer", fontSize: 12, color: "rgba(0,0,0,0.4)", padding: 0 }}>✕</button>
+                  </span>
+                );
+              })}
+            </div>
           </div>
         )}
 
         {/* Filtres */}
-        <div className="flex items-center gap-3 flex-wrap">
-          <div className="relative flex-1 min-w-[200px]">
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <div style={{ flex: 1, minWidth: 200, position: "relative" }}>
             <input type="text" value={recherche} onChange={e => setRecherche(e.target.value)}
               placeholder="Rechercher un jeu ou éditeur…"
-              className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-4 py-2.5 pl-10 font-medium text-sm outline-none focus:border-black transition-colors" />
-            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm">🔍</span>
+              className="pop-input" style={{ width: "100%", paddingLeft: 36 }} />
+            <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", opacity: 0.4, pointerEvents: "none" }}>🔍</span>
           </div>
-          <button onClick={() => setFilterComplet(v => !v)}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-bold border-2 transition-colors ${
-              filterComplet ? "bg-black text-white border-black" : "bg-white border-slate-200 text-slate-500 hover:border-slate-300"}`}>
+          <button onClick={() => setFilterComplet(v => !v)} className="pop-btn"
+            style={{ background: filterComplet ? "var(--ink)" : "var(--white)", color: filterComplet ? "var(--cream)" : "var(--ink)" }}>
             Notices complètes (≥ 7/10)
           </button>
-          <div className="flex items-center gap-2 text-sm text-slate-400 font-medium ml-auto">
-            <span>{filtered.length} jeu{filtered.length > 1 ? "x" : ""}</span>
-            <span className="text-slate-200">·</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginLeft: "auto" }}>
+            <span style={{ fontSize: 14, color: "rgba(0,0,0,0.4)", fontWeight: 600 }}>{filtered.length} jeu{filtered.length > 1 ? "x" : ""}</span>
             <button onClick={() => setSelected(new Set(filtered.map(g => g.ean)))}
-              className="font-bold text-slate-600 hover:text-black transition-colors">Tout sélectionner</button>
+              style={{ fontSize: 13, fontWeight: 700, background: "none", border: "none", cursor: "pointer", textDecoration: "underline", color: "var(--ink)", fontFamily: "inherit" }}>
+              Tout sélectionner
+            </button>
           </div>
         </div>
 
         {/* Liste */}
         {isLoading ? (
-          <div className="flex flex-col items-center justify-center py-20 gap-3">
-            <div className="w-8 h-8 border-2 border-slate-200 border-t-black rounded-full animate-spin" />
-            <p className="text-slate-400 font-medium text-sm">Chargement…</p>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "60px 0", gap: 12 }}>
+            <div style={{ width: 32, height: 32, border: "3px solid var(--cream2)", borderTopColor: "var(--ink)", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+            <p style={{ color: "rgba(0,0,0,0.4)", fontWeight: 600, fontSize: 15 }}>Chargement…</p>
           </div>
         ) : (
-          <div className="flex flex-col gap-2 overflow-y-auto custom-scroll" style={{ maxHeight: "calc(100vh - 360px)" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, overflow: "auto", maxHeight: "calc(100vh - 360px)" }}>
             {filtered.map(game => {
               const isSelected = selected.has(game.ean);
               const score = completenessScore(game);
               const auteurs = parseAuteurs(game.auteurs_json);
               const hasDesc = !!(game.description?.trim() || game.resume?.trim());
+              const codes = codesMap[game.ean] ?? [];
               return (
                 <div key={game.ean}
-                  className={`flex items-center gap-3 p-3 rounded-2xl border-2 transition-all ${
-                    isSelected ? "border-black bg-slate-50" : "border-slate-100 hover:border-slate-200 bg-white"}`}>
+                  style={{
+                    display: "flex", alignItems: "center", gap: 12, padding: "10px 14px",
+                    background: isSelected ? "var(--yellow)" : "var(--white)",
+                    border: `2.5px solid ${isSelected ? "var(--ink)" : "var(--cream2)"}`,
+                    borderRadius: 10, boxShadow: isSelected ? "3px 3px 0 var(--ink)" : "none",
+                    transition: "all 0.1s",
+                  }}>
                   {/* Checkbox */}
                   <div onClick={() => toggleSelect(game.ean)}
-                    className={`w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 cursor-pointer transition-colors ${
-                      isSelected ? "bg-black border-black" : "border-slate-300 hover:border-slate-500"}`}>
-                    {isSelected && <span className="text-white text-xs font-black">✓</span>}
+                    style={{
+                      width: 20, height: 20, borderRadius: 4, flexShrink: 0, cursor: "pointer",
+                      border: "2.5px solid var(--ink)", display: "flex", alignItems: "center", justifyContent: "center",
+                      background: isSelected ? "var(--ink)" : "transparent", transition: "all 0.1s",
+                    }}>
+                    {isSelected && <span style={{ color: "var(--yellow)", fontSize: 12, fontWeight: 900 }}>✓</span>}
                   </div>
                   {/* Image */}
-                  <div className="w-10 h-10 rounded-xl overflow-hidden bg-slate-100 shrink-0 flex items-center justify-center">
+                  <div style={{ width: 40, height: 40, borderRadius: 8, overflow: "hidden", background: "var(--cream2)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
                     {game.image_url
-                      ? <img src={game.image_url} alt={game.nom} className="w-full h-full object-cover" loading="lazy" />
-                      : <span className="text-slate-300 text-lg">🎲</span>}
+                      ? <img src={game.image_url} alt={game.nom} style={{ width: "100%", height: "100%", objectFit: "cover" }} loading="lazy" />
+                      : <span style={{ fontSize: 18, opacity: 0.4 }}>🎲</span>}
                   </div>
                   {/* Infos */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-bold text-sm text-black truncate">{game.nom}</span>
-                      {game.editeur && <span className="text-xs text-slate-400 font-medium shrink-0">{game.editeur}</span>}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <span style={{ fontWeight: 700, fontSize: 14, color: "var(--ink)" }}>{game.nom}</span>
+                      {game.editeur && <span style={{ fontSize: 12, color: "rgba(0,0,0,0.4)", fontWeight: 500 }}>{game.editeur}</span>}
                     </div>
-                    <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
                       <ScoreBar score={score} />
-                      {hasDesc && <span className="text-[10px] bg-emerald-50 text-emerald-600 font-bold px-1.5 py-0.5 rounded">Description ✓</span>}
-                      {game.boite_format && <span className="text-[10px] bg-blue-50 text-blue-600 font-bold px-1.5 py-0.5 rounded">{game.boite_format}</span>}
-                      {auteurs.length > 0 && <span className="text-[10px] bg-purple-50 text-purple-600 font-bold px-1.5 py-0.5 rounded">{auteurs.length} auteur{auteurs.length > 1 ? "s" : ""}</span>}
+                      {hasDesc && <span className="pop-sticker" style={{ background: "var(--vert)", fontSize: 10 }}>Desc ✓</span>}
+                      {game.boite_format && <span className="pop-sticker" style={{ background: "var(--bleu)", fontSize: 10 }}>{game.boite_format}</span>}
+                      {auteurs.length > 0 && <span className="pop-sticker" style={{ background: "var(--purple)", fontSize: 10 }}>{auteurs.length} auteur{auteurs.length > 1 ? "s" : ""}</span>}
+                      {codes.map(c => (
+                        <span key={c} className="pop-sticker" style={{ background: "var(--cream2)", fontSize: 10, fontFamily: "monospace" }}>{c}</span>
+                      ))}
                     </div>
                   </div>
-                  {/* Bouton cataloguer */}
-                  <button onClick={() => setEditGame(game)}
-                    className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-black hover:text-white text-slate-600 rounded-xl text-xs font-bold transition-colors shrink-0">
+                  {/* Bouton */}
+                  <button onClick={() => setEditGame(game)} className="pop-btn pop-btn-outline" style={{ fontSize: 12, padding: "5px 12px", flexShrink: 0 }}>
                     ✏️ Cataloguer
                   </button>
                 </div>
@@ -749,9 +734,8 @@ function CataloguePageInner() {
             })}
           </div>
         )}
-      </main>
+      </div>
 
-      {/* Modal */}
       {editGame && (
         <ModalCatalogage
           game={editGame}
