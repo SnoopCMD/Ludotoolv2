@@ -3020,17 +3020,21 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
                         const targetKey = weekKey;
                         const selectedSlots = planningSlots.filter(s => selectedSlotIds.has(s.id));
                         const data = await fetch(`/api/planning-semaine?key=${targetKey}`).then(r => r.json() as Promise<any>).catch(() => null);
-                        const existingSlots: PlanningSlot[] = (data?.slots ?? []) as PlanningSlot[];
+                        const existingSlots: PlanningSlot[] = (data?.slots?.length > 0)
+                          ? (data.slots as PlanningSlot[])
+                          : getDefaultPlanningSlots(eachDayOfInterval({ start: targetWeekStart, end: addDays(targetWeekStart, 6) }));
                         const updatedSlots = existingSlots.map(target => {
                           const targetDayOfWeek = (new Date(target.dateKey).getDay() + 6) % 7;
                           const match = selectedSlots.find(s => {
                             const srcDayOfWeek = (new Date(s.dateKey).getDay() + 6) % 7;
-                            return srcDayOfWeek === targetDayOfWeek && s.debut === target.debut && s.fin === target.fin;
+                            return srcDayOfWeek === targetDayOfWeek && s.debut === target.debut && (s.room ?? 'principale') === (target.room ?? 'principale');
                           });
                           if (!match) return target;
                           return { ...target, membreIds: [...new Set([...target.membreIds, ...match.membreIds])] };
                         });
-                        await fetch('/api/planning-semaine', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ semaine_key: targetKey, slots: updatedSlots, vacataires: data?.vacataires ?? [], updated_at: new Date().toISOString() }) });
+                        const targetVacataires: Vacataire[] = (data?.vacataires ?? []) as Vacataire[];
+                        const mergedVacataires = [...targetVacataires, ...vacataires.filter(v => !targetVacataires.some(tv => tv.id === v.id))];
+                        await fetch('/api/planning-semaine', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ semaine_key: targetKey, slots: updatedSlots, vacataires: mergedVacataires, updated_at: new Date().toISOString() }) });
                         setShowPasteCalendar(false);
                         setSelectedSlotIds(new Set());
                         setSelectionMode(false);
