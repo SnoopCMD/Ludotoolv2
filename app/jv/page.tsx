@@ -93,6 +93,22 @@ type JvStat = {
   nb_reservations: number;
 };
 
+type JvNote = {
+  id: string;
+  titre: string;
+  contenu: string | null;
+  couleur: string;
+  tags: string | null; // JSON: string[]
+  created_at: string;
+  updated_at: string;
+};
+
+type NoteTextBlock  = { type: 'text';  value: string };
+type NoteTableBlock = { type: 'table'; headers: string[]; rows: string[][] };
+type NoteListItem   = { text: string; checked: boolean };
+type NoteListBlock  = { type: 'list';  variant: 'numbered' | 'check'; items: NoteListItem[] };
+type ContentBlock   = NoteTextBlock | NoteTableBlock | NoteListBlock;
+
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
 const CONSOLES: Console[] = ["PS5", "Switch", "PC"];
@@ -2968,13 +2984,834 @@ function TabStats({ reservations, jeux }: { reservations: JvReservation[]; jeux:
   );
 }
 
+// ─── Notes : helpers contenu ─────────────────────────────────────────────────
+
+function parseBlocks(raw: string | null): ContentBlock[] {
+  if (!raw) return [{ type: 'text', value: '' }];
+  try {
+    const p = JSON.parse(raw);
+    if (Array.isArray(p) && p.length > 0) return p as ContentBlock[];
+  } catch {}
+  return [{ type: 'text', value: raw }];
+}
+
+function serializeBlocks(blocks: ContentBlock[]): string | null {
+  const hasContent = blocks.some(b => {
+    if (b.type === 'text')  return b.value.trim().length > 0;
+    if (b.type === 'table') return b.headers.length > 0;
+    if (b.type === 'list')  return (b as NoteListBlock).items.some(i => i.text.trim());
+    return false;
+  });
+  if (!hasContent) return null;
+  return JSON.stringify(blocks);
+}
+
+function parseTags(raw: string | null): string[] {
+  if (!raw) return [];
+  try { const p = JSON.parse(raw); return Array.isArray(p) ? p : []; } catch { return []; }
+}
+
+function getPreviewInfo(raw: string | null): { text: string; tables: NoteTableBlock[]; lists: NoteListBlock[] } {
+  const blocks = parseBlocks(raw);
+  const text   = blocks.filter(b => b.type === 'text').map(b => (b as NoteTextBlock).value).join('\n').trim();
+  const tables = blocks.filter(b => b.type === 'table') as NoteTableBlock[];
+  const lists  = blocks.filter(b => b.type === 'list')  as NoteListBlock[];
+  return { text, tables, lists };
+}
+
+function searchBlocks(raw: string | null): string {
+  const blocks = parseBlocks(raw);
+  return blocks.map(b => {
+    if (b.type === 'text')  return b.value;
+    if (b.type === 'table') { const t = b as NoteTableBlock; return [...t.headers, ...t.rows.flat()].join(' '); }
+    if (b.type === 'list')  return (b as NoteListBlock).items.map(i => i.text).join(' ');
+    return '';
+  }).join(' ');
+}
+
+// ─── Notes : palette de couleurs ─────────────────────────────────────────────
+
+const NOTE_COLORS: Record<string, { bg: string; border: string; tape: string }> = {
+  yellow:  { bg: '#fef9c3', border: '#fde047', tape: '#fbbf24' },
+  green:   { bg: '#dcfce7', border: '#86efac', tape: '#4ade80' },
+  blue:    { bg: '#dbeafe', border: '#93c5fd', tape: '#60a5fa' },
+  pink:    { bg: '#fce7f3', border: '#f9a8d4', tape: '#f472b6' },
+  orange:  { bg: '#ffedd5', border: '#fdba74', tape: '#fb923c' },
+  purple:  { bg: '#f3e8ff', border: '#d8b4fe', tape: '#a78bfa' },
+  teal:    { bg: '#ccfbf1', border: '#5eead4', tape: '#2dd4bf' },
+};
+
+const NOTE_ROTATIONS = [-3, 2.5, -1.5, 3.2, -2.2, 1.8, -3.8, 2, -1, 3.5];
+
+// ─── Tableau — édition ───────────────────────────────────────────────────────
+
+function TableBlockEditor({
+  block, onChange, onDelete, borderColor,
+}: {
+  block: NoteTableBlock;
+  onChange: (b: NoteTableBlock) => void;
+  onDelete: () => void;
+  borderColor: string;
+}) {
+  const setHeader = (i: number, v: string) => { const h = [...block.headers]; h[i] = v; onChange({ ...block, headers: h }); };
+  const setCell = (r: number, c: number, v: string) => { const rows = block.rows.map(row => [...row]); rows[r][c] = v; onChange({ ...block, rows }); };
+  const addRow = () => onChange({ ...block, rows: [...block.rows, block.headers.map(() => '')] });
+  const removeRow = (r: number) => onChange({ ...block, rows: block.rows.filter((_, i) => i !== r) });
+  const addCol = () => onChange({ ...block, headers: [...block.headers, ''], rows: block.rows.map(row => [...row, '']) });
+  const removeCol = (c: number) => onChange({ ...block, headers: block.headers.filter((_, i) => i !== c), rows: block.rows.map(row => row.filter((_, i) => i !== c)) });
+
+  const cellStyle: React.CSSProperties = { border: 'none', background: 'transparent', padding: '5px 8px', fontSize: 12, width: '100%', outline: 'none', fontFamily: 'inherit' };
+
+  return (
+    <div style={{ border: `2px solid ${borderColor}`, borderRadius: 6, overflow: 'hidden', margin: '6px 0' }}>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+          <thead>
+            <tr style={{ background: 'rgba(0,0,0,0.04)' }}>
+              {block.headers.map((h, i) => (
+                <th key={i} style={{ borderRight: `1px solid ${borderColor}`, borderBottom: `2px solid ${borderColor}`, padding: 0, minWidth: 90 }}>
+                  <div style={{ display: 'flex', alignItems: 'center' }}>
+                    <input value={h} onChange={e => setHeader(i, e.target.value)} placeholder={`Col ${i + 1}`}
+                      style={{ ...cellStyle, fontWeight: 700 }} />
+                    {block.headers.length > 1 && (
+                      <button onClick={() => removeCol(i)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'rgba(0,0,0,0.25)', padding: '0 5px', fontSize: 10, flexShrink: 0, lineHeight: 1 }}>✕</button>
+                    )}
+                  </div>
+                </th>
+              ))}
+              <th style={{ borderLeft: `1px solid ${borderColor}`, borderBottom: `2px solid ${borderColor}`, width: 30, textAlign: 'center' }}>
+                <button onClick={addCol} title="Ajouter une colonne"
+                  style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'rgba(0,0,0,0.4)', fontSize: 16, lineHeight: 1, padding: '2px 6px' }}>+</button>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {block.rows.map((row, r) => (
+              <tr key={r}>
+                {row.map((cell, c) => (
+                  <td key={c} style={{ borderTop: `1px solid ${borderColor}`, borderRight: `1px solid ${borderColor}`, padding: 0 }}>
+                    <input value={cell} onChange={e => setCell(r, c, e.target.value)} placeholder="…" style={cellStyle} />
+                  </td>
+                ))}
+                <td style={{ borderTop: `1px solid ${borderColor}`, borderLeft: `1px solid ${borderColor}`, textAlign: 'center', width: 30 }}>
+                  <button onClick={() => removeRow(r)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'rgba(0,0,0,0.25)', fontSize: 11, padding: 2, lineHeight: 1 }}>✕</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 10px', borderTop: `1px solid ${borderColor}`, background: 'rgba(0,0,0,0.02)' }}>
+        <button onClick={addRow} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 700, color: 'rgba(0,0,0,0.45)' }}>+ Ligne</button>
+        <div style={{ flex: 1 }} />
+        <button onClick={onDelete} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 11, color: 'rgba(0,0,0,0.3)' }}>🗑 Supprimer le tableau</button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Tableau — lecture ────────────────────────────────────────────────────────
+
+function TableBlockView({ block, borderColor }: { block: NoteTableBlock; borderColor: string }) {
+  return (
+    <div style={{ overflowX: 'auto', margin: '8px 0', borderRadius: 5, border: `1.5px solid ${borderColor}` }}>
+      <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 12 }}>
+        <thead>
+          <tr style={{ background: 'rgba(0,0,0,0.05)' }}>
+            {block.headers.map((h, i) => (
+              <th key={i} style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, borderRight: i < block.headers.length - 1 ? `1px solid ${borderColor}` : 'none' }}>
+                {h || `Col ${i + 1}`}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {block.rows.map((row, r) => (
+            <tr key={r} style={{ borderTop: `1px solid ${borderColor}` }}>
+              {row.map((cell, c) => (
+                <td key={c} style={{ padding: '5px 10px', borderRight: c < row.length - 1 ? `1px solid ${borderColor}` : 'none' }}>
+                  {cell}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ─── Liste — édition ─────────────────────────────────────────────────────────
+
+function ListBlockEditor({
+  block, onChange, onDelete, borderColor,
+}: {
+  block: NoteListBlock;
+  onChange: (b: NoteListBlock) => void;
+  onDelete: () => void;
+  borderColor: string;
+}) {
+  const setItem   = (i: number, text: string)    => { const items = [...block.items]; items[i] = { ...items[i], text }; onChange({ ...block, items }); };
+  const toggleChk = (i: number)                  => { const items = [...block.items]; items[i] = { ...items[i], checked: !items[i].checked }; onChange({ ...block, items }); };
+  const addItem   = ()                            => onChange({ ...block, items: [...block.items, { text: '', checked: false }] });
+  const removeItem= (i: number)                  => { if (block.items.length <= 1) return; onChange({ ...block, items: block.items.filter((_, idx) => idx !== i) }); };
+
+  return (
+    <div style={{ border: `2px solid ${borderColor}`, borderRadius: 6, overflow: 'hidden', margin: '4px 0' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderBottom: `1px solid ${borderColor}`, background: 'rgba(0,0,0,0.03)' }}>
+        <span style={{ fontSize: 11, fontWeight: 700, color: 'rgba(0,0,0,0.4)' }}>
+          {block.variant === 'numbered' ? '1·2·3 Liste numérotée' : '☑ Liste à cocher'}
+        </span>
+        <div style={{ flex: 1 }} />
+        <button onClick={onDelete} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 11, color: 'rgba(0,0,0,0.3)', padding: 0 }}>🗑</button>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
+        {block.items.map((item, i) => (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderBottom: i < block.items.length - 1 ? '1px solid rgba(0,0,0,0.05)' : 'none' }}>
+            {block.variant === 'numbered'
+              ? <span style={{ fontSize: 11, fontWeight: 700, color: 'rgba(0,0,0,0.35)', minWidth: 18, textAlign: 'right', flexShrink: 0 }}>{i + 1}.</span>
+              : <input type="checkbox" checked={item.checked} onChange={() => toggleChk(i)} style={{ margin: 0, cursor: 'pointer', width: 14, height: 14, flexShrink: 0 }} />
+            }
+            <input
+              value={item.text}
+              onChange={e => setItem(i, e.target.value)}
+              placeholder={`Élément ${i + 1}…`}
+              onKeyDown={e => {
+                if (e.key === 'Enter') { e.preventDefault(); addItem(); }
+                if (e.key === 'Backspace' && !item.text && block.items.length > 1) removeItem(i);
+              }}
+              style={{ flex: 1, border: 'none', background: 'transparent', outline: 'none', fontSize: 13, fontFamily: 'inherit',
+                textDecoration: item.checked && block.variant === 'check' ? 'line-through' : 'none',
+                color: item.checked && block.variant === 'check' ? 'rgba(0,0,0,0.35)' : 'inherit' }}
+            />
+            {block.items.length > 1 && (
+              <button onClick={() => removeItem(i)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'rgba(0,0,0,0.2)', fontSize: 10, padding: 2, flexShrink: 0, lineHeight: 1 }}>✕</button>
+            )}
+          </div>
+        ))}
+      </div>
+      <div style={{ padding: '4px 10px', borderTop: `1px solid ${borderColor}`, background: 'rgba(0,0,0,0.02)' }}>
+        <button onClick={addItem} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 700, color: 'rgba(0,0,0,0.45)' }}>+ Élément</button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Liste — lecture ──────────────────────────────────────────────────────────
+
+function ListBlockView({ block }: { block: NoteListBlock }) {
+  return (
+    <div style={{ margin: '6px 0' }}>
+      {block.items.map((item, i) => (
+        <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 7, padding: '2px 0' }}>
+          {block.variant === 'numbered'
+            ? <span style={{ fontSize: 13, fontWeight: 700, color: 'rgba(0,0,0,0.4)', minWidth: 20, textAlign: 'right', flexShrink: 0 }}>{i + 1}.</span>
+            : <span style={{ fontSize: 14, flexShrink: 0, lineHeight: 1.5, marginTop: 1 }}>{item.checked ? '☑' : '☐'}</span>
+          }
+          <span style={{ fontSize: 13, lineHeight: 1.5,
+            textDecoration: item.checked && block.variant === 'check' ? 'line-through' : 'none',
+            color: item.checked && block.variant === 'check' ? 'rgba(0,0,0,0.35)' : 'rgba(0,0,0,0.7)' }}>
+            {item.text}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Sticky note individuelle ─────────────────────────────────────────────────
+
+function StickyNote({
+  note,
+  rotation,
+  onClick,
+}: {
+  note: JvNote;
+  rotation: number;
+  onClick: () => void;
+}) {
+  const [hovered, setHovered] = useState(false);
+  const col = NOTE_COLORS[note.couleur] ?? NOTE_COLORS.yellow;
+  const dateStr = (() => {
+    try { return format(new Date(note.updated_at), 'dd MMM', { locale: fr }); } catch { return ''; }
+  })();
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onClick={onClick}
+      onKeyDown={e => e.key === 'Enter' && onClick()}
+      style={{
+        width: 230,
+        minHeight: 230,
+        flexShrink: 0,
+        background: col.bg,
+        border: `2px solid ${col.border}`,
+        borderRadius: 3,
+        padding: '26px 16px 16px',
+        cursor: 'pointer',
+        transform: `rotate(${hovered ? 0 : rotation}deg) translateY(${hovered ? -8 : 0}px)`,
+        transition: 'transform 0.22s cubic-bezier(.34,1.56,.64,1), box-shadow 0.22s ease, z-index 0s',
+        boxShadow: hovered
+          ? '8px 14px 32px rgba(0,0,0,0.25)'
+          : '3px 5px 10px rgba(0,0,0,0.12)',
+        position: 'relative',
+        zIndex: hovered ? 10 : 1,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 8,
+        userSelect: 'none',
+        marginRight: -22,
+        marginTop: 14,
+        marginBottom: 14,
+      }}
+    >
+      {/* Scotch/tape en haut */}
+      <div style={{
+        position: 'absolute',
+        top: -10,
+        left: '50%',
+        transform: 'translateX(-50%)',
+        width: 38,
+        height: 18,
+        background: col.tape,
+        opacity: 0.55,
+        borderRadius: 3,
+        boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
+      }} />
+      <div style={{ fontWeight: 800, fontSize: 13, lineHeight: 1.3, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const, color: '#1a1a1a' }}>
+        {note.titre || 'Sans titre'}
+      </div>
+      {(() => {
+        const { text, tables, lists } = getPreviewInfo(note.contenu);
+        const noteTags = parseTags(note.tags);
+        return (
+          <>
+            {text && (
+              <div style={{ fontSize: 11.5, color: 'rgba(0,0,0,0.6)', lineHeight: 1.5, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' as const }}>
+                {text}
+              </div>
+            )}
+            {lists.map((list, li) => (
+              <div key={li} style={{ fontSize: 10.5, color: 'rgba(0,0,0,0.55)', lineHeight: 1.4 }}>
+                {list.items.slice(0, 3).map((item, j) => (
+                  <div key={j} style={{ display: 'flex', gap: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: item.checked && list.variant === 'check' ? 'line-through' : 'none', opacity: item.checked && list.variant === 'check' ? 0.5 : 1 }}>
+                    <span style={{ flexShrink: 0 }}>{list.variant === 'numbered' ? `${j + 1}.` : (item.checked ? '☑' : '☐')}</span>
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.text || '…'}</span>
+                  </div>
+                ))}
+                {list.items.length > 3 && <span style={{ color: 'rgba(0,0,0,0.3)', fontSize: 10 }}>+{list.items.length - 3} élément{list.items.length - 3 > 1 ? 's' : ''}</span>}
+              </div>
+            ))}
+            {tables.map((table, ti) => (
+              <div key={ti} style={{ fontSize: 9, border: '1px solid rgba(0,0,0,0.12)', borderRadius: 3, overflow: 'hidden', marginTop: 3 }}>
+                <table style={{ borderCollapse: 'collapse', width: '100%', tableLayout: 'fixed' }}>
+                  <thead>
+                    <tr style={{ background: 'rgba(0,0,0,0.07)' }}>
+                      {table.headers.slice(0, 3).map((h, j) => (
+                        <th key={j} style={{ padding: '2px 4px', fontWeight: 700, fontSize: 9, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', borderRight: j < Math.min(table.headers.length, 3) - 1 ? '1px solid rgba(0,0,0,0.1)' : 'none', textAlign: 'left' }}>
+                          {h || `C${j + 1}`}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {table.rows.slice(0, 3).map((row, r) => (
+                      <tr key={r} style={{ borderTop: '1px solid rgba(0,0,0,0.07)' }}>
+                        {row.slice(0, 3).map((cell, c) => (
+                          <td key={c} style={{ padding: '2px 4px', fontSize: 9, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', borderRight: c < Math.min(row.length, 3) - 1 ? '1px solid rgba(0,0,0,0.07)' : 'none' }}>
+                            {cell}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {(table.rows.length > 3 || table.headers.length > 3) && (
+                  <div style={{ padding: '1px 4px', fontSize: 8, color: 'rgba(0,0,0,0.3)', background: 'rgba(0,0,0,0.02)', borderTop: '1px solid rgba(0,0,0,0.06)' }}>
+                    {[table.rows.length > 3 && `${table.rows.length} lignes`, table.headers.length > 3 && `${table.headers.length} cols`].filter(Boolean).join(' · ')}
+                  </div>
+                )}
+              </div>
+            ))}
+            {noteTags.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginTop: 4 }}>
+                {noteTags.slice(0, 4).map(tag => (
+                  <span key={tag} style={{ fontSize: 9, background: 'rgba(0,0,0,0.09)', borderRadius: 10, padding: '1px 5px', fontWeight: 600, color: 'rgba(0,0,0,0.45)' }}>#{tag}</span>
+                ))}
+              </div>
+            )}
+          </>
+        );
+      })()}
+      <div style={{ marginTop: 'auto', paddingTop: 6, fontSize: 10, color: 'rgba(0,0,0,0.35)', fontWeight: 600, letterSpacing: '.04em' }}>
+        {dateStr}
+      </div>
+    </div>
+  );
+}
+
+// ─── Carte "Nouvelle note" ────────────────────────────────────────────────────
+
+function StickyNoteNew({ onClick }: { onClick: () => void }) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onClick={onClick}
+      onKeyDown={e => e.key === 'Enter' && onClick()}
+      style={{
+        width: 230,
+        minHeight: 230,
+        flexShrink: 0,
+        background: hovered ? 'rgba(0,0,0,0.04)' : 'transparent',
+        border: `2.5px dashed ${hovered ? 'rgba(0,0,0,0.35)' : 'rgba(0,0,0,0.18)'}`,
+        borderRadius: 3,
+        cursor: 'pointer',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 10,
+        transition: 'all 0.18s ease',
+        transform: `scale(${hovered ? 1.04 : 1})`,
+        userSelect: 'none',
+        marginTop: 14,
+        marginBottom: 14,
+        zIndex: 2,
+        position: 'relative',
+      }}
+    >
+      <div style={{
+        width: 42,
+        height: 42,
+        borderRadius: '50%',
+        background: hovered ? 'var(--ink)' : 'rgba(0,0,0,0.08)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        transition: 'background 0.18s ease',
+        fontSize: 22,
+        color: hovered ? 'white' : 'rgba(0,0,0,0.4)',
+        fontWeight: 300,
+      }}>+</div>
+      <span style={{ fontSize: 12, fontWeight: 700, color: hovered ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.3)', letterSpacing: '.03em' }}>
+        Nouvelle note
+      </span>
+    </div>
+  );
+}
+
+// ─── Modal Note (création / lecture / édition) ────────────────────────────────
+
+function ModalNoteDetail({
+  note,
+  onClose,
+  onSaved,
+  onDeleted,
+}: {
+  note: JvNote | null;
+  onClose: () => void;
+  onSaved: (note: JvNote) => void;
+  onDeleted?: (id: string) => void;
+}) {
+  const isNew = note === null;
+  const [titre, setTitre] = useState(note?.titre ?? '');
+  const [blocks, setBlocks] = useState<ContentBlock[]>(() => parseBlocks(note?.contenu ?? null));
+  const [tags, setTags] = useState<string[]>(() => parseTags(note?.tags ?? null));
+  const [tagInput, setTagInput] = useState('');
+  const [couleur, setCouleur] = useState(() => {
+    if (!isNew) return note?.couleur ?? 'yellow';
+    const keys = Object.keys(NOTE_COLORS);
+    return keys[Math.floor(Math.random() * keys.length)];
+  });
+  const [editing, setEditing] = useState(isNew);
+  const [saving, setSaving] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+
+  const addTag = (val: string) => {
+    const t = val.trim().toLowerCase().replace(/[,;]/g, '');
+    if (t && !tags.includes(t)) setTags(prev => [...prev, t]);
+    setTagInput('');
+  };
+
+  const col = NOTE_COLORS[couleur] ?? NOTE_COLORS.yellow;
+
+  const handleSave = async () => {
+    if (!titre.trim()) return;
+    setSaving(true);
+    const contenu  = serializeBlocks(blocks);
+    const tagsJson = tags.length > 0 ? JSON.stringify(tags) : null;
+    const now = new Date().toISOString();
+    if (isNew) {
+      const id = crypto.randomUUID();
+      await fetch('/api/jv-notes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, titre: titre.trim(), contenu, couleur, tags: tagsJson, created_at: now, updated_at: now }),
+      });
+      onSaved({ id, titre: titre.trim(), contenu, couleur, tags: tagsJson, created_at: now, updated_at: now });
+    } else {
+      await fetch(`/api/jv-notes/${note!.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ titre: titre.trim(), contenu, couleur, tags: tagsJson, updated_at: now }),
+      });
+      onSaved({ ...note!, titre: titre.trim(), contenu, couleur, tags: tagsJson, updated_at: now });
+    }
+    setSaving(false);
+    onClose();
+  };
+
+  const handleDelete = async () => {
+    if (!note) return;
+    await fetch(`/api/jv-notes/${note.id}`, { method: 'DELETE' });
+    onDeleted?.(note.id);
+    onClose();
+  };
+
+  return (
+    <div
+      onClick={onClose}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px 16px', overflowY: 'auto' }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          maxWidth: 560,
+          width: '95vw',
+          background: col.bg,
+          border: `3px solid ${col.border}`,
+          boxShadow: '10px 14px 50px rgba(0,0,0,0.3)',
+          borderRadius: 6,
+          padding: '32px 28px 24px',
+          position: 'relative',
+        }}
+      >
+        {/* Bande de couleur en haut + scotch */}
+        <div style={{
+          position: 'absolute',
+          top: -12,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          width: 56,
+          height: 22,
+          background: col.tape,
+          opacity: 0.6,
+          borderRadius: 4,
+          boxShadow: '0 2px 6px rgba(0,0,0,0.15)',
+        }} />
+
+        {/* Sélecteur de couleur */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: 'rgba(0,0,0,0.4)', marginRight: 4 }}>Couleur</span>
+          {Object.entries(NOTE_COLORS).map(([key, c]) => (
+            <button
+              key={key}
+              onClick={() => { setCouleur(key); if (!editing && !isNew) setEditing(true); }}
+              style={{
+                width: 22,
+                height: 22,
+                borderRadius: '50%',
+                background: c.bg,
+                border: `2.5px solid ${couleur === key ? 'var(--ink)' : c.border}`,
+                cursor: 'pointer',
+                transform: couleur === key ? 'scale(1.3)' : 'scale(1)',
+                transition: 'transform 0.15s ease',
+                boxShadow: couleur === key ? '0 0 0 2px rgba(0,0,0,0.15)' : 'none',
+              }}
+            />
+          ))}
+          <div style={{ flex: 1 }} />
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: 'rgba(0,0,0,0.35)', padding: '0 2px', lineHeight: 1 }}>✕</button>
+        </div>
+
+        {/* Titre */}
+        {editing ? (
+          <input
+            autoFocus={isNew}
+            value={titre}
+            onChange={e => setTitre(e.target.value)}
+            placeholder="Titre de la note…"
+            className="pop-input"
+            style={{ width: '100%', fontSize: 18, fontWeight: 800, marginBottom: 14, background: 'rgba(255,255,255,0.5)', border: `2px solid ${col.border}` }}
+          />
+        ) : (
+          <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 14, color: '#1a1a1a', lineHeight: 1.3 }}>
+            {titre || <span style={{ color: 'rgba(0,0,0,0.3)' }}>Sans titre</span>}
+          </div>
+        )}
+
+        {/* Tags */}
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', minHeight: 28 }}>
+            {tags.map(tag => (
+              <span key={tag} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'rgba(0,0,0,0.08)', border: '1.5px solid rgba(0,0,0,0.1)', borderRadius: 20, padding: '2px 8px 2px 10px', fontSize: 12, fontWeight: 600, color: 'rgba(0,0,0,0.6)' }}>
+                #{tag}
+                {editing && <button onClick={() => setTags(tags.filter(t => t !== tag))} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'rgba(0,0,0,0.35)', fontSize: 11, padding: '0 0 0 2px', lineHeight: 1 }}>✕</button>}
+              </span>
+            ))}
+            {editing && (
+              <input
+                value={tagInput}
+                onChange={e => setTagInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addTag(tagInput); } }}
+                onBlur={() => { if (tagInput.trim()) addTag(tagInput); }}
+                placeholder={tags.length === 0 ? '+ Ajouter un tag…' : '+ tag'}
+                style={{ border: '1.5px dashed rgba(0,0,0,0.2)', borderRadius: 20, padding: '2px 10px', fontSize: 12, background: 'transparent', outline: 'none', fontFamily: 'inherit', width: tags.length === 0 ? 150 : 80 }}
+              />
+            )}
+            {!editing && tags.length === 0 && <span style={{ fontSize: 12, color: 'rgba(0,0,0,0.25)', fontStyle: 'italic' }}>Aucun tag</span>}
+          </div>
+        </div>
+
+        {/* Contenu — blocs avec drag&drop */}
+        {editing ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: '45vh', overflowY: 'auto' }} className="custom-scroll">
+            {blocks.map((block, i) => (
+              <div
+                key={i}
+                draggable
+                onDragStart={e => { e.dataTransfer.effectAllowed = 'move'; setDragIdx(i); }}
+                onDragOver={e => e.preventDefault()}
+                onDrop={e => {
+                  e.preventDefault();
+                  if (dragIdx === null || dragIdx === i) { setDragIdx(null); return; }
+                  setBlocks(prev => {
+                    const next = [...prev];
+                    const [moved] = next.splice(dragIdx, 1);
+                    next.splice(dragIdx < i ? i - 1 : i, 0, moved);
+                    return next;
+                  });
+                  setDragIdx(null);
+                }}
+                onDragEnd={() => setDragIdx(null)}
+                style={{ display: 'flex', alignItems: 'flex-start', gap: 6, opacity: dragIdx === i ? 0.35 : 1, transition: 'opacity 0.15s' }}
+              >
+                {/* Poignée drag */}
+                <div style={{ cursor: 'grab', color: 'rgba(0,0,0,0.18)', paddingTop: 9, userSelect: 'none', fontSize: 16, flexShrink: 0 }} title="Déplacer">⠿</div>
+                {/* Bloc */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  {block.type === 'text' ? (
+                    <textarea
+                      value={(block as NoteTextBlock).value}
+                      onChange={e => { const next = [...blocks]; next[i] = { type: 'text', value: e.target.value }; setBlocks(next); }}
+                      placeholder="Texte libre…"
+                      rows={4}
+                      className="pop-input"
+                      style={{ width: '100%', resize: 'vertical', fontSize: 13, lineHeight: 1.6, background: 'rgba(255,255,255,0.5)', border: `2px solid ${col.border}` }}
+                    />
+                  ) : block.type === 'table' ? (
+                    <TableBlockEditor
+                      block={block as NoteTableBlock}
+                      onChange={updated => { const next = [...blocks]; next[i] = updated; setBlocks(next); }}
+                      onDelete={() => setBlocks(blocks.filter((_, idx) => idx !== i))}
+                      borderColor={col.border}
+                    />
+                  ) : (
+                    <ListBlockEditor
+                      block={block as NoteListBlock}
+                      onChange={updated => { const next = [...blocks]; next[i] = updated; setBlocks(next); }}
+                      onDelete={() => setBlocks(blocks.filter((_, idx) => idx !== i))}
+                      borderColor={col.border}
+                    />
+                  )}
+                </div>
+                {/* Supprimer (blocs texte uniquement, table/liste ont leur propre bouton) */}
+                {block.type === 'text' && (
+                  <button
+                    onClick={() => setBlocks(blocks.filter((_, idx) => idx !== i))}
+                    title="Supprimer ce bloc"
+                    style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'rgba(0,0,0,0.2)', fontSize: 14, paddingTop: 8, flexShrink: 0, lineHeight: 1 }}
+                  >✕</button>
+                )}
+              </div>
+            ))}
+            {/* Boutons d'ajout */}
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6, paddingLeft: 22 }}>
+              <button onClick={() => setBlocks([...blocks, { type: 'text', value: '' }])} className="pop-btn pop-btn-outline" style={{ fontSize: 11, padding: '5px 10px' }}>+ Texte</button>
+              <button onClick={() => setBlocks([...blocks, { type: 'table', headers: ['', '', ''], rows: [['', '', ''], ['', '', '']] }])} className="pop-btn pop-btn-outline" style={{ fontSize: 11, padding: '5px 10px' }}>📊 Tableau</button>
+              <button onClick={() => setBlocks([...blocks, { type: 'list', variant: 'check', items: [{ text: '', checked: false }] }])} className="pop-btn pop-btn-outline" style={{ fontSize: 11, padding: '5px 10px' }}>☑ Check</button>
+              <button onClick={() => setBlocks([...blocks, { type: 'list', variant: 'numbered', items: [{ text: '', checked: false }] }])} className="pop-btn pop-btn-outline" style={{ fontSize: 11, padding: '5px 10px' }}>1· Liste</button>
+            </div>
+          </div>
+        ) : (
+          <div style={{ minHeight: 60, maxHeight: '50vh', overflowY: 'auto' }} className="custom-scroll">
+            {blocks.every(b => b.type === 'text' && !(b as NoteTextBlock).value.trim()) ? (
+              <span style={{ color: 'rgba(0,0,0,0.3)', fontStyle: 'italic', fontSize: 14 }}>Aucun contenu</span>
+            ) : blocks.map((block, i) => {
+              if (block.type === 'text') {
+                const val = (block as NoteTextBlock).value.trim();
+                return val ? <div key={i} style={{ fontSize: 14, color: 'rgba(0,0,0,0.7)', lineHeight: 1.7, whiteSpace: 'pre-wrap', marginBottom: 6 }}>{(block as NoteTextBlock).value}</div> : null;
+              }
+              if (block.type === 'table') return <TableBlockView key={i} block={block as NoteTableBlock} borderColor={col.border} />;
+              return <ListBlockView key={i} block={block as NoteListBlock} />;
+            })}
+          </div>
+        )}
+
+        {/* Méta */}
+        {note && (
+          <div style={{ marginTop: 16, fontSize: 11, color: 'rgba(0,0,0,0.35)', fontWeight: 600 }}>
+            Modifiée le {(() => { try { return format(new Date(note.updated_at), "dd MMM yyyy 'à' HH:mm", { locale: fr }); } catch { return ''; } })()}
+          </div>
+        )}
+
+        {/* Actions */}
+        <div style={{ display: 'flex', gap: 10, marginTop: 20, justifyContent: 'flex-end', alignItems: 'center' }}>
+          {!isNew && !confirmDelete && (
+            <button
+              onClick={() => setConfirmDelete(true)}
+              className="pop-btn"
+              style={{ background: 'none', border: '2px solid rgba(0,0,0,0.15)', color: 'rgba(0,0,0,0.45)', padding: '8px 14px', marginRight: 'auto' }}
+            >
+              🗑 Supprimer
+            </button>
+          )}
+          {confirmDelete && (
+            <div style={{ marginRight: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: '#dc2626' }}>Confirmer ?</span>
+              <button onClick={handleDelete} className="pop-btn" style={{ background: '#dc2626', color: 'white', border: '2px solid var(--ink)', padding: '6px 12px', fontSize: 12 }}>Oui, supprimer</button>
+              <button onClick={() => setConfirmDelete(false)} className="pop-btn pop-btn-outline" style={{ padding: '6px 12px', fontSize: 12 }}>Annuler</button>
+            </div>
+          )}
+          {editing ? (
+            <>
+              {!isNew && <button onClick={() => { setEditing(false); setTitre(note!.titre); setBlocks(parseBlocks(note!.contenu ?? null)); setCouleur(note!.couleur); setTags(parseTags(note!.tags ?? null)); setTagInput(''); }} className="pop-btn pop-btn-outline">Annuler</button>}
+              <button onClick={handleSave} disabled={saving || !titre.trim()} className="pop-btn pop-btn-dark" style={{ opacity: saving || !titre.trim() ? 0.5 : 1 }}>
+                {saving ? 'Enregistrement…' : isNew ? '+ Créer la note' : '✓ Enregistrer'}
+              </button>
+            </>
+          ) : (
+            <button onClick={() => setEditing(true)} className="pop-btn pop-btn-dark">✏️ Modifier</button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Onglet Notes ─────────────────────────────────────────────────────────────
+
+function TabNotes({
+  notes,
+  onNoteOpen,
+  onNewNote,
+}: {
+  notes: JvNote[];
+  onNoteOpen: (note: JvNote) => void;
+  onNewNote: () => void;
+}) {
+  const [recherche, setRecherche] = useState('');
+  const [activeTags, setActiveTags] = useState<string[]>([]);
+
+  const allTags = useMemo(() => {
+    const set = new Set<string>();
+    notes.forEach(n => parseTags(n.tags).forEach(t => set.add(t)));
+    return [...set].sort();
+  }, [notes]);
+
+  const filtered = useMemo(() => {
+    const q = normalizeStr(recherche);
+    return notes.filter(n => {
+      if (activeTags.length > 0) {
+        const nt = parseTags(n.tags);
+        if (!activeTags.every(t => nt.includes(t))) return false;
+      }
+      if (!q) return true;
+      return normalizeStr(n.titre).includes(q) || normalizeStr(searchBlocks(n.contenu)).includes(q);
+    });
+  }, [notes, recherche, activeTags]);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {/* Barre de recherche + compteur */}
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+        <div style={{ position: 'relative', flex: 1, maxWidth: 400 }}>
+          <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 14, pointerEvents: 'none' }}>🔍</span>
+          <input
+            type="text"
+            value={recherche}
+            onChange={e => setRecherche(e.target.value)}
+            placeholder="Rechercher dans les notes…"
+            className="pop-input"
+            style={{ width: '100%', paddingLeft: 38 }}
+          />
+        </div>
+        <span className="pop-sticker" style={{ background: 'var(--cream2)' }}>
+          {filtered.length}/{notes.length} note{notes.length !== 1 ? 's' : ''}
+        </span>
+      </div>
+
+      {/* Filtres tags */}
+      {allTags.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: 'rgba(0,0,0,0.35)', textTransform: 'uppercase', letterSpacing: '.07em' }}>Tags</span>
+          {allTags.map(tag => {
+            const active = activeTags.includes(tag);
+            return (
+              <button
+                key={tag}
+                onClick={() => setActiveTags(prev => active ? prev.filter(t => t !== tag) : [...prev, tag])}
+                style={{
+                  background: active ? 'var(--ink)' : 'rgba(0,0,0,0.06)',
+                  color: active ? 'white' : 'rgba(0,0,0,0.55)',
+                  border: `1.5px solid ${active ? 'var(--ink)' : 'transparent'}`,
+                  borderRadius: 20,
+                  padding: '3px 11px',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                }}
+              >#{tag}</button>
+            );
+          })}
+          {activeTags.length > 0 && (
+            <button onClick={() => setActiveTags([])} style={{ fontSize: 11, color: 'rgba(0,0,0,0.35)', background: 'none', border: 'none', cursor: 'pointer', padding: '3px 4px' }}>✕ effacer</button>
+          )}
+        </div>
+      )}
+
+      {/* Tableau de stickers */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', flexDirection: 'row', gap: 0, paddingTop: 10, paddingBottom: 10, paddingLeft: 10, paddingRight: 28 }}>
+        <StickyNoteNew onClick={onNewNote} />
+
+        {filtered.length === 0 ? (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, padding: '60px 0', gap: 10 }}>
+            <span style={{ fontSize: 40 }}></span>
+            <p style={{ fontWeight: 600, color: 'rgba(0,0,0,0.3)' }}>{notes.length === 0 ? 'Aucune note pour l\'instant.' : 'Aucune note trouvée.'}</p>
+          </div>
+        ) : (
+          filtered.map((note, i) => (
+            <StickyNote
+              key={note.id}
+              note={note}
+              rotation={NOTE_ROTATIONS[i % NOTE_ROTATIONS.length]}
+              onClick={() => onNoteOpen(note)}
+            />
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Page principale ──────────────────────────────────────────────────────────
 
 export default function JvPage() {
-  const [onglet, setOnglet] = useState<"catalogue" | "selections" | "reservations" | "stats">("catalogue");
+  const [onglet, setOnglet] = useState<"catalogue" | "selections" | "reservations" | "stats" | "notes">("catalogue");
   const [jeux, setJeux] = useState<JvJeu[]>([]);
   const [selections, setSelections] = useState<JvSelection[]>([]);
   const [reservations, setReservations] = useState<JvReservation[]>([]);
+  const [notes, setNotes] = useState<JvNote[]>([]);
   const [rotationConfig, setRotationConfig] = useState<JvRotationConfig>({
     id: "main", current_slot_index: 0, week_start: format(new Date(), "yyyy-MM-dd"),
   });
@@ -2986,16 +3823,18 @@ export default function JvPage() {
   const [modalResa, setModalResa] = useState<{ open: boolean; date?: string; heureDebut?: string; poste?: string }>({ open: false });
   const [modalResaDetail, setModalResaDetail] = useState<JvReservation | null>(null);
   const [modalCorrection, setModalCorrection] = useState<SelectionSlot | null>(null);
+  const [modalNote, setModalNote] = useState<{ open: boolean; note: JvNote | null }>({ open: false, note: null });
 
   useEffect(() => {
     const load = async () => {
       setIsLoading(true);
       const toArr = (d: any) => Array.isArray(d) ? d : [];
-      const [j, s, r, cfg] = await Promise.all([
+      const [j, s, r, cfg, n] = await Promise.all([
         fetch('/api/jv-jeux').then(res => res.json()).then(toArr).catch(() => []),
         fetch('/api/jv-selections').then(res => res.json()).then(toArr).catch(() => []),
         fetch('/api/jv-reservations').then(res => res.json()).then(toArr).catch(() => []),
         fetch('/api/jv-rotation-config').then(res => res.json()).catch(() => null),
+        fetch('/api/jv-notes').then(res => res.json()).then(toArr).catch(() => []),
       ]);
       setJeux(j as JvJeu[]);
       setSelections((s as any[]).map(sel => ({ ...sel, permanent: !!sel.permanent })) as JvSelection[]);
@@ -3004,6 +3843,7 @@ export default function JvPage() {
         joueurs_details: typeof res.joueurs_details === 'string' && res.joueurs_details ? JSON.parse(res.joueurs_details) : (res.joueurs_details ?? null),
       })) as JvReservation[]);
       if (cfg) setRotationConfig(cfg as JvRotationConfig);
+      setNotes(n as JvNote[]);
       setIsLoading(false);
     };
     load();
@@ -3172,6 +4012,21 @@ export default function JvPage() {
     setReservations(prev => prev.map(r => map[r.id] ?? r));
   }, []);
 
+  // ── Handlers notes ────────────────────────────────────────────────────────
+
+  const handleNoteSaved = useCallback((note: JvNote) => {
+    setNotes(prev => {
+      const exists = prev.some(n => n.id === note.id);
+      return exists
+        ? prev.map(n => n.id === note.id ? note : n)
+        : [note, ...prev];
+    });
+  }, []);
+
+  const handleNoteDeleted = useCallback((id: string) => {
+    setNotes(prev => prev.filter(n => n.id !== id));
+  }, []);
+
   const totalJeux = jeux.length;
   const totalConsolesActives = new Set(jeux.map(j => j.console)).size;
   const totalResasVenir = reservations.filter(r => { const ds = getDisplayStatus(r); return ds === "a_venir" || ds === "en_cours"; }).length;
@@ -3219,6 +4074,7 @@ export default function JvPage() {
             { key: "selections", label: "Sélections" },
             { key: "reservations", label: "Réservations" },
             { key: "stats", label: "Stats" },
+            { key: "notes", label: " Notes" },
           ] as const).map(t => (
             <button key={t.key} onClick={() => setOnglet(t.key)}
               className={onglet === t.key ? 'pop-btn pop-btn-dark' : 'pop-btn pop-btn-outline'}>
@@ -3262,6 +4118,13 @@ export default function JvPage() {
             )}
             {onglet === "stats" && (
               <TabStats reservations={reservations} jeux={jeux} />
+            )}
+            {onglet === "notes" && (
+              <TabNotes
+                notes={notes}
+                onNoteOpen={note => setModalNote({ open: true, note })}
+                onNewNote={() => setModalNote({ open: true, note: null })}
+              />
             )}
           </>
         )}
@@ -3327,6 +4190,14 @@ export default function JvPage() {
           onClose={() => setModalResaDetail(null)}
           onSaved={handleResaUpdated}
           onCancelled={handleResaCancelled}
+        />
+      )}
+      {modalNote.open && (
+        <ModalNoteDetail
+          note={modalNote.note}
+          onClose={() => setModalNote({ open: false, note: null })}
+          onSaved={handleNoteSaved}
+          onDeleted={handleNoteDeleted}
         />
       )}
     </div>
