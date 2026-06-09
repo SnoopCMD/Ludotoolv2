@@ -43,7 +43,7 @@ function ContenuPageInner() {
   }, []);
 
   const chargerCatalogue = async () => {
-    const data = await fetch('/api/catalogue').then(r => r.json() as Promise<any>).catch(() => null);
+    const data = await fetch('/api/catalogue', { cache: 'no-store' }).then(r => r.json() as Promise<any>).catch(() => null);
     if (Array.isArray(data)) {
       const dbContenus: Record<string, ContenuType[]> = { vert: [], rose: [], bleu: [], rouge: [], jaune: [] };
       data.forEach(item => {
