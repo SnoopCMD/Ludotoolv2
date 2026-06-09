@@ -2,7 +2,6 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { supabase } from "../lib/supabase";
 
 type Page = "accueil" | "inventaire" | "atelier" | "agenda" | "store" | "catalogage" | "jv";
 
@@ -32,14 +31,8 @@ export default function NavBar({ current }: { current?: Page }) {
 
   useEffect(() => {
     const fetchCount = async () => {
-      const [{ count: alertes }, { count: rappels }, { data: nouveautes }] = await Promise.all([
-        supabase.from("alertes").select("*", { count: "exact", head: true }).eq("statut", "active"),
-        supabase.from("jeux").select("*", { count: "exact", head: true }).eq("notes_rappel", true),
-        supabase.from("jeux").select("date_sortie").eq("etape_nouveaute", true).eq("statut", "En stock").not("date_sortie", "is", null),
-      ]);
-      const today = new Date();
-      const expiredCount = (nouveautes ?? []).filter((j: any) => new Date(j.date_sortie) <= today).length;
-      setAlertCount((alertes ?? 0) + (rappels ?? 0) + expiredCount);
+      const data = await fetch('/api/navbar-counts', { cache: 'no-store' }).then(r => r.json() as Promise<{ total: number }>).catch(() => ({ total: 0 }));
+      setAlertCount(data.total ?? 0);
     };
     fetchCount();
   }, []);
