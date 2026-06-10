@@ -238,11 +238,7 @@ export default function EtiquettesPage() {
     const startIndex = letters.indexOf(letter);
     for (let i = startIndex; i < letters.length; i++) {
       const target = document.querySelector(`tr[data-category="${catId}"][data-letter="${letters[i]}"]`);
-      if (target) {
-        const y = target.getBoundingClientRect().top + window.scrollY - 116;
-        window.scrollTo({ top: y, behavior: "smooth" });
-        return;
-      }
+      if (target) { target.scrollIntoView({ behavior: "smooth", block: "start", inline: "nearest" }); return; }
     }
   };
 
@@ -418,7 +414,7 @@ export default function EtiquettesPage() {
                                     borderBottom: "1px solid var(--cream2)",
                                     borderLeft: rowBorder,
                                     background: rowBg,
-                                    scrollMarginTop: 130,
+                                    scrollMarginTop: 116,
                                   }}
                                 >
                                   {/* Qte */}
