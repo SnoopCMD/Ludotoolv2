@@ -112,7 +112,7 @@ export default function EtiquettesPage() {
         setTimeout(() => {
           const el = document.getElementById(`category-${id}`);
           if (el) {
-            const y = el.getBoundingClientRect().top + window.scrollY - 10;
+            const y = el.getBoundingClientRect().top + window.scrollY - 56;
             window.scrollTo({ top: y, behavior: 'smooth' });
           }
         }, 50);
@@ -239,7 +239,7 @@ export default function EtiquettesPage() {
     for (let i = startIndex; i < letters.length; i++) {
       const target = document.querySelector(`tr[data-category="${catId}"][data-letter="${letters[i]}"]`);
       if (target) {
-        const y = target.getBoundingClientRect().top + window.scrollY - 150;
+        const y = target.getBoundingClientRect().top + window.scrollY - 116;
         window.scrollTo({ top: y, behavior: "smooth" });
         return;
       }
@@ -351,8 +351,8 @@ export default function EtiquettesPage() {
                     <div style={{
                       display: "flex", flexDirection: "column", alignItems: "center",
                       justifyContent: "space-between",
-                      position: "sticky", top: 130,
-                      height: "calc(100vh - 180px)",
+                      position: "sticky", top: 112,
+                      height: "calc(100vh - 160px)",
                       background: "var(--cream2)",
                       borderRight: "2px solid var(--ink)",
                       borderRadius: "0 0 0 10px",
