@@ -39,9 +39,12 @@ export async function POST(request: Request) {
       const keys = Object.keys(row);
       const placeholders = keys.map(() => '?').join(',');
       const values = keys.map(k => row[k] ?? null);
-      await db.prepare(
-        `INSERT OR REPLACE INTO catalogue (${keys.join(',')}) VALUES (${placeholders})`
-      ).bind(...values).run();
+      // ON CONFLICT: update uniquement les champs fournis, sans écraser les autres
+      const updateSets = keys.filter(k => k !== 'ean').map(k => `${k} = excluded.${k}`).join(', ');
+      const sql = updateSets
+        ? `INSERT INTO catalogue (${keys.join(',')}) VALUES (${placeholders}) ON CONFLICT(ean) DO UPDATE SET ${updateSets}`
+        : `INSERT OR IGNORE INTO catalogue (${keys.join(',')}) VALUES (${placeholders})`;
+      await db.prepare(sql).bind(...values).run();
     }
     return NextResponse.json({ success: true });
   } catch (e: any) {

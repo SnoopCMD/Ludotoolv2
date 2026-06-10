@@ -10,7 +10,6 @@
  *   CLOUDFLARE_API_TOKEN=xxx npx wrangler d1 execute ludotool-db --file=scripts/fix_contenu_d1.sql --remote
  */
 
-import { createClient } from '@supabase/supabase-js';
 import { writeFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -19,8 +18,6 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const SUPABASE_URL = 'https://tpaofmsnlkhqruohsnvk.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_PruZG4nS0LjVZf7mhW0Gqg_KJq29-_B';
-
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 function escapeSql(str) {
   if (str === null || str === undefined) return 'NULL';
@@ -35,19 +32,12 @@ async function main() {
   let offset = 0;
 
   while (true) {
-    const { data, error } = await supabase
-      .from('catalogue')
-      .select('ean, contenu')
-      .not('contenu', 'is', null)
-      .neq('contenu', '')
-      .range(offset, offset + pageSize - 1);
-
-    if (error) {
-      console.error('Erreur Supabase:', error.message);
-      process.exit(1);
-    }
-
-    if (!data || data.length === 0) break;
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/catalogue?select=ean,contenu&contenu=not.is.null&contenu=neq.&offset=${offset}&limit=${pageSize}`,
+      { headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': SUPABASE_ANON_KEY, 'Range-Unit': 'items', 'Range': `${offset}-${offset + pageSize - 1}` } }
+    );
+    const data = await res.json();
+    if (!Array.isArray(data) || data.length === 0) break;
     allRows.push(...data);
     console.log(`  Récupéré ${allRows.length} lignes...`);
     if (data.length < pageSize) break;
