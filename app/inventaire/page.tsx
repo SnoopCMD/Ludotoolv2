@@ -422,13 +422,25 @@ export default function InventairePage() {
     })) as JeuType[];
 
     const catMap = new Map();
-    (catData as any[]).forEach(c => catMap.set(c.ean, c));
+    (catData as any[]).forEach(c => catMap.set(c.ean?.trim(), c));
     const imgMap: Record<string, string> = {};
-    (catData as any[]).forEach(c => { if (c.image_url) imgMap[c.ean] = c.image_url; });
+    (catData as any[]).forEach(c => { if (c.image_url) imgMap[c.ean?.trim()] = c.image_url; });
     setCatalogueImages(imgMap);
 
+    // Lookup résilient : gère les EANs multi-valeurs (virgule) et les variations de formatage
+    const getCatInfo = (ean: string) => {
+      if (!ean) return undefined;
+      const direct = catMap.get(ean.trim());
+      if (direct) return direct;
+      for (const e of ean.split(',').map(s => s.trim())) {
+        const hit = catMap.get(e) ?? catMap.get(e.replace(/^0+/, '')) ?? catMap.get(e.padStart(13, '0'));
+        if (hit) return hit;
+      }
+      return undefined;
+    };
+
     const jeuxFrais = jeuxBruts.map(j => {
-      const catInfo = catMap.get(j.ean);
+      const catInfo = getCatInfo(j.ean);
       return { ...j, couleur: catInfo?.couleur || "", mecanique: catInfo?.mecanique || "", nb_de_joueurs: catInfo?.nb_de_joueurs || "", etoiles: catInfo?.etoiles || "", temps_de_jeu: catInfo?.temps_de_jeu || "", coop_versus: catInfo?.coop_versus || "", image_url: catInfo?.image_url || "" };
     });
 
