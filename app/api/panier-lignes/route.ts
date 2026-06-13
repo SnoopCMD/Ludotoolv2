@@ -9,7 +9,7 @@ export async function GET(request: Request) {
     let sql = 'SELECT * FROM panier_lignes WHERE 1=1';
     const params: string[] = [];
     if (panier_id) { sql += ' AND panier_id = ?'; params.push(panier_id); }
-    sql += ' ORDER BY created_at ASC';
+    sql += ' ORDER BY created_at DESC';
     const stmt = params.length ? db.prepare(sql).bind(...params) : db.prepare(sql);
     const result = await stmt.all();
     return NextResponse.json(result.results);

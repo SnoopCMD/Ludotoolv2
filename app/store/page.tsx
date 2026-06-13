@@ -173,11 +173,13 @@ function ModalPanier({
 // ─── ModalEnvoiCommun ─────────────────────────────────────────────────────────
 
 function ModalEnvoiCommun({
-  ligne, panierType, panierProfil, onClose, onSent,
+  ligne, panierType, panierProfil, communLignes, onClose, onSent, onUpvoted,
 }: {
   ligne: PanierLigne; panierType: PanierType; panierProfil: string | null;
+  communLignes: Record<string, PanierCommunLigne[]>;
   onClose: () => void;
   onSent: (panierCommunId: string, newLigne: PanierCommunLigne) => void;
+  onUpvoted: (panierCommunId: string, ligneId: string) => void;
 }) {
   const [targetId, setTargetId] = useState(PANIERS_COMMUNS.find(p => p.type === panierType)?.id ?? PANIERS_COMMUNS[0].id);
   const [profil, setProfil] = useState(panierProfil ?? "");
@@ -185,16 +187,30 @@ function ModalEnvoiCommun({
 
   const send = async () => {
     setSending(true);
-    const payload = {
-      panier_commun_id: targetId, nom: ligne.nom, editeur: ligne.editeur,
-      image_url: ligne.image_url, ean: ligne.ean, prix_unitaire: ligne.prix_unitaire,
-      quantite: ligne.quantite, profil: profil.trim() || null,
-    };
-    const res = await fetch("/api/paniers-communs-lignes", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    }).then(r => r.json() as Promise<any>).catch(() => null);
-    if (res?.id) onSent(targetId, { ...payload, id: res.id, notes: null, votes: 0, created_at: new Date().toISOString() } as PanierCommunLigne);
+    let existing: PanierCommunLigne[] = communLignes[targetId] ?? [];
+    if (!communLignes[targetId]) {
+      existing = await fetch(`/api/paniers-communs-lignes?panier_commun_id=${targetId}`)
+        .then(r => r.json() as Promise<any[]>).catch(() => []);
+    }
+    const duplicate = existing.find(e =>
+      (ligne.ean && e.ean === ligne.ean) ||
+      e.nom.toLowerCase() === ligne.nom.toLowerCase()
+    );
+    if (duplicate) {
+      await fetch(`/api/paniers-communs-lignes/${duplicate.id}/upvote`, { method: "POST" });
+      onUpvoted(targetId, duplicate.id);
+    } else {
+      const payload = {
+        panier_commun_id: targetId, nom: ligne.nom, editeur: ligne.editeur,
+        image_url: ligne.image_url, ean: ligne.ean, prix_unitaire: ligne.prix_unitaire,
+        quantite: ligne.quantite, profil: profil.trim() || null,
+      };
+      const res = await fetch("/api/paniers-communs-lignes", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      }).then(r => r.json() as Promise<any>).catch(() => null);
+      if (res?.id) onSent(targetId, { ...payload, id: res.id, notes: null, votes: 0, created_at: new Date().toISOString() } as PanierCommunLigne);
+    }
     setSending(false);
     onClose();
   };
@@ -269,6 +285,8 @@ export default function StorePage() {
   const [filterTag, setFilterTag] = useState<string | null>(null);
   const [tagEdit, setTagEdit] = useState<string | null>(null);
   const [tagInput, setTagInput] = useState("");
+  const [tagHover, setTagHover] = useState<string | null>(null);
+  const [nomEdit, setNomEdit] = useState<string | null>(null);
 
   // ─── Dérivés ──────────────────────────────────────────────────────────────────
 
@@ -402,7 +420,7 @@ export default function StorePage() {
     const res = await fetch("/api/panier-lignes", {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
     }).then(r => r.json() as Promise<any>).catch(() => null);
-    if (res?.id) setLignes(prev => [...prev, { ...payload, id: res.id, ean: null } as PanierLigne]);
+    if (res?.id) setLignes(prev => [{ ...payload, id: res.id, ean: null } as PanierLigne, ...prev]);
     setRecherche(""); setResultats([]); setShowResultats(false);
     chargerSummary();
   };
@@ -413,7 +431,7 @@ export default function StorePage() {
     const res = await fetch("/api/panier-lignes", {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
     }).then(r => r.json() as Promise<any>).catch(() => null);
-    if (res?.id) setLignes(prev => [...prev, { ...payload, id: res.id, editeur: null, image_url: null, ean: null, prix_unitaire: null, notes: null } as PanierLigne]);
+    if (res?.id) setLignes(prev => [{ ...payload, id: res.id, editeur: null, image_url: null, ean: null, prix_unitaire: null, notes: null } as PanierLigne, ...prev]);
     setRecherche(""); setResultats([]); setShowResultats(false);
     chargerSummary();
   };
@@ -441,6 +459,16 @@ export default function StorePage() {
       method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ quantite: qte }),
     });
     setLignes(prev => prev.map(l => l.id === id ? { ...l, quantite: qte } : l));
+  };
+
+  const sauvegarderNom = async (id: string, valeur: string) => {
+    const trimmed = valeur.trim();
+    setNomEdit(null);
+    if (!trimmed) return;
+    await fetch(`/api/panier-lignes/${id}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nom: trimmed }),
+    });
+    setLignes(prev => prev.map(l => l.id === id ? { ...l, nom: trimmed } : l));
   };
 
   const ajouterTag = async (ligneId: string, tag: string) => {
@@ -473,7 +501,17 @@ export default function StorePage() {
   // ─── CRUD Commun ──────────────────────────────────────────────────────────────
 
   const handleEnvoiCommun = (panierCommunId: string, newLigne: PanierCommunLigne) => {
-    setCommunLignes(prev => ({ ...prev, [panierCommunId]: [...(prev[panierCommunId] ?? []), newLigne] }));
+    setCommunLignes(prev => ({ ...prev, [panierCommunId]: [newLigne, ...(prev[panierCommunId] ?? [])].sort((a, b) => b.votes - a.votes) }));
+    chargerSummary();
+  };
+
+  const handleUpvoteCommun = (panierCommunId: string, ligneId: string) => {
+    setCommunLignes(prev => ({
+      ...prev,
+      [panierCommunId]: (prev[panierCommunId] ?? [])
+        .map(l => l.id === ligneId ? { ...l, votes: l.votes + 1 } : l)
+        .sort((a, b) => b.votes - a.votes),
+    }));
     chargerSummary();
   };
 
@@ -721,8 +759,8 @@ td{padding:10px 12px;border-bottom:1px solid #e5e5e5;vertical-align:middle}.righ
                     <table style={{ width: "100%", borderCollapse: "collapse" }}>
                       <thead>
                         <tr style={{ background: "var(--ink)", color: "var(--cream)" }}>
-                          {["Jeu", "Éditeur", "Profil", "Prix", "Votes", ""].map((h, i) => (
-                            <th key={i} style={{ textAlign: i >= 3 ? "center" : "left", padding: "10px 16px", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", width: i === 5 ? 40 : undefined }}>{h}</th>
+                          {["Jeu", "Éditeur", "Profil", "Qté", "Prix", "Votes", ""].map((h, i) => (
+                            <th key={i} style={{ textAlign: i >= 3 ? "center" : "left", padding: "10px 16px", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", width: i === 6 ? 40 : undefined }}>{h}</th>
                           ))}
                         </tr>
                       </thead>
@@ -742,6 +780,9 @@ td{padding:10px 12px;border-bottom:1px solid #e5e5e5;vertical-align:middle}.righ
                             <td style={{ padding: "10px 16px", fontSize: 13, color: "rgba(0,0,0,0.45)" }}>{ligne.editeur ?? "—"}</td>
                             <td style={{ padding: "10px 16px" }}>
                               {ligne.profil && <span style={{ fontSize: 12, background: "rgba(0,0,0,0.06)", borderRadius: 4, padding: "2px 6px", fontWeight: 700 }}>{ligne.profil}</span>}
+                            </td>
+                            <td style={{ padding: "10px 16px", textAlign: "center" }}>
+                              <span className="bc" style={{ fontSize: 15 }}>{ligne.quantite}</span>
                             </td>
                             <td style={{ padding: "10px 16px", textAlign: "center" }}>
                               <span className="bc" style={{ fontSize: 15 }}>{ligne.prix_unitaire != null ? `${ligne.prix_unitaire.toFixed(2)} €` : <span style={{ color: "var(--cream2)" }}>—</span>}</span>
@@ -901,7 +942,15 @@ td{padding:10px 12px;border-bottom:1px solid #e5e5e5;vertical-align:middle}.righ
                                 {ligne.image_url ? <img src={ligne.image_url} alt="" style={{ width: 36, height: 36, objectFit: "contain", borderRadius: 6, background: "var(--cream2)", flexShrink: 0 }} />
                                   : <div style={{ width: 36, height: 36, borderRadius: 6, background: "var(--cream2)", flexShrink: 0 }} />}
                                 <div>
-                                  <p style={{ fontWeight: 700, fontSize: 14, color: "var(--ink)" }}>{ligne.nom}</p>
+                                  {nomEdit === ligne.id ? (
+                                    <input autoFocus type="text" defaultValue={ligne.nom}
+                                      onBlur={e => sauvegarderNom(ligne.id, e.target.value)}
+                                      onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setNomEdit(null); }}
+                                      style={{ fontWeight: 700, fontSize: 14, border: "1.5px solid var(--ink)", borderRadius: 4, padding: "2px 6px", outline: "none", fontFamily: "inherit", minWidth: 180 }} />
+                                  ) : (
+                                    <p onClick={() => setNomEdit(ligne.id)} title="Cliquer pour modifier"
+                                      style={{ fontWeight: 700, fontSize: 14, color: "var(--ink)", cursor: "text" }}>{ligne.nom}</p>
+                                  )}
                                   <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: lTags.length > 0 || isEditingTag ? 4 : 0 }}>
                                     {lTags.map(t => (
                                       <button key={t} onClick={() => supprimerTag(ligne.id, t)}
@@ -923,10 +972,26 @@ td{padding:10px 12px;border-bottom:1px solid #e5e5e5;vertical-align:middle}.righ
                                         onBlur={() => { setTagEdit(null); setTagInput(""); }}
                                         style={{ fontSize: 11, padding: "1px 6px", border: "1.5px solid var(--ink)", borderRadius: 10, outline: "none", width: 100, fontFamily: "inherit" }} />
                                     ) : (
-                                      <button onClick={() => { setTagEdit(ligne.id); setTagInput(""); }}
-                                        style={{ fontSize: 10, padding: "1px 6px", borderRadius: 10, background: "transparent", color: "rgba(0,0,0,0.3)", border: "1.5px dashed rgba(0,0,0,0.2)", cursor: "pointer", fontFamily: "inherit" }}>
-                                        + tag
-                                      </button>
+                                      <div style={{ position: "relative", display: "inline-block" }}
+                                        onMouseEnter={() => setTagHover(ligne.id)}
+                                        onMouseLeave={() => setTagHover(null)}>
+                                        <button onClick={() => { setTagEdit(ligne.id); setTagInput(""); }}
+                                          style={{ fontSize: 10, padding: "1px 6px", borderRadius: 10, background: "transparent", color: "rgba(0,0,0,0.3)", border: "1.5px dashed rgba(0,0,0,0.2)", cursor: "pointer", fontFamily: "inherit" }}>
+                                          + tag
+                                        </button>
+                                        {tagHover === ligne.id && allTags.filter(t => !lTags.includes(t)).length > 0 && (
+                                          <div style={{ position: "absolute", bottom: "calc(100% + 4px)", left: 0, zIndex: 50, background: "var(--white)", border: "2px solid var(--ink)", borderRadius: 8, boxShadow: "3px 3px 0 var(--ink)", padding: 4, display: "flex", flexDirection: "column", gap: 2, minWidth: 110 }}>
+                                            {allTags.filter(t => !lTags.includes(t)).map(t => (
+                                              <button key={t} onMouseDown={() => ajouterTag(ligne.id, t)}
+                                                style={{ fontSize: 11, padding: "3px 8px", borderRadius: 4, background: "var(--cream2)", color: "var(--ink)", border: "none", cursor: "pointer", fontFamily: "inherit", fontWeight: 700, textAlign: "left", whiteSpace: "nowrap" }}
+                                                onMouseEnter={e => { e.currentTarget.style.background = "var(--ink)"; e.currentTarget.style.color = "var(--cream)"; }}
+                                                onMouseLeave={e => { e.currentTarget.style.background = "var(--cream2)"; e.currentTarget.style.color = "var(--ink)"; }}>
+                                                #{t}
+                                              </button>
+                                            ))}
+                                          </div>
+                                        )}
+                                      </div>
                                     )}
                                   </div>
                                 </div>
@@ -997,7 +1062,8 @@ td{padding:10px 12px;border-bottom:1px solid #e5e5e5;vertical-align:middle}.righ
       )}
       {modalEnvoi && panierActuel && (
         <ModalEnvoiCommun ligne={modalEnvoi} panierType={(panierActuel.type || "JdS") as PanierType}
-          panierProfil={panierActuel.profil ?? null} onClose={() => setModalEnvoi(null)} onSent={handleEnvoiCommun} />
+          panierProfil={panierActuel.profil ?? null} communLignes={communLignes}
+          onClose={() => setModalEnvoi(null)} onSent={handleEnvoiCommun} onUpvoted={handleUpvoteCommun} />
       )}
     </div>
   );
