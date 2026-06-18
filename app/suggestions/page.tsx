@@ -12,6 +12,7 @@ type Suggestion = {
   contenu: string | null;
   couleur: string;
   tags: string | null;
+  done: number; // 0 ou 1
   created_at: string;
   updated_at: string;
 };
@@ -35,6 +36,11 @@ const NOTE_COLORS: Record<string, { bg: string; border: string; tape: string }> 
 };
 
 const NOTE_ROTATIONS = [-3, 2.5, -1.5, 3.2, -2.2, 1.8, -3.8, 2, -1, 3.5];
+
+const TAGS_PREDEFINIS = [
+  "accueil", "inventaire", "atelier", "agenda", "store",
+  "catalogage", "jeux-vidéo", "suggestions", "general", "ux", "bug",
+];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -202,10 +208,11 @@ function ListBlockView({ block }: { block: NoteListBlock }) {
 
 // ─── StickyNote ───────────────────────────────────────────────────────────────
 
-function StickyNote({ note, rotation, onClick }: { note: Suggestion; rotation: number; onClick: () => void }) {
+function StickyNote({ note, rotation, onClick, onToggleDone }: { note: Suggestion; rotation: number; onClick: () => void; onToggleDone: (e: React.MouseEvent) => void }) {
   const [hovered, setHovered] = useState(false);
   const col = NOTE_COLORS[note.couleur] ?? NOTE_COLORS.yellow;
   const dateStr = (() => { try { return format(new Date(note.updated_at), 'dd MMM', { locale: fr }); } catch { return ''; } })();
+  const isDone = note.done === 1;
 
   return (
     <div role="button" tabIndex={0}
@@ -213,7 +220,9 @@ function StickyNote({ note, rotation, onClick }: { note: Suggestion; rotation: n
       onClick={onClick} onKeyDown={e => e.key === 'Enter' && onClick()}
       style={{
         width: 230, minHeight: 230, flexShrink: 0,
-        background: col.bg, border: `2px solid ${col.border}`, borderRadius: 3, padding: '26px 16px 16px',
+        background: isDone ? '#f3f4f6' : col.bg,
+        border: `2px solid ${isDone ? '#d1d5db' : col.border}`,
+        borderRadius: 3, padding: '26px 16px 16px',
         cursor: 'pointer',
         transform: `rotate(${hovered ? 0 : rotation}deg) translateY(${hovered ? -8 : 0}px)`,
         transition: 'transform 0.22s cubic-bezier(.34,1.56,.64,1), box-shadow 0.22s ease',
@@ -221,9 +230,17 @@ function StickyNote({ note, rotation, onClick }: { note: Suggestion; rotation: n
         position: 'relative', zIndex: hovered ? 10 : 1,
         display: 'flex', flexDirection: 'column', gap: 8, userSelect: 'none',
         marginRight: -22, marginTop: 14, marginBottom: 14,
+        opacity: isDone ? 0.6 : 1,
       }}>
-      <div style={{ position: 'absolute', top: -10, left: '50%', transform: 'translateX(-50%)', width: 38, height: 18, background: col.tape, opacity: 0.55, borderRadius: 3, boxShadow: '0 1px 3px rgba(0,0,0,0.15)' }} />
-      <div style={{ fontWeight: 800, fontSize: 13, lineHeight: 1.3, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const, color: '#1a1a1a' }}>
+      <div style={{ position: 'absolute', top: -10, left: '50%', transform: 'translateX(-50%)', width: 38, height: 18, background: isDone ? '#9ca3af' : col.tape, opacity: 0.55, borderRadius: 3, boxShadow: '0 1px 3px rgba(0,0,0,0.15)' }} />
+      {/* Bouton ✓ rapide */}
+      <button
+        onClick={onToggleDone}
+        title={isDone ? 'Marquer comme à faire' : 'Marquer comme fait'}
+        style={{ position: 'absolute', top: 8, right: 8, width: 22, height: 22, borderRadius: '50%', border: `2px solid ${isDone ? '#6b7280' : col.border}`, background: isDone ? '#6b7280' : 'rgba(255,255,255,0.6)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: isDone ? 'white' : 'rgba(0,0,0,0.3)', fontWeight: 900, transition: 'all 0.15s', zIndex: 20 }}>
+        ✓
+      </button>
+      <div style={{ fontWeight: 800, fontSize: 13, lineHeight: 1.3, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const, color: isDone ? '#6b7280' : '#1a1a1a', textDecoration: isDone ? 'line-through' : 'none' }}>
         {note.titre || 'Sans titre'}
       </div>
       {(() => {
@@ -306,6 +323,7 @@ function ModalSuggestion({ note, onClose, onSaved, onDeleted }: {
   const [blocks, setBlocks] = useState<ContentBlock[]>(() => parseBlocks(note?.contenu ?? null));
   const [tags, setTags] = useState<string[]>(() => parseTags(note?.tags ?? null));
   const [tagInput, setTagInput] = useState('');
+  const [done, setDone] = useState(note?.done ?? 0);
   const [couleur, setCouleur] = useState(() => {
     if (!isNew) return note?.couleur ?? 'yellow';
     const keys = Object.keys(NOTE_COLORS);
@@ -335,16 +353,16 @@ function ModalSuggestion({ note, onClose, onSaved, onDeleted }: {
       await fetch('/api/suggestions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, titre: titre.trim(), contenu, couleur, tags: tagsJson, created_at: now, updated_at: now }),
+        body: JSON.stringify({ id, titre: titre.trim(), contenu, couleur, tags: tagsJson, done: 0, created_at: now, updated_at: now }),
       });
-      onSaved({ id, titre: titre.trim(), contenu, couleur, tags: tagsJson, created_at: now, updated_at: now });
+      onSaved({ id, titre: titre.trim(), contenu, couleur, tags: tagsJson, done: 0, created_at: now, updated_at: now });
     } else {
       await fetch(`/api/suggestions/${note!.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ titre: titre.trim(), contenu, couleur, tags: tagsJson, updated_at: now }),
+        body: JSON.stringify({ titre: titre.trim(), contenu, couleur, tags: tagsJson, done, updated_at: now }),
       });
-      onSaved({ ...note!, titre: titre.trim(), contenu, couleur, tags: tagsJson, updated_at: now });
+      onSaved({ ...note!, titre: titre.trim(), contenu, couleur, tags: tagsJson, done, updated_at: now });
     }
     setSaving(false);
     onClose();
@@ -403,6 +421,17 @@ function ModalSuggestion({ note, onClose, onSaved, onDeleted }: {
             )}
             {!editing && tags.length === 0 && <span style={{ fontSize: 12, color: 'rgba(0,0,0,0.25)', fontStyle: 'italic' }}>Aucun tag</span>}
           </div>
+          {/* Tags prédéfinis */}
+          {editing && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>
+              {TAGS_PREDEFINIS.filter(t => !tags.includes(t)).map(t => (
+                <button key={t} onClick={() => addTag(t)}
+                  style={{ fontSize: 11, padding: '2px 8px', borderRadius: 12, background: 'rgba(0,0,0,0.05)', border: '1px solid rgba(0,0,0,0.12)', cursor: 'pointer', fontFamily: 'inherit', color: 'rgba(0,0,0,0.5)', fontWeight: 600 }}>
+                  #{t}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Contenu */}
@@ -450,15 +479,26 @@ function ModalSuggestion({ note, onClose, onSaved, onDeleted }: {
           </div>
         )}
 
+        {/* Statut fait / en cours */}
+        {!isNew && (
+          <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
+            <button onClick={() => setDone(done === 1 ? 0 : 1)}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '8px 16px', borderRadius: 20, border: `2px solid ${done === 1 ? '#16a34a' : 'rgba(0,0,0,0.2)'}`, background: done === 1 ? '#dcfce7' : 'transparent', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 13, color: done === 1 ? '#15803d' : 'rgba(0,0,0,0.45)', transition: 'all 0.15s' }}>
+              <span style={{ width: 18, height: 18, borderRadius: '50%', border: `2px solid ${done === 1 ? '#16a34a' : 'rgba(0,0,0,0.3)'}`, background: done === 1 ? '#16a34a' : 'transparent', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: 'white', transition: 'all 0.15s' }}>{done === 1 ? '✓' : ''}</span>
+              {done === 1 ? 'Fait !' : 'Marquer comme fait'}
+            </button>
+          </div>
+        )}
+
         {/* Méta */}
         {note && (
-          <div style={{ marginTop: 16, fontSize: 11, color: 'rgba(0,0,0,0.35)', fontWeight: 600 }}>
+          <div style={{ marginTop: 10, fontSize: 11, color: 'rgba(0,0,0,0.35)', fontWeight: 600 }}>
             Modifiée le {(() => { try { return format(new Date(note.updated_at), "dd MMM yyyy 'à' HH:mm", { locale: fr }); } catch { return ''; } })()}
           </div>
         )}
 
         {/* Actions */}
-        <div style={{ display: 'flex', gap: 10, marginTop: 20, justifyContent: 'flex-end', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 10, marginTop: 16, justifyContent: 'flex-end', alignItems: 'center' }}>
           {!isNew && !confirmDelete && (
             <button onClick={() => setConfirmDelete(true)} className="pop-btn"
               style={{ background: 'none', border: '2px solid rgba(0,0,0,0.15)', color: 'rgba(0,0,0,0.45)', padding: '8px 14px', marginRight: 'auto' }}>
@@ -474,7 +514,7 @@ function ModalSuggestion({ note, onClose, onSaved, onDeleted }: {
           )}
           {editing ? (
             <>
-              {!isNew && <button onClick={() => { setEditing(false); setTitre(note!.titre); setBlocks(parseBlocks(note!.contenu ?? null)); setCouleur(note!.couleur); setTags(parseTags(note!.tags ?? null)); setTagInput(''); }} className="pop-btn pop-btn-outline">Annuler</button>}
+              {!isNew && <button onClick={() => { setEditing(false); setTitre(note!.titre); setBlocks(parseBlocks(note!.contenu ?? null)); setCouleur(note!.couleur); setTags(parseTags(note!.tags ?? null)); setTagInput(''); setDone(note!.done); }} className="pop-btn pop-btn-outline">Annuler</button>}
               <button onClick={handleSave} disabled={saving || !titre.trim()} className="pop-btn pop-btn-dark" style={{ opacity: saving || !titre.trim() ? 0.5 : 1 }}>
                 {saving ? 'Enregistrement…' : isNew ? '+ Créer' : '✓ Enregistrer'}
               </button>
@@ -493,9 +533,10 @@ function ModalSuggestion({ note, onClose, onSaved, onDeleted }: {
 export default function SuggestionsPage() {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [modal, setModal] = useState<Suggestion | null | undefined>(undefined); // undefined = fermé, null = nouvelle
+  const [modal, setModal] = useState<Suggestion | null | undefined>(undefined);
   const [recherche, setRecherche] = useState('');
   const [activeTags, setActiveTags] = useState<string[]>([]);
+  const [filtreStatut, setFiltreStatut] = useState<'tout' | 'todo' | 'done'>('tout');
 
   useEffect(() => {
     fetch('/api/suggestions')
@@ -503,6 +544,17 @@ export default function SuggestionsPage() {
       .then(d => { setSuggestions(Array.isArray(d) ? d : []); setIsLoading(false); })
       .catch(() => setIsLoading(false));
   }, []);
+
+  const toggleDone = async (s: Suggestion, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const newDone = s.done === 1 ? 0 : 1;
+    setSuggestions(prev => prev.map(x => x.id === s.id ? { ...x, done: newDone } : x));
+    await fetch(`/api/suggestions/${s.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ done: newDone }),
+    });
+  };
 
   const allTags = useMemo(() => {
     const set = new Set<string>();
@@ -512,12 +564,16 @@ export default function SuggestionsPage() {
 
   const filtered = useMemo(() => {
     const q = normalizeStr(recherche);
-    return suggestions.filter(s => {
-      if (activeTags.length > 0) { const st = parseTags(s.tags); if (!activeTags.every(t => st.includes(t))) return false; }
-      if (!q) return true;
-      return normalizeStr(s.titre).includes(q) || normalizeStr(searchBlocks(s.contenu)).includes(q);
-    });
-  }, [suggestions, recherche, activeTags]);
+    return suggestions
+      .filter(s => {
+        if (filtreStatut === 'todo' && s.done === 1) return false;
+        if (filtreStatut === 'done' && s.done !== 1) return false;
+        if (activeTags.length > 0) { const st = parseTags(s.tags); if (!activeTags.every(t => st.includes(t))) return false; }
+        if (!q) return true;
+        return normalizeStr(s.titre).includes(q) || normalizeStr(searchBlocks(s.contenu)).includes(q);
+      })
+      .sort((a, b) => a.done - b.done); // non-faites en premier
+  }, [suggestions, recherche, activeTags, filtreStatut]);
 
   const handleSaved = (s: Suggestion) => {
     setSuggestions(prev => {
@@ -550,7 +606,7 @@ export default function SuggestionsPage() {
           </button>
         </div>
 
-        {/* Recherche */}
+        {/* Recherche + filtres statut */}
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
           <div style={{ position: 'relative', flex: 1, maxWidth: 400 }}>
             <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 14, pointerEvents: 'none' }}>🔍</span>
@@ -558,9 +614,12 @@ export default function SuggestionsPage() {
               placeholder="Rechercher dans les suggestions…"
               className="pop-input" style={{ width: '100%', paddingLeft: 38 }} />
           </div>
-          <span className="pop-sticker" style={{ background: 'var(--cream2)' }}>
-            {filtered.length}/{suggestions.length} suggestion{suggestions.length !== 1 ? 's' : ''}
-          </span>
+          {(['tout', 'todo', 'done'] as const).map(f => (
+            <button key={f} onClick={() => setFiltreStatut(f)} className="pop-btn"
+              style={{ fontSize: 12, padding: '5px 12px', background: filtreStatut === f ? 'var(--ink)' : 'var(--cream2)', color: filtreStatut === f ? 'var(--cream)' : 'var(--ink)', border: '2px solid var(--ink)', fontFamily: 'inherit' }}>
+              {f === 'tout' ? `Toutes (${suggestions.length})` : f === 'todo' ? `À faire (${suggestions.filter(s => s.done !== 1).length})` : `Faites (${suggestions.filter(s => s.done === 1).length})`}
+            </button>
+          ))}
         </div>
 
         {/* Filtres tags */}
@@ -592,7 +651,7 @@ export default function SuggestionsPage() {
                 <p style={{ fontWeight: 600, color: 'rgba(0,0,0,0.3)' }}>{suggestions.length === 0 ? 'Aucune suggestion pour l\'instant.' : 'Aucune suggestion trouvée.'}</p>
               </div>
             ) : filtered.map((s, i) => (
-              <StickyNote key={s.id} note={s} rotation={NOTE_ROTATIONS[i % NOTE_ROTATIONS.length]} onClick={() => setModal(s)} />
+              <StickyNote key={s.id} note={s} rotation={NOTE_ROTATIONS[i % NOTE_ROTATIONS.length]} onClick={() => setModal(s)} onToggleDone={e => toggleDone(s, e)} />
             ))}
           </div>
         )}
