@@ -22,13 +22,13 @@ export async function POST(request: Request) {
     const body = await request.json() as any;
     const {
       panier_commun_id, nom, editeur = null, image_url = null,
-      ean = null, prix_unitaire = null, quantite = 1, notes = null, profil = null,
+      ean = null, prix_unitaire = null, quantite = 1, notes = null, profil = null, console: console_ = null,
     } = body;
     const id = crypto.randomUUID();
     await db.prepare(
-      `INSERT INTO paniers_communs_lignes (id,panier_commun_id,nom,editeur,image_url,ean,prix_unitaire,quantite,notes,profil)
-       VALUES (?,?,?,?,?,?,?,?,?,?)`
-    ).bind(id, panier_commun_id, nom, editeur, image_url, ean, prix_unitaire, quantite, notes, profil).run();
+      `INSERT INTO paniers_communs_lignes (id,panier_commun_id,nom,editeur,image_url,ean,prix_unitaire,quantite,notes,profil,console)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?)`
+    ).bind(id, panier_commun_id, nom, editeur, image_url, ean, prix_unitaire, quantite, notes, profil, console_).run();
     return NextResponse.json({ id });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });

@@ -18,14 +18,14 @@ type PanierLigne = {
   id: string; panier_id: string; nom: string;
   editeur: string | null; image_url: string | null; ean: string | null;
   prix_unitaire: number | null; quantite: number; notes: string | null;
-  tags: string | null;
+  tags: string | null; console: string | null;
 };
 
 type PanierCommunLigne = {
   id: string; panier_commun_id: string; nom: string;
   editeur: string | null; image_url: string | null; ean: string | null;
   prix_unitaire: number | null; quantite: number; notes: string | null;
-  profil: string | null; votes: number; created_at: string;
+  profil: string | null; votes: number; created_at: string; console: string | null;
 };
 
 type JeuRechercheStore = {
@@ -65,6 +65,8 @@ const TYPE_INFO: Record<PanierType, { emoji: string; bg: string }> = {
   JV:    { emoji: "🎮", bg: "var(--purple)" },
   jouet: { emoji: "🧸", bg: "var(--rose)" },
 };
+
+const CONSOLES_JV = ["PS5", "PS4", "Switch", "Switch 2", "PC", "Xbox Series X", "Xbox One", "3DS"] as const;
 
 const PANIERS_COMMUNS: PanierCommun[] = [
   { id: "commun-jds",   type: "JdS",   nom: "Commande commune JdS" },
@@ -287,6 +289,7 @@ export default function StorePage() {
   const [tagInput, setTagInput] = useState("");
   const [tagHover, setTagHover] = useState<string | null>(null);
   const [nomEdit, setNomEdit] = useState<string | null>(null);
+  const [filterConsole, setFilterConsole] = useState<string | null>(null);
 
   // ─── Dérivés ──────────────────────────────────────────────────────────────────
 
@@ -331,6 +334,7 @@ export default function StorePage() {
 
   useEffect(() => {
     setFilterTag(null);
+    setFilterConsole(null);
     setTagEdit(null);
     if (view !== "basket" || !selectedId) { setLignes([]); return; }
     if (isCommun) { setLignes([]); chargerCommunLignes(selectedId); }
@@ -416,11 +420,12 @@ export default function StorePage() {
   const ajouterJeu = async (jeu: JeuRechercheStore) => {
     if (!panierActuel) return;
     const payload = { panier_id: panierActuel.id, nom: jeu.nom, editeur: jeu.editeur ?? null,
-      image_url: jeu.image_url ?? null, prix_unitaire: jeu.prix ?? null, quantite: 1, notes: jeu.url_source ?? null };
+      image_url: jeu.image_url ?? null, prix_unitaire: jeu.prix ?? null, quantite: 1,
+      notes: jeu.url_source ?? null, console: jeu.extra ?? null };
     const res = await fetch("/api/panier-lignes", {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
     }).then(r => r.json() as Promise<any>).catch(() => null);
-    if (res?.id) setLignes(prev => [{ ...payload, id: res.id, ean: null } as PanierLigne, ...prev]);
+    if (res?.id) setLignes(prev => [{ ...payload, id: res.id, ean: null, tags: null } as PanierLigne, ...prev]);
     setRecherche(""); setResultats([]); setShowResultats(false);
     chargerSummary();
   };
@@ -451,6 +456,17 @@ export default function StorePage() {
       method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prix_unitaire: prix }),
     });
     setLignes(prev => prev.map(l => l.id === id ? { ...l, prix_unitaire: prix } : l));
+    const ligne = lignes.find(l => l.id === id);
+    if (ligne) syncToCommunLignes(ligne, { prix_unitaire: prix });
+  };
+
+  const sauvegarderConsole = async (id: string, console_: string | null) => {
+    await fetch(`/api/panier-lignes/${id}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ console: console_ }),
+    });
+    setLignes(prev => prev.map(l => l.id === id ? { ...l, console: console_ } : l));
+    const ligne = lignes.find(l => l.id === id);
+    if (ligne) syncToCommunLignes(ligne, { console: console_ });
   };
 
   const sauvegarderQte = async (id: string, valeur: string) => {
@@ -459,6 +475,23 @@ export default function StorePage() {
       method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ quantite: qte }),
     });
     setLignes(prev => prev.map(l => l.id === id ? { ...l, quantite: qte } : l));
+  };
+
+  const syncToCommunLignes = async (ligne: PanierLigne, updates: Partial<PanierCommunLigne>) => {
+    for (const [communId, comLines] of Object.entries(communLignes)) {
+      const match = comLines.find(cl =>
+        (ligne.ean && cl.ean === ligne.ean) ||
+        cl.nom.toLowerCase() === ligne.nom.toLowerCase()
+      );
+      if (!match) continue;
+      await fetch(`/api/paniers-communs-lignes/${match.id}`, {
+        method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(updates),
+      });
+      setCommunLignes(prev => ({
+        ...prev,
+        [communId]: (prev[communId] ?? []).map(cl => cl.id === match.id ? { ...cl, ...updates } : cl),
+      }));
+    }
   };
 
   const sauvegarderNom = async (id: string, valeur: string) => {
@@ -556,6 +589,52 @@ td{padding:10px 12px;border-bottom:1px solid #e5e5e5;vertical-align:middle}.righ
   <td class="right">${l.quantite}</td><td class="right">${l.prix_unitaire != null ? (l.prix_unitaire * l.quantite).toFixed(2) + " €" : "—"}</td>
 </tr>`).join("")}
 <tr class="total-row"><td colspan="4">Total estimé</td><td class="right">${total.toFixed(2)} €</td></tr>
+</tbody></table></body></html>`;
+    const win = window.open("", "_blank");
+    if (!win) return;
+    win.document.write(html); win.document.close(); win.focus();
+    setTimeout(() => win.print(), 400);
+  };
+
+  const exporterPDFCommun = (consoleFiltre: string | null = null) => {
+    if (!panierCommunActuel) return;
+    const date = new Date().toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" });
+    const isJV = panierCommunActuel.type === "JV";
+    const filtered = consoleFiltre ? lignesCommun.filter(l => l.console === consoleFiltre) : lignesCommun;
+    const total = filtered.reduce((s, l) => s + (l.prix_unitaire ?? 0) * l.quantite, 0);
+    const consoleTitre = consoleFiltre ? ` — ${consoleFiltre}` : "";
+    const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>${panierCommunActuel.nom}${consoleTitre}</title>
+<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;padding:40px;color:#111;font-size:13px}
+h1{font-size:22px;font-weight:900;margin-bottom:4px}.meta{color:#666;font-size:12px;margin-bottom:32px}
+table{width:100%;border-collapse:collapse}th{text-align:left;padding:8px 12px;background:#111;color:#fff;font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+td{padding:10px 12px;border-bottom:1px solid #e5e5e5;vertical-align:middle}.right{text-align:right}.center{text-align:center}
+.badge{display:inline-block;padding:2px 8px;border-radius:4px;background:#eee;font-size:11px;font-weight:700}
+.rank{font-weight:900;font-size:18px;color:#bbb}
+.total-row td{font-weight:900;font-size:15px;border-top:2px solid #111;padding-top:14px}
+@media print{body{padding:20px}}</style></head><body>
+<h1>${panierCommunActuel.nom}${consoleTitre}</h1>
+<p class="meta">Généré le ${date} · ${filtered.length} article${filtered.length !== 1 ? "s" : ""} · classé par votes</p>
+<table><thead><tr>
+  <th class="center">#</th>
+  <th>Jeu</th>
+  ${isJV ? "<th>Console</th>" : ""}
+  <th>Éditeur</th>
+  <th>Profil</th>
+  <th class="right">Qté</th>
+  <th class="right">Prix</th>
+  <th class="center">Votes</th>
+</tr></thead><tbody>
+${filtered.map((l, i) => `<tr>
+  <td class="center"><span class="rank">${i < 3 ? ["🥇","🥈","🥉"][i] : i + 1}</span></td>
+  <td style="font-weight:700">${l.nom}</td>
+  ${isJV ? `<td><span class="badge">${l.console ?? "—"}</span></td>` : ""}
+  <td style="color:#666">${l.editeur ?? "—"}</td>
+  <td>${l.profil ? `<span class="badge">${l.profil}</span>` : "—"}</td>
+  <td class="right">${l.quantite}</td>
+  <td class="right">${l.prix_unitaire != null ? l.prix_unitaire.toFixed(2) + " €" : "—"}</td>
+  <td class="center" style="font-weight:900">${l.votes}</td>
+</tr>`).join("")}
+<tr class="total-row"><td colspan="${isJV ? 6 : 5}">Total estimé</td><td class="right">${total.toFixed(2)} €</td><td></td></tr>
 </tbody></table></body></html>`;
     const win = window.open("", "_blank");
     if (!win) return;
@@ -734,7 +813,11 @@ td{padding:10px 12px;border-bottom:1px solid #e5e5e5;vertical-align:middle}.righ
               </button>
             </div>
 
-            {isCommun ? (
+            {isCommun ? (() => {
+              const isJV = panierCommunActuel?.type === "JV";
+              const consolesPresentes = isJV ? [...new Set(lignesCommun.map(l => l.console).filter(Boolean))] as string[] : [];
+              const lignesCommunFiltrees = filterConsole ? lignesCommun.filter(l => l.console === filterConsole) : lignesCommun;
+              return (
               /* Panier commun */
               <>
                 <div className="pop-card" style={{ padding: "16px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
@@ -747,8 +830,34 @@ td{padding:10px 12px;border-bottom:1px solid #e5e5e5;vertical-align:middle}.righ
                       </p>
                     </div>
                   </div>
-                  <span className="pop-sticker" style={{ background: TYPE_INFO[panierCommunActuel!.type].bg, border: "2px solid var(--ink)", fontSize: 13 }}>{panierCommunActuel?.type}</span>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <button onClick={() => exporterPDFCommun(filterConsole)} className="pop-btn pop-btn-outline" style={{ fontSize: 13 }}>
+                      📄 PDF{filterConsole ? ` ${filterConsole}` : ""}
+                    </button>
+                    <span className="pop-sticker" style={{ background: TYPE_INFO[panierCommunActuel!.type].bg, border: "2px solid var(--ink)", fontSize: 13 }}>{panierCommunActuel?.type}</span>
+                  </div>
                 </div>
+
+                {/* Filtre console (JV uniquement) */}
+                {isJV && consolesPresentes.length > 0 && (
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: "rgba(0,0,0,0.4)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Console</span>
+                    <button onClick={() => setFilterConsole(null)}
+                      style={{ padding: "4px 12px", borderRadius: 20, fontFamily: "inherit", fontWeight: 700, fontSize: 12, cursor: "pointer",
+                        background: filterConsole === null ? "var(--ink)" : "var(--cream2)",
+                        color: filterConsole === null ? "var(--cream)" : "var(--ink)",
+                        border: "2px solid var(--ink)" }}>Toutes ({lignesCommun.length})</button>
+                    {consolesPresentes.map(c => (
+                      <button key={c} onClick={() => setFilterConsole(filterConsole === c ? null : c)}
+                        style={{ padding: "4px 12px", borderRadius: 20, fontFamily: "inherit", fontWeight: 700, fontSize: 12, cursor: "pointer",
+                          background: filterConsole === c ? "var(--purple)" : "var(--cream2)",
+                          color: filterConsole === c ? "var(--cream)" : "var(--ink)",
+                          border: "2px solid var(--ink)" }}>
+                        {c} ({lignesCommun.filter(l => l.console === c).length})
+                      </button>
+                    ))}
+                  </div>
+                )}
 
                 {lignesCommun.length === 0 ? (
                   <div className="pop-card" style={{ padding: "40px 20px", textAlign: "center" }}>
@@ -759,24 +868,31 @@ td{padding:10px 12px;border-bottom:1px solid #e5e5e5;vertical-align:middle}.righ
                     <table style={{ width: "100%", borderCollapse: "collapse" }}>
                       <thead>
                         <tr style={{ background: "var(--ink)", color: "var(--cream)" }}>
-                          {["Jeu", "Éditeur", "Profil", "Qté", "Prix", "Votes", ""].map((h, i) => (
-                            <th key={i} style={{ textAlign: i >= 3 ? "center" : "left", padding: "10px 16px", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", width: i === 6 ? 40 : undefined }}>{h}</th>
+                          {["Jeu", ...(isJV ? ["Console"] : []), "Éditeur", "Profil", "Qté", "Prix", "Votes", ""].map((h, i, arr) => (
+                            <th key={i} style={{ textAlign: i >= arr.length - 4 ? "center" : "left", padding: "10px 16px", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", width: i === arr.length - 1 ? 40 : undefined }}>{h}</th>
                           ))}
                         </tr>
                       </thead>
                       <tbody>
-                        {lignesCommun.map((ligne, i) => (
+                        {lignesCommunFiltrees.map((ligne, i) => (
                           <tr key={ligne.id} style={{ borderBottom: "1px solid var(--cream2)" }}
                             onMouseEnter={e => (e.currentTarget.style.background = "var(--cream)")}
                             onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
                             <td style={{ padding: "10px 16px" }}>
                               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                                {i < 3 && <span style={{ fontSize: 14, flexShrink: 0 }}>{["🥇", "🥈", "🥉"][i]}</span>}
+                                {i < 3 && !filterConsole && <span style={{ fontSize: 14, flexShrink: 0 }}>{["🥇", "🥈", "🥉"][i]}</span>}
                                 {ligne.image_url ? <img src={ligne.image_url} alt="" style={{ width: 36, height: 36, objectFit: "contain", borderRadius: 6, background: "var(--cream2)", flexShrink: 0 }} />
                                   : <div style={{ width: 36, height: 36, borderRadius: 6, background: "var(--cream2)", flexShrink: 0 }} />}
                                 <p style={{ fontWeight: 700, fontSize: 14, color: "var(--ink)" }}>{ligne.nom}</p>
                               </div>
                             </td>
+                            {isJV && (
+                              <td style={{ padding: "8px 16px" }}>
+                                {ligne.console
+                                  ? <span style={{ fontSize: 12, padding: "2px 8px", borderRadius: 6, background: "var(--purple)", color: "var(--cream)", fontWeight: 700 }}>{ligne.console}</span>
+                                  : <span style={{ color: "rgba(0,0,0,0.25)", fontSize: 12 }}>—</span>}
+                              </td>
+                            )}
                             <td style={{ padding: "10px 16px", fontSize: 13, color: "rgba(0,0,0,0.45)" }}>{ligne.editeur ?? "—"}</td>
                             <td style={{ padding: "10px 16px" }}>
                               {ligne.profil && <span style={{ fontSize: 12, background: "rgba(0,0,0,0.06)", borderRadius: 4, padding: "2px 6px", fontWeight: 700 }}>{ligne.profil}</span>}
@@ -804,7 +920,8 @@ td{padding:10px 12px;border-bottom:1px solid #e5e5e5;vertical-align:middle}.righ
                   </div>
                 )}
               </>
-            ) : (
+            );
+          })() : (
               /* Panier personnel */
               <>
                 <div className="pop-card" style={{ padding: "16px 20px", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16 }}>
@@ -924,8 +1041,8 @@ td{padding:10px 12px;border-bottom:1px solid #e5e5e5;vertical-align:middle}.righ
                     <table style={{ width: "100%", borderCollapse: "collapse" }}>
                       <thead>
                         <tr style={{ background: "var(--ink)", color: "var(--cream)" }}>
-                          {["Jeu", "Éditeur", "P.U.", "Qté", "Total", ""].map((h, i) => (
-                            <th key={i} style={{ textAlign: i >= 2 && i <= 4 ? "right" : "left", padding: "10px 16px", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", width: i === 5 ? 100 : undefined }}>{h}</th>
+                          {["Jeu", "Éditeur", ...(panierActuel?.type === "JV" ? ["Console"] : []), "P.U.", "Qté", "Total", ""].map((h, i, arr) => (
+                            <th key={i} style={{ textAlign: i >= arr.length - 4 && i <= arr.length - 2 ? "right" : "left", padding: "10px 16px", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", width: i === arr.length - 1 ? 100 : undefined }}>{h}</th>
                           ))}
                         </tr>
                       </thead>
@@ -998,6 +1115,16 @@ td{padding:10px 12px;border-bottom:1px solid #e5e5e5;vertical-align:middle}.righ
                               </div>
                             </td>
                             <td style={{ padding: "10px 16px", fontSize: 13, color: "rgba(0,0,0,0.45)" }}>{ligne.editeur ?? "—"}</td>
+                            {panierActuel?.type === "JV" && (
+                              <td style={{ padding: "8px 12px" }}>
+                                <select value={ligne.console ?? ""}
+                                  onChange={e => sauvegarderConsole(ligne.id, e.target.value || null)}
+                                  style={{ ...inp, width: 120, fontSize: 12 }}>
+                                  <option value="">—</option>
+                                  {CONSOLES_JV.map(c => <option key={c} value={c}>{c}</option>)}
+                                </select>
+                              </td>
+                            )}
                             <td style={{ padding: "8px 12px", textAlign: "right" }}>
                               <input type="text" inputMode="decimal"
                                 value={localPrix[ligne.id] ?? (ligne.prix_unitaire != null ? String(ligne.prix_unitaire) : "")}
