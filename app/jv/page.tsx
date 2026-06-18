@@ -1604,6 +1604,7 @@ function ModalReservationDetail({
   reservation,
   jeux,
   selections,
+  reservations,
   onClose,
   onSaved,
   onCancelled,
@@ -1611,6 +1612,7 @@ function ModalReservationDetail({
   reservation: JvReservation;
   jeux: JvJeu[];
   selections: JvSelection[];
+  reservations: JvReservation[];
   onClose: () => void;
   onSaved: (r: JvReservation) => void;
   onCancelled: (id: string) => void;
@@ -1625,22 +1627,47 @@ function ModalReservationDetail({
   const [notes, setNotes] = useState(reservation.notes ?? "");
   const [jeuId, setJeuId] = useState(reservation.jeu_id);
   const [jeu2Id, setJeu2Id] = useState<string | null>(reservation.jeu2_id ?? null);
+  const [heureDebut, setHeureDebut] = useState(reservation.heure_debut ?? "");
   const [heureFin, setHeureFin] = useState(reservation.heure_fin ?? "");
   const [isSaving, setIsSaving] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
 
-  // Options de fin disponibles : de heure_debut+15 à heure_debut+60, par 15 min
+  const dayOfWeek = getDay(parseISO(reservation.date_creneau));
+  const plage = PLAGE_PAR_JOUR[dayOfWeek];
+
+  // Réservations du même poste/jour (hors réservation courante) pour calcul des dispos
+  const posResas = useMemo(() =>
+    reservations.filter(r => r.poste === reservation.poste && r.date_creneau === reservation.date_creneau && r.statut !== "annulee" && r.id !== reservation.id),
+    [reservations, reservation]
+  );
+
+  // Heures de début disponibles (+ heure actuelle toujours présente)
+  const availableStartTimes = useMemo(() => {
+    if (!plage) return reservation.heure_debut ? [reservation.heure_debut] : [];
+    const free = getAvailableStartTimes(posResas, plage.debut, plage.fin);
+    return [...new Set([reservation.heure_debut, ...free].filter(Boolean))].sort() as string[];
+  }, [posResas, plage, reservation.heure_debut]);
+
+  // Quand l'heure de début change, recaler heureFin sur la valeur par défaut (60 min)
+  useEffect(() => {
+    if (!heureDebut) return;
+    const start = parseTime(heureDebut);
+    const windowEnd = plage ? parseTime(plage.fin) : start + 60;
+    const defaultFin = minsToTime(Math.min(start + 60, windowEnd));
+    setHeureFin(defaultFin);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [heureDebut]);
+
+  // Options de fin : de heureDebut+15 à heureDebut+60, par 15 min
   const heureFinOptions = useMemo(() => {
-    if (!reservation.heure_debut) return [];
-    const start = parseTime(reservation.heure_debut);
-    const dayOfWeek = getDay(parseISO(reservation.date_creneau));
-    const plage = PLAGE_PAR_JOUR[dayOfWeek];
+    if (!heureDebut) return [];
+    const start = parseTime(heureDebut);
     const windowEnd = plage ? parseTime(plage.fin) : start + 60;
     const opts: string[] = [];
     for (let d = 15; d <= 60 && start + d <= windowEnd; d += 15)
       opts.push(minsToTime(start + d));
     return opts;
-  }, [reservation.heure_debut, reservation.date_creneau]);
+  }, [heureDebut, plage]);
 
   useEffect(() => {
     setJoueurs(prev => {
@@ -1675,6 +1702,7 @@ function ModalReservationDetail({
       joueurs_details: JSON.stringify(joueurs), notes: notes.trim() || null,
       jeu_id: jeuId, jeu2_id: jeu2Id,
     };
+    if (heureDebut && heureDebut !== reservation.heure_debut) patch.heure_debut = heureDebut;
     if (heureFin && heureFin !== reservation.heure_fin) patch.heure_fin = heureFin;
     const res = await fetch(`/api/jv-reservations/${reservation.id}`, {
       method: 'PUT',
@@ -1682,7 +1710,10 @@ function ModalReservationDetail({
       body: JSON.stringify(patch),
     }).then(r => r.json() as Promise<any>).catch(() => ({ error: 'réseau' }));
     if (res.error) { alert("Erreur : " + res.error); setIsSaving(false); return; }
-    onSaved({ ...reservation, ...patch, joueurs_details: joueurs, heure_fin: patch.heure_fin ?? reservation.heure_fin } as JvReservation);
+    onSaved({ ...reservation, ...patch, joueurs_details: joueurs,
+      heure_debut: patch.heure_debut ?? reservation.heure_debut,
+      heure_fin: patch.heure_fin ?? reservation.heure_fin,
+    } as JvReservation);
     setIsSaving(false);
     onClose();
   };
@@ -1714,7 +1745,7 @@ function ModalReservationDetail({
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 5, flexWrap: 'wrap' }}>
               <span className="pop-sticker" style={{ fontSize: 11, padding: '3px 10px', background: 'var(--white)' }}>{poste?.label ?? reservation.poste}</span>
               <span style={{ fontSize: 12, fontWeight: 700, color: 'rgba(0,0,0,0.6)' }}>
-                {reservation.heure_debut ? `${heureLabel(reservation.heure_debut)} – ${heureLabel(heureFin || reservation.heure_fin)}` : (reservation.creneau ?? "")}
+                {heureDebut ? `${heureLabel(heureDebut)} – ${heureLabel(heureFin || reservation.heure_fin)}` : (reservation.creneau ?? "")}
               </span>
               <span className="pop-sticker" style={{ fontSize: 10, padding: '3px 8px', background: 'var(--white)', display: 'flex', alignItems: 'center', gap: 4 }}>
                 {displayStatus === "en_cours" && <span className="pulse" style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--vert)', display: 'inline-block' }} />}
@@ -1806,13 +1837,18 @@ function ModalReservationDetail({
           <div>
             <label style={SlabelD}>Nb joueurs (max {poste?.maxJoueurs ?? 2})</label>
             <div style={{ display: 'flex', gap: 8 }}>
-              {Array.from({ length: poste?.maxJoueurs ?? 2 }, (_, i) => i + 1).map(n => (
+              {Array.from({ length: Math.max(nbJoueurs, poste?.maxJoueurs ?? 2) }, (_, i) => i + 1).map(n => (
                 <button key={n} onClick={() => setNbJoueurs(n)}
                   className={nbJoueurs === n ? "pop-btn pop-btn-dark" : "pop-btn pop-btn-outline"}
-                  style={{ flex: 1, justifyContent: 'center' }}>
+                  style={{ flex: 1, justifyContent: 'center', ...(n > (poste?.maxJoueurs ?? 2) ? { borderStyle: 'dashed', opacity: 0.7 } : {}) }}>
                   {n}
                 </button>
               ))}
+              <button onClick={() => setNbJoueurs(n => n + 1)} title="Ajouter un joueur (hors norme)"
+                className="pop-btn pop-btn-outline"
+                style={{ padding: '6px 10px', borderStyle: 'dashed', opacity: 0.6 }}>
+                +
+              </button>
             </div>
           </div>
 
@@ -1854,13 +1890,31 @@ function ModalReservationDetail({
             ))}
           </div>
 
-          {/* Raccourcir la session */}
-          {reservation.statut !== "annulee" && reservation.heure_debut && heureFinOptions.length > 0 && (
+          {/* Heure de début */}
+          {reservation.statut !== "annulee" && availableStartTimes.length > 0 && (
+            <div>
+              <label style={SlabelD}>Heure de départ</label>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {availableStartTimes.map(t => (
+                  <button key={t} onClick={() => setHeureDebut(t)}
+                    className={heureDebut === t ? "pop-btn pop-btn-dark" : "pop-btn pop-btn-outline"}
+                    style={{ fontSize: 12, padding: '6px 12px' }}>
+                    {heureLabel(t)}
+                  </button>
+                ))}
+              </div>
+              {heureDebut !== reservation.heure_debut && (
+                <p style={{ fontSize: 10, color: 'var(--orange)', fontWeight: 700, marginTop: 6 }}>
+                  Départ décalé : {heureLabel(reservation.heure_debut)} → {heureLabel(heureDebut)}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Fin de session */}
+          {reservation.statut !== "annulee" && heureDebut && heureFinOptions.length > 0 && (
             <div>
               <label style={SlabelD}>Fin de session</label>
-              <p style={{ fontSize: 10, color: 'rgba(0,0,0,0.4)', fontWeight: 600, marginBottom: 6 }}>
-                Ajuste l&apos;heure de fin si la session s&apos;est terminée plus tôt (max 1h)
-              </p>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {heureFinOptions.map(t => (
                   <button key={t} onClick={() => setHeureFin(t)}
@@ -1870,9 +1924,9 @@ function ModalReservationDetail({
                   </button>
                 ))}
               </div>
-              {heureFin && heureFin !== reservation.heure_fin && (
+              {heureFin && heureFin !== reservation.heure_fin && heureDebut === reservation.heure_debut && (
                 <p style={{ fontSize: 10, color: 'var(--orange)', fontWeight: 700, marginTop: 6 }}>
-                  Session raccourcie : {heureLabel(reservation.heure_debut)} → {heureLabel(heureFin)} ({parseTime(heureFin) - parseTime(reservation.heure_debut)} min)
+                  Session raccourcie : {heureLabel(heureDebut)} → {heureLabel(heureFin)} ({parseTime(heureFin) - parseTime(heureDebut)} min)
                 </p>
               )}
             </div>
@@ -4187,6 +4241,7 @@ export default function JvPage() {
           reservation={modalResaDetail}
           jeux={jeux}
           selections={selections}
+          reservations={reservations}
           onClose={() => setModalResaDetail(null)}
           onSaved={handleResaUpdated}
           onCancelled={handleResaCancelled}
