@@ -66,7 +66,7 @@ const TYPE_INFO: Record<PanierType, { emoji: string; bg: string }> = {
   jouet: { emoji: "🧸", bg: "var(--rose)" },
 };
 
-const CONSOLES_JV = ["PS5", "PS4", "Switch", "Switch 2", "PC", "Xbox Series X", "Xbox One", "3DS"] as const;
+const CONSOLES_JV = ["PS5", "Switch", "PC"] as const;
 
 const PANIERS_COMMUNS: PanierCommun[] = [
   { id: "commun-jds",   type: "JdS",   nom: "Commande commune JdS" },
@@ -290,6 +290,9 @@ export default function StorePage() {
   const [tagHover, setTagHover] = useState<string | null>(null);
   const [nomEdit, setNomEdit] = useState<string | null>(null);
   const [filterConsole, setFilterConsole] = useState<string | null>(null);
+  const [localPrixCommun, setLocalPrixCommun] = useState<Record<string, string>>({});
+  const [modalPDF, setModalPDF] = useState(false);
+  const [pdfConsoles, setPdfConsoles] = useState<string[]>([]);
 
   // ─── Dérivés ──────────────────────────────────────────────────────────────────
 
@@ -596,13 +599,33 @@ td{padding:10px 12px;border-bottom:1px solid #e5e5e5;vertical-align:middle}.righ
     setTimeout(() => win.print(), 400);
   };
 
-  const exporterPDFCommun = (consoleFiltre: string | null = null) => {
+  const sauvegarderPrixCommun = async (id: string, valeur: string) => {
+    const prix = parseFloat(valeur.replace(",", "."));
+    const communId = selectedId!;
+    if (isNaN(prix) || prix < 0) {
+      setCommunLignes(prev => ({ ...prev, [communId]: (prev[communId] ?? []).map(l => l.id === id ? { ...l, prix_unitaire: null } : l) }));
+      await fetch(`/api/paniers-communs-lignes/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prix_unitaire: null }) });
+    } else {
+      setCommunLignes(prev => ({ ...prev, [communId]: (prev[communId] ?? []).map(l => l.id === id ? { ...l, prix_unitaire: prix } : l) }));
+      await fetch(`/api/paniers-communs-lignes/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prix_unitaire: prix }) });
+    }
+  };
+
+  const sauvegarderConsoleCommun = async (id: string, console_: string | null) => {
+    const communId = selectedId!;
+    setCommunLignes(prev => ({ ...prev, [communId]: (prev[communId] ?? []).map(l => l.id === id ? { ...l, console: console_ } : l) }));
+    await fetch(`/api/paniers-communs-lignes/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ console: console_ }) });
+  };
+
+  const exporterPDFCommun = (consolesFiltre: string[] = []) => {
     if (!panierCommunActuel) return;
     const date = new Date().toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" });
     const isJV = panierCommunActuel.type === "JV";
-    const filtered = consoleFiltre ? lignesCommun.filter(l => l.console === consoleFiltre) : lignesCommun;
+    const filtered = (isJV && consolesFiltre.length > 0)
+      ? lignesCommun.filter(l => consolesFiltre.includes(l.console ?? ""))
+      : lignesCommun;
     const total = filtered.reduce((s, l) => s + (l.prix_unitaire ?? 0) * l.quantite, 0);
-    const consoleTitre = consoleFiltre ? ` — ${consoleFiltre}` : "";
+    const consoleTitre = consolesFiltre.length > 0 ? ` — ${consolesFiltre.join(", ")}` : "";
     const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>${panierCommunActuel.nom}${consoleTitre}</title>
 <style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;padding:40px;color:#111;font-size:13px}
 h1{font-size:22px;font-weight:900;margin-bottom:4px}.meta{color:#666;font-size:12px;margin-bottom:32px}
@@ -831,8 +854,8 @@ ${filtered.map((l, i) => `<tr>
                     </div>
                   </div>
                   <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                    <button onClick={() => exporterPDFCommun(filterConsole)} className="pop-btn pop-btn-outline" style={{ fontSize: 13 }}>
-                      📄 PDF{filterConsole ? ` ${filterConsole}` : ""}
+                    <button onClick={() => { setPdfConsoles([]); setModalPDF(true); }} className="pop-btn pop-btn-outline" style={{ fontSize: 13 }}>
+                      📄 PDF
                     </button>
                     <span className="pop-sticker" style={{ background: TYPE_INFO[panierCommunActuel!.type].bg, border: "2px solid var(--ink)", fontSize: 13 }}>{panierCommunActuel?.type}</span>
                   </div>
@@ -887,10 +910,13 @@ ${filtered.map((l, i) => `<tr>
                               </div>
                             </td>
                             {isJV && (
-                              <td style={{ padding: "8px 16px" }}>
-                                {ligne.console
-                                  ? <span style={{ fontSize: 12, padding: "2px 8px", borderRadius: 6, background: "var(--purple)", color: "var(--cream)", fontWeight: 700 }}>{ligne.console}</span>
-                                  : <span style={{ color: "rgba(0,0,0,0.25)", fontSize: 12 }}>—</span>}
+                              <td style={{ padding: "6px 10px" }}>
+                                <select value={ligne.console ?? ""}
+                                  onChange={e => sauvegarderConsoleCommun(ligne.id, e.target.value || null)}
+                                  style={{ ...inp, width: 90, fontSize: 12, padding: "4px 6px" }}>
+                                  <option value="">—</option>
+                                  {CONSOLES_JV.map(c => <option key={c} value={c}>{c}</option>)}
+                                </select>
                               </td>
                             )}
                             <td style={{ padding: "10px 16px", fontSize: 13, color: "rgba(0,0,0,0.45)" }}>{ligne.editeur ?? "—"}</td>
@@ -900,14 +926,27 @@ ${filtered.map((l, i) => `<tr>
                             <td style={{ padding: "10px 16px", textAlign: "center" }}>
                               <span className="bc" style={{ fontSize: 15 }}>{ligne.quantite}</span>
                             </td>
-                            <td style={{ padding: "10px 16px", textAlign: "center" }}>
-                              <span className="bc" style={{ fontSize: 15 }}>{ligne.prix_unitaire != null ? `${ligne.prix_unitaire.toFixed(2)} €` : <span style={{ color: "var(--cream2)" }}>—</span>}</span>
+                            <td style={{ padding: "6px 10px", textAlign: "right" }}>
+                              <input type="text" inputMode="decimal"
+                                value={localPrixCommun[ligne.id] ?? (ligne.prix_unitaire != null ? String(ligne.prix_unitaire) : "")}
+                                onChange={e => setLocalPrixCommun(p => ({ ...p, [ligne.id]: e.target.value }))}
+                                onBlur={e => { sauvegarderPrixCommun(ligne.id, e.target.value); setLocalPrixCommun(p => { const n = { ...p }; delete n[ligne.id]; return n; }); }}
+                                onKeyDown={e => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+                                placeholder="—" style={{ ...inp, width: 80, fontSize: 13 }} />
                             </td>
-                            <td style={{ padding: "8px 16px", textAlign: "center" }}>
-                              <button onClick={() => upvoterLigne(ligne)}
-                                style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 14px", borderRadius: 20, cursor: "pointer", background: ligne.votes > 0 ? "var(--yellow)" : "var(--cream2)", border: "2px solid var(--ink)", fontWeight: 900, fontSize: 14, fontFamily: "inherit" }}>
-                                ▲ {ligne.votes}
-                              </button>
+                            <td style={{ padding: "6px 10px", textAlign: "center" }}>
+                              <div style={{ display: "inline-flex", alignItems: "center", gap: 4, border: "2px solid var(--ink)", borderRadius: 20, overflow: "hidden" }}>
+                                <button onClick={() => upvoterLigne(ligne)}
+                                  style={{ padding: "4px 10px", cursor: "pointer", background: "var(--yellow)", border: "none", fontWeight: 900, fontSize: 13, fontFamily: "inherit" }}>▲</button>
+                                <span style={{ fontWeight: 900, fontSize: 14, padding: "0 6px", minWidth: 24, textAlign: "center" }}>{ligne.votes}</span>
+                                <button onClick={async () => {
+                                  if (ligne.votes <= 0) return;
+                                  const communId = selectedId!;
+                                  setCommunLignes(prev => ({ ...prev, [communId]: (prev[communId] ?? []).map(l => l.id === ligne.id ? { ...l, votes: l.votes - 1 } : l).sort((a, b) => b.votes - a.votes) }));
+                                  await fetch(`/api/paniers-communs-lignes/${ligne.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ votes: ligne.votes - 1 }) });
+                                  chargerSummary();
+                                }} style={{ padding: "4px 10px", cursor: "pointer", background: "var(--cream2)", border: "none", fontWeight: 900, fontSize: 13, fontFamily: "inherit", opacity: ligne.votes <= 0 ? 0.3 : 1 }}>▼</button>
+                              </div>
                             </td>
                             <td style={{ padding: "8px 12px", textAlign: "right" }}>
                               <button onClick={() => supprimerCommunLigne(ligne)}
@@ -1192,6 +1231,58 @@ ${filtered.map((l, i) => `<tr>
           panierProfil={panierActuel.profil ?? null} communLignes={communLignes}
           onClose={() => setModalEnvoi(null)} onSent={handleEnvoiCommun} onUpvoted={handleUpvoteCommun} />
       )}
+
+      {/* Modal PDF */}
+      {modalPDF && panierCommunActuel && (() => {
+        const isJV = panierCommunActuel.type === "JV";
+        const consolesDispos = isJV ? [...new Set(lignesCommun.map(l => l.console).filter(Boolean))] as string[] : [];
+        return (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" }}
+            onClick={e => e.target === e.currentTarget && setModalPDF(false)}>
+            <div className="pop-card" style={{ width: 420, maxWidth: "90vw", padding: 28, display: "flex", flexDirection: "column", gap: 20 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <h2 className="bc" style={{ fontSize: 20, margin: 0 }}>Exporter en PDF</h2>
+                <button onClick={() => setModalPDF(false)} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", lineHeight: 1 }}>✕</button>
+              </div>
+
+              {isJV && consolesDispos.length > 0 && (
+                <div>
+                  <p style={{ fontSize: 13, fontWeight: 700, marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.06em", color: "rgba(0,0,0,0.45)" }}>Filtrer par console</p>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", fontWeight: 700, fontSize: 14 }}>
+                      <input type="checkbox"
+                        checked={pdfConsoles.length === 0}
+                        onChange={() => setPdfConsoles([])}
+                        style={{ width: 18, height: 18, cursor: "pointer" }} />
+                      Toutes les consoles ({lignesCommun.length} jeux)
+                    </label>
+                    {consolesDispos.map(c => (
+                      <label key={c} style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", fontWeight: 600, fontSize: 14 }}>
+                        <input type="checkbox"
+                          checked={pdfConsoles.includes(c)}
+                          onChange={() => setPdfConsoles(prev =>
+                            prev.includes(c) ? prev.filter(x => x !== c) : [...prev, c]
+                          )}
+                          style={{ width: 18, height: 18, cursor: "pointer" }} />
+                        <span style={{ display: "inline-block", padding: "2px 10px", borderRadius: 6, background: "var(--purple)", color: "var(--cream)", fontWeight: 700, fontSize: 12 }}>{c}</span>
+                        {lignesCommun.filter(l => l.console === c).length} jeux
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 4 }}>
+                <button onClick={() => setModalPDF(false)} className="pop-btn pop-btn-outline" style={{ fontSize: 14 }}>Annuler</button>
+                <button onClick={() => { setModalPDF(false); exporterPDFCommun(pdfConsoles); }}
+                  className="pop-btn pop-btn-dark" style={{ fontSize: 14 }}>
+                  📄 Imprimer{pdfConsoles.length > 0 ? ` (${pdfConsoles.join(", ")})` : " tout"}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
