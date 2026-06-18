@@ -656,6 +656,43 @@ ${filtered.map(l => `<tr>
     setTimeout(() => win.print(), 400);
   };
 
+  const telechargerPDFCommun = async (consolesFiltre: string[] = []) => {
+    if (!panierCommunActuel) return;
+    const { jsPDF } = await import("jspdf");
+    const { default: autoTable } = await import("jspdf-autotable");
+    const isJV = panierCommunActuel.type === "JV";
+    const filtered = (isJV && consolesFiltre.length > 0)
+      ? lignesCommun.filter(l => consolesFiltre.includes(l.console ?? ""))
+      : lignesCommun;
+    const total = filtered.reduce((s, l) => s + (l.prix_unitaire ?? 0) * l.quantite, 0);
+    const consoleTitre = consolesFiltre.length > 0 ? ` — ${consolesFiltre.join(", ")}` : "";
+    const date = new Date().toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" });
+    const doc = new jsPDF();
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(18);
+    doc.text(`${panierCommunActuel.nom}${consoleTitre}`, 14, 20);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(120);
+    doc.text(`Généré le ${date} · ${filtered.length} article${filtered.length !== 1 ? "s" : ""}`, 14, 28);
+    doc.setTextColor(0);
+    const head = [["Jeu", ...(isJV ? ["Console"] : []), "Qté", "Prix approx."]];
+    const body: string[][] = [
+      ...filtered.map(l => [l.nom, ...(isJV ? [l.console ?? "—"] : []), String(l.quantite), l.prix_unitaire != null ? `${l.prix_unitaire.toFixed(2)} EUR` : "—"]),
+      ["Total estimé", ...(isJV ? [""] : []), "", `${total.toFixed(2)} EUR`],
+    ];
+    autoTable(doc, {
+      head,
+      body,
+      startY: 34,
+      styles: { fontSize: 12, cellPadding: 5 },
+      headStyles: { fillColor: [17, 17, 17] },
+      bodyStyles: { valign: "middle" },
+    });
+    const filename = `${panierCommunActuel.nom}${consoleTitre}.pdf`.replace(/[/\\?%*:|"<>]/g, "-");
+    doc.save(filename);
+  };
+
   // ─── Styles communs ───────────────────────────────────────────────────────────
 
   const inp: React.CSSProperties = {
@@ -1263,11 +1300,15 @@ ${filtered.map(l => `<tr>
                 </div>
               )}
 
-              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 4 }}>
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 4, flexWrap: "wrap" }}>
                 <button onClick={() => setModalPDF(false)} className="pop-btn pop-btn-outline" style={{ fontSize: 14 }}>Annuler</button>
                 <button onClick={() => { setModalPDF(false); exporterPDFCommun(pdfConsoles); }}
+                  className="pop-btn pop-btn-outline" style={{ fontSize: 14 }}>
+                  🖨️ Imprimer
+                </button>
+                <button onClick={() => { setModalPDF(false); telechargerPDFCommun(pdfConsoles); }}
                   className="pop-btn pop-btn-dark" style={{ fontSize: 14 }}>
-                  📄 Imprimer{pdfConsoles.length > 0 ? ` (${pdfConsoles.join(", ")})` : " tout"}
+                  ⬇️ Télécharger
                 </button>
               </div>
             </div>
