@@ -628,36 +628,27 @@ td{padding:10px 12px;border-bottom:1px solid #e5e5e5;vertical-align:middle}.righ
     const consoleTitre = consolesFiltre.length > 0 ? ` — ${consolesFiltre.join(", ")}` : "";
     const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>${panierCommunActuel.nom}${consoleTitre}</title>
 <style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;padding:40px;color:#111;font-size:13px}
-h1{font-size:22px;font-weight:900;margin-bottom:4px}.meta{color:#666;font-size:12px;margin-bottom:32px}
+h1{font-size:22px;font-weight:900;margin-bottom:4px}.meta{color:#666;font-size:12px;margin-bottom:28px}
 table{width:100%;border-collapse:collapse}th{text-align:left;padding:8px 12px;background:#111;color:#fff;font-size:11px;text-transform:uppercase;letter-spacing:.05em}
-td{padding:10px 12px;border-bottom:1px solid #e5e5e5;vertical-align:middle}.right{text-align:right}.center{text-align:center}
+td{padding:10px 12px;border-bottom:1px solid #e5e5e5;vertical-align:middle}.right{text-align:right}
 .badge{display:inline-block;padding:2px 8px;border-radius:4px;background:#eee;font-size:11px;font-weight:700}
-.rank{font-weight:900;font-size:18px;color:#bbb}
 .total-row td{font-weight:900;font-size:15px;border-top:2px solid #111;padding-top:14px}
 @media print{body{padding:20px}}</style></head><body>
 <h1>${panierCommunActuel.nom}${consoleTitre}</h1>
-<p class="meta">Généré le ${date} · ${filtered.length} article${filtered.length !== 1 ? "s" : ""} · classé par votes</p>
+<p class="meta">Généré le ${date} · ${filtered.length} article${filtered.length !== 1 ? "s" : ""}</p>
 <table><thead><tr>
-  <th class="center">#</th>
   <th>Jeu</th>
   ${isJV ? "<th>Console</th>" : ""}
-  <th>Éditeur</th>
-  <th>Profil</th>
   <th class="right">Qté</th>
-  <th class="right">Prix</th>
-  <th class="center">Votes</th>
+  <th class="right">Prix approx.</th>
 </tr></thead><tbody>
-${filtered.map((l, i) => `<tr>
-  <td class="center"><span class="rank">${i < 3 ? ["🥇","🥈","🥉"][i] : i + 1}</span></td>
+${filtered.map(l => `<tr>
   <td style="font-weight:700">${l.nom}</td>
   ${isJV ? `<td><span class="badge">${l.console ?? "—"}</span></td>` : ""}
-  <td style="color:#666">${l.editeur ?? "—"}</td>
-  <td>${l.profil ? `<span class="badge">${l.profil}</span>` : "—"}</td>
   <td class="right">${l.quantite}</td>
   <td class="right">${l.prix_unitaire != null ? l.prix_unitaire.toFixed(2) + " €" : "—"}</td>
-  <td class="center" style="font-weight:900">${l.votes}</td>
 </tr>`).join("")}
-<tr class="total-row"><td colspan="${isJV ? 6 : 5}">Total estimé</td><td class="right">${total.toFixed(2)} €</td><td></td></tr>
+<tr class="total-row"><td colspan="${isJV ? 3 : 2}">Total estimé</td><td class="right">${total.toFixed(2)} €</td></tr>
 </tbody></table></body></html>`;
     const win = window.open("", "_blank");
     if (!win) return;
