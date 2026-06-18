@@ -3,16 +3,17 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-type Page = "accueil" | "inventaire" | "atelier" | "agenda" | "store" | "catalogage" | "jv";
+type Page = "accueil" | "inventaire" | "atelier" | "agenda" | "store" | "catalogage" | "jv" | "suggestions";
 
 const NAV_ITEMS: { href: string; label: string; page: Page; color: string }[] = [
-  { href: "/",           label: "Accueil",    page: "accueil",    color: "#facc15" },
-  { href: "/inventaire", label: "Inventaire", page: "inventaire", color: "#60a5fa" },
-  { href: "/atelier",    label: "Atelier",    page: "atelier",    color: "#a8e063" },
-  { href: "/agenda",     label: "Agenda",     page: "agenda",     color: "#c084fc" },
-  { href: "/store",      label: "Store",      page: "store",      color: "#f472b6" },
-  { href: "/catalogage", label: "Catalogage", page: "catalogage", color: "#fb923c" },
-  { href: "/jv",         label: "Jeux Vidéo", page: "jv",         color: "#f87171" },
+  { href: "/",             label: "Accueil",      page: "accueil",     color: "#facc15" },
+  { href: "/inventaire",   label: "Inventaire",   page: "inventaire",  color: "#60a5fa" },
+  { href: "/atelier",      label: "Atelier",      page: "atelier",     color: "#a8e063" },
+  { href: "/agenda",       label: "Agenda",       page: "agenda",      color: "#c084fc" },
+  { href: "/store",        label: "Store",        page: "store",       color: "#f472b6" },
+  { href: "/catalogage",   label: "Catalogage",   page: "catalogage",  color: "#fb923c" },
+  { href: "/jv",           label: "Jeux Vidéo",   page: "jv",          color: "#f87171" },
+  { href: "/suggestions",  label: "Suggestions",  page: "suggestions", color: "#a78bfa" },
 ];
 
 // The 6-color rainbow strip (matches nav items order)
