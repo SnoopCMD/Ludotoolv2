@@ -59,6 +59,7 @@ type JvRotationConfig = {
   id: string;
   current_slot_index: number;
   week_start: string;
+  config?: { extra_creneaux?: Record<string, string[]> };
 };
 
 type JoueurDetail = {
@@ -123,8 +124,8 @@ const SLOT_LABEL: Record<SelectionSlot, string> = {
 };
 const SLOT_HAS_PERMANENT: Record<SelectionSlot, boolean> = {
   PS5: true,
-  Switch_Multi: false,
-  Switch_Solo: false,
+  Switch_Multi: true,
+  Switch_Solo: true,
   PC: true,
 };
 const ROTATION_ORDER: SelectionSlot[] = ["PS5", "Switch_Multi", "Switch_Solo", "PC"];
@@ -145,6 +146,14 @@ const CRENEAUX_PAR_JOUR: Record<number, string[]> = {
   5: ["16h-17h", "17h-18h"],
 };
 const JOURS_OUVERTS = [2, 3, 4, 5];
+
+// Créneaux d'un jour donné = créneaux récurrents + créneaux exceptionnels ajoutés pour cette date précise
+function getCreneauxJour(dateStr: string, extraCreneaux: Record<string, string[]> | undefined): string[] {
+  const dow = getDay(parseISO(dateStr));
+  const base = CRENEAUX_PAR_JOUR[dow] ?? [];
+  const extra = extraCreneaux?.[dateStr] ?? [];
+  return [...base, ...extra.filter(cr => !base.includes(cr))];
+}
 
 type Poste = { id: string; label: string; console: Console; maxJoueurs: number; multiOnly: boolean };
 const POSTES: Poste[] = [
@@ -1155,6 +1164,7 @@ function ModalReservation({
   preDate,
   preCreneau,
   prePoste,
+  extraCreneaux,
   onClose,
   onSaved,
 }: {
@@ -1163,6 +1173,7 @@ function ModalReservation({
   preDate?: string;
   preCreneau?: string;
   prePoste?: string;
+  extraCreneaux?: Record<string, string[]>;
   onClose: () => void;
   onSaved: (r: JvReservation) => void;
 }) {
@@ -1178,7 +1189,7 @@ function ModalReservation({
   const poste = POSTES.find(p => p.id === posteId)!;
   const slot = POSTE_SLOT[posteId];
   const dayOfWeek = getDay(parseISO(date));
-  const creneauxDispo = CRENEAUX_PAR_JOUR[dayOfWeek] ?? [];
+  const creneauxDispo = getCreneauxJour(date, extraCreneaux);
   const isJourOuvert = JOURS_OUVERTS.includes(dayOfWeek);
 
   // Initialise le créneau quand la date change
@@ -2186,15 +2197,21 @@ function TabSelections({
 function TabReservations({
   jeux,
   reservations,
+  extraCreneaux,
+  onAddCreneau,
   onNouvelle,
   onOpenDetail,
 }: {
   jeux: JvJeu[];
   reservations: JvReservation[];
+  extraCreneaux?: Record<string, string[]>;
+  onAddCreneau: (dateStr: string, creneau: string) => void;
   onNouvelle: (date?: string, creneau?: string, poste?: string) => void;
   onOpenDetail: (r: JvReservation) => void;
 }) {
   const [semaine, setSemaine] = useState(new Date());
+  const [addingFor, setAddingFor] = useState<string | null>(null);
+  const [newCreneau, setNewCreneau] = useState("");
   const lundi = startOfWeek(semaine, { weekStartsOn: 1 });
   const joursOuverts = eachDayOfInterval({ start: addDays(lundi, 1), end: addDays(lundi, 4) });
 
@@ -2293,15 +2310,48 @@ function TabReservations({
           {/* Jours */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {joursOuverts.map(d => {
-              const dow = getDay(d);
-              const creneaux = CRENEAUX_PAR_JOUR[dow] ?? [];
               const dateStr = format(d, "yyyy-MM-dd");
+              const creneaux = getCreneauxJour(dateStr, extraCreneaux);
+              const isAdding = addingFor === dateStr;
               return (
                 <div key={dateStr} className="pop-card" style={{ overflow: 'hidden', background: 'var(--cream)', outline: isToday(d) ? '3px solid var(--ink)' : 'none', outlineOffset: isToday(d) ? 2 : 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', borderBottom: '2px solid var(--ink)', background: isToday(d) ? 'var(--ink)' : 'var(--cream2)' }}>
                     <span style={{ fontWeight: 900, fontSize: 13, color: isToday(d) ? 'var(--white)' : 'var(--ink)', textTransform: 'capitalize' }}>{format(d, "EEEE d MMMM", { locale: fr })}</span>
-                    {isToday(d) && <span className="pop-sticker" style={{ fontSize: 9, padding: '2px 8px', background: '#baff29' }}>Aujourd&apos;hui</span>}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      {isToday(d) && <span className="pop-sticker" style={{ fontSize: 9, padding: '2px 8px', background: '#baff29' }}>Aujourd&apos;hui</span>}
+                      {!isAdding && (
+                        <button onClick={() => { setAddingFor(dateStr); setNewCreneau(""); }}
+                          title="Ajouter un créneau exceptionnel ce jour-là"
+                          style={{ fontSize: 10, fontWeight: 800, padding: '3px 8px', border: '1.5px dashed currentColor', borderRadius: 6, background: 'transparent', color: isToday(d) ? 'var(--white)' : 'rgba(0,0,0,0.45)', cursor: 'pointer' }}>
+                          + Créneau
+                        </button>
+                      )}
+                    </div>
                   </div>
+                  {isAdding && (
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', padding: '8px 16px', borderBottom: '1.5px solid var(--cream2)', background: 'var(--white)' }}>
+                      <input
+                        type="text"
+                        value={newCreneau}
+                        onChange={e => setNewCreneau(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === "Enter" && newCreneau.trim()) { onAddCreneau(dateStr, newCreneau.trim()); setAddingFor(null); }
+                          if (e.key === "Escape") setAddingFor(null);
+                        }}
+                        placeholder="ex. 17h-18h"
+                        autoFocus
+                        className="pop-input" style={{ flex: 1, fontSize: 12, padding: '5px 10px' }} />
+                      <button
+                        onClick={() => { if (newCreneau.trim()) { onAddCreneau(dateStr, newCreneau.trim()); setAddingFor(null); } }}
+                        disabled={!newCreneau.trim()}
+                        className="pop-btn pop-btn-dark" style={{ fontSize: 11, padding: '5px 10px', opacity: newCreneau.trim() ? 1 : 0.4 }}>
+                        Ajouter
+                      </button>
+                      <button onClick={() => setAddingFor(null)} className="pop-btn pop-btn-outline" style={{ fontSize: 11, padding: '5px 10px' }}>
+                        Annuler
+                      </button>
+                    </div>
+                  )}
                   <div>
                     {creneaux.map((cr, crIdx) => (
                       <div key={cr} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 16px', borderBottom: crIdx < creneaux.length - 1 ? '1.5px solid var(--cream2)' : 'none' }}>
@@ -2812,6 +2862,22 @@ export default function JvPage() {
     }));
   }, [selections]);
 
+  // Ajoute un créneau exceptionnel pour une date précise (ne modifie pas les créneaux récurrents)
+  const handleAddCreneau = useCallback(async (dateStr: string, creneau: string) => {
+    setRotationConfig(prev => {
+      const existing = prev.config?.extra_creneaux ?? {};
+      const forDate = existing[dateStr] ?? [];
+      if (forDate.includes(creneau)) return prev;
+      const nextConfig = { ...prev.config, extra_creneaux: { ...existing, [dateStr]: [...forDate, creneau] } };
+      fetch('/api/jv-rotation-config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ config: nextConfig }),
+      });
+      return { ...prev, config: nextConfig };
+    });
+  }, []);
+
   // Met à jour le point de départ de la rotation
   const handleUpdateRotationConfig = useCallback(async (slotIndex: number, weekStart: string) => {
     await fetch('/api/jv-rotation-config', {
@@ -2984,6 +3050,8 @@ export default function JvPage() {
               <TabReservations
                 jeux={jeux}
                 reservations={reservations}
+                extraCreneaux={rotationConfig.config?.extra_creneaux}
+                onAddCreneau={handleAddCreneau}
                 onNouvelle={(date, creneau, poste) => setModalResa({ open: true, date, creneau, poste })}
                 onOpenDetail={r => setModalResaDetail(r)}
               />
@@ -3033,6 +3101,7 @@ export default function JvPage() {
           preDate={modalResa.date}
           preCreneau={modalResa.creneau}
           prePoste={modalResa.poste}
+          extraCreneaux={rotationConfig.config?.extra_creneaux}
           onClose={() => setModalResa({ open: false })}
           onSaved={handleResaSaved}
         />
