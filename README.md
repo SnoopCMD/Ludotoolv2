@@ -205,6 +205,45 @@ Le type de panier détermine la source, via un seul endpoint
 > CSV/XML), comme le proposent beaucoup de boutiques pro. Leur `robots.txt`
 > décourage par ailleurs l'exploration des pages de recherche.
 
+### Les jeux PC et la wishlist Steam
+
+Les jeux PC ne se commandent pas, ils s'achètent sur Steam. Dans le panier
+commun JV, **toute ligne dont la console vaut `PC` sort du tableau à commander**
+et bascule dans la wishlist (bouton dans l'en-tête du panier). C'est un
+aiguillage à l'affichage : rien n'est déplacé en base, repasser la console sur
+Switch ou PS5 ramène la ligne dans le panier. Ces lignes sont exclues partout où
+l'on compte ce qu'il y a à commander : total, filtres, PDF, tableau de bord.
+
+Un contrôle quotidien (`.github/workflows/promos-steam.yml`, 10h à Paris)
+appelle `/api/store/steam/promos`, qui compare ces jeux aux prix Steam du jour
+et **ouvre une alerte par promo qui démarre** — donc visible dans le compteur de
+la barre de navigation et sur le tableau de bord. Les alertes dont la promo est
+terminée, ou dont le jeu a quitté la wishlist, sont closes automatiquement.
+L'appel est rejouable sans risque et le bouton « Signaler les promos » de la
+wishlist le déclenche à la main.
+
+Ces alertes n'ont pas de table dédiée : ce sont des lignes de `alertes`
+reconnaissables à la mention `· promo Steam ·` dans leur description. C'est ce
+marqueur qui permet de les retrouver pour les mettre à jour — le changer casse
+le suivi des promos en cours.
+
+### Détection des doublons
+
+`/api/store/doublons?type=JdS|JV&noms=a|b|c` dit, pour chaque nom, si la
+ludothèque possède déjà le jeu — `jv_jeux` pour les jeux vidéo, `jeux` pour le
+reste, en ignorant les exemplaires retirés. La comparaison se fait en mémoire
+côté serveur avec la même normalisation que les pages (casse, accents et
+ponctuation ignorés) : un `LIKE` SQL raterait les variantes très fréquentes
+entre le catalogue et les fiches boutique.
+
+Les deux usages diffèrent volontairement :
+
+- **Jeux vidéo** : on ne rachète pas un jeu qu'on a déjà. L'ajout d'un jeu connu
+  demande confirmation, et les lignes concernées portent une pastille rouge.
+- **Jeux de société** : le doublon est souvent voulu. Rien ne bloque, la ligne
+  reçoit automatiquement le tag `double` à l'ajout et une pastille jaune
+  indiquant le nombre d'exemplaires déjà en rayon.
+
 ---
 
 ## Déploiement

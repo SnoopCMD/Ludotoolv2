@@ -37,6 +37,31 @@ type JeuRechercheStore = {
 
 type PanierCommun = { id: string; type: PanierType; nom: string };
 
+type Doublon = { possede: boolean; exemplaires: number; detail: string };
+
+/**
+ * Signale un jeu déjà présent dans la ludothèque.
+ * Rouge pour les jeux vidéo, qu'on ne rachète pas ; jaune « Double » pour les
+ * jeux de société, où le doublon est souvent voulu.
+ */
+function PastilleDoublon({ doublon, type }: { doublon?: Doublon; type: PanierType }) {
+  if (!doublon?.possede) return null;
+  const jv = type === "JV";
+  return (
+    <span className="pop-sticker"
+      title={jv
+        ? "Déjà au catalogue jeux vidéo" + (doublon.detail ? " (" + doublon.detail + ")" : "")
+        : "Déjà en rayon : " + doublon.detail}
+      style={{
+        background: jv ? "var(--rouge)" : "var(--yellow)",
+        color: jv ? "var(--white)" : "var(--ink)",
+        border: "1.5px solid var(--ink)", fontSize: 10, flexShrink: 0,
+      }}>
+      {jv ? "⚠️ déjà au catalogue" : "Double · " + doublon.detail}
+    </span>
+  );
+}
+
 type MembreSummary = { nom: string; couleur: string };
 
 type StoreSummary = {
@@ -275,9 +300,10 @@ type FicheSteam = {
 };
 
 function ModalWishlistSteam({
-  lignes, onClose, onSupprimer, onUpvote,
+  lignes, doublons, onClose, onSupprimer, onUpvote,
 }: {
   lignes: PanierCommunLigne[];
+  doublons: Record<string, Doublon>;
   onClose: () => void;
   onSupprimer: (ligne: PanierCommunLigne) => void;
   onUpvote: (ligne: PanierCommunLigne) => void;
@@ -384,6 +410,7 @@ function ModalWishlistSteam({
                   <p style={{ fontWeight: 700, fontSize: 14, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ligne.nom}</p>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2, flexWrap: "wrap" }}>
                     {ligne.profil && <span style={{ fontSize: 11, background: "rgba(0,0,0,0.06)", borderRadius: 4, padding: "1px 6px", fontWeight: 700 }}>{ligne.profil}</span>}
+                    <PastilleDoublon doublon={doublons[ligne.nom]} type="JV" />
                     {!chargement && !trouve && (
                       <span style={{ fontSize: 11, color: "rgba(0,0,0,0.35)", fontWeight: 600 }}>non identifié sur Steam</span>
                     )}
@@ -476,6 +503,8 @@ export default function StorePage() {
   const [localPrixCommun, setLocalPrixCommun] = useState<Record<string, string>>({});
   const [modalPDF, setModalPDF] = useState(false);
   const [modalWishlist, setModalWishlist] = useState(false);
+  // Jeux déjà présents dans la ludothèque, indexés par nom de ligne
+  const [doublons, setDoublons] = useState<Record<string, Doublon>>({});
   const [pdfConsoles, setPdfConsoles] = useState<string[]>([]);
 
   // ─── Dérivés ──────────────────────────────────────────────────────────────────
@@ -586,6 +615,30 @@ export default function StorePage() {
     chargerSummary();
   };
 
+  // ─── Doublons ──────────────────────────────────────────────────────────────
+
+  /** Interroge la ludothèque pour savoir lesquels de ces jeux sont déjà possédés. */
+  const verifierDoublons = async (noms: string[], type: PanierType): Promise<Record<string, Doublon>> => {
+    const aChercher = [...new Set(noms.filter(Boolean))];
+    if (aChercher.length === 0) return {};
+    const data = await fetch(`/api/store/doublons?type=${type === "JV" ? "JV" : "JdS"}&noms=${encodeURIComponent(aChercher.join("|"))}`)
+      .then(r => r.json() as Promise<{ doublons?: Record<string, Doublon> }>)
+      .catch(() => null);
+    return data?.doublons ?? {};
+  };
+
+  // Les lignes visibles sont confrontées au catalogue à chaque changement de panier.
+  useEffect(() => {
+    const type = panierActuel?.type ?? panierCommunActuel?.type;
+    if (!type) return;
+    const noms = [...lignes.map(l => l.nom), ...lignesCommun.map(l => l.nom)];
+    if (noms.length === 0) { setDoublons({}); return; }
+    let annule = false;
+    verifierDoublons(noms, type).then(d => { if (!annule) setDoublons(d); });
+    return () => { annule = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId, lignes.length, lignesCommun.length]);
+
   // ─── Recherche ────────────────────────────────────────────────────────────────
 
   const lancerRecherche = (val: string) => {
@@ -627,13 +680,26 @@ export default function StorePage() {
 
   const ajouterJeu = async (jeu: JeuRechercheStore) => {
     if (!panierActuel) return;
+
+    // Déjà en rayon ? Les jeux vidéo ne se rachètent pas — les jeux de société
+    // si (on assume les doublons), ils sont simplement marqués comme tels.
+    const dejaPossede = (await verifierDoublons([jeu.nom], panierActuel.type))[jeu.nom];
+    if (dejaPossede?.possede && panierActuel.type === "JV") {
+      const ok = confirm(`« ${jeu.nom} » est déjà au catalogue jeux vidéo${dejaPossede.detail ? ` (${dejaPossede.detail})` : ""}.\n\nL'ajouter quand même au panier ?`);
+      if (!ok) { setRecherche(""); setResultats([]); setShowResultats(false); return; }
+    }
+    const tagsAuto = dejaPossede?.possede && panierActuel.type !== "JV" ? "double" : null;
+
     const payload = { panier_id: panierActuel.id, nom: jeu.nom, editeur: jeu.editeur ?? null,
       image_url: jeu.image_url ?? null, prix_unitaire: jeu.prix ?? null, quantite: 1,
-      notes: jeu.url_source ?? null, console: jeu.extra ?? null };
+      notes: jeu.url_source ?? null, console: jeu.extra ?? null, tags: tagsAuto };
     const res = await fetch("/api/panier-lignes", {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
     }).then(r => r.json() as Promise<any>).catch(() => null);
-    if (res?.id) setLignes(prev => [{ ...payload, id: res.id, ean: null, tags: null } as PanierLigne, ...prev]);
+    if (res?.id) {
+      setLignes(prev => [{ ...payload, id: res.id, ean: null } as PanierLigne, ...prev]);
+      if (dejaPossede) setDoublons(prev => ({ ...prev, [jeu.nom]: dejaPossede }));
+    }
     setRecherche(""); setResultats([]); setShowResultats(false);
     chargerSummary();
   };
@@ -1156,6 +1222,7 @@ ${filtered.map(l => `<tr>
                                 {ligne.image_url ? <img src={ligne.image_url} alt="" style={{ width: 36, height: 36, objectFit: "contain", borderRadius: 6, background: "var(--cream2)", flexShrink: 0 }} />
                                   : <div style={{ width: 36, height: 36, borderRadius: 6, background: "var(--cream2)", flexShrink: 0 }} />}
                                 <p style={{ fontWeight: 700, fontSize: 14, color: "var(--ink)" }}>{ligne.nom}</p>
+                                <PastilleDoublon doublon={doublons[ligne.nom]} type={panierCommunActuel!.type} />
                               </div>
                             </td>
                             {isJV && (
@@ -1370,6 +1437,7 @@ ${filtered.map(l => `<tr>
                                     <p onClick={() => setNomEdit(ligne.id)} title="Cliquer pour modifier"
                                       style={{ fontWeight: 700, fontSize: 14, color: "var(--ink)", cursor: "text" }}>{ligne.nom}</p>
                                   )}
+                                  <PastilleDoublon doublon={doublons[ligne.nom]} type={panierActuel?.type ?? "JdS"} />
                                   <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: lTags.length > 0 || isEditingTag ? 4 : 0 }}>
                                     {lTags.map(t => (
                                       <button key={t} onClick={() => supprimerTag(ligne.id, t)}
@@ -1499,6 +1567,7 @@ ${filtered.map(l => `<tr>
       {modalWishlist && (
         <ModalWishlistSteam
           lignes={lignesWishlist}
+          doublons={doublons}
           onClose={() => setModalWishlist(false)}
           onSupprimer={supprimerCommunLigne}
           onUpvote={upvoterLigne}
