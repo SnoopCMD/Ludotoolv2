@@ -22,13 +22,14 @@ export async function POST(request: Request) {
   try {
     const db = await getDB();
     const body = await request.json() as any;
+    if (!body.id) body.id = crypto.randomUUID();
     const keys = Object.keys(body);
     const placeholders = keys.map(() => '?').join(',');
     const values = keys.map(k => body[k] ?? null);
-    const result = await db.prepare(
+    await db.prepare(
       `INSERT INTO alertes (${keys.join(',')}) VALUES (${placeholders})`
     ).bind(...values).run();
-    const row = await db.prepare('SELECT * FROM alertes WHERE rowid = ?').bind(result.meta.last_row_id).first();
+    const row = await db.prepare('SELECT * FROM alertes WHERE id = ?').bind(body.id).first();
     return NextResponse.json(row);
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });

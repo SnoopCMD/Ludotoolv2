@@ -2,7 +2,6 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { supabase } from "../lib/supabase";
 
 type Page = "accueil" | "inventaire" | "atelier" | "agenda" | "store" | "catalogage" | "jv";
 
@@ -32,14 +31,19 @@ export default function NavBar({ current }: { current?: Page }) {
 
   useEffect(() => {
     const fetchCount = async () => {
-      const [{ count: alertes }, { count: rappels }, { data: nouveautes }] = await Promise.all([
-        supabase.from("alertes").select("*", { count: "exact", head: true }).eq("statut", "active"),
-        supabase.from("jeux").select("*", { count: "exact", head: true }).eq("notes_rappel", true),
-        supabase.from("jeux").select("date_sortie").eq("etape_nouveaute", true).eq("statut", "En stock").not("date_sortie", "is", null),
+      const toArr = (d: any) => (Array.isArray(d) ? d : []);
+      const [alertes, rappelsJeux, nouveautes] = await Promise.all([
+        fetch("/api/alertes?statut=active").then(r => r.json() as Promise<any>).then(toArr).catch(() => []),
+        fetch("/api/jeux?fields=id,notes&notes_rappel=true").then(r => r.json() as Promise<any>).then(toArr).catch(() => []),
+        fetch(`/api/jeux?fields=date_sortie,etape_nouveaute&statut=${encodeURIComponent("En stock")}`).then(r => r.json() as Promise<any>).then(toArr).catch(() => []),
       ]);
+      const rappelsCount = rappelsJeux.reduce((acc: number, j: any) => {
+        const notes = typeof j.notes === "string" ? (j.notes ? JSON.parse(j.notes) : []) : (j.notes ?? []);
+        return acc + notes.filter((n: any) => n.rappel).length;
+      }, 0);
       const today = new Date();
-      const expiredCount = (nouveautes ?? []).filter((j: any) => new Date(j.date_sortie) <= today).length;
-      setAlertCount((alertes ?? 0) + (rappels ?? 0) + expiredCount);
+      const expiredCount = nouveautes.filter((j: any) => j.etape_nouveaute && j.date_sortie && new Date(j.date_sortie) <= today).length;
+      setAlertCount(alertes.length + rappelsCount + expiredCount);
     };
     fetchCount();
   }, []);

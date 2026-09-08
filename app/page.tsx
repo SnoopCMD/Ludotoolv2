@@ -757,10 +757,10 @@ export default function AccueilPage() {
                 </div>
               ) : (
                 <>
-                  {alertes.map(alerte => {
+                  {alertes.map((alerte, idx) => {
                     const s = ALERTE_STYLES[alerte.type] ?? ALERTE_STYLES.info;
                     return (
-                      <div key={alerte.id} style={{ ...s.card, borderRadius: 10, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8, opacity: resolvingId === alerte.id ? 0 : 1, transition: "opacity 0.3s" }}>
+                      <div key={alerte.id ?? `alerte-${idx}`} style={{ ...s.card, borderRadius: 10, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8, opacity: alerte.id != null && resolvingId === alerte.id ? 0 : 1, transition: "opacity 0.3s" }}>
                         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", flex: 1, minWidth: 0 }}>
                             <span className="pop-sticker" style={{ ...s.badge, border: "1.5px solid var(--ink)", fontSize: 10 }}>{s.icon} {s.label}</span>
