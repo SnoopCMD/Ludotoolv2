@@ -19,6 +19,8 @@
     "@react-pdf/renderer": "^4.3.2",
     "cheerio": "^1.2.0",
     "date-fns": "^4.1.0",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.8",
     "next": "^16.1.7",
     "react": "19.2.3",
     "react-dom": "19.2.3"
@@ -31,6 +33,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
+    "playwright": "^1.60.0",
     "tailwindcss": "^4",
     "typescript": "^5",
     "wrangler": "^4.93.0"

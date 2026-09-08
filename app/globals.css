@@ -217,3 +217,7 @@ body::before {
 .pop-input:focus {
   box-shadow: 4px 4px 0 var(--ink);
 }
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

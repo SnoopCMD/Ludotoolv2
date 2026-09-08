@@ -4,7 +4,7 @@ import { getDB } from '../../../lib/db';
 export async function GET() {
   try {
     const db = await getDB();
-    const result = await db.prepare('SELECT * FROM paniers ORDER BY created_at DESC').all();
+    const result = await db.prepare('SELECT * FROM jv_notes ORDER BY updated_at DESC').all();
     return NextResponse.json(result.results);
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
@@ -15,11 +15,12 @@ export async function POST(request: Request) {
   try {
     const db = await getDB();
     const body = await request.json() as any;
-    const { nom, statut = 'En cours', notes = null, type = 'JdS', tags = null, profil = null } = body;
-    const id = crypto.randomUUID();
+    const id = body.id ?? crypto.randomUUID();
+    const keys = Object.keys({ ...body, id });
+    const vals = keys.map(k => k === 'id' ? id : (body[k] ?? null));
     await db.prepare(
-      `INSERT INTO paniers (id,nom,statut,notes,type,tags,profil) VALUES (?,?,?,?,?,?,?)`
-    ).bind(id, nom, statut, notes, type, tags, profil).run();
+      `INSERT OR REPLACE INTO jv_notes (${keys.join(',')}) VALUES (${keys.map(() => '?').join(',')})`
+    ).bind(...vals).run();
     return NextResponse.json({ id });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });

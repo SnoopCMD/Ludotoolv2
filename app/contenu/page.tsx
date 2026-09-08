@@ -43,7 +43,7 @@ function ContenuPageInner() {
   }, []);
 
   const chargerCatalogue = async () => {
-    const data = await fetch('/api/catalogue').then(r => r.json() as Promise<any>).catch(() => null);
+    const data = await fetch('/api/catalogue', { cache: 'no-store' }).then(r => r.json() as Promise<any>).catch(() => null);
     if (Array.isArray(data)) {
       const dbContenus: Record<string, ContenuType[]> = { vert: [], rose: [], bleu: [], rouge: [], jaune: [] };
       data.forEach(item => {
@@ -107,7 +107,7 @@ function ContenuPageInner() {
       if (isOpening) {
         setTimeout(() => {
           const el = document.getElementById(`category-${id}`);
-          if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 20, behavior: 'smooth' });
+          if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 56, behavior: 'smooth' });
         }, 100);
       }
       return { ...prev, [id]: isOpening };
@@ -187,10 +187,10 @@ function ContenuPageInner() {
             const nbIncomplets = contenus[cat.id].filter(c => !c.elements || c.elements.trim() === "").length;
             const isOpen = sectionsOuvertes[cat.id];
             return (
-              <div key={cat.id} id={`category-${cat.id}`} style={{ border: '2.5px solid var(--ink)', borderRadius: 10, boxShadow: '4px 4px 0 var(--ink)', overflow: 'hidden', position: 'relative', zIndex: 20 }}>
+              <div key={cat.id} id={`category-${cat.id}`} style={{ borderRadius: 10, position: 'relative', zIndex: 20 }}>
 
                 {/* Accordion header */}
-                <div onClick={() => toggleSection(cat.id)} style={{ position: 'sticky', top: 56, zIndex: 40, background: cat.hex, borderBottom: isOpen ? '2.5px solid var(--ink)' : 'none', padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', userSelect: 'none' }}>
+                <div onClick={() => toggleSection(cat.id)} style={{ position: 'sticky', top: 56, zIndex: 40, background: cat.hex, border: '2.5px solid var(--ink)', borderRadius: isOpen ? '10px 10px 0 0' : 10, boxShadow: isOpen ? 'none' : '4px 4px 0 var(--ink)', padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', userSelect: 'none' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     <span className="bc" style={{ fontSize: 22, textTransform: 'uppercase' }}>{cat.nom}</span>
                     <span className="pop-sticker" style={{ background: 'rgba(0,0,0,0.15)', border: '2px solid rgba(0,0,0,0.2)', boxShadow: 'none', fontSize: 12 }}>{contenus[cat.id].length} jeu(x)</span>
@@ -203,10 +203,10 @@ function ContenuPageInner() {
                 </div>
 
                 {isOpen && (
-                  <div style={{ background: 'var(--cream2)', padding: 16, display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                  <div style={{ background: 'var(--cream2)', padding: 16, display: 'flex', gap: 12, alignItems: 'flex-start', borderLeft: '2.5px solid var(--ink)', borderRight: '2.5px solid var(--ink)', borderBottom: '2.5px solid var(--ink)', borderRadius: '0 0 10px 10px' }}>
 
                     {/* Alpha scroll */}
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 72, height: 'calc(100vh - 120px)', background: 'var(--white)', border: '2px solid var(--ink)', borderRadius: 20, padding: '6px 3px', boxShadow: '2px 2px 0 var(--ink)', width: 22, flexShrink: 0 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 112, height: 'calc(100vh - 160px)', background: 'var(--white)', border: '2px solid var(--ink)', borderRadius: 20, padding: '6px 3px', boxShadow: '2px 2px 0 var(--ink)', width: 22, flexShrink: 0 }}>
                       {"ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").map(l => (
                         <button key={l} onClick={() => scrollToLetter(l, cat.id)} style={{ fontSize: 8, fontWeight: 900, color: 'rgba(0,0,0,0.35)', background: 'none', border: 'none', cursor: 'pointer', flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%' }}
                           onMouseEnter={e => (e.currentTarget.style.color = 'var(--ink)')} onMouseLeave={e => (e.currentTarget.style.color = 'rgba(0,0,0,0.35)')}>
@@ -227,7 +227,7 @@ function ContenuPageInner() {
                         const startLetter = c.nom ? c.nom.charAt(0).toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "") : "";
                         return (
                           <div key={c.id} data-letter={startLetter} data-category={cat.id}
-                            style={{ background: estVide && !c.isOpen ? '#fff7ed' : 'var(--white)', border: `2.5px solid ${c.quantity > 0 ? 'var(--ink)' : 'rgba(0,0,0,0.12)'}`, borderRadius: 8, overflow: 'hidden', boxShadow: c.quantity > 0 ? '3px 3px 0 var(--ink)' : 'none', scrollMarginTop: 100 }}>
+                            style={{ background: estVide && !c.isOpen ? '#fff7ed' : 'var(--white)', border: `2.5px solid ${c.quantity > 0 ? 'var(--ink)' : 'rgba(0,0,0,0.12)'}`, borderRadius: 8, overflow: 'hidden', boxShadow: c.quantity > 0 ? '3px 3px 0 var(--ink)' : 'none', scrollMarginTop: 116 }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', cursor: 'pointer' }} onClick={() => toggleLigne(cat.id, c.id)}>
                               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, width: 52, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
                                 <span style={{ fontSize: 9, fontWeight: 700, color: 'rgba(0,0,0,0.35)', textTransform: 'uppercase', letterSpacing: '.06em' }}>QTE</span>

@@ -59,7 +59,6 @@ type JvRotationConfig = {
   id: string;
   current_slot_index: number;
   week_start: string;
-  config?: { extra_creneaux?: Record<string, string[]> };
 };
 
 type JoueurDetail = {
@@ -74,7 +73,9 @@ type JvReservation = {
   jeu2_id: string | null;
   poste: string;
   date_creneau: string;
-  creneau: string;
+  creneau?: string;       // legacy – conservé pour la rétro-compat
+  heure_debut: string;    // "16:00"
+  heure_fin: string;      // "16:45"
   adherent_nom: string;
   nb_joueurs: number;
   joueurs_details: JoueurDetail[] | null;
@@ -91,6 +92,22 @@ type JvStat = {
   image_url: string | null;
   nb_reservations: number;
 };
+
+type JvNote = {
+  id: string;
+  titre: string;
+  contenu: string | null;
+  couleur: string;
+  tags: string | null; // JSON: string[]
+  created_at: string;
+  updated_at: string;
+};
+
+type NoteTextBlock  = { type: 'text';  value: string };
+type NoteTableBlock = { type: 'table'; headers: string[]; rows: string[][] };
+type NoteListItem   = { text: string; checked: boolean };
+type NoteListBlock  = { type: 'list';  variant: 'numbered' | 'check'; items: NoteListItem[] };
+type ContentBlock   = NoteTextBlock | NoteTableBlock | NoteListBlock;
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
@@ -124,8 +141,8 @@ const SLOT_LABEL: Record<SelectionSlot, string> = {
 };
 const SLOT_HAS_PERMANENT: Record<SelectionSlot, boolean> = {
   PS5: true,
-  Switch_Multi: true,
-  Switch_Solo: true,
+  Switch_Multi: false,
+  Switch_Solo: false,
   PC: true,
 };
 const ROTATION_ORDER: SelectionSlot[] = ["PS5", "Switch_Multi", "Switch_Solo", "PC"];
@@ -138,22 +155,14 @@ const POSTE_SLOT: Record<string, SelectionSlot> = {
   pc2: "PC",
 };
 
-// Créneaux par jour (getDay : 2=Mar, 3=Mer, 4=Jeu, 5=Ven)
-const CRENEAUX_PAR_JOUR: Record<number, string[]> = {
-  2: ["16h-17h", "17h-18h"],
-  3: ["15h-16h", "16h-17h"],
-  4: ["15h-16h", "16h-17h"],
-  5: ["16h-17h", "17h-18h"],
+// Plage horaire par jour (getDay : 2=Mar, 3=Mer, 4=Jeu, 5=Ven)
+const PLAGE_PAR_JOUR: Record<number, { debut: string; fin: string }> = {
+  2: { debut: "16:00", fin: "18:00" },
+  3: { debut: "15:00", fin: "17:00" },
+  4: { debut: "15:00", fin: "17:00" },
+  5: { debut: "16:00", fin: "18:00" },
 };
 const JOURS_OUVERTS = [2, 3, 4, 5];
-
-// Créneaux d'un jour donné = créneaux récurrents + créneaux exceptionnels ajoutés pour cette date précise
-function getCreneauxJour(dateStr: string, extraCreneaux: Record<string, string[]> | undefined): string[] {
-  const dow = getDay(parseISO(dateStr));
-  const base = CRENEAUX_PAR_JOUR[dow] ?? [];
-  const extra = extraCreneaux?.[dateStr] ?? [];
-  return [...base, ...extra.filter(cr => !base.includes(cr))];
-}
 
 type Poste = { id: string; label: string; console: Console; maxJoueurs: number; multiOnly: boolean };
 const POSTES: Poste[] = [
@@ -179,6 +188,60 @@ function nextOpenDay(): string {
 
 const normalizeStr = (s: string) =>
   s?.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]/g, "") ?? "";
+
+// ─── Helpers horaires ─────────────────────────────────────────────────────────
+
+function parseTime(t: string): number {
+  if (!t) return 0;
+  const [h, m] = t.split(":").map(Number);
+  return h * 60 + (m || 0);
+}
+
+function minsToTime(mins: number): string {
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+function heureLabel(t: string): string {
+  if (!t) return "";
+  const [h, m] = t.split(":").map(Number);
+  return m === 0 ? `${h}h` : `${h}h${String(m).padStart(2, "0")}`;
+}
+
+function timesOverlap(s1: string, e1: string, s2: string, e2: string): boolean {
+  return parseTime(s1) < parseTime(e2) && parseTime(e1) > parseTime(s2);
+}
+
+// Retourne les heures de début disponibles (granularité 15 min) pour un poste+jour donné
+function getAvailableStartTimes(
+  posResas: JvReservation[],
+  windowDebut: string,
+  windowFin: string,
+  minDuration = 15
+): string[] {
+  const wStart = parseTime(windowDebut);
+  const wEnd   = parseTime(windowFin);
+  const occupied = posResas
+    .filter(r => r.statut !== "annulee")
+    .map(r => ({ start: parseTime(r.heure_debut), end: parseTime(r.heure_fin) }));
+  const result: string[] = [];
+  for (let t = wStart; t + minDuration <= wEnd; t += 15) {
+    const isFree = !occupied.some(o => t >= o.start && t < o.end);
+    if (isFree) result.push(minsToTime(t));
+  }
+  return result;
+}
+
+// Première heure disponible (pour pré-remplir le modal depuis le planning)
+function getFirstAvailableTime(
+  posResas: JvReservation[],
+  windowDebut: string,
+  windowFin: string
+): string | null {
+  const slots = getAvailableStartTimes(posResas, windowDebut, windowFin);
+  return slots[0] ?? null;
+}
 
 // ─── Modal : Fiche / Ajout Jeu (avec recherche EAN + PS Store/Nintendo/Steam) ─
 
@@ -1161,25 +1224,26 @@ function ModalRotationPlanning({
 function ModalReservation({
   jeux,
   selections,
+  reservations,
   preDate,
-  preCreneau,
+  preHeureDebut,
   prePoste,
-  extraCreneaux,
   onClose,
   onSaved,
 }: {
   jeux: JvJeu[];
   selections: JvSelection[];
+  reservations: JvReservation[];
   preDate?: string;
-  preCreneau?: string;
+  preHeureDebut?: string;
   prePoste?: string;
-  extraCreneaux?: Record<string, string[]>;
   onClose: () => void;
   onSaved: (r: JvReservation) => void;
 }) {
   const [posteId, setPosteId] = useState(prePoste ?? "ps5");
   const [date, setDate] = useState(preDate ?? nextOpenDay());
-  const [creneau, setCreneau] = useState("");
+  const [heureDebut, setHeureDebut] = useState("");
+  const [durationMins, setDurationMins] = useState(60);
   const [jeuId, setJeuId] = useState("");
   const [nbJoueurs, setNbJoueurs] = useState(1);
   const [joueurs, setJoueurs] = useState<JoueurDetail[]>([{ nom: "", sexe: null, age: null }]);
@@ -1189,26 +1253,66 @@ function ModalReservation({
   const poste = POSTES.find(p => p.id === posteId)!;
   const slot = POSTE_SLOT[posteId];
   const dayOfWeek = getDay(parseISO(date));
-  const creneauxDispo = getCreneauxJour(date, extraCreneaux);
+  const plage = PLAGE_PAR_JOUR[dayOfWeek];
   const isJourOuvert = JOURS_OUVERTS.includes(dayOfWeek);
 
-  // Initialise le créneau quand la date change
-  useEffect(() => {
-    if (preCreneau && creneauxDispo.includes(preCreneau)) setCreneau(preCreneau);
-    else setCreneau(creneauxDispo[0] ?? "");
-  }, [date]);
+  // Réservations existantes pour ce poste + cette date
+  const posResas = useMemo(() =>
+    reservations.filter(r => r.poste === posteId && r.date_creneau === date && r.statut !== "annulee"),
+    [reservations, posteId, date]
+  );
 
-  // Jeux de la sélection active pour ce slot (rotation + permanent)
+  // Heures de début disponibles
+  const availableStartTimes = useMemo(() =>
+    plage ? getAvailableStartTimes(posResas, plage.debut, plage.fin) : [],
+    [posResas, plage]
+  );
+
+  // Initialise l'heure de début quand date/poste change
+  useEffect(() => {
+    if (!plage) return;
+    if (preHeureDebut && availableStartTimes.includes(preHeureDebut)) {
+      setHeureDebut(preHeureDebut);
+    } else {
+      setHeureDebut(availableStartTimes[0] ?? "");
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [date, posteId]);
+
+  // Durée maximale possible pour l'heure de début sélectionnée
+  const maxDurationMins = useMemo(() => {
+    if (!plage || !heureDebut) return 60;
+    const startMins  = parseTime(heureDebut);
+    const windowEnd  = parseTime(plage.fin);
+    // Prochaine réservation qui commence après heureDebut
+    const nextStart  = posResas
+      .map(r => parseTime(r.heure_debut))
+      .filter(t => t > startMins)
+      .sort((a, b) => a - b)[0];
+    return Math.min(60, (nextStart ?? windowEnd) - startMins);
+  }, [heureDebut, posResas, plage]);
+
+  // Durées disponibles
+  const availableDurations = [15, 30, 45, 60].filter(d => d <= maxDurationMins);
+
+  // Recale la durée si elle dépasse le max
+  useEffect(() => {
+    if (durationMins > maxDurationMins && maxDurationMins > 0)
+      setDurationMins(availableDurations[availableDurations.length - 1] ?? maxDurationMins);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [maxDurationMins]);
+
+  const heureFin = heureDebut ? minsToTime(parseTime(heureDebut) + durationMins) : "";
+
+  // Jeux de la sélection active pour ce slot
   const activeSelections = selections.filter(s => s.slot === slot && s.statut === "actif");
   const jeuxDispo = activeSelections
     .map(s => ({ sel: s, jeu: jeux.find(j => j.id === s.jeu_id) }))
     .filter((x): x is { sel: JvSelection; jeu: JvJeu } => !!x.jeu)
     .filter(x => slot !== "Switch_Multi" || (x.jeu.nb_joueurs && x.jeu.nb_joueurs !== "1"));
 
-  // Reset jeu + joueurs quand le poste change
   useEffect(() => { setJeuId(""); setNbJoueurs(1); setJoueurs([{ nom: "", sexe: null, age: null }]); }, [posteId]);
 
-  // Ajuste le tableau joueurs quand nbJoueurs change
   useEffect(() => {
     setJoueurs(prev => {
       if (nbJoueurs > prev.length)
@@ -1220,12 +1324,16 @@ function ModalReservation({
   const updateJoueur = (i: number, patch: Partial<JoueurDetail>) =>
     setJoueurs(prev => prev.map((j, idx) => idx === i ? { ...j, ...patch } : j));
 
+  const canSave = !!(jeuId && joueurs[0]?.nom.trim() && heureDebut && heureFin && isJourOuvert && posteId);
+
   const save = async () => {
-    const nomPrincipal = joueurs[0]?.nom.trim() ?? "";
-    if (!jeuId || !nomPrincipal || !creneau || !isJourOuvert || !posteId) return;
+    if (!canSave) return;
     setIsSaving(true);
+    const nomPrincipal = joueurs[0].nom.trim();
     const payload = {
-      jeu_id: jeuId, poste: posteId, date_creneau: date, creneau,
+      jeu_id: jeuId, poste: posteId, date_creneau: date,
+      heure_debut: heureDebut, heure_fin: heureFin,
+      creneau: `${heureLabel(heureDebut)}-${heureLabel(heureFin)}`,
       adherent_nom: nomPrincipal, nb_joueurs: nbJoueurs,
       joueurs_details: JSON.stringify(joueurs),
       notes: notes.trim() || null, statut: "confirmee",
@@ -1275,27 +1383,63 @@ function ModalReservation({
             )}
           </div>
 
-          {/* Date + créneau */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <div>
-              <label style={Slabel}>Date *</label>
-              <input type="date" value={date} onChange={e => setDate(e.target.value)}
-                className="pop-input"
-                style={{ width: '100%', background: isJourOuvert ? undefined : 'var(--rose)', borderColor: isJourOuvert ? undefined : 'var(--ink)' }} />
-              {!isJourOuvert && <p style={{ fontSize: 10, color: 'var(--rouge)', marginTop: 4, fontWeight: 700 }}>Ouvert Mar · Mer · Jeu · Ven uniquement</p>}
-            </div>
-            <div>
-              <label style={Slabel}>Créneau *</label>
-              {creneauxDispo.length > 0 ? (
-                <select value={creneau} onChange={e => setCreneau(e.target.value)}
-                  className="pop-input" style={{ width: '100%', cursor: 'pointer' }}>
-                  {creneauxDispo.map(cr => <option key={cr} value={cr}>{cr}</option>)}
-                </select>
-              ) : (
-                <div className="pop-input" style={{ color: 'rgba(0,0,0,0.3)' }}>—</div>
-              )}
-            </div>
+          {/* Date */}
+          <div>
+            <label style={Slabel}>Date *</label>
+            <input type="date" value={date} onChange={e => setDate(e.target.value)}
+              className="pop-input"
+              style={{ width: '100%', background: isJourOuvert ? undefined : 'var(--rose)', borderColor: isJourOuvert ? undefined : 'var(--ink)' }} />
+            {!isJourOuvert && <p style={{ fontSize: 10, color: 'var(--rouge)', marginTop: 4, fontWeight: 700 }}>Ouvert Mar · Mer · Jeu · Ven uniquement</p>}
+            {isJourOuvert && plage && (
+              <p style={{ fontSize: 10, color: 'rgba(0,0,0,0.4)', marginTop: 4, fontWeight: 600 }}>Plage : {heureLabel(plage.debut)} – {heureLabel(plage.fin)}</p>
+            )}
           </div>
+
+          {/* Heure début + durée */}
+          {isJourOuvert && plage && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <div>
+                <label style={Slabel}>Début *</label>
+                {availableStartTimes.length > 0 ? (
+                  <select value={heureDebut} onChange={e => setHeureDebut(e.target.value)}
+                    className="pop-input" style={{ width: '100%', cursor: 'pointer' }}>
+                    {availableStartTimes.map(t => (
+                      <option key={t} value={t}>{heureLabel(t)}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <div className="pop-input" style={{ color: 'var(--rouge)', fontWeight: 700, fontSize: 12 }}>Complet</div>
+                )}
+              </div>
+              <div>
+                <label style={Slabel}>Durée *</label>
+                {availableDurations.length > 0 ? (
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    {availableDurations.map(d => (
+                      <button key={d} onClick={() => setDurationMins(d)}
+                        className={durationMins === d ? "pop-btn pop-btn-dark" : "pop-btn pop-btn-outline"}
+                        style={{ flex: 1, justifyContent: 'center', fontSize: 11, padding: '7px 4px' }}>
+                        {d < 60 ? `${d}m` : "1h"}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="pop-input" style={{ color: 'rgba(0,0,0,0.3)' }}>—</div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Résumé horaire */}
+          {heureDebut && heureFin && (
+            <div style={{ background: 'var(--cream2)', border: '2px solid var(--ink)', borderRadius: 10, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 22 }}>⏱</span>
+              <div>
+                <p style={{ fontWeight: 900, fontSize: 15, margin: 0 }}>{heureLabel(heureDebut)} → {heureLabel(heureFin)}</p>
+                <p style={{ fontSize: 10, color: 'rgba(0,0,0,0.45)', margin: 0 }}>{durationMins} min · {poste.label}</p>
+              </div>
+            </div>
+          )}
 
           {/* Jeu */}
           <div>
@@ -1401,9 +1545,9 @@ function ModalReservation({
           <button onClick={onClose} className="pop-btn pop-btn-outline" style={{ flex: 1, justifyContent: 'center' }}>
             Annuler
           </button>
-          <button onClick={save} disabled={isSaving || !jeuId || !joueurs[0]?.nom.trim() || !creneau || !isJourOuvert}
+          <button onClick={save} disabled={isSaving || !canSave}
             className="pop-btn pop-btn-dark"
-            style={{ flex: 1, justifyContent: 'center', opacity: (isSaving || !jeuId || !joueurs[0]?.nom.trim() || !creneau || !isJourOuvert) ? 0.4 : 1, cursor: (isSaving || !jeuId || !joueurs[0]?.nom.trim() || !creneau || !isJourOuvert) ? 'not-allowed' : 'pointer' }}>
+            style={{ flex: 1, justifyContent: 'center', opacity: (isSaving || !canSave) ? 0.4 : 1, cursor: (isSaving || !canSave) ? 'not-allowed' : 'pointer' }}>
             {isSaving ? "Sauvegarde…" : "Confirmer"}
           </button>
         </div>
@@ -1414,22 +1558,33 @@ function ModalReservation({
 
 // ─── Statut calculé automatiquement ──────────────────────────────────────────
 
-function parseCreneau(creneau: string): { startH: number; endH: number } {
-  const parts = creneau.split("-");
-  return { startH: parseInt(parts[0]), endH: parseInt(parts[1]) };
-}
-
 type DisplayStatus = "a_venir" | "en_cours" | "passee" | "annulee";
 
 function getDisplayStatus(r: JvReservation): DisplayStatus {
   if (r.statut === "annulee") return "annulee";
   const today = format(new Date(), "yyyy-MM-dd");
-  const nowH = new Date().getHours();
+  const now = new Date();
+  const nowMins = now.getHours() * 60 + now.getMinutes();
   if (r.date_creneau < today) return "passee";
   if (r.date_creneau > today) return "a_venir";
-  const { startH, endH } = parseCreneau(r.creneau);
-  if (nowH >= startH && nowH < endH) return "en_cours";
-  if (nowH >= endH) return "passee";
+
+  // Utilise heure_debut/heure_fin si disponibles, sinon fallback legacy creneau
+  if (r.heure_debut && r.heure_fin) {
+    const startMins = parseTime(r.heure_debut);
+    const endMins   = parseTime(r.heure_fin);
+    if (nowMins >= startMins && nowMins < endMins) return "en_cours";
+    if (nowMins >= endMins) return "passee";
+    return "a_venir";
+  }
+
+  // Legacy : "16h-17h"
+  if (r.creneau) {
+    const parts = r.creneau.split("-");
+    const startH = parseInt(parts[0]);
+    const endH   = parseInt(parts[1]);
+    if (nowMins >= startH * 60 && nowMins < endH * 60) return "en_cours";
+    if (nowMins >= endH * 60) return "passee";
+  }
   return "a_venir";
 }
 
@@ -1449,6 +1604,7 @@ function ModalReservationDetail({
   reservation,
   jeux,
   selections,
+  reservations,
   onClose,
   onSaved,
   onCancelled,
@@ -1456,6 +1612,7 @@ function ModalReservationDetail({
   reservation: JvReservation;
   jeux: JvJeu[];
   selections: JvSelection[];
+  reservations: JvReservation[];
   onClose: () => void;
   onSaved: (r: JvReservation) => void;
   onCancelled: (id: string) => void;
@@ -1470,8 +1627,47 @@ function ModalReservationDetail({
   const [notes, setNotes] = useState(reservation.notes ?? "");
   const [jeuId, setJeuId] = useState(reservation.jeu_id);
   const [jeu2Id, setJeu2Id] = useState<string | null>(reservation.jeu2_id ?? null);
+  const [heureDebut, setHeureDebut] = useState(reservation.heure_debut ?? "");
+  const [heureFin, setHeureFin] = useState(reservation.heure_fin ?? "");
   const [isSaving, setIsSaving] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
+
+  const dayOfWeek = getDay(parseISO(reservation.date_creneau));
+  const plage = PLAGE_PAR_JOUR[dayOfWeek];
+
+  // Réservations du même poste/jour (hors réservation courante) pour calcul des dispos
+  const posResas = useMemo(() =>
+    reservations.filter(r => r.poste === reservation.poste && r.date_creneau === reservation.date_creneau && r.statut !== "annulee" && r.id !== reservation.id),
+    [reservations, reservation]
+  );
+
+  // Heures de début disponibles (+ heure actuelle toujours présente)
+  const availableStartTimes = useMemo(() => {
+    if (!plage) return reservation.heure_debut ? [reservation.heure_debut] : [];
+    const free = getAvailableStartTimes(posResas, plage.debut, plage.fin);
+    return [...new Set([reservation.heure_debut, ...free].filter(Boolean))].sort() as string[];
+  }, [posResas, plage, reservation.heure_debut]);
+
+  // Quand l'heure de début change, recaler heureFin sur la valeur par défaut (60 min)
+  useEffect(() => {
+    if (!heureDebut) return;
+    const start = parseTime(heureDebut);
+    const windowEnd = plage ? parseTime(plage.fin) : start + 60;
+    const defaultFin = minsToTime(Math.min(start + 60, windowEnd));
+    setHeureFin(defaultFin);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [heureDebut]);
+
+  // Options de fin : de heureDebut+15 à heureDebut+60, par 15 min
+  const heureFinOptions = useMemo(() => {
+    if (!heureDebut) return [];
+    const start = parseTime(heureDebut);
+    const windowEnd = plage ? parseTime(plage.fin) : start + 60;
+    const opts: string[] = [];
+    for (let d = 15; d <= 60 && start + d <= windowEnd; d += 15)
+      opts.push(minsToTime(start + d));
+    return opts;
+  }, [heureDebut, plage]);
 
   useEffect(() => {
     setJoueurs(prev => {
@@ -1501,14 +1697,23 @@ function ModalReservationDetail({
     const nomPrincipal = joueurs[0]?.nom.trim() ?? "";
     if (!nomPrincipal) return;
     setIsSaving(true);
-    const patch = { adherent_nom: nomPrincipal, nb_joueurs: nbJoueurs, joueurs_details: JSON.stringify(joueurs), notes: notes.trim() || null, jeu_id: jeuId, jeu2_id: jeu2Id };
+    const patch: Record<string, any> = {
+      adherent_nom: nomPrincipal, nb_joueurs: nbJoueurs,
+      joueurs_details: JSON.stringify(joueurs), notes: notes.trim() || null,
+      jeu_id: jeuId, jeu2_id: jeu2Id,
+    };
+    if (heureDebut && heureDebut !== reservation.heure_debut) patch.heure_debut = heureDebut;
+    if (heureFin && heureFin !== reservation.heure_fin) patch.heure_fin = heureFin;
     const res = await fetch(`/api/jv-reservations/${reservation.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(patch),
     }).then(r => r.json() as Promise<any>).catch(() => ({ error: 'réseau' }));
     if (res.error) { alert("Erreur : " + res.error); setIsSaving(false); return; }
-    onSaved({ ...reservation, ...patch, joueurs_details: joueurs } as JvReservation);
+    onSaved({ ...reservation, ...patch, joueurs_details: joueurs,
+      heure_debut: patch.heure_debut ?? reservation.heure_debut,
+      heure_fin: patch.heure_fin ?? reservation.heure_fin,
+    } as JvReservation);
     setIsSaving(false);
     onClose();
   };
@@ -1539,7 +1744,9 @@ function ModalReservationDetail({
             </p>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 5, flexWrap: 'wrap' }}>
               <span className="pop-sticker" style={{ fontSize: 11, padding: '3px 10px', background: 'var(--white)' }}>{poste?.label ?? reservation.poste}</span>
-              <span style={{ fontSize: 12, fontWeight: 600, color: 'rgba(0,0,0,0.5)' }}>{reservation.creneau}</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: 'rgba(0,0,0,0.6)' }}>
+                {heureDebut ? `${heureLabel(heureDebut)} – ${heureLabel(heureFin || reservation.heure_fin)}` : (reservation.creneau ?? "")}
+              </span>
               <span className="pop-sticker" style={{ fontSize: 10, padding: '3px 8px', background: 'var(--white)', display: 'flex', alignItems: 'center', gap: 4 }}>
                 {displayStatus === "en_cours" && <span className="pulse" style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--vert)', display: 'inline-block' }} />}
                 {STATUS_LABEL[displayStatus]}
@@ -1630,13 +1837,18 @@ function ModalReservationDetail({
           <div>
             <label style={SlabelD}>Nb joueurs (max {poste?.maxJoueurs ?? 2})</label>
             <div style={{ display: 'flex', gap: 8 }}>
-              {Array.from({ length: poste?.maxJoueurs ?? 2 }, (_, i) => i + 1).map(n => (
+              {Array.from({ length: Math.max(nbJoueurs, poste?.maxJoueurs ?? 2) }, (_, i) => i + 1).map(n => (
                 <button key={n} onClick={() => setNbJoueurs(n)}
                   className={nbJoueurs === n ? "pop-btn pop-btn-dark" : "pop-btn pop-btn-outline"}
-                  style={{ flex: 1, justifyContent: 'center' }}>
+                  style={{ flex: 1, justifyContent: 'center', ...(n > (poste?.maxJoueurs ?? 2) ? { borderStyle: 'dashed', opacity: 0.7 } : {}) }}>
                   {n}
                 </button>
               ))}
+              <button onClick={() => setNbJoueurs(n => n + 1)} title="Ajouter un joueur (hors norme)"
+                className="pop-btn pop-btn-outline"
+                style={{ padding: '6px 10px', borderStyle: 'dashed', opacity: 0.6 }}>
+                +
+              </button>
             </div>
           </div>
 
@@ -1677,6 +1889,48 @@ function ModalReservationDetail({
               </div>
             ))}
           </div>
+
+          {/* Heure de début */}
+          {reservation.statut !== "annulee" && availableStartTimes.length > 0 && (
+            <div>
+              <label style={SlabelD}>Heure de départ</label>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {availableStartTimes.map(t => (
+                  <button key={t} onClick={() => setHeureDebut(t)}
+                    className={heureDebut === t ? "pop-btn pop-btn-dark" : "pop-btn pop-btn-outline"}
+                    style={{ fontSize: 12, padding: '6px 12px' }}>
+                    {heureLabel(t)}
+                  </button>
+                ))}
+              </div>
+              {heureDebut !== reservation.heure_debut && (
+                <p style={{ fontSize: 10, color: 'var(--orange)', fontWeight: 700, marginTop: 6 }}>
+                  Départ décalé : {heureLabel(reservation.heure_debut)} → {heureLabel(heureDebut)}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Fin de session */}
+          {reservation.statut !== "annulee" && heureDebut && heureFinOptions.length > 0 && (
+            <div>
+              <label style={SlabelD}>Fin de session</label>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {heureFinOptions.map(t => (
+                  <button key={t} onClick={() => setHeureFin(t)}
+                    className={heureFin === t ? "pop-btn pop-btn-dark" : "pop-btn pop-btn-outline"}
+                    style={{ fontSize: 12, padding: '6px 12px' }}>
+                    {heureLabel(t)}
+                  </button>
+                ))}
+              </div>
+              {heureFin && heureFin !== reservation.heure_fin && heureDebut === reservation.heure_debut && (
+                <p style={{ fontSize: 10, color: 'var(--orange)', fontWeight: 700, marginTop: 6 }}>
+                  Session raccourcie : {heureLabel(heureDebut)} → {heureLabel(heureFin)} ({parseTime(heureFin) - parseTime(heureDebut)} min)
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Notes */}
           <div>
@@ -1867,7 +2121,10 @@ function ModalCorrectionSemaine({
 
   const resasSemaine = reservations
     .filter(r => postes.some(p => p.id === r.poste) && r.statut !== "annulee" && r.date_creneau >= weekStart && r.date_creneau <= weekEnd)
-    .sort((a, b) => a.date_creneau.localeCompare(b.date_creneau) || a.creneau.localeCompare(b.creneau));
+    .sort((a, b) =>
+      a.date_creneau.localeCompare(b.date_creneau) ||
+      (a.heure_debut ?? a.creneau ?? "").localeCompare(b.heure_debut ?? b.creneau ?? "")
+    );
 
   const [jeuMap, setJeuMap] = useState<Record<string, string>>({});
   const weekKey = format(lundi, "yyyy-MM-dd");
@@ -1960,7 +2217,9 @@ function ModalCorrectionSemaine({
                     <p style={{ fontSize: 10, fontWeight: 900, textTransform: 'capitalize', margin: 0 }}>
                       {format(parseISO(r.date_creneau), "EEE d MMM", { locale: fr })}
                     </p>
-                    <p style={{ fontSize: 9, color: 'rgba(0,0,0,0.4)', margin: 0 }}>{r.creneau}</p>
+                    <p style={{ fontSize: 9, color: 'rgba(0,0,0,0.4)', margin: 0 }}>
+                      {r.heure_debut ? `${heureLabel(r.heure_debut)}-${heureLabel(r.heure_fin)}` : (r.creneau ?? "")}
+                    </p>
                     <p style={{ fontSize: 9, color: 'rgba(0,0,0,0.5)', margin: 0 }}>{posteItem?.label} · {r.adherent_nom} · {r.nb_joueurs}J</p>
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -2197,21 +2456,15 @@ function TabSelections({
 function TabReservations({
   jeux,
   reservations,
-  extraCreneaux,
-  onAddCreneau,
   onNouvelle,
   onOpenDetail,
 }: {
   jeux: JvJeu[];
   reservations: JvReservation[];
-  extraCreneaux?: Record<string, string[]>;
-  onAddCreneau: (dateStr: string, creneau: string) => void;
-  onNouvelle: (date?: string, creneau?: string, poste?: string) => void;
+  onNouvelle: (date?: string, heureDebut?: string, poste?: string) => void;
   onOpenDetail: (r: JvReservation) => void;
 }) {
   const [semaine, setSemaine] = useState(new Date());
-  const [addingFor, setAddingFor] = useState<string | null>(null);
-  const [newCreneau, setNewCreneau] = useState("");
   const lundi = startOfWeek(semaine, { weekStartsOn: 1 });
   const joursOuverts = eachDayOfInterval({ start: addDays(lundi, 1), end: addDays(lundi, 4) });
 
@@ -2232,12 +2485,6 @@ function TabReservations({
       .sort((a, b) => b.nb_reservations - a.nb_reservations);
   }, [reservations, jeux]);
 
-  const getResaPoste = (date: Date, cr: string, posteId: string) =>
-    reservations.find(r =>
-      r.date_creneau === format(date, "yyyy-MM-dd") &&
-      r.creneau === cr && r.poste === posteId && r.statut !== "annulee"
-    );
-
   const countByStatus = useMemo(() => ({
     en_cours: reservations.filter(r => getDisplayStatus(r) === "en_cours").length,
     a_venir:  reservations.filter(r => getDisplayStatus(r) === "a_venir").length,
@@ -2248,13 +2495,17 @@ function TabReservations({
     const today = format(new Date(), "yyyy-MM-dd");
     return reservations
       .filter(r => r.statut !== "annulee" && r.date_creneau >= today)
-      .sort((a, b) => a.date_creneau.localeCompare(b.date_creneau) || a.creneau.localeCompare(b.creneau));
+      .sort((a, b) =>
+        a.date_creneau.localeCompare(b.date_creneau) ||
+        (a.heure_debut ?? a.creneau ?? "").localeCompare(b.heure_debut ?? b.creneau ?? "")
+      );
   }, [reservations]);
 
   const enCoursResas = sidebarResas.filter(r => getDisplayStatus(r) === "en_cours");
   const aVenirResas  = sidebarResas.filter(r => getDisplayStatus(r) === "a_venir");
 
-  const POSTE_BG: Record<string, string> = { ps5: 'var(--bleu)', switch_multi: 'var(--rouge)', switch_solo: 'var(--rouge)', pc: 'var(--cream2)' };
+  const POSTE_BG: Record<string, string> = { ps5: 'var(--bleu)', switch_multi: 'var(--rouge)', switch_solo: 'var(--rouge)', pc1: 'var(--cream2)', pc2: 'var(--cream2)' };
+  const POSTE_BLOCK_BG: Record<string, string> = { ps5: '#bfdbfe', switch_multi: '#fecaca', switch_solo: '#fbcfe8', pc1: '#e2e8f0', pc2: '#e2e8f0' };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -2298,109 +2549,148 @@ function TabReservations({
             </button>
           </div>
 
-          {/* Légende postes */}
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {POSTES.map(p => (
-              <span key={p.id} className="pop-sticker" style={{ fontSize: 10, padding: '3px 8px', background: POSTE_BG[p.id] ?? 'var(--cream2)' }}>
-                {p.label}
-              </span>
-            ))}
-          </div>
-
-          {/* Jours */}
+          {/* Jours — timeline */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {joursOuverts.map(d => {
+              const dow = getDay(d);
+              const plage = PLAGE_PAR_JOUR[dow];
               const dateStr = format(d, "yyyy-MM-dd");
-              const creneaux = getCreneauxJour(dateStr, extraCreneaux);
-              const isAdding = addingFor === dateStr;
+              if (!plage) return null;
+
+              const wStart = parseTime(plage.debut);
+              const wEnd   = parseTime(plage.fin);
+              const wDur   = wEnd - wStart;
+
+              // Marques horaires (chaque heure)
+              const heureMarks: number[] = [];
+              for (let h = wStart; h <= wEnd; h += 60) heureMarks.push(h);
+
               return (
                 <div key={dateStr} className="pop-card" style={{ overflow: 'hidden', background: 'var(--cream)', outline: isToday(d) ? '3px solid var(--ink)' : 'none', outlineOffset: isToday(d) ? 2 : 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', borderBottom: '2px solid var(--ink)', background: isToday(d) ? 'var(--ink)' : 'var(--cream2)' }}>
-                    <span style={{ fontWeight: 900, fontSize: 13, color: isToday(d) ? 'var(--white)' : 'var(--ink)', textTransform: 'capitalize' }}>{format(d, "EEEE d MMMM", { locale: fr })}</span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {/* En-tête jour */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderBottom: '2px solid var(--ink)', background: isToday(d) ? 'var(--ink)' : 'var(--cream2)' }}>
+                    <span style={{ fontWeight: 900, fontSize: 13, color: isToday(d) ? 'var(--white)' : 'var(--ink)', textTransform: 'capitalize' }}>
+                      {format(d, "EEEE d MMMM", { locale: fr })}
+                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       {isToday(d) && <span className="pop-sticker" style={{ fontSize: 9, padding: '2px 8px', background: '#baff29' }}>Aujourd&apos;hui</span>}
-                      {!isAdding && (
-                        <button onClick={() => { setAddingFor(dateStr); setNewCreneau(""); }}
-                          title="Ajouter un créneau exceptionnel ce jour-là"
-                          style={{ fontSize: 10, fontWeight: 800, padding: '3px 8px', border: '1.5px dashed currentColor', borderRadius: 6, background: 'transparent', color: isToday(d) ? 'var(--white)' : 'rgba(0,0,0,0.45)', cursor: 'pointer' }}>
-                          + Créneau
-                        </button>
-                      )}
+                      <span style={{ fontSize: 10, fontWeight: 700, color: isToday(d) ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.4)' }}>
+                        {heureLabel(plage.debut)} – {heureLabel(plage.fin)}
+                      </span>
                     </div>
                   </div>
-                  {isAdding && (
-                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', padding: '8px 16px', borderBottom: '1.5px solid var(--cream2)', background: 'var(--white)' }}>
-                      <input
-                        type="text"
-                        value={newCreneau}
-                        onChange={e => setNewCreneau(e.target.value)}
-                        onKeyDown={e => {
-                          if (e.key === "Enter" && newCreneau.trim()) { onAddCreneau(dateStr, newCreneau.trim()); setAddingFor(null); }
-                          if (e.key === "Escape") setAddingFor(null);
-                        }}
-                        placeholder="ex. 17h-18h"
-                        autoFocus
-                        className="pop-input" style={{ flex: 1, fontSize: 12, padding: '5px 10px' }} />
-                      <button
-                        onClick={() => { if (newCreneau.trim()) { onAddCreneau(dateStr, newCreneau.trim()); setAddingFor(null); } }}
-                        disabled={!newCreneau.trim()}
-                        className="pop-btn pop-btn-dark" style={{ fontSize: 11, padding: '5px 10px', opacity: newCreneau.trim() ? 1 : 0.4 }}>
-                        Ajouter
-                      </button>
-                      <button onClick={() => setAddingFor(null)} className="pop-btn pop-btn-outline" style={{ fontSize: 11, padding: '5px 10px' }}>
-                        Annuler
-                      </button>
+
+                  {/* Repères horaires */}
+                  <div style={{ display: 'flex', padding: '4px 14px 2px', paddingLeft: 80 }}>
+                    <div style={{ flex: 1, position: 'relative', height: 14 }}>
+                      {heureMarks.map(h => (
+                        <span key={h} style={{
+                          position: 'absolute',
+                          left: `${(h - wStart) / wDur * 100}%`,
+                          transform: h === wEnd ? 'translateX(-100%)' : h === wStart ? 'none' : 'translateX(-50%)',
+                          fontSize: 9, fontWeight: 800, color: 'rgba(0,0,0,0.35)',
+                        }}>
+                          {heureLabel(minsToTime(h))}
+                        </span>
+                      ))}
                     </div>
-                  )}
-                  <div>
-                    {creneaux.map((cr, crIdx) => (
-                      <div key={cr} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 16px', borderBottom: crIdx < creneaux.length - 1 ? '1.5px solid var(--cream2)' : 'none' }}>
-                        <span style={{ fontSize: 11, fontWeight: 900, color: 'rgba(0,0,0,0.4)', width: 64, paddingTop: 2, flexShrink: 0 }}>{cr}</span>
-                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', flex: 1 }}>
-                          {POSTES.map(p => {
-                            const resa = getResaPoste(d, cr, p.id);
-                            const jeu = resa ? jeux.find(j => j.id === resa.jeu_id) : null;
-                            const jeu2 = resa?.jeu2_id ? jeux.find(j => j.id === resa.jeu2_id) : null;
-                            if (resa) {
+                  </div>
+
+                  {/* Lignes postes */}
+                  <div style={{ padding: '4px 14px 10px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {POSTES.map(p => {
+                      const posResas = reservations
+                        .filter(r => r.poste === p.id && r.date_creneau === dateStr && r.statut !== "annulee")
+                        .sort((a, b) => {
+                          const sa = a.heure_debut ? parseTime(a.heure_debut) : (a.creneau ? parseInt(a.creneau.split("-")[0]) * 60 : 0);
+                          const sb = b.heure_debut ? parseTime(b.heure_debut) : (b.creneau ? parseInt(b.creneau.split("-")[0]) * 60 : 0);
+                          return sa - sb;
+                        });
+
+                      const firstAvail = getFirstAvailableTime(posResas, plage.debut, plage.fin);
+
+                      return (
+                        <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 40 }}>
+                          {/* Label poste */}
+                          <span style={{ fontSize: 9, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.04em', color: 'rgba(0,0,0,0.5)', width: 58, flexShrink: 0, textAlign: 'right' }}>
+                            {p.label}
+                          </span>
+
+                          {/* Timeline */}
+                          <div style={{ flex: 1, position: 'relative', height: 40, background: 'rgba(0,0,0,0.04)', borderRadius: 8, border: '1.5px solid rgba(0,0,0,0.1)', overflow: 'hidden' }}>
+                            {/* Ligne médiane de référence */}
+                            {heureMarks.slice(1, -1).map(h => (
+                              <div key={h} style={{
+                                position: 'absolute', top: 0, bottom: 0,
+                                left: `${(h - wStart) / wDur * 100}%`,
+                                width: 1, background: 'rgba(0,0,0,0.08)',
+                              }} />
+                            ))}
+
+                            {/* Blocs de réservation */}
+                            {posResas.map(resa => {
+                              // Fallback legacy : dériver depuis creneau si heure_debut/heure_fin manquants
+                              const rStart = resa.heure_debut
+                                ? parseTime(resa.heure_debut)
+                                : (resa.creneau ? parseInt(resa.creneau.split("-")[0]) * 60 : wStart);
+                              const rEnd = resa.heure_fin
+                                ? parseTime(resa.heure_fin)
+                                : (resa.creneau ? parseInt(resa.creneau.split("-")[1]) * 60 : wStart + 60);
+                              const leftPct  = Math.max(0, (rStart - wStart) / wDur * 100);
+                              const widthPct = Math.max(1, (rEnd - rStart) / wDur * 100);
                               const ds = getDisplayStatus(resa);
                               const isEnCours = ds === "en_cours";
+                              const jeu = jeux.find(j => j.id === resa.jeu_id);
+                              const jeu2 = resa.jeu2_id ? jeux.find(j => j.id === resa.jeu2_id) : null;
                               return (
-                                <button key={p.id}
+                                <button key={resa.id}
                                   onClick={() => onOpenDetail(resa)}
+                                  title={`${resa.adherent_nom} · ${jeu?.titre ?? "?"} · ${heureLabel(resa.heure_debut)}-${heureLabel(resa.heure_fin)}`}
                                   style={{
-                                    display: 'flex', flexDirection: 'column', gap: 2, padding: '6px 10px', textAlign: 'left',
-                                    border: isEnCours ? '2.5px solid var(--vert)' : '2px solid var(--ink)',
-                                    borderRadius: 10, background: POSTE_BG[p.id] ?? 'var(--cream2)',
-                                    minWidth: 90, maxWidth: 130, cursor: 'pointer',
-                                    boxShadow: isEnCours ? '0 0 0 2px var(--vert)' : '2px 2px 0 var(--ink)',
+                                    position: 'absolute', top: 3, bottom: 3,
+                                    left: `${leftPct}%`, width: `${widthPct}%`,
+                                    borderRadius: 6,
+                                    background: POSTE_BLOCK_BG[p.id] ?? '#e2e8f0',
+                                    border: isEnCours ? '2px solid var(--vert)' : '1.5px solid var(--ink)',
+                                    boxShadow: isEnCours ? '0 0 0 2px var(--vert)' : '1px 1px 0 var(--ink)',
+                                    cursor: 'pointer', overflow: 'hidden',
+                                    display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '0 6px',
                                   }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                    {isEnCours && <span className="pulse" style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--vert)', flexShrink: 0, display: 'inline-block' }} />}
-                                    <span style={{ fontSize: 9, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.05em', opacity: 0.6 }}>{p.label}</span>
-                                  </div>
-                                  {jeu2 ? (
-                                    <span style={{ fontSize: 10, fontWeight: 700, lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                      {jeu?.titre ?? "?"} → {jeu2.titre}
-                                    </span>
-                                  ) : (
-                                    <span style={{ fontSize: 10, fontWeight: 700, lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{jeu?.titre ?? "?"}</span>
+                                  {isEnCours && (
+                                    <span className="pulse" style={{ position: 'absolute', top: 4, right: 4, width: 5, height: 5, borderRadius: '50%', background: 'var(--vert)', display: 'inline-block' }} />
                                   )}
-                                  <span style={{ fontSize: 9, fontWeight: 600, opacity: 0.7, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{resa.adherent_nom} · {resa.nb_joueurs}J</span>
+                                  <span style={{ fontSize: 9, fontWeight: 900, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.2 }}>
+                                    {resa.adherent_nom}
+                                  </span>
+                                  <span style={{ fontSize: 8, fontWeight: 700, opacity: 0.7, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.2 }}>
+                                    {jeu2 ? `${jeu?.titre ?? "?"} → ${jeu2.titre}` : (jeu?.titre ?? "?")}
+                                  </span>
+                                  <span style={{ fontSize: 8, opacity: 0.55, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.2 }}>
+                                    {resa.heure_debut ? `${heureLabel(resa.heure_debut)}-${heureLabel(resa.heure_fin)}` : (resa.creneau ?? "")} · {resa.nb_joueurs}J
+                                  </span>
                                 </button>
                               );
-                            }
-                            return (
-                              <button key={p.id}
-                                onClick={() => onNouvelle(dateStr, cr, p.id)}
-                                style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, padding: '8px 10px', border: '2px dashed rgba(0,0,0,0.2)', borderRadius: 10, background: 'transparent', cursor: 'pointer', minWidth: 90, color: 'rgba(0,0,0,0.25)' }}>
-                                <span style={{ fontSize: 9, fontWeight: 900, textTransform: 'uppercase' }}>{p.label}</span>
-                                <span style={{ fontSize: 18, lineHeight: 1 }}>+</span>
-                              </button>
-                            );
-                          })}
+                            })}
+                          </div>
+
+                          {/* Bouton ajouter */}
+                          <button
+                            onClick={() => onNouvelle(dateStr, firstAvail ?? plage.debut, p.id)}
+                            disabled={!firstAvail}
+                            title={firstAvail ? `Ajouter à partir de ${heureLabel(firstAvail)}` : "Plage complète"}
+                            style={{
+                              width: 28, height: 28, flexShrink: 0,
+                              border: firstAvail ? '2px solid var(--ink)' : '2px dashed rgba(0,0,0,0.2)',
+                              borderRadius: 7, background: firstAvail ? 'var(--vert)' : 'transparent',
+                              color: firstAvail ? 'var(--ink)' : 'rgba(0,0,0,0.2)',
+                              fontWeight: 900, fontSize: 14, cursor: firstAvail ? 'pointer' : 'default',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            }}>
+                            {firstAvail ? "+" : "–"}
+                          </button>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               );
@@ -2446,13 +2736,14 @@ function TabReservations({
                 {enCoursResas.map(r => {
                   const jeu = jeux.find(j => j.id === r.jeu_id);
                   const poste = POSTES.find(p => p.id === r.poste);
+                  const timeStr = r.heure_debut ? `${heureLabel(r.heure_debut)}-${heureLabel(r.heure_fin)}` : (r.creneau ?? "");
                   return (
                     <button key={r.id} onClick={() => onOpenDetail(r)}
                       className="pop-card pop-card-hover"
                       style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: '#baff29', textAlign: 'left', width: '100%', cursor: 'pointer' }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0, width: 48 }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0, width: 52 }}>
                         <span style={{ fontSize: 10, fontWeight: 900 }}>{format(parseISO(r.date_creneau), "d MMM", { locale: fr })}</span>
-                        <span style={{ fontSize: 9, color: 'rgba(0,0,0,0.5)', fontWeight: 600 }}>{r.creneau}</span>
+                        <span style={{ fontSize: 9, color: 'rgba(0,0,0,0.5)', fontWeight: 700 }}>{timeStr}</span>
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <p style={{ fontSize: 12, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', margin: 0 }}>{jeu?.titre ?? "?"}</p>
@@ -2473,13 +2764,14 @@ function TabReservations({
               {aVenirResas.slice(0, 8).map(r => {
                 const jeu = jeux.find(j => j.id === r.jeu_id);
                 const poste = POSTES.find(p => p.id === r.poste);
+                const timeStr = r.heure_debut ? `${heureLabel(r.heure_debut)}-${heureLabel(r.heure_fin)}` : (r.creneau ?? "");
                 return (
                   <button key={r.id} onClick={() => onOpenDetail(r)}
                     className="pop-card pop-card-hover"
                     style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: 'var(--cream)', textAlign: 'left', width: '100%', cursor: 'pointer' }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0, width: 48 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0, width: 52 }}>
                       <span style={{ fontSize: 10, fontWeight: 900 }}>{format(parseISO(r.date_creneau), "d MMM", { locale: fr })}</span>
-                      <span style={{ fontSize: 9, color: 'rgba(0,0,0,0.4)', fontWeight: 600 }}>{r.creneau}</span>
+                      <span style={{ fontSize: 9, color: 'rgba(0,0,0,0.4)', fontWeight: 700 }}>{timeStr}</span>
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <p style={{ fontSize: 12, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', margin: 0 }}>{jeu?.titre ?? "?"}</p>
@@ -2746,13 +3038,834 @@ function TabStats({ reservations, jeux }: { reservations: JvReservation[]; jeux:
   );
 }
 
+// ─── Notes : helpers contenu ─────────────────────────────────────────────────
+
+function parseBlocks(raw: string | null): ContentBlock[] {
+  if (!raw) return [{ type: 'text', value: '' }];
+  try {
+    const p = JSON.parse(raw);
+    if (Array.isArray(p) && p.length > 0) return p as ContentBlock[];
+  } catch {}
+  return [{ type: 'text', value: raw }];
+}
+
+function serializeBlocks(blocks: ContentBlock[]): string | null {
+  const hasContent = blocks.some(b => {
+    if (b.type === 'text')  return b.value.trim().length > 0;
+    if (b.type === 'table') return b.headers.length > 0;
+    if (b.type === 'list')  return (b as NoteListBlock).items.some(i => i.text.trim());
+    return false;
+  });
+  if (!hasContent) return null;
+  return JSON.stringify(blocks);
+}
+
+function parseTags(raw: string | null): string[] {
+  if (!raw) return [];
+  try { const p = JSON.parse(raw); return Array.isArray(p) ? p : []; } catch { return []; }
+}
+
+function getPreviewInfo(raw: string | null): { text: string; tables: NoteTableBlock[]; lists: NoteListBlock[] } {
+  const blocks = parseBlocks(raw);
+  const text   = blocks.filter(b => b.type === 'text').map(b => (b as NoteTextBlock).value).join('\n').trim();
+  const tables = blocks.filter(b => b.type === 'table') as NoteTableBlock[];
+  const lists  = blocks.filter(b => b.type === 'list')  as NoteListBlock[];
+  return { text, tables, lists };
+}
+
+function searchBlocks(raw: string | null): string {
+  const blocks = parseBlocks(raw);
+  return blocks.map(b => {
+    if (b.type === 'text')  return b.value;
+    if (b.type === 'table') { const t = b as NoteTableBlock; return [...t.headers, ...t.rows.flat()].join(' '); }
+    if (b.type === 'list')  return (b as NoteListBlock).items.map(i => i.text).join(' ');
+    return '';
+  }).join(' ');
+}
+
+// ─── Notes : palette de couleurs ─────────────────────────────────────────────
+
+const NOTE_COLORS: Record<string, { bg: string; border: string; tape: string }> = {
+  yellow:  { bg: '#fef9c3', border: '#fde047', tape: '#fbbf24' },
+  green:   { bg: '#dcfce7', border: '#86efac', tape: '#4ade80' },
+  blue:    { bg: '#dbeafe', border: '#93c5fd', tape: '#60a5fa' },
+  pink:    { bg: '#fce7f3', border: '#f9a8d4', tape: '#f472b6' },
+  orange:  { bg: '#ffedd5', border: '#fdba74', tape: '#fb923c' },
+  purple:  { bg: '#f3e8ff', border: '#d8b4fe', tape: '#a78bfa' },
+  teal:    { bg: '#ccfbf1', border: '#5eead4', tape: '#2dd4bf' },
+};
+
+const NOTE_ROTATIONS = [-3, 2.5, -1.5, 3.2, -2.2, 1.8, -3.8, 2, -1, 3.5];
+
+// ─── Tableau — édition ───────────────────────────────────────────────────────
+
+function TableBlockEditor({
+  block, onChange, onDelete, borderColor,
+}: {
+  block: NoteTableBlock;
+  onChange: (b: NoteTableBlock) => void;
+  onDelete: () => void;
+  borderColor: string;
+}) {
+  const setHeader = (i: number, v: string) => { const h = [...block.headers]; h[i] = v; onChange({ ...block, headers: h }); };
+  const setCell = (r: number, c: number, v: string) => { const rows = block.rows.map(row => [...row]); rows[r][c] = v; onChange({ ...block, rows }); };
+  const addRow = () => onChange({ ...block, rows: [...block.rows, block.headers.map(() => '')] });
+  const removeRow = (r: number) => onChange({ ...block, rows: block.rows.filter((_, i) => i !== r) });
+  const addCol = () => onChange({ ...block, headers: [...block.headers, ''], rows: block.rows.map(row => [...row, '']) });
+  const removeCol = (c: number) => onChange({ ...block, headers: block.headers.filter((_, i) => i !== c), rows: block.rows.map(row => row.filter((_, i) => i !== c)) });
+
+  const cellStyle: React.CSSProperties = { border: 'none', background: 'transparent', padding: '5px 8px', fontSize: 12, width: '100%', outline: 'none', fontFamily: 'inherit' };
+
+  return (
+    <div style={{ border: `2px solid ${borderColor}`, borderRadius: 6, overflow: 'hidden', margin: '6px 0' }}>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+          <thead>
+            <tr style={{ background: 'rgba(0,0,0,0.04)' }}>
+              {block.headers.map((h, i) => (
+                <th key={i} style={{ borderRight: `1px solid ${borderColor}`, borderBottom: `2px solid ${borderColor}`, padding: 0, minWidth: 90 }}>
+                  <div style={{ display: 'flex', alignItems: 'center' }}>
+                    <input value={h} onChange={e => setHeader(i, e.target.value)} placeholder={`Col ${i + 1}`}
+                      style={{ ...cellStyle, fontWeight: 700 }} />
+                    {block.headers.length > 1 && (
+                      <button onClick={() => removeCol(i)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'rgba(0,0,0,0.25)', padding: '0 5px', fontSize: 10, flexShrink: 0, lineHeight: 1 }}>✕</button>
+                    )}
+                  </div>
+                </th>
+              ))}
+              <th style={{ borderLeft: `1px solid ${borderColor}`, borderBottom: `2px solid ${borderColor}`, width: 30, textAlign: 'center' }}>
+                <button onClick={addCol} title="Ajouter une colonne"
+                  style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'rgba(0,0,0,0.4)', fontSize: 16, lineHeight: 1, padding: '2px 6px' }}>+</button>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {block.rows.map((row, r) => (
+              <tr key={r}>
+                {row.map((cell, c) => (
+                  <td key={c} style={{ borderTop: `1px solid ${borderColor}`, borderRight: `1px solid ${borderColor}`, padding: 0 }}>
+                    <input value={cell} onChange={e => setCell(r, c, e.target.value)} placeholder="…" style={cellStyle} />
+                  </td>
+                ))}
+                <td style={{ borderTop: `1px solid ${borderColor}`, borderLeft: `1px solid ${borderColor}`, textAlign: 'center', width: 30 }}>
+                  <button onClick={() => removeRow(r)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'rgba(0,0,0,0.25)', fontSize: 11, padding: 2, lineHeight: 1 }}>✕</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 10px', borderTop: `1px solid ${borderColor}`, background: 'rgba(0,0,0,0.02)' }}>
+        <button onClick={addRow} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 700, color: 'rgba(0,0,0,0.45)' }}>+ Ligne</button>
+        <div style={{ flex: 1 }} />
+        <button onClick={onDelete} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 11, color: 'rgba(0,0,0,0.3)' }}>🗑 Supprimer le tableau</button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Tableau — lecture ────────────────────────────────────────────────────────
+
+function TableBlockView({ block, borderColor }: { block: NoteTableBlock; borderColor: string }) {
+  return (
+    <div style={{ overflowX: 'auto', margin: '8px 0', borderRadius: 5, border: `1.5px solid ${borderColor}` }}>
+      <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 12 }}>
+        <thead>
+          <tr style={{ background: 'rgba(0,0,0,0.05)' }}>
+            {block.headers.map((h, i) => (
+              <th key={i} style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, borderRight: i < block.headers.length - 1 ? `1px solid ${borderColor}` : 'none' }}>
+                {h || `Col ${i + 1}`}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {block.rows.map((row, r) => (
+            <tr key={r} style={{ borderTop: `1px solid ${borderColor}` }}>
+              {row.map((cell, c) => (
+                <td key={c} style={{ padding: '5px 10px', borderRight: c < row.length - 1 ? `1px solid ${borderColor}` : 'none' }}>
+                  {cell}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ─── Liste — édition ─────────────────────────────────────────────────────────
+
+function ListBlockEditor({
+  block, onChange, onDelete, borderColor,
+}: {
+  block: NoteListBlock;
+  onChange: (b: NoteListBlock) => void;
+  onDelete: () => void;
+  borderColor: string;
+}) {
+  const setItem   = (i: number, text: string)    => { const items = [...block.items]; items[i] = { ...items[i], text }; onChange({ ...block, items }); };
+  const toggleChk = (i: number)                  => { const items = [...block.items]; items[i] = { ...items[i], checked: !items[i].checked }; onChange({ ...block, items }); };
+  const addItem   = ()                            => onChange({ ...block, items: [...block.items, { text: '', checked: false }] });
+  const removeItem= (i: number)                  => { if (block.items.length <= 1) return; onChange({ ...block, items: block.items.filter((_, idx) => idx !== i) }); };
+
+  return (
+    <div style={{ border: `2px solid ${borderColor}`, borderRadius: 6, overflow: 'hidden', margin: '4px 0' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderBottom: `1px solid ${borderColor}`, background: 'rgba(0,0,0,0.03)' }}>
+        <span style={{ fontSize: 11, fontWeight: 700, color: 'rgba(0,0,0,0.4)' }}>
+          {block.variant === 'numbered' ? '1·2·3 Liste numérotée' : '☑ Liste à cocher'}
+        </span>
+        <div style={{ flex: 1 }} />
+        <button onClick={onDelete} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 11, color: 'rgba(0,0,0,0.3)', padding: 0 }}>🗑</button>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
+        {block.items.map((item, i) => (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderBottom: i < block.items.length - 1 ? '1px solid rgba(0,0,0,0.05)' : 'none' }}>
+            {block.variant === 'numbered'
+              ? <span style={{ fontSize: 11, fontWeight: 700, color: 'rgba(0,0,0,0.35)', minWidth: 18, textAlign: 'right', flexShrink: 0 }}>{i + 1}.</span>
+              : <input type="checkbox" checked={item.checked} onChange={() => toggleChk(i)} style={{ margin: 0, cursor: 'pointer', width: 14, height: 14, flexShrink: 0 }} />
+            }
+            <input
+              value={item.text}
+              onChange={e => setItem(i, e.target.value)}
+              placeholder={`Élément ${i + 1}…`}
+              onKeyDown={e => {
+                if (e.key === 'Enter') { e.preventDefault(); addItem(); }
+                if (e.key === 'Backspace' && !item.text && block.items.length > 1) removeItem(i);
+              }}
+              style={{ flex: 1, border: 'none', background: 'transparent', outline: 'none', fontSize: 13, fontFamily: 'inherit',
+                textDecoration: item.checked && block.variant === 'check' ? 'line-through' : 'none',
+                color: item.checked && block.variant === 'check' ? 'rgba(0,0,0,0.35)' : 'inherit' }}
+            />
+            {block.items.length > 1 && (
+              <button onClick={() => removeItem(i)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'rgba(0,0,0,0.2)', fontSize: 10, padding: 2, flexShrink: 0, lineHeight: 1 }}>✕</button>
+            )}
+          </div>
+        ))}
+      </div>
+      <div style={{ padding: '4px 10px', borderTop: `1px solid ${borderColor}`, background: 'rgba(0,0,0,0.02)' }}>
+        <button onClick={addItem} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 700, color: 'rgba(0,0,0,0.45)' }}>+ Élément</button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Liste — lecture ──────────────────────────────────────────────────────────
+
+function ListBlockView({ block }: { block: NoteListBlock }) {
+  return (
+    <div style={{ margin: '6px 0' }}>
+      {block.items.map((item, i) => (
+        <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 7, padding: '2px 0' }}>
+          {block.variant === 'numbered'
+            ? <span style={{ fontSize: 13, fontWeight: 700, color: 'rgba(0,0,0,0.4)', minWidth: 20, textAlign: 'right', flexShrink: 0 }}>{i + 1}.</span>
+            : <span style={{ fontSize: 14, flexShrink: 0, lineHeight: 1.5, marginTop: 1 }}>{item.checked ? '☑' : '☐'}</span>
+          }
+          <span style={{ fontSize: 13, lineHeight: 1.5,
+            textDecoration: item.checked && block.variant === 'check' ? 'line-through' : 'none',
+            color: item.checked && block.variant === 'check' ? 'rgba(0,0,0,0.35)' : 'rgba(0,0,0,0.7)' }}>
+            {item.text}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Sticky note individuelle ─────────────────────────────────────────────────
+
+function StickyNote({
+  note,
+  rotation,
+  onClick,
+}: {
+  note: JvNote;
+  rotation: number;
+  onClick: () => void;
+}) {
+  const [hovered, setHovered] = useState(false);
+  const col = NOTE_COLORS[note.couleur] ?? NOTE_COLORS.yellow;
+  const dateStr = (() => {
+    try { return format(new Date(note.updated_at), 'dd MMM', { locale: fr }); } catch { return ''; }
+  })();
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onClick={onClick}
+      onKeyDown={e => e.key === 'Enter' && onClick()}
+      style={{
+        width: 230,
+        minHeight: 230,
+        flexShrink: 0,
+        background: col.bg,
+        border: `2px solid ${col.border}`,
+        borderRadius: 3,
+        padding: '26px 16px 16px',
+        cursor: 'pointer',
+        transform: `rotate(${hovered ? 0 : rotation}deg) translateY(${hovered ? -8 : 0}px)`,
+        transition: 'transform 0.22s cubic-bezier(.34,1.56,.64,1), box-shadow 0.22s ease, z-index 0s',
+        boxShadow: hovered
+          ? '8px 14px 32px rgba(0,0,0,0.25)'
+          : '3px 5px 10px rgba(0,0,0,0.12)',
+        position: 'relative',
+        zIndex: hovered ? 10 : 1,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 8,
+        userSelect: 'none',
+        marginRight: -22,
+        marginTop: 14,
+        marginBottom: 14,
+      }}
+    >
+      {/* Scotch/tape en haut */}
+      <div style={{
+        position: 'absolute',
+        top: -10,
+        left: '50%',
+        transform: 'translateX(-50%)',
+        width: 38,
+        height: 18,
+        background: col.tape,
+        opacity: 0.55,
+        borderRadius: 3,
+        boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
+      }} />
+      <div style={{ fontWeight: 800, fontSize: 13, lineHeight: 1.3, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const, color: '#1a1a1a' }}>
+        {note.titre || 'Sans titre'}
+      </div>
+      {(() => {
+        const { text, tables, lists } = getPreviewInfo(note.contenu);
+        const noteTags = parseTags(note.tags);
+        return (
+          <>
+            {text && (
+              <div style={{ fontSize: 11.5, color: 'rgba(0,0,0,0.6)', lineHeight: 1.5, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' as const }}>
+                {text}
+              </div>
+            )}
+            {lists.map((list, li) => (
+              <div key={li} style={{ fontSize: 10.5, color: 'rgba(0,0,0,0.55)', lineHeight: 1.4 }}>
+                {list.items.slice(0, 3).map((item, j) => (
+                  <div key={j} style={{ display: 'flex', gap: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: item.checked && list.variant === 'check' ? 'line-through' : 'none', opacity: item.checked && list.variant === 'check' ? 0.5 : 1 }}>
+                    <span style={{ flexShrink: 0 }}>{list.variant === 'numbered' ? `${j + 1}.` : (item.checked ? '☑' : '☐')}</span>
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.text || '…'}</span>
+                  </div>
+                ))}
+                {list.items.length > 3 && <span style={{ color: 'rgba(0,0,0,0.3)', fontSize: 10 }}>+{list.items.length - 3} élément{list.items.length - 3 > 1 ? 's' : ''}</span>}
+              </div>
+            ))}
+            {tables.map((table, ti) => (
+              <div key={ti} style={{ fontSize: 9, border: '1px solid rgba(0,0,0,0.12)', borderRadius: 3, overflow: 'hidden', marginTop: 3 }}>
+                <table style={{ borderCollapse: 'collapse', width: '100%', tableLayout: 'fixed' }}>
+                  <thead>
+                    <tr style={{ background: 'rgba(0,0,0,0.07)' }}>
+                      {table.headers.slice(0, 3).map((h, j) => (
+                        <th key={j} style={{ padding: '2px 4px', fontWeight: 700, fontSize: 9, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', borderRight: j < Math.min(table.headers.length, 3) - 1 ? '1px solid rgba(0,0,0,0.1)' : 'none', textAlign: 'left' }}>
+                          {h || `C${j + 1}`}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {table.rows.slice(0, 3).map((row, r) => (
+                      <tr key={r} style={{ borderTop: '1px solid rgba(0,0,0,0.07)' }}>
+                        {row.slice(0, 3).map((cell, c) => (
+                          <td key={c} style={{ padding: '2px 4px', fontSize: 9, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', borderRight: c < Math.min(row.length, 3) - 1 ? '1px solid rgba(0,0,0,0.07)' : 'none' }}>
+                            {cell}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {(table.rows.length > 3 || table.headers.length > 3) && (
+                  <div style={{ padding: '1px 4px', fontSize: 8, color: 'rgba(0,0,0,0.3)', background: 'rgba(0,0,0,0.02)', borderTop: '1px solid rgba(0,0,0,0.06)' }}>
+                    {[table.rows.length > 3 && `${table.rows.length} lignes`, table.headers.length > 3 && `${table.headers.length} cols`].filter(Boolean).join(' · ')}
+                  </div>
+                )}
+              </div>
+            ))}
+            {noteTags.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginTop: 4 }}>
+                {noteTags.slice(0, 4).map(tag => (
+                  <span key={tag} style={{ fontSize: 9, background: 'rgba(0,0,0,0.09)', borderRadius: 10, padding: '1px 5px', fontWeight: 600, color: 'rgba(0,0,0,0.45)' }}>#{tag}</span>
+                ))}
+              </div>
+            )}
+          </>
+        );
+      })()}
+      <div style={{ marginTop: 'auto', paddingTop: 6, fontSize: 10, color: 'rgba(0,0,0,0.35)', fontWeight: 600, letterSpacing: '.04em' }}>
+        {dateStr}
+      </div>
+    </div>
+  );
+}
+
+// ─── Carte "Nouvelle note" ────────────────────────────────────────────────────
+
+function StickyNoteNew({ onClick }: { onClick: () => void }) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onClick={onClick}
+      onKeyDown={e => e.key === 'Enter' && onClick()}
+      style={{
+        width: 230,
+        minHeight: 230,
+        flexShrink: 0,
+        background: hovered ? 'rgba(0,0,0,0.04)' : 'transparent',
+        border: `2.5px dashed ${hovered ? 'rgba(0,0,0,0.35)' : 'rgba(0,0,0,0.18)'}`,
+        borderRadius: 3,
+        cursor: 'pointer',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 10,
+        transition: 'all 0.18s ease',
+        transform: `scale(${hovered ? 1.04 : 1})`,
+        userSelect: 'none',
+        marginTop: 14,
+        marginBottom: 14,
+        zIndex: 2,
+        position: 'relative',
+      }}
+    >
+      <div style={{
+        width: 42,
+        height: 42,
+        borderRadius: '50%',
+        background: hovered ? 'var(--ink)' : 'rgba(0,0,0,0.08)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        transition: 'background 0.18s ease',
+        fontSize: 22,
+        color: hovered ? 'white' : 'rgba(0,0,0,0.4)',
+        fontWeight: 300,
+      }}>+</div>
+      <span style={{ fontSize: 12, fontWeight: 700, color: hovered ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.3)', letterSpacing: '.03em' }}>
+        Nouvelle note
+      </span>
+    </div>
+  );
+}
+
+// ─── Modal Note (création / lecture / édition) ────────────────────────────────
+
+function ModalNoteDetail({
+  note,
+  onClose,
+  onSaved,
+  onDeleted,
+}: {
+  note: JvNote | null;
+  onClose: () => void;
+  onSaved: (note: JvNote) => void;
+  onDeleted?: (id: string) => void;
+}) {
+  const isNew = note === null;
+  const [titre, setTitre] = useState(note?.titre ?? '');
+  const [blocks, setBlocks] = useState<ContentBlock[]>(() => parseBlocks(note?.contenu ?? null));
+  const [tags, setTags] = useState<string[]>(() => parseTags(note?.tags ?? null));
+  const [tagInput, setTagInput] = useState('');
+  const [couleur, setCouleur] = useState(() => {
+    if (!isNew) return note?.couleur ?? 'yellow';
+    const keys = Object.keys(NOTE_COLORS);
+    return keys[Math.floor(Math.random() * keys.length)];
+  });
+  const [editing, setEditing] = useState(isNew);
+  const [saving, setSaving] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+
+  const addTag = (val: string) => {
+    const t = val.trim().toLowerCase().replace(/[,;]/g, '');
+    if (t && !tags.includes(t)) setTags(prev => [...prev, t]);
+    setTagInput('');
+  };
+
+  const col = NOTE_COLORS[couleur] ?? NOTE_COLORS.yellow;
+
+  const handleSave = async () => {
+    if (!titre.trim()) return;
+    setSaving(true);
+    const contenu  = serializeBlocks(blocks);
+    const tagsJson = tags.length > 0 ? JSON.stringify(tags) : null;
+    const now = new Date().toISOString();
+    if (isNew) {
+      const id = crypto.randomUUID();
+      await fetch('/api/jv-notes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, titre: titre.trim(), contenu, couleur, tags: tagsJson, created_at: now, updated_at: now }),
+      });
+      onSaved({ id, titre: titre.trim(), contenu, couleur, tags: tagsJson, created_at: now, updated_at: now });
+    } else {
+      await fetch(`/api/jv-notes/${note!.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ titre: titre.trim(), contenu, couleur, tags: tagsJson, updated_at: now }),
+      });
+      onSaved({ ...note!, titre: titre.trim(), contenu, couleur, tags: tagsJson, updated_at: now });
+    }
+    setSaving(false);
+    onClose();
+  };
+
+  const handleDelete = async () => {
+    if (!note) return;
+    await fetch(`/api/jv-notes/${note.id}`, { method: 'DELETE' });
+    onDeleted?.(note.id);
+    onClose();
+  };
+
+  return (
+    <div
+      onClick={onClose}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px 16px', overflowY: 'auto' }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          maxWidth: 560,
+          width: '95vw',
+          background: col.bg,
+          border: `3px solid ${col.border}`,
+          boxShadow: '10px 14px 50px rgba(0,0,0,0.3)',
+          borderRadius: 6,
+          padding: '32px 28px 24px',
+          position: 'relative',
+        }}
+      >
+        {/* Bande de couleur en haut + scotch */}
+        <div style={{
+          position: 'absolute',
+          top: -12,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          width: 56,
+          height: 22,
+          background: col.tape,
+          opacity: 0.6,
+          borderRadius: 4,
+          boxShadow: '0 2px 6px rgba(0,0,0,0.15)',
+        }} />
+
+        {/* Sélecteur de couleur */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: 'rgba(0,0,0,0.4)', marginRight: 4 }}>Couleur</span>
+          {Object.entries(NOTE_COLORS).map(([key, c]) => (
+            <button
+              key={key}
+              onClick={() => { setCouleur(key); if (!editing && !isNew) setEditing(true); }}
+              style={{
+                width: 22,
+                height: 22,
+                borderRadius: '50%',
+                background: c.bg,
+                border: `2.5px solid ${couleur === key ? 'var(--ink)' : c.border}`,
+                cursor: 'pointer',
+                transform: couleur === key ? 'scale(1.3)' : 'scale(1)',
+                transition: 'transform 0.15s ease',
+                boxShadow: couleur === key ? '0 0 0 2px rgba(0,0,0,0.15)' : 'none',
+              }}
+            />
+          ))}
+          <div style={{ flex: 1 }} />
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: 'rgba(0,0,0,0.35)', padding: '0 2px', lineHeight: 1 }}>✕</button>
+        </div>
+
+        {/* Titre */}
+        {editing ? (
+          <input
+            autoFocus={isNew}
+            value={titre}
+            onChange={e => setTitre(e.target.value)}
+            placeholder="Titre de la note…"
+            className="pop-input"
+            style={{ width: '100%', fontSize: 18, fontWeight: 800, marginBottom: 14, background: 'rgba(255,255,255,0.5)', border: `2px solid ${col.border}` }}
+          />
+        ) : (
+          <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 14, color: '#1a1a1a', lineHeight: 1.3 }}>
+            {titre || <span style={{ color: 'rgba(0,0,0,0.3)' }}>Sans titre</span>}
+          </div>
+        )}
+
+        {/* Tags */}
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', minHeight: 28 }}>
+            {tags.map(tag => (
+              <span key={tag} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'rgba(0,0,0,0.08)', border: '1.5px solid rgba(0,0,0,0.1)', borderRadius: 20, padding: '2px 8px 2px 10px', fontSize: 12, fontWeight: 600, color: 'rgba(0,0,0,0.6)' }}>
+                #{tag}
+                {editing && <button onClick={() => setTags(tags.filter(t => t !== tag))} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'rgba(0,0,0,0.35)', fontSize: 11, padding: '0 0 0 2px', lineHeight: 1 }}>✕</button>}
+              </span>
+            ))}
+            {editing && (
+              <input
+                value={tagInput}
+                onChange={e => setTagInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addTag(tagInput); } }}
+                onBlur={() => { if (tagInput.trim()) addTag(tagInput); }}
+                placeholder={tags.length === 0 ? '+ Ajouter un tag…' : '+ tag'}
+                style={{ border: '1.5px dashed rgba(0,0,0,0.2)', borderRadius: 20, padding: '2px 10px', fontSize: 12, background: 'transparent', outline: 'none', fontFamily: 'inherit', width: tags.length === 0 ? 150 : 80 }}
+              />
+            )}
+            {!editing && tags.length === 0 && <span style={{ fontSize: 12, color: 'rgba(0,0,0,0.25)', fontStyle: 'italic' }}>Aucun tag</span>}
+          </div>
+        </div>
+
+        {/* Contenu — blocs avec drag&drop */}
+        {editing ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: '45vh', overflowY: 'auto' }} className="custom-scroll">
+            {blocks.map((block, i) => (
+              <div
+                key={i}
+                draggable
+                onDragStart={e => { e.dataTransfer.effectAllowed = 'move'; setDragIdx(i); }}
+                onDragOver={e => e.preventDefault()}
+                onDrop={e => {
+                  e.preventDefault();
+                  if (dragIdx === null || dragIdx === i) { setDragIdx(null); return; }
+                  setBlocks(prev => {
+                    const next = [...prev];
+                    const [moved] = next.splice(dragIdx, 1);
+                    next.splice(dragIdx < i ? i - 1 : i, 0, moved);
+                    return next;
+                  });
+                  setDragIdx(null);
+                }}
+                onDragEnd={() => setDragIdx(null)}
+                style={{ display: 'flex', alignItems: 'flex-start', gap: 6, opacity: dragIdx === i ? 0.35 : 1, transition: 'opacity 0.15s' }}
+              >
+                {/* Poignée drag */}
+                <div style={{ cursor: 'grab', color: 'rgba(0,0,0,0.18)', paddingTop: 9, userSelect: 'none', fontSize: 16, flexShrink: 0 }} title="Déplacer">⠿</div>
+                {/* Bloc */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  {block.type === 'text' ? (
+                    <textarea
+                      value={(block as NoteTextBlock).value}
+                      onChange={e => { const next = [...blocks]; next[i] = { type: 'text', value: e.target.value }; setBlocks(next); }}
+                      placeholder="Texte libre…"
+                      rows={4}
+                      className="pop-input"
+                      style={{ width: '100%', resize: 'vertical', fontSize: 13, lineHeight: 1.6, background: 'rgba(255,255,255,0.5)', border: `2px solid ${col.border}` }}
+                    />
+                  ) : block.type === 'table' ? (
+                    <TableBlockEditor
+                      block={block as NoteTableBlock}
+                      onChange={updated => { const next = [...blocks]; next[i] = updated; setBlocks(next); }}
+                      onDelete={() => setBlocks(blocks.filter((_, idx) => idx !== i))}
+                      borderColor={col.border}
+                    />
+                  ) : (
+                    <ListBlockEditor
+                      block={block as NoteListBlock}
+                      onChange={updated => { const next = [...blocks]; next[i] = updated; setBlocks(next); }}
+                      onDelete={() => setBlocks(blocks.filter((_, idx) => idx !== i))}
+                      borderColor={col.border}
+                    />
+                  )}
+                </div>
+                {/* Supprimer (blocs texte uniquement, table/liste ont leur propre bouton) */}
+                {block.type === 'text' && (
+                  <button
+                    onClick={() => setBlocks(blocks.filter((_, idx) => idx !== i))}
+                    title="Supprimer ce bloc"
+                    style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'rgba(0,0,0,0.2)', fontSize: 14, paddingTop: 8, flexShrink: 0, lineHeight: 1 }}
+                  >✕</button>
+                )}
+              </div>
+            ))}
+            {/* Boutons d'ajout */}
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6, paddingLeft: 22 }}>
+              <button onClick={() => setBlocks([...blocks, { type: 'text', value: '' }])} className="pop-btn pop-btn-outline" style={{ fontSize: 11, padding: '5px 10px' }}>+ Texte</button>
+              <button onClick={() => setBlocks([...blocks, { type: 'table', headers: ['', '', ''], rows: [['', '', ''], ['', '', '']] }])} className="pop-btn pop-btn-outline" style={{ fontSize: 11, padding: '5px 10px' }}>📊 Tableau</button>
+              <button onClick={() => setBlocks([...blocks, { type: 'list', variant: 'check', items: [{ text: '', checked: false }] }])} className="pop-btn pop-btn-outline" style={{ fontSize: 11, padding: '5px 10px' }}>☑ Check</button>
+              <button onClick={() => setBlocks([...blocks, { type: 'list', variant: 'numbered', items: [{ text: '', checked: false }] }])} className="pop-btn pop-btn-outline" style={{ fontSize: 11, padding: '5px 10px' }}>1· Liste</button>
+            </div>
+          </div>
+        ) : (
+          <div style={{ minHeight: 60, maxHeight: '50vh', overflowY: 'auto' }} className="custom-scroll">
+            {blocks.every(b => b.type === 'text' && !(b as NoteTextBlock).value.trim()) ? (
+              <span style={{ color: 'rgba(0,0,0,0.3)', fontStyle: 'italic', fontSize: 14 }}>Aucun contenu</span>
+            ) : blocks.map((block, i) => {
+              if (block.type === 'text') {
+                const val = (block as NoteTextBlock).value.trim();
+                return val ? <div key={i} style={{ fontSize: 14, color: 'rgba(0,0,0,0.7)', lineHeight: 1.7, whiteSpace: 'pre-wrap', marginBottom: 6 }}>{(block as NoteTextBlock).value}</div> : null;
+              }
+              if (block.type === 'table') return <TableBlockView key={i} block={block as NoteTableBlock} borderColor={col.border} />;
+              return <ListBlockView key={i} block={block as NoteListBlock} />;
+            })}
+          </div>
+        )}
+
+        {/* Méta */}
+        {note && (
+          <div style={{ marginTop: 16, fontSize: 11, color: 'rgba(0,0,0,0.35)', fontWeight: 600 }}>
+            Modifiée le {(() => { try { return format(new Date(note.updated_at), "dd MMM yyyy 'à' HH:mm", { locale: fr }); } catch { return ''; } })()}
+          </div>
+        )}
+
+        {/* Actions */}
+        <div style={{ display: 'flex', gap: 10, marginTop: 20, justifyContent: 'flex-end', alignItems: 'center' }}>
+          {!isNew && !confirmDelete && (
+            <button
+              onClick={() => setConfirmDelete(true)}
+              className="pop-btn"
+              style={{ background: 'none', border: '2px solid rgba(0,0,0,0.15)', color: 'rgba(0,0,0,0.45)', padding: '8px 14px', marginRight: 'auto' }}
+            >
+              🗑 Supprimer
+            </button>
+          )}
+          {confirmDelete && (
+            <div style={{ marginRight: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: '#dc2626' }}>Confirmer ?</span>
+              <button onClick={handleDelete} className="pop-btn" style={{ background: '#dc2626', color: 'white', border: '2px solid var(--ink)', padding: '6px 12px', fontSize: 12 }}>Oui, supprimer</button>
+              <button onClick={() => setConfirmDelete(false)} className="pop-btn pop-btn-outline" style={{ padding: '6px 12px', fontSize: 12 }}>Annuler</button>
+            </div>
+          )}
+          {editing ? (
+            <>
+              {!isNew && <button onClick={() => { setEditing(false); setTitre(note!.titre); setBlocks(parseBlocks(note!.contenu ?? null)); setCouleur(note!.couleur); setTags(parseTags(note!.tags ?? null)); setTagInput(''); }} className="pop-btn pop-btn-outline">Annuler</button>}
+              <button onClick={handleSave} disabled={saving || !titre.trim()} className="pop-btn pop-btn-dark" style={{ opacity: saving || !titre.trim() ? 0.5 : 1 }}>
+                {saving ? 'Enregistrement…' : isNew ? '+ Créer la note' : '✓ Enregistrer'}
+              </button>
+            </>
+          ) : (
+            <button onClick={() => setEditing(true)} className="pop-btn pop-btn-dark">✏️ Modifier</button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Onglet Notes ─────────────────────────────────────────────────────────────
+
+function TabNotes({
+  notes,
+  onNoteOpen,
+  onNewNote,
+}: {
+  notes: JvNote[];
+  onNoteOpen: (note: JvNote) => void;
+  onNewNote: () => void;
+}) {
+  const [recherche, setRecherche] = useState('');
+  const [activeTags, setActiveTags] = useState<string[]>([]);
+
+  const allTags = useMemo(() => {
+    const set = new Set<string>();
+    notes.forEach(n => parseTags(n.tags).forEach(t => set.add(t)));
+    return [...set].sort();
+  }, [notes]);
+
+  const filtered = useMemo(() => {
+    const q = normalizeStr(recherche);
+    return notes.filter(n => {
+      if (activeTags.length > 0) {
+        const nt = parseTags(n.tags);
+        if (!activeTags.every(t => nt.includes(t))) return false;
+      }
+      if (!q) return true;
+      return normalizeStr(n.titre).includes(q) || normalizeStr(searchBlocks(n.contenu)).includes(q);
+    });
+  }, [notes, recherche, activeTags]);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {/* Barre de recherche + compteur */}
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+        <div style={{ position: 'relative', flex: 1, maxWidth: 400 }}>
+          <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 14, pointerEvents: 'none' }}>🔍</span>
+          <input
+            type="text"
+            value={recherche}
+            onChange={e => setRecherche(e.target.value)}
+            placeholder="Rechercher dans les notes…"
+            className="pop-input"
+            style={{ width: '100%', paddingLeft: 38 }}
+          />
+        </div>
+        <span className="pop-sticker" style={{ background: 'var(--cream2)' }}>
+          {filtered.length}/{notes.length} note{notes.length !== 1 ? 's' : ''}
+        </span>
+      </div>
+
+      {/* Filtres tags */}
+      {allTags.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: 'rgba(0,0,0,0.35)', textTransform: 'uppercase', letterSpacing: '.07em' }}>Tags</span>
+          {allTags.map(tag => {
+            const active = activeTags.includes(tag);
+            return (
+              <button
+                key={tag}
+                onClick={() => setActiveTags(prev => active ? prev.filter(t => t !== tag) : [...prev, tag])}
+                style={{
+                  background: active ? 'var(--ink)' : 'rgba(0,0,0,0.06)',
+                  color: active ? 'white' : 'rgba(0,0,0,0.55)',
+                  border: `1.5px solid ${active ? 'var(--ink)' : 'transparent'}`,
+                  borderRadius: 20,
+                  padding: '3px 11px',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                }}
+              >#{tag}</button>
+            );
+          })}
+          {activeTags.length > 0 && (
+            <button onClick={() => setActiveTags([])} style={{ fontSize: 11, color: 'rgba(0,0,0,0.35)', background: 'none', border: 'none', cursor: 'pointer', padding: '3px 4px' }}>✕ effacer</button>
+          )}
+        </div>
+      )}
+
+      {/* Tableau de stickers */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', flexDirection: 'row', gap: 0, paddingTop: 10, paddingBottom: 10, paddingLeft: 10, paddingRight: 28 }}>
+        <StickyNoteNew onClick={onNewNote} />
+
+        {filtered.length === 0 ? (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, padding: '60px 0', gap: 10 }}>
+            <span style={{ fontSize: 40 }}></span>
+            <p style={{ fontWeight: 600, color: 'rgba(0,0,0,0.3)' }}>{notes.length === 0 ? 'Aucune note pour l\'instant.' : 'Aucune note trouvée.'}</p>
+          </div>
+        ) : (
+          filtered.map((note, i) => (
+            <StickyNote
+              key={note.id}
+              note={note}
+              rotation={NOTE_ROTATIONS[i % NOTE_ROTATIONS.length]}
+              onClick={() => onNoteOpen(note)}
+            />
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Page principale ──────────────────────────────────────────────────────────
 
 export default function JvPage() {
-  const [onglet, setOnglet] = useState<"catalogue" | "selections" | "reservations" | "stats">("catalogue");
+  const [onglet, setOnglet] = useState<"catalogue" | "selections" | "reservations" | "stats" | "notes">("catalogue");
   const [jeux, setJeux] = useState<JvJeu[]>([]);
   const [selections, setSelections] = useState<JvSelection[]>([]);
   const [reservations, setReservations] = useState<JvReservation[]>([]);
+  const [notes, setNotes] = useState<JvNote[]>([]);
   const [rotationConfig, setRotationConfig] = useState<JvRotationConfig>({
     id: "main", current_slot_index: 0, week_start: format(new Date(), "yyyy-MM-dd"),
   });
@@ -2761,19 +3874,21 @@ export default function JvPage() {
   const [modalJeu, setModalJeu] = useState<{ open: boolean; jeu: JvJeu | null }>({ open: false, jeu: null });
   const [modalRotation, setModalRotation] = useState<SelectionSlot | null>(null);
   const [modalPlanning, setModalPlanning] = useState(false);
-  const [modalResa, setModalResa] = useState<{ open: boolean; date?: string; creneau?: string; poste?: string }>({ open: false });
+  const [modalResa, setModalResa] = useState<{ open: boolean; date?: string; heureDebut?: string; poste?: string }>({ open: false });
   const [modalResaDetail, setModalResaDetail] = useState<JvReservation | null>(null);
   const [modalCorrection, setModalCorrection] = useState<SelectionSlot | null>(null);
+  const [modalNote, setModalNote] = useState<{ open: boolean; note: JvNote | null }>({ open: false, note: null });
 
   useEffect(() => {
     const load = async () => {
       setIsLoading(true);
       const toArr = (d: any) => Array.isArray(d) ? d : [];
-      const [j, s, r, cfg] = await Promise.all([
+      const [j, s, r, cfg, n] = await Promise.all([
         fetch('/api/jv-jeux').then(res => res.json()).then(toArr).catch(() => []),
         fetch('/api/jv-selections').then(res => res.json()).then(toArr).catch(() => []),
         fetch('/api/jv-reservations').then(res => res.json()).then(toArr).catch(() => []),
         fetch('/api/jv-rotation-config').then(res => res.json()).catch(() => null),
+        fetch('/api/jv-notes').then(res => res.json()).then(toArr).catch(() => []),
       ]);
       setJeux(j as JvJeu[]);
       setSelections((s as any[]).map(sel => ({ ...sel, permanent: !!sel.permanent })) as JvSelection[]);
@@ -2782,6 +3897,7 @@ export default function JvPage() {
         joueurs_details: typeof res.joueurs_details === 'string' && res.joueurs_details ? JSON.parse(res.joueurs_details) : (res.joueurs_details ?? null),
       })) as JvReservation[]);
       if (cfg) setRotationConfig(cfg as JvRotationConfig);
+      setNotes(n as JvNote[]);
       setIsLoading(false);
     };
     load();
@@ -2861,22 +3977,6 @@ export default function JvPage() {
       return s;
     }));
   }, [selections]);
-
-  // Ajoute un créneau exceptionnel pour une date précise (ne modifie pas les créneaux récurrents)
-  const handleAddCreneau = useCallback(async (dateStr: string, creneau: string) => {
-    setRotationConfig(prev => {
-      const existing = prev.config?.extra_creneaux ?? {};
-      const forDate = existing[dateStr] ?? [];
-      if (forDate.includes(creneau)) return prev;
-      const nextConfig = { ...prev.config, extra_creneaux: { ...existing, [dateStr]: [...forDate, creneau] } };
-      fetch('/api/jv-rotation-config', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ config: nextConfig }),
-      });
-      return { ...prev, config: nextConfig };
-    });
-  }, []);
 
   // Met à jour le point de départ de la rotation
   const handleUpdateRotationConfig = useCallback(async (slotIndex: number, weekStart: string) => {
@@ -2966,6 +4066,21 @@ export default function JvPage() {
     setReservations(prev => prev.map(r => map[r.id] ?? r));
   }, []);
 
+  // ── Handlers notes ────────────────────────────────────────────────────────
+
+  const handleNoteSaved = useCallback((note: JvNote) => {
+    setNotes(prev => {
+      const exists = prev.some(n => n.id === note.id);
+      return exists
+        ? prev.map(n => n.id === note.id ? note : n)
+        : [note, ...prev];
+    });
+  }, []);
+
+  const handleNoteDeleted = useCallback((id: string) => {
+    setNotes(prev => prev.filter(n => n.id !== id));
+  }, []);
+
   const totalJeux = jeux.length;
   const totalConsolesActives = new Set(jeux.map(j => j.console)).size;
   const totalResasVenir = reservations.filter(r => { const ds = getDisplayStatus(r); return ds === "a_venir" || ds === "en_cours"; }).length;
@@ -3013,6 +4128,7 @@ export default function JvPage() {
             { key: "selections", label: "Sélections" },
             { key: "reservations", label: "Réservations" },
             { key: "stats", label: "Stats" },
+            { key: "notes", label: " Notes" },
           ] as const).map(t => (
             <button key={t.key} onClick={() => setOnglet(t.key)}
               className={onglet === t.key ? 'pop-btn pop-btn-dark' : 'pop-btn pop-btn-outline'}>
@@ -3050,14 +4166,19 @@ export default function JvPage() {
               <TabReservations
                 jeux={jeux}
                 reservations={reservations}
-                extraCreneaux={rotationConfig.config?.extra_creneaux}
-                onAddCreneau={handleAddCreneau}
-                onNouvelle={(date, creneau, poste) => setModalResa({ open: true, date, creneau, poste })}
+                onNouvelle={(date, heureDebut, poste) => setModalResa({ open: true, date, heureDebut, poste })}
                 onOpenDetail={r => setModalResaDetail(r)}
               />
             )}
             {onglet === "stats" && (
               <TabStats reservations={reservations} jeux={jeux} />
+            )}
+            {onglet === "notes" && (
+              <TabNotes
+                notes={notes}
+                onNoteOpen={note => setModalNote({ open: true, note })}
+                onNewNote={() => setModalNote({ open: true, note: null })}
+              />
             )}
           </>
         )}
@@ -3098,10 +4219,10 @@ export default function JvPage() {
         <ModalReservation
           jeux={jeux}
           selections={selections}
+          reservations={reservations}
           preDate={modalResa.date}
-          preCreneau={modalResa.creneau}
+          preHeureDebut={modalResa.heureDebut}
           prePoste={modalResa.poste}
-          extraCreneaux={rotationConfig.config?.extra_creneaux}
           onClose={() => setModalResa({ open: false })}
           onSaved={handleResaSaved}
         />
@@ -3120,9 +4241,18 @@ export default function JvPage() {
           reservation={modalResaDetail}
           jeux={jeux}
           selections={selections}
+          reservations={reservations}
           onClose={() => setModalResaDetail(null)}
           onSaved={handleResaUpdated}
           onCancelled={handleResaCancelled}
+        />
+      )}
+      {modalNote.open && (
+        <ModalNoteDetail
+          note={modalNote.note}
+          onClose={() => setModalNote({ open: false, note: null })}
+          onSaved={handleNoteSaved}
+          onDeleted={handleNoteDeleted}
         />
       )}
     </div>

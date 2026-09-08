@@ -3,20 +3,19 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-type Page = "accueil" | "inventaire" | "atelier" | "agenda" | "store" | "catalogage" | "jv";
+type Page = "accueil" | "inventaire" | "atelier" | "agenda" | "store" | "catalogage" | "jv" | "suggestions";
 
 const NAV_ITEMS: { href: string; label: string; page: Page; color: string }[] = [
-  { href: "/",           label: "Accueil",    page: "accueil",    color: "#facc15" },
-  { href: "/inventaire", label: "Inventaire", page: "inventaire", color: "#60a5fa" },
-  { href: "/atelier",    label: "Atelier",    page: "atelier",    color: "#a8e063" },
-  { href: "/agenda",     label: "Agenda",     page: "agenda",     color: "#c084fc" },
-  { href: "/store",      label: "Store",      page: "store",      color: "#f472b6" },
-  { href: "/catalogage", label: "Catalogage", page: "catalogage", color: "#fb923c" },
-  { href: "/jv",         label: "Jeux Vidéo", page: "jv",         color: "#f87171" },
+  { href: "/",             label: "Accueil",      page: "accueil",     color: "#facc15" },
+  { href: "/inventaire",   label: "Inventaire",   page: "inventaire",  color: "#60a5fa" },
+  { href: "/atelier",      label: "Atelier",      page: "atelier",     color: "#a8e063" },
+  { href: "/agenda",       label: "Agenda",       page: "agenda",      color: "#c084fc" },
+  { href: "/store",        label: "Store",        page: "store",       color: "#f472b6" },
+  { href: "/catalogage",   label: "Catalogage",   page: "catalogage",  color: "#fb923c" },
+  { href: "/jv",           label: "Jeux Vidéo",   page: "jv",          color: "#f87171" },
 ];
 
-// The 6-color rainbow strip (matches nav items order)
-const RAINBOW = NAV_ITEMS.map(i => i.color).join(", ");
+const SUGG_ITEM = { href: "/suggestions", label: "💡 Suggestions", page: "suggestions" as Page, color: "#a78bfa" };
 
 export default function NavBar({ current }: { current?: Page }) {
   const pathname = usePathname();
@@ -31,19 +30,8 @@ export default function NavBar({ current }: { current?: Page }) {
 
   useEffect(() => {
     const fetchCount = async () => {
-      const toArr = (d: any) => (Array.isArray(d) ? d : []);
-      const [alertes, rappelsJeux, nouveautes] = await Promise.all([
-        fetch("/api/alertes?statut=active").then(r => r.json() as Promise<any>).then(toArr).catch(() => []),
-        fetch("/api/jeux?fields=id,notes&notes_rappel=true").then(r => r.json() as Promise<any>).then(toArr).catch(() => []),
-        fetch(`/api/jeux?fields=date_sortie,etape_nouveaute&statut=${encodeURIComponent("En stock")}`).then(r => r.json() as Promise<any>).then(toArr).catch(() => []),
-      ]);
-      const rappelsCount = rappelsJeux.reduce((acc: number, j: any) => {
-        const notes = typeof j.notes === "string" ? (j.notes ? JSON.parse(j.notes) : []) : (j.notes ?? []);
-        return acc + notes.filter((n: any) => n.rappel).length;
-      }, 0);
-      const today = new Date();
-      const expiredCount = nouveautes.filter((j: any) => j.etape_nouveaute && j.date_sortie && new Date(j.date_sortie) <= today).length;
-      setAlertCount(alertes.length + rappelsCount + expiredCount);
+      const data = await fetch('/api/navbar-counts', { cache: 'no-store' }).then(r => r.json() as Promise<{ total: number }>).catch(() => ({ total: 0 }));
+      setAlertCount(data.total ?? 0);
     };
     fetchCount();
   }, []);
@@ -94,62 +82,30 @@ export default function NavBar({ current }: { current?: Page }) {
 
       <div style={{ width: 2, height: 26, background: "rgba(0,0,0,0.1)", marginRight: 16, borderRadius: 1, flexShrink: 0 }} />
 
-      {/* Nav items — style C+A: per-color stickers */}
+      {/* Nav items principaux */}
       <div style={{ display: "flex", alignItems: "center", gap: 4, flex: 1, flexWrap: "nowrap" }}>
         {NAV_ITEMS.map(item => {
           const isActive = item.page === activePage;
           const isHovered = item.page === hoveredPage;
-
           return (
-            <Link
-              key={item.page}
-              href={item.href}
+            <Link key={item.page} href={item.href}
               onMouseEnter={() => setHoveredPage(item.page)}
               onMouseLeave={() => setHoveredPage(null)}
               style={{
                 position: "relative",
-                background: isActive
-                  ? item.color
-                  : isHovered
-                  ? item.color + "55"
-                  : "rgba(0,0,0,0.04)",
+                background: isActive ? item.color : isHovered ? item.color + "55" : "rgba(0,0,0,0.04)",
                 color: isActive || isHovered ? "#0d0d0d" : "rgba(0,0,0,0.52)",
                 border: isActive ? "2px solid var(--ink)" : "2px solid transparent",
-                borderRadius: 6,
-                padding: "5px 12px",
-                fontWeight: isActive ? 700 : 500,
-                fontSize: 15,
-                cursor: "pointer",
-                boxShadow: isActive ? "2px 2px 0 var(--ink)" : "none",
+                borderRadius: 6, padding: "5px 12px", fontWeight: isActive ? 700 : 500, fontSize: 15,
+                cursor: "pointer", boxShadow: isActive ? "2px 2px 0 var(--ink)" : "none",
                 transform: isActive ? "rotate(-1deg) translateY(-1px)" : "none",
                 transition: "background 0.12s, color 0.12s, transform 0.12s, box-shadow 0.12s",
-                textDecoration: "none",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 5,
-                whiteSpace: "nowrap",
-                fontFamily: "inherit",
-              }}
-            >
+                textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 5,
+                whiteSpace: "nowrap", fontFamily: "inherit",
+              }}>
               {item.label}
-              {/* Alert badge on Accueil */}
               {item.page === "accueil" && alertCount > 0 && (
-                <span style={{
-                  minWidth: 17,
-                  height: 17,
-                  background: "#f87171",
-                  color: "#fff",
-                  fontSize: 9,
-                  fontWeight: 900,
-                  borderRadius: "50%",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  padding: "0 3px",
-                  border: "1.5px solid var(--ink)",
-                  boxShadow: "1px 1px 0 var(--ink)",
-                  marginLeft: 2,
-                }}>
+                <span style={{ minWidth: 17, height: 17, background: "#f87171", color: "#fff", fontSize: 9, fontWeight: 900, borderRadius: "50%", display: "inline-flex", alignItems: "center", justifyContent: "center", padding: "0 3px", border: "1.5px solid var(--ink)", boxShadow: "1px 1px 0 var(--ink)", marginLeft: 2 }}>
                   {alertCount > 99 ? "99+" : alertCount}
                 </span>
               )}
@@ -158,16 +114,38 @@ export default function NavBar({ current }: { current?: Page }) {
         })}
       </div>
 
-      {/* Rainbow strip (style A) at bottom */}
+      {/* Séparateur + Suggestions isolée à droite */}
+      <div style={{ width: 1, height: 22, background: "rgba(0,0,0,0.1)", marginLeft: 8, marginRight: 8, flexShrink: 0 }} />
+      {(() => {
+        const item = SUGG_ITEM;
+        const isActive = item.page === activePage;
+        const isHovered = item.page === hoveredPage;
+        return (
+          <Link href={item.href}
+            onMouseEnter={() => setHoveredPage(item.page)}
+            onMouseLeave={() => setHoveredPage(null)}
+            style={{
+              background: isActive ? item.color : isHovered ? item.color + "55" : "rgba(0,0,0,0.04)",
+              color: isActive || isHovered ? "#0d0d0d" : "rgba(0,0,0,0.45)",
+              border: isActive ? "1.5px solid var(--ink)" : "1.5px solid transparent",
+              borderRadius: 6, padding: "4px 10px", fontWeight: isActive ? 700 : 500, fontSize: 12,
+              cursor: "pointer", boxShadow: isActive ? "2px 2px 0 var(--ink)" : "none",
+              transform: isActive ? "rotate(-1deg) translateY(-1px)" : "none",
+              transition: "background 0.12s, color 0.12s, transform 0.12s, box-shadow 0.12s",
+              textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 4,
+              whiteSpace: "nowrap", fontFamily: "inherit", flexShrink: 0,
+            }}>
+            {item.label}
+          </Link>
+        );
+      })()}
+
+      {/* Rainbow strip */}
       <div style={{
-        position: "absolute",
-        bottom: 0, left: 0, right: 0,
-        height: 3,
+        position: "absolute", bottom: 0, left: 0, right: 0, height: 3,
         background: `linear-gradient(90deg, ${NAV_ITEMS.map((item, i, arr) => {
           const pct = (100 / arr.length);
-          const start = i * pct;
-          const end = (i + 1) * pct;
-          return `${item.color} ${start}%, ${item.color} ${end}%`;
+          return `${item.color} ${i * pct}%, ${item.color} ${(i + 1) * pct}%`;
         }).join(", ")})`,
         pointerEvents: "none",
       }} />
