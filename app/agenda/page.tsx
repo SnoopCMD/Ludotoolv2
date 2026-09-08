@@ -40,7 +40,7 @@ const HEURES_GRILLE = [8, 10, 12, 14, 16, 18, 20, 22];
 const HEURE_DEBUT = 7;
 const HEURE_FIN = 24; 
 
-const ABSENCE_TYPES = ['Congé', 'Demi-Congé', 'RTT', 'Demi-RTT', 'Récupération', 'Demi-Récupération'];
+const ABSENCE_TYPES = ['Congé', 'Demi-Congé', 'RTT', 'Demi-RTT', 'Récupération', 'Demi-Récupération', 'Formation', 'Demi-Formation'];
 
 const timeToMins = (t: string, isEnd: boolean = false) => {
   if (!t) return 0;
@@ -156,6 +156,7 @@ const mergeIntervals = (intervals: {start: number, end: number}[]) => {
 };
 
 const getEventColor = (type: string): string => {
+  if (type.includes('Formation')) return 'var(--turquoise)';
   if (type.includes('RTT')) return 'var(--vert)';
   if (type.includes('Congé') || type.includes('Récupération')) return 'var(--rose)';
   if (type === 'Réunion') return 'var(--bleu)';
@@ -169,6 +170,7 @@ const getEventStyle = (type: string, _isOverlay = false) => getEventColor(type);
 const getEventDotColor = (type: string) => getEventColor(type);
 
 const getEventIcon = (type: string) => {
+  if (type.includes('Formation')) return '🎓';
   if (type.includes('Congé')) return '🏖️';
   if (type.includes('RTT')) return '🌴';
   if (type.includes('Récupération')) return '🛋️';
@@ -734,10 +736,10 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
     setIsGeneratingPdf(false);
   };
   const mainTypeUI = isAbsenceType ? 'Absence' : (['Réunion', 'Animation', 'Soirée Jeux', 'Heures Exceptionnelles'].includes(nouvelEvent.type) ? nouvelEvent.type : 'Autre');
-  const absTypeUI = nouvelEvent.type.includes('RTT') ? 'RTT' : nouvelEvent.type.includes('Récupération') ? 'Récupération' : 'Congé';
+  const absTypeUI = nouvelEvent.type.includes('RTT') ? 'RTT' : nouvelEvent.type.includes('Récupération') ? 'Récupération' : nouvelEvent.type.includes('Formation') ? 'Formation' : 'Congé';
   const isDemiUI = nouvelEvent.type.startsWith('Demi-');
 
-  const isTimeDisabled = mainTypeUI === 'Absence' && !isDemiUI && ['Congé', 'RTT'].includes(absTypeUI);
+  const isTimeDisabled = mainTypeUI === 'Absence' && !isDemiUI && ['Congé', 'RTT', 'Formation'].includes(absTypeUI);
 
   const membresEnConge = useMemo(() => {
     if (!nouvelEvent.date_debut || !nouvelEvent.date_fin) return [];
@@ -2558,7 +2560,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
                 {mainTypeUI === 'Absence' && (
                   <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: "0 2px" }}>
                     <div style={{ display: "flex", gap: 6 }}>
-                      {(['Congé', 'RTT', 'Récupération'] as const).map(a => (
+                      {(['Congé', 'RTT', 'Récupération', 'Formation'] as const).map(a => (
                         <button key={a} type="button" onClick={() => setAbsType(a)}
                           className={`pop-btn ${absTypeUI === a ? 'pop-btn-dark' : 'pop-btn-outline'}`}
                           style={{ flex: 1, justifyContent: "center", fontSize: 11, padding: "6px 0" }}>
@@ -3414,7 +3416,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 <label className="bc" style={{ fontSize: 10, letterSpacing: "0.08em" }}>Type d'absence</label>
                 <div style={{ display: "flex", gap: 6 }}>
-                  {(['Congé', 'RTT', 'Récupération'] as const).map(base => {
+                  {(['Congé', 'RTT', 'Récupération', 'Formation'] as const).map(base => {
                     const isActive = quickEditEv.type === base || quickEditEv.type === `Demi-${base}`;
                     return (
                       <button key={base}

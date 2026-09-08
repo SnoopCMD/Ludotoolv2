@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { getDB } from '../../../lib/db';
 
+// D1 accepte au maximum 100 paramètres liés par requête.
+const EAN_CHUNK = 80;
+
 export async function GET(request: Request) {
   try {
     const db = await getDB();
@@ -14,25 +17,37 @@ export async function GET(request: Request) {
     const fields = searchParams.get('fields') ?? '*';
     const limit = searchParams.get('limit');
 
-    let sql = `SELECT ${fields} FROM jeux WHERE 1=1`;
+    let where = 'WHERE 1=1';
     const params: (string | number)[] = [];
 
-    if (statut) { sql += ' AND statut = ?'; params.push(statut); }
-    if (ean) { sql += ' AND ean = ?'; params.push(ean); }
-    if (eans) {
-      const list = eans.split(',').map(e => e.trim()).filter(Boolean);
-      sql += ` AND ean IN (${list.map(() => '?').join(',')})`;
-      params.push(...list);
-    }
+    if (statut) { where += ' AND statut = ?'; params.push(statut); }
+    if (ean) { where += ' AND ean = ?'; params.push(ean); }
     if (code_syracuse === 'notnull') {
-      sql += ` AND code_syracuse IS NOT NULL AND code_syracuse != ''`;
+      where += ` AND code_syracuse IS NOT NULL AND code_syracuse != ''`;
     } else if (code_syracuse) {
-      sql += ' AND code_syracuse LIKE ?'; params.push(`%${code_syracuse}%`);
+      where += ' AND code_syracuse LIKE ?'; params.push(`%${code_syracuse}%`);
     }
-    if (notes_rappel === 'true') { sql += ' AND notes_rappel = 1'; }
-    if (nom_like) { sql += ' AND nom LIKE ?'; params.push(`%${nom_like}%`); }
-    sql += ' ORDER BY nom';
-    if (limit) { sql += ` LIMIT ${parseInt(limit)}`; }
+    if (notes_rappel === 'true') { where += ' AND notes_rappel = 1'; }
+    if (nom_like) { where += ' AND nom LIKE ?'; params.push(`%${nom_like}%`); }
+
+    const max = limit ? parseInt(limit) : null;
+    const list = eans ? eans.split(',').map(e => e.trim()).filter(Boolean) : null;
+
+    // D1 limite le nombre de paramètres liés par requête (100) : on découpe le IN.
+    if (list && list.length) {
+      const rows: any[] = [];
+      for (let i = 0; i < list.length; i += EAN_CHUNK) {
+        const part = list.slice(i, i + EAN_CHUNK);
+        const sql = `SELECT ${fields} FROM jeux ${where} AND ean IN (${part.map(() => '?').join(',')}) ORDER BY nom`;
+        const res = await db.prepare(sql).bind(...params, ...part).all();
+        rows.push(...(res.results as any[]));
+      }
+      if (rows.length && rows[0]?.nom !== undefined) rows.sort((a, b) => String(a.nom).localeCompare(String(b.nom)));
+      return NextResponse.json(max ? rows.slice(0, max) : rows);
+    }
+
+    let sql = `SELECT ${fields} FROM jeux ${where} ORDER BY nom`;
+    if (max) sql += ` LIMIT ${max}`;
 
     const stmt = params.length ? db.prepare(sql).bind(...params) : db.prepare(sql);
     const result = await stmt.all();

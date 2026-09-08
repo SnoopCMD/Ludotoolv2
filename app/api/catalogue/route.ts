@@ -3,6 +3,9 @@ import { getDB } from '../../../lib/db';
 
 export const dynamic = 'force-dynamic';
 
+// D1 accepte au maximum 100 paramètres liés par requête.
+const EAN_CHUNK = 80;
+
 export async function GET(request: Request) {
   try {
     const db = await getDB();
@@ -11,17 +14,27 @@ export async function GET(request: Request) {
     const eans = searchParams.get('eans');
     const fields = searchParams.get('fields') ?? '*';
 
-    let sql = `SELECT ${fields} FROM catalogue WHERE 1=1`;
+    let where = 'WHERE 1=1';
     const params: string[] = [];
 
-    if (ean) { sql += ' AND ean = ?'; params.push(ean); }
-    if (eans) {
-      const list = eans.split(',').map(e => e.trim()).filter(Boolean);
-      sql += ` AND ean IN (${list.map(() => '?').join(',')})`;
-      params.push(...list);
-    }
-    sql += ' ORDER BY nom';
+    if (ean) { where += ' AND ean = ?'; params.push(ean); }
 
+    const list = eans ? eans.split(',').map(e => e.trim()).filter(Boolean) : null;
+
+    // D1 limite le nombre de paramètres liés par requête (100) : on découpe le IN.
+    if (list && list.length) {
+      const rows: any[] = [];
+      for (let i = 0; i < list.length; i += EAN_CHUNK) {
+        const part = list.slice(i, i + EAN_CHUNK);
+        const sql = `SELECT ${fields} FROM catalogue ${where} AND ean IN (${part.map(() => '?').join(',')}) ORDER BY nom`;
+        const res = await db.prepare(sql).bind(...params, ...part).all();
+        rows.push(...(res.results as any[]));
+      }
+      if (rows.length && rows[0]?.nom !== undefined) rows.sort((a, b) => String(a.nom).localeCompare(String(b.nom)));
+      return NextResponse.json(rows);
+    }
+
+    const sql = `SELECT ${fields} FROM catalogue ${where} ORDER BY nom`;
     const stmt = params.length ? db.prepare(sql).bind(...params) : db.prepare(sql);
     const result = await stmt.all();
     return NextResponse.json(result.results);

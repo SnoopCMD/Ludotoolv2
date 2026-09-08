@@ -12,7 +12,7 @@ import { fr } from "date-fns/locale";
 const HEURE_DEBUT = 8;
 const HEURE_FIN = 21;
 const HEURES_GRILLE = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
-const ABSENCE_TYPES = ["Congé", "Demi-Congé", "RTT", "Demi-RTT", "Récupération", "Demi-Récupération"];
+const ABSENCE_TYPES = ["Congé", "Demi-Congé", "RTT", "Demi-RTT", "Récupération", "Demi-Récupération", "Formation", "Demi-Formation"];
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -156,6 +156,7 @@ const getBlocColor = (membres: { groupe?: string; isSwap?: boolean }[]): string 
 // ─── Helpers événements ───────────────────────────────────────────────────────
 
 const getEventStyle = (type: string): React.CSSProperties => {
+  if (type.includes("Formation")) return { background: "var(--turquoise)", color: "var(--ink)", border: "1.5px solid var(--ink)" };
   if (type.includes("RTT")) return { background: "var(--vert)", color: "var(--ink)", border: "1.5px solid var(--ink)" };
   if (type.includes("Congé") || type.includes("Récupération")) return { background: "var(--rouge)", color: "var(--white)", border: "1.5px solid var(--ink)" };
   if (type === "Réunion") return { background: "var(--bleu)", color: "var(--ink)", border: "1.5px solid var(--ink)" };
@@ -166,6 +167,7 @@ const getEventStyle = (type: string): React.CSSProperties => {
 };
 
 const getEventBorderColor = (type: string): string => {
+  if (type.includes("Formation")) return "#2dd4bf";
   if (type.includes("RTT")) return "#34d399";
   if (type.includes("Congé") || type.includes("Récupération")) return "#f87171";
   if (type === "Réunion") return "#818cf8";
@@ -176,6 +178,7 @@ const getEventBorderColor = (type: string): string => {
 };
 
 const getEventIcon = (type: string): string => {
+  if (type.includes("Formation")) return "🎓";
   if (type.includes("Congé")) return "🏖️";
   if (type.includes("RTT")) return "🌴";
   if (type.includes("Récupération")) return "🛋️";
