@@ -763,10 +763,9 @@ function ModalRotation({
   const [pickerSelected, setPickerSelected] = useState<string[]>([]);
   const [fJoueurs, setFJoueurs] = useState<number | null>(null);   // nb de joueurs supporté
   const [fPegi, setFPegi] = useState<number | null>(null);         // PEGI maximum
-  const [fResa, setFResa] = useState<"jamais" | "populaire" | null>(null);
-  const [fInedit, setFInedit] = useState(false);                   // jamais mis en sélection
+  const [fUsage, setFUsage] = useState<"jamais" | "ancien" | "populaire" | null>(null);
   const [fGenre, setFGenre] = useState("");
-  const [tri, setTri] = useState<"az" | "resa" | "resa_asc" | "pegi">("az");
+  const [tri, setTri] = useState<"az" | "ancien" | "resa" | "resa_asc" | "pegi">("az");
   const pickerRef = useRef<HTMLInputElement>(null);
 
   const planifiees = selections
@@ -789,9 +788,9 @@ function ModalRotation({
   );
 
   const resetFiltres = () => {
-    setFJoueurs(null); setFPegi(null); setFResa(null); setFInedit(false); setFGenre(""); setTri("az");
+    setFJoueurs(null); setFPegi(null); setFUsage(null); setFGenre(""); setTri("az");
   };
-  const nbFiltresActifs = (fJoueurs !== null ? 1 : 0) + (fPegi !== null ? 1 : 0) + (fResa !== null ? 1 : 0) + (fInedit ? 1 : 0) + (fGenre ? 1 : 0);
+  const nbFiltresActifs = (fJoueurs !== null ? 1 : 0) + (fPegi !== null ? 1 : 0) + (fUsage !== null ? 1 : 0) + (fGenre ? 1 : 0);
 
   const openPicker = (groupe: number) => {
     setPickerGroupe(groupe);
@@ -812,12 +811,6 @@ function ModalRotation({
   const CONSOLE_BG_R: Record<string, string> = { PS5: 'var(--bleu)', Switch: 'var(--rouge)', PC: 'var(--cream2)' };
   const headerBgR = CONSOLE_BG_R[consoleName] ?? 'var(--cream2)';
 
-  const selectionCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    selections.forEach(s => { counts[s.jeu_id] = (counts[s.jeu_id] || 0) + 1; });
-    return counts;
-  }, [selections]);
-
   const resaCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     reservations.filter(r => r.statut !== "annulee").forEach(r => {
@@ -826,6 +819,21 @@ function ModalRotation({
     });
     return counts;
   }, [reservations]);
+
+  // jv_selections ne garde que la sélection en cours (les lignes sont supprimées
+  // à chaque rotation) : l'historique réel d'un jeu, ce sont ses réservations.
+  const dernierePartie = useMemo(() => {
+    const map: Record<string, string> = {};
+    reservations.filter(r => r.statut !== "annulee").forEach(r => {
+      if (!r.date_creneau) return;
+      for (const id of [r.jeu_id, r.jeu2_id]) {
+        if (id && (!map[id] || r.date_creneau > map[id])) map[id] = r.date_creneau;
+      }
+    });
+    return map;
+  }, [reservations]);
+
+  const limiteAncien = useMemo(() => format(addDays(new Date(), -182), "yyyy-MM-dd"), []);
 
   const popularityRank = useMemo(() => {
     const byConsole: Record<string, { id: string; count: number }[]> = {};
@@ -864,9 +872,9 @@ function ModalRotation({
         if (fJoueurs === 1 ? p.min > 1 : p.max < fJoueurs) return false;
       }
       if (fPegi !== null && (j.pegi === null || j.pegi > fPegi)) return false;
-      if (fInedit && (selectionCounts[j.id] || 0) > 0) return false;
-      if (fResa === "jamais" && (resaCounts[j.id] || 0) > 0) return false;
-      if (fResa === "populaire") {
+      if (fUsage === "jamais" && (resaCounts[j.id] || 0) > 0) return false;
+      if (fUsage === "ancien" && (dernierePartie[j.id] ?? "") >= limiteAncien) return false;
+      if (fUsage === "populaire") {
         const pop = popularityRank[j.id];
         if (!pop || (resaCounts[j.id] || 0) === 0 || pop.rank / pop.total > 0.2) return false;
       }
@@ -875,13 +883,14 @@ function ModalRotation({
     });
 
     const parTitre = (a: JvJeu, b: JvJeu) => a.titre.localeCompare(b.titre);
-    if (tri === "resa")     list.sort((a, b) => (resaCounts[b.id] || 0) - (resaCounts[a.id] || 0) || parTitre(a, b));
+    if (tri === "ancien")   list.sort((a, b) => (dernierePartie[a.id] ?? "").localeCompare(dernierePartie[b.id] ?? "") || parTitre(a, b));
+    else if (tri === "resa") list.sort((a, b) => (resaCounts[b.id] || 0) - (resaCounts[a.id] || 0) || parTitre(a, b));
     else if (tri === "resa_asc") list.sort((a, b) => (resaCounts[a.id] || 0) - (resaCounts[b.id] || 0) || parTitre(a, b));
     else if (tri === "pegi") list.sort((a, b) => (a.pegi ?? 99) - (b.pegi ?? 99) || parTitre(a, b));
     else list.sort(parTitre);
     return list;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [disponibles, planifiees, pickerGroupe, pickerSearch, fJoueurs, fPegi, fResa, fInedit, fGenre, tri, selectionCounts, resaCounts, popularityRank]);
+  }, [disponibles, planifiees, pickerGroupe, pickerSearch, fJoueurs, fPegi, fUsage, fGenre, tri, resaCounts, popularityRank, dernierePartie, limiteAncien]);
 
   const isPickerOpen = pickerGroupe !== null;
 
@@ -1011,6 +1020,7 @@ function ModalRotation({
                   <select value={tri} onChange={e => setTri(e.target.value as typeof tri)}
                     className="pop-input" style={{ fontSize: 12, padding: '8px 10px', cursor: 'pointer', flexShrink: 0 }}>
                     <option value="az">Tri : A → Z</option>
+                    <option value="ancien">Tri : pas vus depuis longtemps</option>
                     <option value="resa">Tri : + réservés</option>
                     <option value="resa_asc">Tri : - réservés</option>
                     <option value="pegi">Tri : PEGI croissant</option>
@@ -1036,10 +1046,10 @@ function ModalRotation({
                     ))}
                   </FilterGroup>
 
-                  <FilterGroup label="Usage">
-                    <FilterChip active={fInedit} onClick={() => setFInedit(!fInedit)} title="Jamais mis en sélection">Inédit</FilterChip>
-                    <FilterChip active={fResa === "jamais"} onClick={() => setFResa(fResa === "jamais" ? null : "jamais")} title="Aucune réservation">0 résa</FilterChip>
-                    <FilterChip active={fResa === "populaire"} onClick={() => setFResa(fResa === "populaire" ? null : "populaire")} title="Top 20% des réservations de la console">🔥 Populaires</FilterChip>
+                  <FilterGroup label="Historique">
+                    <FilterChip active={fUsage === "jamais"} onClick={() => setFUsage(fUsage === "jamais" ? null : "jamais")} title="Aucune réservation à ce jour">Jamais joué</FilterChip>
+                    <FilterChip active={fUsage === "ancien"} onClick={() => setFUsage(fUsage === "ancien" ? null : "ancien")} title="Pas de partie depuis plus de 6 mois (jamais joués inclus)">Pas vu depuis 6 mois</FilterChip>
+                    <FilterChip active={fUsage === "populaire"} onClick={() => setFUsage(fUsage === "populaire" ? null : "populaire")} title="Top 20% des réservations de la console">🔥 Populaires</FilterChip>
                   </FilterGroup>
 
                   {genresDispo.length > 0 && (
@@ -1106,9 +1116,17 @@ function ModalRotation({
                           <p style={{ fontSize: 10, fontWeight: 700, textAlign: 'center', lineHeight: 1.2, overflow: 'hidden', maxHeight: '2.4em', width: '100%' }}>{j.titre}</p>
                           {/* Info pills */}
                           <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 3, width: '100%', marginTop: 2 }}>
-                            <span style={{ fontSize: 8, fontWeight: 700, padding: '2px 5px', borderRadius: 999, background: 'var(--cream2)', color: 'rgba(0,0,0,0.5)', lineHeight: 1 }}>
-                              {(selectionCounts[j.id] || 0) === 0 ? "Inédit" : `${selectionCounts[j.id]}× sél.`}
-                            </span>
+                            {(() => {
+                              const d = dernierePartie[j.id];
+                              if (!d) return <span style={{ fontSize: 8, fontWeight: 700, padding: '2px 5px', borderRadius: 999, background: 'var(--vert)', color: 'var(--ink)', lineHeight: 1, border: '1px solid var(--ink)' }}>Jamais joué</span>;
+                              const vieux = d < limiteAncien;
+                              return (
+                                <span title={`Dernière partie le ${format(parseISO(d), "d MMMM yyyy", { locale: fr })}`}
+                                  style={{ fontSize: 8, fontWeight: 700, padding: '2px 5px', borderRadius: 999, background: vieux ? 'var(--cream2)' : 'var(--white)', color: 'rgba(0,0,0,0.55)', lineHeight: 1, border: '1px solid rgba(0,0,0,0.2)' }}>
+                                  vu {format(parseISO(d), "MMM yy", { locale: fr })}
+                                </span>
+                              );
+                            })()}
                             {(() => {
                               const pop = popularityRank[j.id];
                               const count = resaCounts[j.id] || 0;
