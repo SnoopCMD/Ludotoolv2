@@ -155,6 +155,14 @@ const SLOT_COLOR: Record<SelectionSlot, string> = {
   PC: 'var(--cream2)',
 };
 
+// nb_joueurs est une saisie libre : on en extrait une fourchette exploitable
+const parseJoueurs = (v: string | null): { min: number; max: number } | null => {
+  if (!v) return null;
+  const nums = (v.match(/\d+/g) ?? []).map(Number).filter(n => n > 0);
+  if (nums.length === 0) return null;
+  return { min: Math.min(...nums), max: v.includes('+') ? 99 : Math.max(...nums) };
+};
+
 const POSTE_SLOT: Record<string, SelectionSlot> = {
   ps5: "PS5",
   switch_multi: "Switch_Multi",
@@ -702,6 +710,32 @@ function ModalJeu({
   );
 }
 
+// ─── Filtres du sélecteur de jeux ────────────────────────────────────────────
+
+function FilterGroup({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+      <span style={{ fontSize: 9, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.07em', color: 'rgba(0,0,0,0.35)' }}>{label}</span>
+      <div style={{ display: 'flex', gap: 3 }}>{children}</div>
+    </div>
+  );
+}
+
+function FilterChip({ active, onClick, title, children }: { active: boolean; onClick: () => void; title?: string; children: React.ReactNode }) {
+  return (
+    <button type="button" onClick={onClick} title={title}
+      style={{
+        fontSize: 11, fontWeight: 800, padding: '4px 9px', borderRadius: 999, cursor: 'pointer',
+        border: active ? '2px solid var(--ink)' : '2px solid rgba(0,0,0,0.15)',
+        background: active ? 'var(--yellow)' : 'var(--white)',
+        boxShadow: active ? '2px 2px 0 var(--ink)' : 'none',
+        color: active ? 'var(--ink)' : 'rgba(0,0,0,0.5)',
+      }}>
+      {children}
+    </button>
+  );
+}
+
 // ─── Modal : File de rotation (groupes de 3) ─────────────────────────────────
 
 function ModalRotation({
@@ -727,6 +761,12 @@ function ModalRotation({
   const [pickerGroupe, setPickerGroupe] = useState<number | null>(null);
   const [pickerSearch, setPickerSearch] = useState("");
   const [pickerSelected, setPickerSelected] = useState<string[]>([]);
+  const [fJoueurs, setFJoueurs] = useState<number | null>(null);   // nb de joueurs supporté
+  const [fPegi, setFPegi] = useState<number | null>(null);         // PEGI maximum
+  const [fResa, setFResa] = useState<"jamais" | "populaire" | null>(null);
+  const [fInedit, setFInedit] = useState(false);                   // jamais mis en sélection
+  const [fGenre, setFGenre] = useState("");
+  const [tri, setTri] = useState<"az" | "resa" | "resa_asc" | "pegi">("az");
   const pickerRef = useRef<HTMLInputElement>(null);
 
   const planifiees = selections
@@ -748,29 +788,26 @@ function ModalRotation({
     (slot !== "Switch_Multi" || (j.nb_joueurs && j.nb_joueurs !== "1"))
   );
 
+  const resetFiltres = () => {
+    setFJoueurs(null); setFPegi(null); setFResa(null); setFInedit(false); setFGenre(""); setTri("az");
+  };
+  const nbFiltresActifs = (fJoueurs !== null ? 1 : 0) + (fPegi !== null ? 1 : 0) + (fResa !== null ? 1 : 0) + (fInedit ? 1 : 0) + (fGenre ? 1 : 0);
+
   const openPicker = (groupe: number) => {
     setPickerGroupe(groupe);
     setPickerSearch("");
     setPickerSelected([]);
+    resetFiltres();
     setTimeout(() => pickerRef.current?.focus(), 50);
   };
 
-  const closePicker = () => { setPickerGroupe(null); setPickerSearch(""); setPickerSelected([]); };
+  const closePicker = () => { setPickerGroupe(null); setPickerSearch(""); setPickerSelected([]); resetFiltres(); };
 
   const confirmPicker = () => {
     if (pickerGroupe === null) return;
     pickerSelected.forEach(id => onAddToGroup(id, pickerGroupe));
     closePicker();
   };
-
-  const pickerGames = pickerGroupe !== null
-    ? disponibles.filter(j => {
-        const inGroup = planifiees.filter(s => s.groupe === pickerGroupe).some(s => s.jeu_id === j.id);
-        if (inGroup) return false;
-        const q = normalizeStr(pickerSearch);
-        return q === "" || normalizeStr(j.titre).includes(q);
-      })
-    : [];
 
   const CONSOLE_BG_R: Record<string, string> = { PS5: 'var(--bleu)', Switch: 'var(--rouge)', PC: 'var(--cream2)' };
   const headerBgR = CONSOLE_BG_R[consoleName] ?? 'var(--cream2)';
@@ -804,10 +841,54 @@ function ModalRotation({
     return ranks;
   }, [jeux, resaCounts]);
 
+  // Genres proposés au filtre (le champ est libre et parfois multi-valué)
+  const genresDispo = useMemo(() => {
+    const set = new Set<string>();
+    disponibles.forEach(j => (j.genre ?? "").split(/[,/]/).map(g => g.trim()).filter(Boolean).forEach(g => set.add(g)));
+    return [...set].sort((a, b) => a.localeCompare(b));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jeux, selections, slot]);
+
+  const pickerGames = useMemo(() => {
+    if (pickerGroupe === null) return [];
+    const dansLeGroupe = new Set(planifiees.filter(s => s.groupe === pickerGroupe).map(s => s.jeu_id));
+    const q = normalizeStr(pickerSearch);
+
+    const list = disponibles.filter(j => {
+      if (dansLeGroupe.has(j.id)) return false;
+      if (q && !normalizeStr(j.titre).includes(q)) return false;
+
+      if (fJoueurs !== null) {
+        const p = parseJoueurs(j.nb_joueurs);
+        if (!p) return false;
+        if (fJoueurs === 1 ? p.min > 1 : p.max < fJoueurs) return false;
+      }
+      if (fPegi !== null && (j.pegi === null || j.pegi > fPegi)) return false;
+      if (fInedit && (selectionCounts[j.id] || 0) > 0) return false;
+      if (fResa === "jamais" && (resaCounts[j.id] || 0) > 0) return false;
+      if (fResa === "populaire") {
+        const pop = popularityRank[j.id];
+        if (!pop || (resaCounts[j.id] || 0) === 0 || pop.rank / pop.total > 0.2) return false;
+      }
+      if (fGenre && !normalizeStr(j.genre ?? "").includes(normalizeStr(fGenre))) return false;
+      return true;
+    });
+
+    const parTitre = (a: JvJeu, b: JvJeu) => a.titre.localeCompare(b.titre);
+    if (tri === "resa")     list.sort((a, b) => (resaCounts[b.id] || 0) - (resaCounts[a.id] || 0) || parTitre(a, b));
+    else if (tri === "resa_asc") list.sort((a, b) => (resaCounts[a.id] || 0) - (resaCounts[b.id] || 0) || parTitre(a, b));
+    else if (tri === "pegi") list.sort((a, b) => (a.pegi ?? 99) - (b.pegi ?? 99) || parTitre(a, b));
+    else list.sort(parTitre);
+    return list;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [disponibles, planifiees, pickerGroupe, pickerSearch, fJoueurs, fPegi, fResa, fInedit, fGenre, tri, selectionCounts, resaCounts, popularityRank]);
+
+  const isPickerOpen = pickerGroupe !== null;
+
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 50, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '80px 16px 16px', overflowY: 'auto' }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="pop-card" style={{ background: 'var(--cream)', width: '100%', maxWidth: 520, display: 'flex', flexDirection: 'column', maxHeight: 'calc(100vh - 96px)', overflow: 'hidden', marginBottom: 32, position: 'relative' }}>
+      <div className="pop-card" style={{ background: 'var(--cream)', width: '100%', maxWidth: isPickerOpen ? 1040 : 560, display: 'flex', flexDirection: 'column', height: isPickerOpen ? 'calc(100vh - 128px)' : undefined, maxHeight: 'calc(100vh - 128px)', overflow: 'hidden', marginBottom: 32, position: 'relative' }}>
 
         {/* Header */}
         <div style={{ background: headerBgR, padding: '20px 24px 20px', display: 'flex', alignItems: 'center', gap: 12, borderBottom: '2.5px solid var(--ink)', flexShrink: 0 }}>
@@ -917,21 +998,86 @@ function ModalRotation({
                   </p>
                 </div>
               </div>
-              <div style={{ padding: '12px 20px', borderBottom: '2.5px solid var(--ink)', flexShrink: 0 }}>
-                <input
-                  ref={pickerRef}
-                  type="text"
-                  value={pickerSearch}
-                  onChange={e => setPickerSearch(e.target.value)}
-                  placeholder="Rechercher un jeu…"
-                  className="pop-input" style={{ width: '100%' }}
-                />
+              <div style={{ padding: '12px 20px', borderBottom: '2.5px solid var(--ink)', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <input
+                    ref={pickerRef}
+                    type="text"
+                    value={pickerSearch}
+                    onChange={e => setPickerSearch(e.target.value)}
+                    placeholder="Rechercher un jeu…"
+                    className="pop-input" style={{ flex: 1, minWidth: 0 }}
+                  />
+                  <select value={tri} onChange={e => setTri(e.target.value as typeof tri)}
+                    className="pop-input" style={{ fontSize: 12, padding: '8px 10px', cursor: 'pointer', flexShrink: 0 }}>
+                    <option value="az">Tri : A → Z</option>
+                    <option value="resa">Tri : + réservés</option>
+                    <option value="resa_asc">Tri : - réservés</option>
+                    <option value="pegi">Tri : PEGI croissant</option>
+                  </select>
+                </div>
+
+                <div style={{ display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <FilterGroup label="Joueurs">
+                    {[1, 2, 3, 4].map(n => (
+                      <FilterChip key={n} active={fJoueurs === n} onClick={() => setFJoueurs(fJoueurs === n ? null : n)}
+                        title={n === 1 ? "Jouable en solo" : `Jouable à ${n} joueurs ou plus`}>
+                        {n === 1 ? "Solo" : `${n}+`}
+                      </FilterChip>
+                    ))}
+                  </FilterGroup>
+
+                  <FilterGroup label="PEGI max">
+                    {[3, 7, 12, 16, 18].map(n => (
+                      <FilterChip key={n} active={fPegi === n} onClick={() => setFPegi(fPegi === n ? null : n)}
+                        title={`PEGI ${n} ou moins`}>
+                        {n}
+                      </FilterChip>
+                    ))}
+                  </FilterGroup>
+
+                  <FilterGroup label="Usage">
+                    <FilterChip active={fInedit} onClick={() => setFInedit(!fInedit)} title="Jamais mis en sélection">Inédit</FilterChip>
+                    <FilterChip active={fResa === "jamais"} onClick={() => setFResa(fResa === "jamais" ? null : "jamais")} title="Aucune réservation">0 résa</FilterChip>
+                    <FilterChip active={fResa === "populaire"} onClick={() => setFResa(fResa === "populaire" ? null : "populaire")} title="Top 20% des réservations de la console">🔥 Populaires</FilterChip>
+                  </FilterGroup>
+
+                  {genresDispo.length > 0 && (
+                    <FilterGroup label="Genre">
+                      <select value={fGenre} onChange={e => setFGenre(e.target.value)}
+                        className="pop-input" style={{ fontSize: 11, padding: '4px 8px', cursor: 'pointer', maxWidth: 150 }}>
+                        <option value="">Tous</option>
+                        {genresDispo.map(g => <option key={g} value={g}>{g}</option>)}
+                      </select>
+                    </FilterGroup>
+                  )}
+
+                  <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 11, fontWeight: 800, color: 'rgba(0,0,0,0.4)' }}>
+                      {pickerGames.length} jeu{pickerGames.length > 1 ? "x" : ""}
+                    </span>
+                    {nbFiltresActifs > 0 && (
+                      <button onClick={resetFiltres} className="pop-btn pop-btn-outline" style={{ fontSize: 10, padding: '4px 10px' }}>
+                        Effacer ({nbFiltresActifs})
+                      </button>
+                    )}
+                  </div>
+                </div>
               </div>
               <div className="flex-1 overflow-y-auto custom-scroll p-4">
                 {pickerGames.length === 0 ? (
-                  <p style={{ fontSize: 13, color: 'rgba(0,0,0,0.35)', textAlign: 'center', padding: '32px 0', fontWeight: 600 }}>Aucun jeu disponible</p>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '32px 0' }}>
+                    <p style={{ fontSize: 13, color: 'rgba(0,0,0,0.35)', textAlign: 'center', fontWeight: 600, margin: 0 }}>
+                      {nbFiltresActifs > 0 || pickerSearch ? "Aucun jeu ne correspond à la recherche" : "Aucun jeu disponible"}
+                    </p>
+                    {(nbFiltresActifs > 0 || pickerSearch) && (
+                      <button onClick={() => { resetFiltres(); setPickerSearch(""); }} className="pop-btn pop-btn-outline" style={{ fontSize: 12 }}>
+                        Réinitialiser les filtres
+                      </button>
+                    )}
+                  </div>
                 ) : (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(136px, 1fr))', gap: 10, alignContent: 'start' }}>
                     {pickerGames.map(j => {
                       const isSelected = pickerSelected.includes(j.id);
                       const isDisabled = !isSelected && slotsLeft === 0;
