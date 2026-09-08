@@ -31,6 +31,7 @@ type PanierCommunLigne = {
 type JeuRechercheStore = {
   nom: string; editeur: string | null; image_url: string | null;
   prix: number | null; url_source: string | null; extra?: string;
+  etat?: string | null; region?: string | null; reference?: string | null;
 };
 
 type PanierCommun = { id: string; type: PanierType; nom: string };
@@ -277,6 +278,7 @@ export default function StorePage() {
   const [recherche, setRecherche] = useState("");
   const [isSearching, setIsSearching] = useState(false);
   const [resultats, setResultats] = useState<JeuRechercheStore[]>([]);
+  const [sourceBloquee, setSourceBloquee] = useState(false);
   const [showResultats, setShowResultats] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -404,18 +406,31 @@ export default function StorePage() {
     searchTimer.current = setTimeout(async () => {
       setIsSearching(true); setShowResultats(true);
       try {
-        if (panierActuel?.type === "JV") {
-          const data = await fetch(`/api/jv/search?q=${encodeURIComponent(val.trim())}`).then(r => r.json() as Promise<any[]>);
-          setResultats((Array.isArray(data) ? data : []).map((g: any) => ({
-            nom: g.titre, editeur: g.editeur, image_url: g.image_url, prix: null, url_source: null, extra: g.console,
-          })));
+        const type = panierActuel?.type ?? "JdS";
+        const data = await fetch(`/api/store/recherche?nom=${encodeURIComponent(val.trim())}&type=${type}`).then(r => r.json() as Promise<any>);
+        const trouves = (data.resultats ?? []).map((r: any) => ({
+          nom: r.nom, editeur: r.editeur, image_url: r.image_url, prix: r.prix,
+          url_source: r.url_source ?? null, extra: r.plateforme ?? undefined,
+          etat: r.etat ?? null, region: r.region ?? null, reference: r.reference ?? null,
+        }));
+
+        // Trader Games protège son site contre les requêtes automatiques : si la
+        // recherche est refusée, on retombe sur le catalogue jeux vidéo habituel
+        // (titres et jaquettes, mais sans prix) plutôt que de ne rien proposer.
+        if (type === "JV" && data.bloque) {
+          const secours = await fetch(`/api/jv/search?q=${encodeURIComponent(val.trim())}`)
+            .then(r => r.json() as Promise<any[]>).catch(() => []);
+          const liste = (Array.isArray(secours) ? secours : []).map((g: any) => ({
+            nom: g.titre, editeur: g.editeur, image_url: g.image_url, prix: null,
+            url_source: null, extra: g.console, etat: null, region: null, reference: null,
+          }));
+          setSourceBloquee(liste.length === 0);
+          setResultats(liste);
         } else {
-          const data = await fetch(`/api/store/recherche?nom=${encodeURIComponent(val.trim())}`).then(r => r.json() as Promise<any>);
-          setResultats((data.resultats ?? []).map((r: any) => ({
-            nom: r.nom, editeur: r.editeur, image_url: r.image_url, prix: r.prix, url_source: r.url_source ?? null,
-          })));
+          setSourceBloquee(!!data.bloque);
+          setResultats(trouves);
         }
-      } catch { setResultats([]); }
+      } catch { setResultats([]); setSourceBloquee(false); }
       finally { setIsSearching(false); }
     }, 500);
   };
@@ -1039,11 +1054,22 @@ ${filtered.map(l => `<tr>
                   {showResultats && (
                     <div style={{ position: "absolute", zIndex: 50, top: "calc(100% + 4px)", left: 0, right: 0, background: "var(--white)", border: "2.5px solid var(--ink)", borderRadius: 10, boxShadow: "4px 4px 0 var(--ink)", overflow: "hidden" }}>
                       {isSearching ? (
-                        <div style={{ padding: 14, textAlign: "center", fontSize: 14, color: "rgba(0,0,0,0.4)", fontWeight: 600 }}>Recherche{panierActuel?.type === "JV" ? " de jeux vidéo" : " sur Philibert"}…</div>
+                        <div style={{ padding: 14, textAlign: "center", fontSize: 14, color: "rgba(0,0,0,0.4)", fontWeight: 600 }}>Recherche{panierActuel?.type === "JV" ? " sur Trader Games" : " sur BoardGameGeek"}…</div>
                       ) : resultats.length === 0 ? (
                         <div style={{ padding: 14, textAlign: "center" }}>
-                          <p style={{ fontSize: 14, color: "rgba(0,0,0,0.4)", fontWeight: 600 }}>Aucun résultat trouvé</p>
-                          <button onClick={ajouterJeuManuel} className="pop-btn pop-btn-dark" style={{ marginTop: 8, fontSize: 12, padding: "5px 12px" }}>Ajouter « {recherche} »</button>
+                          <p style={{ fontSize: 14, color: "rgba(0,0,0,0.4)", fontWeight: 600 }}>
+                            {sourceBloquee ? "Trader Games a refusé la recherche automatique" : "Aucun résultat trouvé"}
+                          </p>
+                          <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 8, flexWrap: "wrap" }}>
+                            <button onClick={ajouterJeuManuel} className="pop-btn pop-btn-dark" style={{ fontSize: 12, padding: "5px 12px" }}>Ajouter « {recherche} »</button>
+                            {panierActuel?.type === "JV" && (
+                              <a href={`https://www.tradergames.fr/fr/recherche?controller=search&s=${encodeURIComponent(recherche.trim())}`}
+                                target="_blank" rel="noopener noreferrer"
+                                className="pop-btn pop-btn-outline" style={{ fontSize: 12, padding: "5px 12px", textDecoration: "none" }}>
+                                🔎 Chercher sur Trader Games ↗
+                              </a>
+                            )}
+                          </div>
                         </div>
                       ) : (
                         <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
@@ -1057,9 +1083,11 @@ ${filtered.map(l => `<tr>
                                   : <div style={{ width: 40, height: 40, borderRadius: 6, background: "var(--cream2)", flexShrink: 0 }} />}
                                 <div style={{ flex: 1, minWidth: 0 }}>
                                   <p style={{ fontWeight: 700, fontSize: 14, color: "var(--ink)" }}>{r.nom}</p>
-                                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                    {r.editeur && <p style={{ fontSize: 12, color: "rgba(0,0,0,0.45)" }}>{r.editeur}</p>}
-                                    {r.extra && <span className="pop-sticker" style={{ background: "var(--cream2)", border: "1px solid var(--ink)", fontSize: 10 }}>{r.extra}</span>}
+                                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginTop: 2 }}>
+                                    {r.extra && <span className="pop-sticker" style={{ background: "var(--bleu)", border: "1px solid var(--ink)", fontSize: 10 }}>{r.extra}</span>}
+                                    {r.etat && <span className="pop-sticker" style={{ background: r.etat === "Neuf" ? "var(--vert)" : "var(--yellow)", border: "1px solid var(--ink)", fontSize: 10 }}>{r.etat}</span>}
+                                    {r.region && <span style={{ fontSize: 11, color: "rgba(0,0,0,0.45)", fontWeight: 600 }}>{r.region}</span>}
+                                    {!r.extra && !r.etat && r.editeur && <p style={{ fontSize: 12, color: "rgba(0,0,0,0.45)" }}>{r.editeur}</p>}
                                   </div>
                                 </div>
                                 {r.prix != null && <span className="bc" style={{ fontSize: 16, flexShrink: 0 }}>{r.prix.toFixed(2)} €</span>}
