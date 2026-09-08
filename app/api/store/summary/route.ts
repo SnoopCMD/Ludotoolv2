@@ -12,7 +12,8 @@ export async function GET() {
       db.prepare(`
         SELECT panier_commun_id,
                COUNT(*) as nb,
-               COALESCE(SUM(prix_unitaire * quantite), 0) as total
+               COALESCE(SUM(prix_unitaire * quantite), 0) as total,
+               SUM(CASE WHEN COALESCE(console, '') = 'PC' THEN 1 ELSE 0 END) as nb_pc
         FROM paniers_communs_lignes
         GROUP BY panier_commun_id
       `).all(),
@@ -35,9 +36,16 @@ export async function GET() {
       `).all(),
     ]);
 
-    const communStats: Record<string, { nb: number; total: number }> = {};
+    // Les jeux PC du panier JV partent sur Steam : ils sont comptés à part et
+    // exclus du total à commander.
+    const communStats: Record<string, { nb: number; total: number; nb_pc: number }> = {};
     for (const row of communRows.results as any[]) {
-      communStats[row.panier_commun_id] = { nb: row.nb, total: row.total };
+      const nbPc = row.panier_commun_id === 'commun-jv' ? Number(row.nb_pc ?? 0) : 0;
+      communStats[row.panier_commun_id] = {
+        nb: Number(row.nb) - nbPc,
+        total: row.total,
+        nb_pc: nbPc,
+      };
     }
 
     const profilStats: Record<string, { paniers: number; jeux: number }> = {};

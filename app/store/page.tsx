@@ -40,7 +40,7 @@ type PanierCommun = { id: string; type: PanierType; nom: string };
 type MembreSummary = { nom: string; couleur: string };
 
 type StoreSummary = {
-  communStats: Record<string, { nb: number; total: number }>;
+  communStats: Record<string, { nb: number; total: number; nb_pc?: number }>;
   profilStats: Record<string, { paniers: number; jeux: number }>;
   membres: MembreSummary[];
 };
@@ -259,6 +259,165 @@ function ModalEnvoiCommun({
   );
 }
 
+// ─── ModalWishlistSteam ───────────────────────────────────────────────────────
+// Les jeux PC ne se commandent pas : ils s'achètent sur Steam. Ils sont donc
+// sortis du panier commun et regroupés ici, avec leur prix boutique du moment.
+
+type FicheSteam = {
+  nom_recherche: string;
+  appid: number | null;
+  titre: string | null;
+  image_url: string | null;
+  prix: number | null;
+  prix_initial: number | null;
+  remise: number | null;
+  url: string;
+};
+
+function ModalWishlistSteam({
+  lignes, onClose, onSupprimer, onUpvote,
+}: {
+  lignes: PanierCommunLigne[];
+  onClose: () => void;
+  onSupprimer: (ligne: PanierCommunLigne) => void;
+  onUpvote: (ligne: PanierCommunLigne) => void;
+}) {
+  const [fiches, setFiches] = useState<Record<string, FicheSteam>>({});
+  const [chargement, setChargement] = useState(false);
+
+  const noms = lignes.map(l => l.nom).join("|");
+
+  useEffect(() => {
+    if (!noms) return;
+    let annule = false;
+    setChargement(true);
+    fetch(`/api/store/steam?noms=${encodeURIComponent(noms)}`)
+      .then(r => r.json() as Promise<{ fiches?: FicheSteam[] }>)
+      .then(d => {
+        if (annule) return;
+        const map: Record<string, FicheSteam> = {};
+        (d.fiches ?? []).forEach(f => { map[f.nom_recherche] = f; });
+        setFiches(map);
+      })
+      .catch(() => {})
+      .finally(() => { if (!annule) setChargement(false); });
+    return () => { annule = true; };
+  }, [noms]);
+
+  const total = lignes.reduce((s, l) => {
+    const f = fiches[l.nom];
+    return s + (f?.prix ?? l.prix_unitaire ?? 0) * l.quantite;
+  }, 0);
+
+  const enPromo = lignes.filter(l => fiches[l.nom]?.remise);
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 60, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "60px 16px 16px", overflowY: "auto" }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="pop-card" style={{ background: "var(--cream)", width: "100%", maxWidth: 780, display: "flex", flexDirection: "column", overflow: "hidden", marginBottom: 32 }}>
+
+        {/* Header */}
+        <div style={{ background: "#1b2838", padding: "18px 22px", display: "flex", alignItems: "center", gap: 12, borderBottom: "2.5px solid var(--ink)" }}>
+          <span style={{ fontSize: 30 }}>🖥️</span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <h2 className="bc" style={{ fontSize: 24, color: "#ffffff", margin: 0, lineHeight: 1 }}>Wishlist Steam</h2>
+            <p style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.6)", marginTop: 4 }}>
+              Les jeux PC ne se commandent pas — ils s&apos;achètent sur Steam
+            </p>
+          </div>
+          <button onClick={onClose} style={{ width: 34, height: 34, border: "2.5px solid var(--ink)", borderRadius: 8, background: "var(--white)", fontWeight: 900, fontSize: 14, cursor: "pointer", flexShrink: 0 }}>✕</button>
+        </div>
+
+        {/* Résumé */}
+        <div style={{ display: "flex", alignItems: "center", gap: 18, padding: "12px 22px", background: "var(--cream2)", borderBottom: "2.5px solid var(--ink)", flexWrap: "wrap" }}>
+          <span style={{ fontSize: 13, fontWeight: 800 }}>{lignes.length} jeu{lignes.length !== 1 ? "x" : ""}</span>
+          <span style={{ fontSize: 13, fontWeight: 800 }}>
+            Total {chargement ? "…" : `${total.toFixed(2)} €`}
+          </span>
+          {enPromo.length > 0 && (
+            <span className="pop-sticker" style={{ background: "var(--vert)", border: "2px solid var(--ink)", fontSize: 11 }}>
+              🔥 {enPromo.length} en promo
+            </span>
+          )}
+          {chargement && <span style={{ fontSize: 12, color: "rgba(0,0,0,0.4)", fontWeight: 600 }}>Prix Steam en cours de récupération…</span>}
+        </div>
+
+        {/* Liste */}
+        <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
+          {lignes.length === 0 ? (
+            <p style={{ textAlign: "center", padding: "28px 0", color: "rgba(0,0,0,0.35)", fontWeight: 600, fontSize: 14 }}>
+              Aucun jeu PC pour l&apos;instant — passe la console d&apos;une ligne sur « PC » et elle atterrira ici.
+            </p>
+          ) : lignes.map(ligne => {
+            const f = fiches[ligne.nom];
+            const trouve = !!f?.appid;
+            return (
+              <div key={ligne.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", background: "var(--white)", border: "2px solid var(--ink)", borderRadius: 10 }}>
+                {(f?.image_url ?? ligne.image_url) ? (
+                  <img src={f?.image_url ?? ligne.image_url!} alt="" style={{ width: 62, height: 30, objectFit: "cover", borderRadius: 4, background: "var(--cream2)", flexShrink: 0, border: "1.5px solid var(--ink)" }} />
+                ) : (
+                  <div style={{ width: 62, height: 30, borderRadius: 4, background: "var(--cream2)", flexShrink: 0, border: "1.5px solid var(--ink)" }} />
+                )}
+
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontWeight: 700, fontSize: 14, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ligne.nom}</p>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2, flexWrap: "wrap" }}>
+                    {ligne.profil && <span style={{ fontSize: 11, background: "rgba(0,0,0,0.06)", borderRadius: 4, padding: "1px 6px", fontWeight: 700 }}>{ligne.profil}</span>}
+                    {!chargement && !trouve && (
+                      <span style={{ fontSize: 11, color: "rgba(0,0,0,0.35)", fontWeight: 600 }}>non identifié sur Steam</span>
+                    )}
+                    {trouve && f!.titre && f!.titre.toLowerCase() !== ligne.nom.toLowerCase() && (
+                      <span style={{ fontSize: 11, color: "rgba(0,0,0,0.35)", fontWeight: 600 }}>≈ {f!.titre}</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Votes */}
+                <div style={{ display: "inline-flex", alignItems: "center", gap: 4, border: "2px solid var(--ink)", borderRadius: 20, overflow: "hidden", flexShrink: 0 }}>
+                  <button onClick={() => onUpvote(ligne)}
+                    style={{ padding: "3px 8px", cursor: "pointer", background: "var(--yellow)", border: "none", fontWeight: 900, fontSize: 12, fontFamily: "inherit" }}>▲</button>
+                  <span style={{ fontWeight: 900, fontSize: 13, padding: "0 5px", minWidth: 18, textAlign: "center" }}>{ligne.votes}</span>
+                </div>
+
+                {/* Prix */}
+                <div style={{ textAlign: "right", flexShrink: 0, minWidth: 78 }}>
+                  {f?.prix != null ? (
+                    <>
+                      <span className="bc" style={{ fontSize: 16 }}>{f.prix.toFixed(2)} €</span>
+                      {f.remise && (
+                        <div style={{ fontSize: 10, fontWeight: 800, color: "var(--ink)" }}>
+                          <span style={{ background: "var(--vert)", border: "1px solid var(--ink)", borderRadius: 4, padding: "0 4px" }}>-{f.remise}%</span>
+                          {f.prix_initial != null && <span style={{ textDecoration: "line-through", color: "rgba(0,0,0,0.35)", marginLeft: 4 }}>{f.prix_initial.toFixed(2)}</span>}
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <span style={{ fontSize: 13, color: "rgba(0,0,0,0.3)", fontWeight: 700 }}>—</span>
+                  )}
+                </div>
+
+                <a href={f?.url ?? `https://store.steampowered.com/search/?term=${encodeURIComponent(ligne.nom)}`}
+                  target="_blank" rel="noopener noreferrer"
+                  title={trouve ? "Ouvrir la fiche Steam pour l'ajouter à la wishlist" : "Chercher sur Steam"}
+                  className="pop-btn" style={{ flexShrink: 0, fontSize: 12, padding: "6px 12px", background: "#1b2838", color: "#ffffff", textDecoration: "none" }}>
+                  {trouve ? "Steam ↗" : "Chercher ↗"}
+                </a>
+
+                <button onClick={() => onSupprimer(ligne)}
+                  style={{ fontSize: 12, padding: "4px 8px", borderRadius: 6, background: "var(--rouge)", color: "var(--white)", border: "1.5px solid var(--ink)", cursor: "pointer", flexShrink: 0 }}>✕</button>
+              </div>
+            );
+          })}
+        </div>
+
+        <div style={{ padding: "14px 20px", borderTop: "2.5px solid var(--ink)" }}>
+          <button onClick={onClose} className="pop-btn pop-btn-dark" style={{ width: "100%" }}>Fermer</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Page principale ──────────────────────────────────────────────────────────
 
 export default function StorePage() {
@@ -295,6 +454,7 @@ export default function StorePage() {
   const [filterConsole, setFilterConsole] = useState<string | null>(null);
   const [localPrixCommun, setLocalPrixCommun] = useState<Record<string, string>>({});
   const [modalPDF, setModalPDF] = useState(false);
+  const [modalWishlist, setModalWishlist] = useState(false);
   const [pdfConsoles, setPdfConsoles] = useState<string[]>([]);
 
   // ─── Dérivés ──────────────────────────────────────────────────────────────────
@@ -303,6 +463,11 @@ export default function StorePage() {
   const panierActuel = (view === "basket" && !isCommun) ? (paniers.find(p => p.id === selectedId) ?? null) : null;
   const panierCommunActuel = (view === "basket" && isCommun) ? (PANIERS_COMMUNS.find(p => p.id === selectedId) ?? null) : null;
   const lignesCommun = (isCommun && selectedId) ? (communLignes[selectedId] ?? []) : [];
+  // Les jeux PC s'achètent sur Steam, pas en commande : ils sortent du panier et
+  // alimentent la wishlist. Rien à migrer, c'est un simple aiguillage à l'affichage.
+  const estWishlist = (l: PanierCommunLigne) => panierCommunActuel?.type === "JV" && l.console === "PC";
+  const lignesWishlist = lignesCommun.filter(estWishlist);
+  const lignesCommande = lignesCommun.filter(l => !estWishlist(l));
   const profilPaniers = activeProfil ? paniers.filter(p => p.profil === activeProfil) : [];
 
   const totalEstime = lignes.reduce((s, l) => s + (l.prix_unitaire ?? 0) * l.quantite, 0);
@@ -319,7 +484,9 @@ export default function StorePage() {
 
   const chargerSummary = async () => {
     const data = await fetch("/api/store/summary").then(r => r.json() as Promise<StoreSummary>).catch(() => null);
-    if (data) setSummary(data);
+    // La route peut répondre { error } : sans ce garde-fou, la page plante au
+    // premier accès à communStats.
+    if (data && data.communStats) setSummary(data);
   };
 
   const chargerLignes = async (id: string) => {
@@ -639,8 +806,8 @@ td{padding:10px 12px;border-bottom:1px solid #e5e5e5;vertical-align:middle}.righ
     const date = new Date().toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" });
     const isJV = panierCommunActuel.type === "JV";
     const filtered = (isJV && consolesFiltre.length > 0)
-      ? lignesCommun.filter(l => consolesFiltre.includes(l.console ?? ""))
-      : lignesCommun;
+      ? lignesCommande.filter(l => consolesFiltre.includes(l.console ?? ""))
+      : lignesCommande;
     const total = filtered.reduce((s, l) => s + (l.prix_unitaire ?? 0) * l.quantite, 0);
     const consoleTitre = consolesFiltre.length > 0 ? ` — ${consolesFiltre.join(", ")}` : "";
     const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>${panierCommunActuel.nom}${consoleTitre}</title>
@@ -679,8 +846,8 @@ ${filtered.map(l => `<tr>
     const { default: autoTable } = await import("jspdf-autotable");
     const isJV = panierCommunActuel.type === "JV";
     const filtered = (isJV && consolesFiltre.length > 0)
-      ? lignesCommun.filter(l => consolesFiltre.includes(l.console ?? ""))
-      : lignesCommun;
+      ? lignesCommande.filter(l => consolesFiltre.includes(l.console ?? ""))
+      : lignesCommande;
     const total = filtered.reduce((s, l) => s + (l.prix_unitaire ?? 0) * l.quantite, 0);
     const consoleTitre = consolesFiltre.length > 0 ? ` — ${consolesFiltre.join(", ")}` : "";
     const date = new Date().toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" });
@@ -774,6 +941,12 @@ ${filtered.map(l => `<tr>
                           <p className="bc" style={{ fontSize: 34, lineHeight: 1 }}>{(stats?.total ?? 0).toFixed(0)} €</p>
                           <p style={{ fontSize: 11, color: "rgba(0,0,0,0.45)", fontWeight: 700, marginTop: 3, textTransform: "uppercase", letterSpacing: "0.06em" }}>estimé</p>
                         </div>
+                        {(stats?.nb_pc ?? 0) > 0 && (
+                          <div>
+                            <p className="bc" style={{ fontSize: 34, lineHeight: 1 }}>{stats!.nb_pc}</p>
+                            <p style={{ fontSize: 11, color: "rgba(0,0,0,0.45)", fontWeight: 700, marginTop: 3, textTransform: "uppercase", letterSpacing: "0.06em" }}>🖥️ sur Steam</p>
+                          </div>
+                        )}
                       </div>
                     </button>
                   );
@@ -883,8 +1056,8 @@ ${filtered.map(l => `<tr>
 
             {isCommun ? (() => {
               const isJV = panierCommunActuel?.type === "JV";
-              const consolesPresentes = isJV ? [...new Set(lignesCommun.map(l => l.console).filter(Boolean))] as string[] : [];
-              const lignesCommunFiltrees = filterConsole ? lignesCommun.filter(l => l.console === filterConsole) : lignesCommun;
+              const consolesPresentes = isJV ? [...new Set(lignesCommande.map(l => l.console).filter(Boolean))] as string[] : [];
+              const lignesCommunFiltrees = filterConsole ? lignesCommande.filter(l => l.console === filterConsole) : lignesCommande;
               return (
               /* Panier commun */
               <>
@@ -894,11 +1067,17 @@ ${filtered.map(l => `<tr>
                     <div>
                       <h1 className="bc" style={{ fontSize: 24, margin: 0 }}>{panierCommunActuel?.nom}</h1>
                       <p style={{ fontSize: 13, color: "rgba(0,0,0,0.4)", fontWeight: 600, marginTop: 2 }}>
-                        {lignesCommun.length} article{lignesCommun.length !== 1 ? "s" : ""} · classé par votes
+                        {lignesCommande.length} article{lignesCommande.length !== 1 ? "s" : ""} à commander · classé par votes
                       </p>
                     </div>
                   </div>
                   <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    {isJV && (
+                      <button onClick={() => setModalWishlist(true)} className="pop-btn"
+                        style={{ fontSize: 13, background: "#1b2838", color: "#ffffff" }}>
+                        🖥️ Wishlist Steam{lignesWishlist.length > 0 ? ` (${lignesWishlist.length})` : ""}
+                      </button>
+                    )}
                     <button onClick={() => { setPdfConsoles([]); setModalPDF(true); }} className="pop-btn pop-btn-outline" style={{ fontSize: 13 }}>
                       📄 PDF
                     </button>
@@ -914,22 +1093,26 @@ ${filtered.map(l => `<tr>
                       style={{ padding: "4px 12px", borderRadius: 20, fontFamily: "inherit", fontWeight: 700, fontSize: 12, cursor: "pointer",
                         background: filterConsole === null ? "var(--ink)" : "var(--cream2)",
                         color: filterConsole === null ? "var(--cream)" : "var(--ink)",
-                        border: "2px solid var(--ink)" }}>Toutes ({lignesCommun.length})</button>
+                        border: "2px solid var(--ink)" }}>Toutes ({lignesCommande.length})</button>
                     {consolesPresentes.map(c => (
                       <button key={c} onClick={() => setFilterConsole(filterConsole === c ? null : c)}
                         style={{ padding: "4px 12px", borderRadius: 20, fontFamily: "inherit", fontWeight: 700, fontSize: 12, cursor: "pointer",
                           background: filterConsole === c ? "var(--purple)" : "var(--cream2)",
                           color: filterConsole === c ? "var(--cream)" : "var(--ink)",
                           border: "2px solid var(--ink)" }}>
-                        {c} ({lignesCommun.filter(l => l.console === c).length})
+                        {c} ({lignesCommande.filter(l => l.console === c).length})
                       </button>
                     ))}
                   </div>
                 )}
 
-                {lignesCommun.length === 0 ? (
+                {lignesCommande.length === 0 ? (
                   <div className="pop-card" style={{ padding: "40px 20px", textAlign: "center" }}>
-                    <p style={{ color: "rgba(0,0,0,0.35)", fontWeight: 600, fontSize: 15 }}>Panier commun vide — envoie des jeux depuis tes paniers personnels</p>
+                    <p style={{ color: "rgba(0,0,0,0.35)", fontWeight: 600, fontSize: 15 }}>
+                      {lignesWishlist.length > 0
+                        ? `Rien à commander — les ${lignesWishlist.length} jeu${lignesWishlist.length > 1 ? "x" : ""} PC sont dans la wishlist Steam`
+                        : "Panier commun vide — envoie des jeux depuis tes paniers personnels"}
+                    </p>
                   </div>
                 ) : (
                   <div className="pop-card" style={{ overflow: "hidden" }}>
@@ -1292,9 +1475,17 @@ ${filtered.map(l => `<tr>
       )}
 
       {/* Modal PDF */}
+      {modalWishlist && (
+        <ModalWishlistSteam
+          lignes={lignesWishlist}
+          onClose={() => setModalWishlist(false)}
+          onSupprimer={supprimerCommunLigne}
+          onUpvote={upvoterLigne}
+        />
+      )}
       {modalPDF && panierCommunActuel && (() => {
         const isJV = panierCommunActuel.type === "JV";
-        const consolesDispos = isJV ? [...new Set(lignesCommun.map(l => l.console).filter(Boolean))] as string[] : [];
+        const consolesDispos = isJV ? [...new Set(lignesCommande.map(l => l.console).filter(Boolean))] as string[] : [];
         return (
           <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" }}
             onClick={e => e.target === e.currentTarget && setModalPDF(false)}>
@@ -1313,7 +1504,7 @@ ${filtered.map(l => `<tr>
                         checked={pdfConsoles.length === 0}
                         onChange={() => setPdfConsoles([])}
                         style={{ width: 18, height: 18, cursor: "pointer" }} />
-                      Toutes les consoles ({lignesCommun.length} jeux)
+                      Toutes les consoles ({lignesCommande.length} jeux)
                     </label>
                     {consolesDispos.map(c => (
                       <label key={c} style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", fontWeight: 600, fontSize: 14 }}>
@@ -1324,7 +1515,7 @@ ${filtered.map(l => `<tr>
                           )}
                           style={{ width: 18, height: 18, cursor: "pointer" }} />
                         <span style={{ display: "inline-block", padding: "2px 10px", borderRadius: 6, background: "var(--purple)", color: "var(--cream)", fontWeight: 700, fontSize: 12 }}>{c}</span>
-                        {lignesCommun.filter(l => l.console === c).length} jeux
+                        {lignesCommande.filter(l => l.console === c).length} jeux
                       </label>
                     ))}
                   </div>
