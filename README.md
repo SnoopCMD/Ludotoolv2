@@ -193,13 +193,17 @@ Le type de panier détermine la source, via un seul endpoint
   chez le fournisseur : on retrouve la fiche, mais le prix est à saisir à la main.
 
 > ⚠️ **Trader Games est protégé par un challenge Cloudflare** qui refuse les
-> clients non-navigateurs. Si le Worker déployé est bloqué, la recherche retombe
-> automatiquement sur le catalogue jeux vidéo interne (titres et jaquettes, sans
-> prix) et propose un lien vers la recherche sur leur site. Ça peut cesser de
-> fonctionner à tout moment, sans prévenir : la solution durable serait de leur
-> demander un accès catalogue (flux CSV/XML), comme le proposent beaucoup de
-> boutiques pro. Leur `robots.txt` décourage par ailleurs l'exploration des pages
-> de recherche.
+> clients non-navigateurs. Le Worker déployé passe — vérifié en production le
+> 08/09/2026 — mais pas un poste de développement : **en local, la recherche JV
+> renvoie systématiquement `bloque: true`, ce n'est pas un bug**. Pour la tester,
+> viser la production.
+>
+> Quand la boutique refuse, la recherche retombe automatiquement sur le catalogue
+> jeux vidéo interne (titres et jaquettes, sans prix) et propose un lien vers la
+> recherche sur leur site. Ça peut cesser de fonctionner à tout moment, sans
+> prévenir : la solution durable serait de leur demander un accès catalogue (flux
+> CSV/XML), comme le proposent beaucoup de boutiques pro. Leur `robots.txt`
+> décourage par ailleurs l'exploration des pages de recherche.
 
 ---
 
@@ -208,6 +212,8 @@ Le type de panier détermine la source, via un seul endpoint
 Tout push sur `main` déclenche `.github/workflows/deploy.yml` → `npm run deploy`
 (build OpenNext + `wrangler deploy`), avec les identifiants Cloudflare portés par
 l'environnement GitHub `cloudflare`.
+
+Production : <https://ludotool.t-coumond.workers.dev>
 
 Déploiement manuel :
 
