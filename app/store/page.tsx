@@ -284,6 +284,19 @@ function ModalWishlistSteam({
 }) {
   const [fiches, setFiches] = useState<Record<string, FicheSteam>>({});
   const [chargement, setChargement] = useState(false);
+  const [verif, setVerif] = useState<string | null>(null);
+
+  // Rejoue à la demande le contrôle quotidien : les promos en cours deviennent
+  // des alertes sur le tableau de bord.
+  const verifierPromos = async () => {
+    setVerif("…");
+    const r = await fetch("/api/store/steam/promos")
+      .then(x => x.json() as Promise<{ promos?: number; creees?: number; error?: string }>)
+      .catch(() => null);
+    if (!r || r.error) setVerif("échec de la vérification");
+    else if ((r.creees ?? 0) > 0) { const c = r.creees ?? 0; setVerif(`${c} nouvelle${c > 1 ? "s" : ""} alerte${c > 1 ? "s" : ""} · ${r.promos ?? 0} en promo`); }
+    else setVerif(`${r.promos ?? 0} en promo · rien de nouveau`);
+  };
 
   const noms = lignes.map(l => l.nom).join("|");
 
@@ -340,6 +353,14 @@ function ModalWishlistSteam({
             </span>
           )}
           {chargement && <span style={{ fontSize: 12, color: "rgba(0,0,0,0.4)", fontWeight: 600 }}>Prix Steam en cours de récupération…</span>}
+          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+            {verif && <span style={{ fontSize: 11, fontWeight: 700, color: "rgba(0,0,0,0.45)" }}>{verif}</span>}
+            <button onClick={verifierPromos} disabled={verif === "…"} className="pop-btn pop-btn-outline"
+              title="Ouvre une alerte sur le tableau de bord pour chaque promo en cours. Fait automatiquement une fois par jour."
+              style={{ fontSize: 11, padding: "4px 10px" }}>
+              {verif === "…" ? "Vérification…" : "🔔 Signaler les promos"}
+            </button>
+          </div>
         </div>
 
         {/* Liste */}

@@ -1,0 +1,25 @@
+name: Promos Steam
+
+# Vérifie une fois par jour si les jeux PC de la wishlist sont en promo.
+# Chaque promo qui démarre ouvre une alerte sur le tableau de bord ; celles
+# dont la promo se termine sont closes automatiquement. L'appel est rejouable
+# sans risque : rien n'est dupliqué.
+
+on:
+  schedule:
+    # 08:00 UTC, soit 10h à Paris en été et 9h en hiver
+    - cron: "0 8 * * *"
+  workflow_dispatch:
+
+jobs:
+  verifier:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Vérifier les promos Steam de la wishlist
+        run: |
+          reponse=$(curl -sS --fail-with-body --max-time 120 \
+            "https://ludotool.t-coumond.workers.dev/api/store/steam/promos")
+          echo "$reponse"
+          echo "$reponse" | grep -q '"error"' && exit 1
+          exit 0
