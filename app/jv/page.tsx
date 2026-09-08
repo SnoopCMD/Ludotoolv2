@@ -2507,6 +2507,7 @@ function ModalCorrectionSemaine({
 function TabSelections({
   jeux,
   selections,
+  rotationConfig,
   onRotationOpen,
   onToggleActif,
   onPlanningOpen,
@@ -2514,162 +2515,194 @@ function TabSelections({
 }: {
   jeux: JvJeu[];
   selections: JvSelection[];
+  rotationConfig: JvRotationConfig;
   onRotationOpen: (slot: SelectionSlot) => void;
   onToggleActif: (jeuId: string, slot: SelectionSlot, isPermanent: boolean, currentSel: JvSelection | undefined) => void;
   onPlanningOpen: () => void;
   onCorrectionOpen: (slot: SelectionSlot) => void;
 }) {
-  const SLOT_BG = SLOT_COLOR;
+  const idx = Number.isInteger(rotationConfig.current_slot_index)
+    ? ((rotationConfig.current_slot_index % ROTATION_ORDER.length) + ROTATION_ORDER.length) % ROTATION_ORDER.length
+    : 0;
+  const slotEnCours = ROTATION_ORDER[idx];
+  const prochainSlot = ROTATION_ORDER[(idx + 1) % ROTATION_ORDER.length];
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
       {/* Cycle de rotation */}
-      <div className="pop-card" style={{ background: 'var(--cream2)', display: 'flex', alignItems: 'center', gap: 10, padding: '14px 18px', flexWrap: 'wrap' }}>
+      <div className="pop-card" style={{ background: 'var(--cream2)', display: 'flex', alignItems: 'center', gap: 10, padding: '12px 18px', flexWrap: 'wrap' }}>
         <span style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.08em', color: 'rgba(0,0,0,0.4)', flexShrink: 0 }}>Cycle de rotation</span>
-        {ROTATION_ORDER.map((slot, idx) => (
-          <span key={slot} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span className="pop-sticker" style={{ fontSize: 11, padding: '4px 10px', background: SLOT_BG[slot] }}>
-              {SLOT_LABEL[slot]}
+        {ROTATION_ORDER.map((slot, i) => {
+          const estEnCours = slot === slotEnCours;
+          const estProchain = slot === prochainSlot;
+          return (
+            <span key={slot} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span className="pop-sticker" style={{
+                fontSize: 11, padding: '4px 10px', background: SLOT_COLOR[slot],
+                opacity: estEnCours || estProchain ? 1 : 0.45,
+                boxShadow: estEnCours ? '2px 2px 0 var(--ink)' : 'none',
+              }}>
+                {estEnCours && '✓ '}{SLOT_LABEL[slot]}
+              </span>
+              {i < ROTATION_ORDER.length - 1 && <span style={{ fontWeight: 900, color: 'rgba(0,0,0,0.3)' }}>→</span>}
             </span>
-            {idx < ROTATION_ORDER.length - 1 && <span style={{ fontWeight: 900, color: 'rgba(0,0,0,0.3)' }}>→</span>}
-          </span>
-        ))}
+          );
+        })}
         <span style={{ fontWeight: 900, color: 'rgba(0,0,0,0.3)' }}>→ …</span>
-        <button onClick={onPlanningOpen} className="pop-btn pop-btn-outline" style={{ marginLeft: 'auto', fontSize: 12, padding: '6px 14px' }}>
-          Planning global
+        <span style={{ fontSize: 11, fontWeight: 700, color: 'rgba(0,0,0,0.4)' }}>
+          · {SLOT_LABEL[slotEnCours]} cette semaine, {SLOT_LABEL[prochainSlot]} ensuite
+        </span>
+        <button onClick={onPlanningOpen} className="pop-btn pop-btn-dark" style={{ marginLeft: 'auto', fontSize: 12, padding: '7px 16px' }}>
+          📅 Planning global
         </button>
       </div>
 
-      {/* Cartes par slot */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 14 }}>
+      {/* Cartes par slot — 4 colonnes qui occupent toute la largeur */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 14, alignItems: 'start' }}>
         {ROTATION_ORDER.map(slot => {
-          const console = SLOT_CONSOLE[slot];
+          const consoleName = SLOT_CONSOLE[slot];
           const actifSels = selections.filter(s => s.slot === slot && s.statut === "actif" && !s.permanent);
           const permanentSels = SLOT_HAS_PERMANENT[slot]
             ? selections.filter(s => s.slot === slot && s.permanent)
             : [];
-          const planifies = selections.filter(s => s.slot === slot && s.statut === "planifie").length;
+
+          const planifiesSorted = selections
+            .filter(s => s.slot === slot && s.statut === "planifie")
+            .sort((a, b) => a.groupe - b.groupe || a.ordre - b.ordre);
+          const gNums = [...new Set(planifiesSorted.map(s => s.groupe))].sort((a, b) => a - b);
 
           const usedIds = new Set(selections.filter(s => s.slot === slot).map(s => s.jeu_id));
           const disponibles = jeux.filter(j =>
-            j.console === console &&
+            j.console === consoleName &&
             j.statut !== "retire" &&
             !usedIds.has(j.id) &&
             (slot !== "Switch_Multi" || (j.nb_joueurs && j.nb_joueurs !== "1"))
           );
 
+          const estEnCours = slot === slotEnCours;
+          const estProchain = slot === prochainSlot;
+
           return (
-            <div key={slot} className="pop-card" style={{ background: 'var(--cream)', padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div key={slot} className="pop-card"
+              style={{
+                background: 'var(--cream)', padding: 0, display: 'flex', flexDirection: 'column',
+                overflow: 'hidden', border: estEnCours ? '3px solid var(--ink)' : undefined,
+              }}>
 
               {/* Header */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
-                <span className="pop-sticker" style={{ fontSize: 12, padding: '5px 12px', background: SLOT_BG[slot] }}>{SLOT_LABEL[slot]}</span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                  <button onClick={() => onCorrectionOpen(slot)}
-                    title="Corriger les jeux d'une semaine passée"
-                    style={{ width: 30, height: 30, border: '2px solid var(--ink)', borderRadius: 8, background: 'var(--white)', cursor: 'pointer', fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    ✎
-                  </button>
-                  <button onClick={() => onRotationOpen(slot)}
-                    style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', border: '2px solid var(--ink)', borderRadius: 8, background: planifies > 0 ? '#baff29' : 'var(--white)', cursor: 'pointer', fontWeight: 800, fontSize: 12 }}>
-                    🔄
-                    {planifies > 0 && (
-                      <span style={{ background: 'var(--ink)', color: 'var(--white)', fontSize: 9, fontWeight: 900, borderRadius: '50%', width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        {planifies}
-                      </span>
-                    )}
-                  </button>
-                </div>
+              <div style={{ background: SLOT_COLOR[slot], padding: '10px 12px', borderBottom: '2.5px solid var(--ink)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span className="bc" style={{ fontSize: 15, lineHeight: 1, flex: 1, minWidth: 0 }}>{SLOT_LABEL[slot]}</span>
+                {estEnCours && (
+                  <span style={{ fontSize: 9, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.06em', padding: '3px 7px', borderRadius: 999, background: 'var(--ink)', color: 'var(--white)', flexShrink: 0 }}>
+                    en place
+                  </span>
+                )}
+                {estProchain && (
+                  <span style={{ fontSize: 9, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.06em', padding: '3px 7px', borderRadius: 999, background: 'var(--white)', border: '1.5px solid var(--ink)', flexShrink: 0 }}>
+                    suivant
+                  </span>
+                )}
+                <button onClick={() => onCorrectionOpen(slot)}
+                  title="Corriger les jeux d'une semaine passée"
+                  style={{ width: 28, height: 28, border: '2px solid var(--ink)', borderRadius: 8, background: 'var(--white)', cursor: 'pointer', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  ✎
+                </button>
               </div>
 
-              {/* Permanents */}
-              {SLOT_HAS_PERMANENT[slot] && (
+              <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
+
+                {/* Permanents */}
+                {SLOT_HAS_PERMANENT[slot] && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <span style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.07em', color: 'var(--orange)' }}>
+                      Permanents ({permanentSels.length})
+                    </span>
+                    {permanentSels.map(pSel => {
+                      const pJeu = jeux.find(j => j.id === pSel.jeu_id);
+                      if (!pJeu) return null;
+                      return (
+                        <div key={pSel.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', background: 'var(--yellow)', border: '2px solid var(--ink)', borderRadius: 10 }}>
+                          <div style={{ width: 30, height: 30, borderRadius: 6, overflow: 'hidden', background: 'var(--cream2)', flexShrink: 0, border: '1.5px solid var(--ink)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            {pJeu.image_url
+                              ? <img src={pJeu.image_url} alt={pJeu.titre} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                              : <span style={{ fontSize: 12 }}>🎮</span>}
+                          </div>
+                          <p style={{ fontWeight: 700, fontSize: 12, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', margin: 0 }}>{pJeu.titre}</p>
+                          <button onClick={() => onToggleActif(pJeu.id, slot, true, pSel)}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', fontWeight: 900, fontSize: 12, color: 'var(--rouge)', flexShrink: 0 }}>✕</button>
+                        </div>
+                      );
+                    })}
+                    <select
+                      defaultValue=""
+                      onChange={e => { if (e.target.value) onToggleActif(e.target.value, slot, true, undefined); }}
+                      className="pop-input"
+                      style={{ border: '2px dashed var(--ink)', background: 'transparent', cursor: 'pointer', fontSize: 12, color: 'rgba(0,0,0,0.4)', padding: '6px 8px' }}>
+                      <option value="">+ Ajouter un permanent…</option>
+                      {jeux.filter(j => j.console === consoleName && j.statut !== "retire" && !usedIds.has(j.id))
+                        .map(j => <option key={j.id} value={j.id}>{j.titre}</option>)}
+                    </select>
+                  </div>
+                )}
+
+                {/* Sélection en cours */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <span style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.07em', color: 'var(--orange)' }}>Permanents</span>
-                  {permanentSels.map(pSel => {
-                    const pJeu = jeux.find(j => j.id === pSel.jeu_id);
-                    if (!pJeu) return null;
+                  <span style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.07em', color: 'rgba(0,0,0,0.4)' }}>
+                    Sélection ({actifSels.length}/3)
+                  </span>
+                  {actifSels.map(sel => {
+                    const jeu = jeux.find(j => j.id === sel.jeu_id);
+                    if (!jeu) return null;
                     return (
-                      <div key={pSel.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'var(--yellow)', border: '2px solid var(--ink)', borderRadius: 10 }}>
-                        <div style={{ width: 32, height: 32, borderRadius: 6, overflow: 'hidden', background: 'var(--cream2)', flexShrink: 0, border: '1.5px solid var(--ink)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          {pJeu.image_url
-                            ? <img src={pJeu.image_url} alt={pJeu.titre} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      <div key={sel.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', background: 'var(--white)', border: '2.5px solid var(--ink)', borderRadius: 10, boxShadow: '2px 2px 0 var(--ink)' }}>
+                        <div style={{ width: 30, height: 30, borderRadius: 6, overflow: 'hidden', background: 'var(--cream2)', flexShrink: 0, border: '1.5px solid var(--ink)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          {jeu.image_url
+                            ? <img src={jeu.image_url} alt={jeu.titre} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                             : <span style={{ fontSize: 12 }}>🎮</span>}
                         </div>
-                        <p style={{ fontWeight: 700, fontSize: 12, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', margin: 0 }}>{pJeu.titre}</p>
-                        <button onClick={() => onToggleActif(pJeu.id, slot, true, pSel)}
+                        <p style={{ fontWeight: 700, fontSize: 12, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', margin: 0 }}>{jeu.titre}</p>
+                        <button onClick={() => onToggleActif(jeu.id, slot, false, sel)}
                           style={{ background: 'none', border: 'none', cursor: 'pointer', fontWeight: 900, fontSize: 12, color: 'var(--rouge)', flexShrink: 0 }}>✕</button>
                       </div>
                     );
                   })}
-                  <select
-                    defaultValue=""
-                    onChange={e => { if (e.target.value) onToggleActif(e.target.value, slot, true, undefined); }}
-                    className="pop-input"
-                    style={{ border: '2px dashed var(--ink)', background: 'transparent', cursor: 'pointer', fontSize: 12, color: 'rgba(0,0,0,0.4)' }}>
-                    <option value="">+ Ajouter un jeu permanent…</option>
-                    {jeux.filter(j => j.console === console && j.statut !== "retire" && !usedIds.has(j.id))
-                      .map(j => <option key={j.id} value={j.id}>{j.titre}</option>)}
-                  </select>
+                  {actifSels.length < 3 && (
+                    <select
+                      defaultValue=""
+                      onChange={e => { if (e.target.value) onToggleActif(e.target.value, slot, false, undefined); }}
+                      className="pop-input"
+                      style={{ border: '2px dashed var(--ink)', background: 'transparent', cursor: 'pointer', fontSize: 12, color: 'rgba(0,0,0,0.4)', padding: '6px 8px' }}>
+                      <option value="">+ Ajouter ({3 - actifSels.length} place{3 - actifSels.length > 1 ? "s" : ""})…</option>
+                      {disponibles.map(j => <option key={j.id} value={j.id}>{j.titre}</option>)}
+                    </select>
+                  )}
                 </div>
-              )}
 
-              {/* Sélection rotation */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <span style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.07em', color: 'rgba(0,0,0,0.4)' }}>
-                  Sélection ({actifSels.length}/3)
-                </span>
-                {actifSels.map(sel => {
-                  const jeu = jeux.find(j => j.id === sel.jeu_id);
-                  if (!jeu) return null;
-                  return (
-                    <div key={sel.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'var(--white)', border: '2.5px solid var(--ink)', borderRadius: 10, boxShadow: '2px 2px 0 var(--ink)' }}>
-                      <div style={{ width: 32, height: 32, borderRadius: 6, overflow: 'hidden', background: 'var(--cream2)', flexShrink: 0, border: '1.5px solid var(--ink)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        {jeu.image_url
-                          ? <img src={jeu.image_url} alt={jeu.titre} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                          : <span style={{ fontSize: 12 }}>🎮</span>}
-                      </div>
-                      <p style={{ fontWeight: 700, fontSize: 12, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', margin: 0 }}>{jeu.titre}</p>
-                      <button onClick={() => onToggleActif(jeu.id, slot, false, sel)}
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', fontWeight: 900, fontSize: 12, color: 'var(--rouge)', flexShrink: 0 }}>✕</button>
-                    </div>
-                  );
-                })}
-                {actifSels.length < 3 && (
-                  <select
-                    defaultValue=""
-                    onChange={e => { if (e.target.value) onToggleActif(e.target.value, slot, false, undefined); }}
-                    className="pop-input"
-                    style={{ border: '2px dashed var(--ink)', background: 'transparent', cursor: 'pointer', fontSize: 12, color: 'rgba(0,0,0,0.4)' }}>
-                    <option value="">+ Ajouter ({3 - actifSels.length} place{3 - actifSels.length > 1 ? "s" : ""})…</option>
-                    {disponibles.map(j => <option key={j.id} value={j.id}>{j.titre}</option>)}
-                  </select>
-                )}
-              </div>
+                {/* File d'attente */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                  <span style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.07em', color: 'rgba(0,0,0,0.4)' }}>
+                    À venir{gNums.length > 0 ? ` · ${gNums.length} groupe${gNums.length > 1 ? "s" : ""}` : ""}
+                  </span>
 
-              {/* File planifiée */}
-              {planifies > 0 && (() => {
-                const planifiesSorted = selections
-                  .filter(s => s.slot === slot && s.statut === "planifie")
-                  .sort((a, b) => a.groupe - b.groupe || a.ordre - b.ordre);
-                const gNums = [...new Set(planifiesSorted.map(s => s.groupe))].sort((a, b) => a - b);
-                return (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    <span style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.07em', color: 'rgba(0,0,0,0.4)' }}>
-                      À venir · {gNums.length} groupe{gNums.length > 1 ? "s" : ""}
-                    </span>
-                    {gNums.map((g, gIdx) => {
+                  {gNums.length === 0 ? (
+                    <p style={{ fontSize: 11, color: 'rgba(0,0,0,0.3)', fontStyle: 'italic', fontWeight: 700, margin: 0 }}>
+                      Aucun groupe en réserve
+                    </p>
+                  ) : (
+                    gNums.map((g, gIdx) => {
                       const gSels = planifiesSorted.filter(s => s.groupe === g);
                       return (
-                        <div key={g} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                          <span style={{ fontSize: 9, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.07em', color: 'rgba(0,0,0,0.3)' }}>Groupe {gIdx + 1}</span>
-                          <div style={{ display: 'flex', gap: 5 }}>
+                        <div key={g} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ fontSize: 9, fontWeight: 900, color: gIdx === 0 ? 'var(--ink)' : 'rgba(0,0,0,0.3)', flexShrink: 0, width: 18 }}>
+                            G{gIdx + 1}
+                          </span>
+                          <div style={{ display: 'flex', gap: 5, flex: 1, minWidth: 0 }}>
                             {gSels.map(sel => {
                               const j = jeux.find(x => x.id === sel.jeu_id);
                               return (
                                 <div key={sel.id} title={j?.titre}
-                                  style={{ width: 44, height: 56, borderRadius: 8, overflow: 'hidden', background: 'var(--cream2)', border: '2px solid var(--ink)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                  style={{ flex: 1, minWidth: 0, aspectRatio: '3/4', maxWidth: 68, borderRadius: 8, overflow: 'hidden', background: 'var(--cream2)', border: gIdx === 0 ? '2.5px solid var(--ink)' : '2px solid rgba(0,0,0,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                   {j?.image_url
                                     ? <img src={j.image_url} alt={j.titre} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                     : <span style={{ fontSize: 16 }}>🎮</span>}
@@ -2677,19 +2710,21 @@ function TabSelections({
                               );
                             })}
                             {Array.from({ length: 3 - gSels.length }).map((_, i) => (
-                              <div key={i} style={{ width: 44, height: 56, borderRadius: 8, border: '2px dashed var(--ink)', flexShrink: 0, background: 'transparent' }} />
+                              <div key={i} style={{ flex: 1, minWidth: 0, aspectRatio: '3/4', maxWidth: 68, borderRadius: 8, border: '2px dashed rgba(0,0,0,0.25)', background: 'transparent' }} />
                             ))}
                           </div>
                         </div>
                       );
-                    })}
-                    <button onClick={() => onRotationOpen(slot)}
-                      style={{ fontSize: 10, fontWeight: 700, color: 'rgba(0,0,0,0.45)', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', textDecoration: 'underline', padding: 0, marginTop: 2 }}>
-                      Gérer la file →
-                    </button>
-                  </div>
-                );
-              })()}
+                    })
+                  )}
+
+                  <button onClick={() => onRotationOpen(slot)}
+                    className="pop-btn pop-btn-dark"
+                    style={{ width: '100%', justifyContent: 'center', fontSize: 12, padding: '9px 0', marginTop: 2 }}>
+                    Gérer les groupes{gNums.length > 0 ? ` (${gNums.length})` : ""}
+                  </button>
+                </div>
+              </div>
             </div>
           );
         })}
@@ -4403,6 +4438,7 @@ export default function JvPage() {
               <TabSelections
                 jeux={jeux}
                 selections={selections}
+                rotationConfig={rotationConfig}
                 onRotationOpen={slot => setModalRotation(slot)}
                 onToggleActif={handleToggleActif}
                 onPlanningOpen={() => setModalPlanning(true)}
