@@ -32,6 +32,7 @@ type JeuRechercheStore = {
   nom: string; editeur: string | null; image_url: string | null;
   prix: number | null; url_source: string | null; extra?: string;
   etat?: string | null; region?: string | null; reference?: string | null;
+  rupture?: boolean;
 };
 
 type PanierCommun = { id: string; type: PanierType; nom: string };
@@ -412,6 +413,7 @@ export default function StorePage() {
           nom: r.nom, editeur: r.editeur, image_url: r.image_url, prix: r.prix,
           url_source: r.url_source ?? null, extra: r.plateforme ?? undefined,
           etat: r.etat ?? null, region: r.region ?? null, reference: r.reference ?? null,
+          rupture: !!r.rupture,
         }));
 
         // Trader Games protège son site contre les requêtes automatiques : si la
@@ -1054,7 +1056,7 @@ ${filtered.map(l => `<tr>
                   {showResultats && (
                     <div style={{ position: "absolute", zIndex: 50, top: "calc(100% + 4px)", left: 0, right: 0, background: "var(--white)", border: "2.5px solid var(--ink)", borderRadius: 10, boxShadow: "4px 4px 0 var(--ink)", overflow: "hidden" }}>
                       {isSearching ? (
-                        <div style={{ padding: 14, textAlign: "center", fontSize: 14, color: "rgba(0,0,0,0.4)", fontWeight: 600 }}>Recherche{panierActuel?.type === "JV" ? " sur Trader Games" : " sur BoardGameGeek"}…</div>
+                        <div style={{ padding: 14, textAlign: "center", fontSize: 14, color: "rgba(0,0,0,0.4)", fontWeight: 600 }}>Recherche{panierActuel?.type === "JV" ? " sur Trader Games" : " sur Ludifolie"}…</div>
                       ) : resultats.length === 0 ? (
                         <div style={{ padding: 14, textAlign: "center" }}>
                           <p style={{ fontSize: 14, color: "rgba(0,0,0,0.4)", fontWeight: 600 }}>
@@ -1086,6 +1088,7 @@ ${filtered.map(l => `<tr>
                                   <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginTop: 2 }}>
                                     {r.extra && <span className="pop-sticker" style={{ background: "var(--bleu)", border: "1px solid var(--ink)", fontSize: 10 }}>{r.extra}</span>}
                                     {r.etat && <span className="pop-sticker" style={{ background: r.etat === "Neuf" ? "var(--vert)" : "var(--yellow)", border: "1px solid var(--ink)", fontSize: 10 }}>{r.etat}</span>}
+                                    {r.rupture && <span className="pop-sticker" style={{ background: "var(--rouge)", color: "var(--white)", border: "1px solid var(--ink)", fontSize: 10 }}>Rupture</span>}
                                     {r.region && <span style={{ fontSize: 11, color: "rgba(0,0,0,0.45)", fontWeight: 600 }}>{r.region}</span>}
                                     {!r.extra && !r.etat && r.editeur && <p style={{ fontSize: 12, color: "rgba(0,0,0,0.45)" }}>{r.editeur}</p>}
                                   </div>
