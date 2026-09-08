@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect, useRef, useMemo, useCallback, Fragment } from "react";
 import NavBar from "../../components/NavBar";
-import { format, addDays, startOfWeek, eachDayOfInterval, isToday, parseISO, getDay } from "date-fns";
+import { format, addDays, startOfWeek, eachDayOfInterval, isToday, parseISO, getDay, differenceInCalendarWeeks } from "date-fns";
 import { fr } from "date-fns/locale";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -146,6 +146,14 @@ const SLOT_HAS_PERMANENT: Record<SelectionSlot, boolean> = {
   PC: true,
 };
 const ROTATION_ORDER: SelectionSlot[] = ["PS5", "Switch_Multi", "Switch_Solo", "PC"];
+
+// Une couleur par slot : Switch Multi / Solo doivent rester distinguables d'un coup d'œil
+const SLOT_COLOR: Record<SelectionSlot, string> = {
+  PS5: 'var(--bleu)',
+  Switch_Multi: 'var(--rouge)',
+  Switch_Solo: 'var(--orange)',
+  PC: 'var(--cream2)',
+};
 
 const POSTE_SLOT: Record<string, SelectionSlot> = {
   ps5: "PS5",
@@ -996,24 +1004,67 @@ function ModalRotation({
 
 // ─── Modal : Planning global de rotation ──────────────────────────────────────
 
+// Vignette d'un jeu (cover + titre) utilisée dans tout le planning
+function GameChip({ jeu, size = "md" }: { jeu: JvJeu; size?: "sm" | "md" }) {
+  const w = size === "sm" ? 26 : 34;
+  const h = size === "sm" ? 34 : 44;
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 7, padding: size === "sm" ? '3px 8px 3px 3px' : '4px 10px 4px 4px', background: 'var(--white)', border: '2px solid var(--ink)', borderRadius: 999, maxWidth: '100%', minWidth: 0 }}>
+      <div style={{ width: w, height: h, borderRadius: 999, overflow: 'hidden', background: 'var(--cream2)', flexShrink: 0, border: '1.5px solid var(--ink)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        {jeu.image_url
+          ? <img src={jeu.image_url} alt={jeu.titre} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          : <span style={{ fontSize: 12 }}>🎮</span>}
+      </div>
+      <span style={{ fontSize: size === "sm" ? 11 : 12, fontWeight: 800, lineHeight: 1.15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 150 }}>{jeu.titre}</span>
+    </div>
+  );
+}
+
 function ModalRotationPlanning({
   selections,
   jeux,
   rotationConfig,
   onUpdateConfig,
   onApplyRotation,
+  onOpenQueue,
   onClose,
 }: {
   selections: JvSelection[];
   jeux: JvJeu[];
   rotationConfig: JvRotationConfig;
-  onUpdateConfig: (slotIndex: number, weekStart: string) => void;
+  onUpdateConfig: (slotIndex: number, weekStart: string) => void | Promise<void>;
   onApplyRotation: () => Promise<void>;
+  onOpenQueue: (slot: SelectionSlot) => void;
   onClose: () => void;
 }) {
-  const [slotIndex, setSlotIndex] = useState(rotationConfig.current_slot_index);
-  const [weekStart, setWeekStart] = useState(rotationConfig.week_start);
   const [isApplying, setIsApplying] = useState(false);
+  const [savingSlot, setSavingSlot] = useState<number | null>(null);
+
+  // La semaine de référence est TOUJOURS la semaine réelle en cours : plus de
+  // date de départ à maintenir à la main, donc plus de décalage possible.
+  const currentMonday = useMemo(() => startOfWeek(new Date(), { weekStartsOn: 1 }), []);
+  const currentMondayStr = format(currentMonday, "yyyy-MM-dd");
+
+  const rawIdx = rotationConfig.current_slot_index;
+  const slotIndex = Number.isInteger(rawIdx) ? ((rawIdx % ROTATION_ORDER.length) + ROTATION_ORDER.length) % ROTATION_ORDER.length : 0;
+  const currentSlot = ROTATION_ORDER[slotIndex];
+  const nextSlot = ROTATION_ORDER[(slotIndex + 1) % ROTATION_ORDER.length];
+
+  // Nombre de semaines écoulées depuis la dernière rotation actée
+  const retard = useMemo(() => {
+    if (!rotationConfig.week_start) return 0;
+    const d = parseISO(rotationConfig.week_start);
+    if (isNaN(d.getTime())) return 0;
+    return Math.max(0, differenceInCalendarWeeks(currentMonday, d, { weekStartsOn: 1 }));
+  }, [rotationConfig.week_start, currentMonday]);
+
+  // Acter la console réellement en place cette semaine
+  const acterSlot = async (idx: number) => {
+    if (idx === slotIndex) return;
+    setSavingSlot(idx);
+    await onUpdateConfig(idx, currentMondayStr);
+    setSavingSlot(null);
+  };
 
   const handleApply = async () => {
     setIsApplying(true);
@@ -1021,192 +1072,242 @@ function ModalRotationPlanning({
     setIsApplying(false);
   };
 
-  // Construit la grille planning : 12 semaines à venir
+  // Jeux actifs (non permanents) d'un slot
+  const actifsDe = (slot: SelectionSlot) =>
+    selections
+      .filter(s => s.slot === slot && s.statut === "actif" && !s.permanent)
+      .sort((a, b) => a.ordre - b.ordre)
+      .map(s => jeux.find(j => j.id === s.jeu_id))
+      .filter(Boolean) as JvJeu[];
+
+  // Groupes planifiés d'un slot, dans l'ordre de passage
+  const groupesDe = (slot: SelectionSlot) => {
+    const sels = selections
+      .filter(s => s.slot === slot && s.statut === "planifie")
+      .sort((a, b) => a.groupe - b.groupe || a.ordre - b.ordre);
+    const nums = [...new Set(sels.map(s => s.groupe))].sort((a, b) => a - b);
+    return nums.map(n => ({
+      groupe: n,
+      games: sels.filter(s => s.groupe === n).map(s => jeux.find(j => j.id === s.jeu_id)).filter(Boolean) as JvJeu[],
+    }));
+  };
+
+  const jeuxActifs = actifsDe(currentSlot);
+  const groupesParSlot = useMemo(() => {
+    const map = {} as Record<SelectionSlot, { groupe: number; games: JvJeu[] }[]>;
+    for (const s of ROTATION_ORDER) map[s] = groupesDe(s);
+    return map;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selections, jeux]);
+
+  const prochainGroupe = groupesParSlot[nextSlot]?.[0] ?? null;
+
+  // Grille des 12 semaines à venir (semaine 0 = semaine en cours)
   const planning = useMemo(() => {
-    // Pour chaque slot, les groupes planifiés triés
-    const slotGroups: Record<SelectionSlot, number[]> = {
-      PS5: [], Switch_Multi: [], Switch_Solo: [], PC: [],
-    };
-    for (const slot of ROTATION_ORDER) {
-      const sels = selections.filter(s => s.slot === slot && s.statut === "planifie");
-      slotGroups[slot] = [...new Set(sels.map(s => s.groupe))].sort((a, b) => a - b);
-    }
-
-    // Tracker combien de groupes ont été "consommés" par slot
     const consumed: Record<SelectionSlot, number> = { PS5: 0, Switch_Multi: 0, Switch_Solo: 0, PC: 0 };
-
     return Array.from({ length: 12 }, (_, weekOffset) => {
-      const slotIdx = (slotIndex + weekOffset) % 4;
-      const slot = ROTATION_ORDER[slotIdx];
-      const groupeIdx = consumed[slot];
-      const groupeNum = slotGroups[slot][groupeIdx] ?? null;
-
-      const games = groupeNum !== null
-        ? selections
-            .filter(s => s.slot === slot && s.statut === "planifie" && s.groupe === groupeNum)
-            .map(s => jeux.find(j => j.id === s.jeu_id))
-            .filter(Boolean) as JvJeu[]
-        : [];
-
-      // Si c'est la semaine 0, on montre les actifs (pas les planifiés)
-      const activeGames = weekOffset === 0
-        ? selections
-            .filter(s => s.slot === slot && s.statut === "actif" && !s.permanent)
-            .map(s => jeux.find(j => j.id === s.jeu_id))
-            .filter(Boolean) as JvJeu[]
-        : games;
-
-      consumed[slot] = groupeIdx + (weekOffset > 0 ? 1 : 0);
-
-      const date = addDays(parseISO(weekStart), weekOffset * 7);
-
-      return { weekOffset, slot, date, games: activeGames, isActive: weekOffset === 0, groupeNum };
+      const slot = ROTATION_ORDER[(slotIndex + weekOffset) % ROTATION_ORDER.length];
+      const date = addDays(currentMonday, weekOffset * 7);
+      if (weekOffset === 0) {
+        return { weekOffset, slot, date, games: actifsDe(slot), groupeRang: null as number | null };
+      }
+      const rang = consumed[slot];
+      consumed[slot] = rang + 1;
+      const g = groupesParSlot[slot]?.[rang] ?? null;
+      return { weekOffset, slot, date, games: g?.games ?? [], groupeRang: g ? rang + 1 : null };
     });
-  }, [selections, jeux, slotIndex, weekStart]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selections, jeux, slotIndex, currentMonday, groupesParSlot]);
 
-  const hasChanges = slotIndex !== rotationConfig.current_slot_index || weekStart !== rotationConfig.week_start;
+  const finSemaine = addDays(currentMonday, 6);
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 50, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '80px 16px 16px', overflowY: 'auto' }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="pop-card" style={{ background: 'var(--cream)', width: '100%', maxWidth: 680, display: 'flex', flexDirection: 'column', overflow: 'hidden', marginBottom: 32 }}>
+      <div className="pop-card" style={{ background: 'var(--cream)', width: '100%', maxWidth: 720, display: 'flex', flexDirection: 'column', overflow: 'hidden', marginBottom: 32 }}>
 
         {/* Header */}
         <div style={{ background: 'var(--purple)', padding: '20px 24px', display: 'flex', alignItems: 'center', gap: 12, borderBottom: '2.5px solid var(--ink)', flexShrink: 0 }}>
-          <div style={{ flex: 1 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
             <h2 className="bc" style={{ fontSize: 26, color: 'var(--ink)', margin: 0, lineHeight: 1 }}>Planning de rotation</h2>
-            <p style={{ fontSize: 11, fontWeight: 700, color: 'rgba(0,0,0,0.45)', marginTop: 4 }}>Vue globale des changements de sélection semaine par semaine</p>
+            <p style={{ fontSize: 11, fontWeight: 700, color: 'rgba(0,0,0,0.5)', marginTop: 4 }}>
+              Une console change de sélection chaque semaine · {ROTATION_ORDER.map(s => SLOT_LABEL[s]).join(' → ')} → …
+            </p>
           </div>
           <button onClick={onClose} style={{ width: 36, height: 36, border: '2.5px solid var(--ink)', borderRadius: 8, background: 'var(--white)', fontWeight: 900, fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>✕</button>
         </div>
 
-        {/* Config point de départ */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 20px', background: 'var(--cream2)', borderBottom: '2.5px solid var(--ink)', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.08em', color: 'rgba(0,0,0,0.45)', flexShrink: 0 }}>Point de départ</span>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', flex: 1 }}>
-            {ROTATION_ORDER.map((s2, idx) => (
-              <button key={s2} onClick={() => setSlotIndex(idx)}
-                className={slotIndex === idx ? "pop-btn pop-btn-dark" : "pop-btn pop-btn-outline"}
-                style={{ fontSize: 11, padding: '5px 12px' }}>
-                {SLOT_LABEL[s2]}
-              </button>
-            ))}
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 11, color: 'rgba(0,0,0,0.4)', fontWeight: 600, flexShrink: 0 }}>Semaine du</span>
-            <input type="date" value={weekStart} onChange={e => setWeekStart(e.target.value)}
-              className="pop-input" style={{ padding: '6px 10px', fontSize: 12 }} />
-          </div>
-          {hasChanges && (
-            <button onClick={() => onUpdateConfig(slotIndex, weekStart)}
-              className="pop-btn pop-btn-dark" style={{ fontSize: 11, padding: '6px 14px' }}>
-              Enregistrer
-            </button>
-          )}
-        </div>
+        <div className="custom-scroll" style={{ overflowY: 'auto', maxHeight: 'calc(100vh - 260px)', padding: 18, display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-        {/* Prochaine rotation — action principale */}
-        {(() => {
-          const currentSlot = ROTATION_ORDER[rotationConfig.current_slot_index];
-          const nextSlotVal = ROTATION_ORDER[(rotationConfig.current_slot_index + 1) % 4];
-          const planifiedForNext = selections
-            .filter(s => s.slot === nextSlotVal && s.statut === "planifie")
-            .sort((a, b) => a.groupe - b.groupe || a.ordre - b.ordre);
-          const firstNextGroupe = planifiedForNext.length > 0 ? planifiedForNext[0].groupe : null;
-          const nextGroupGames = (firstNextGroupe !== null
-            ? planifiedForNext.filter(s => s.groupe === firstNextGroupe)
-            : []
-          ).map(s => jeux.find(j => j.id === s.jeu_id)).filter(Boolean) as JvJeu[];
+          {/* ── Cette semaine ── */}
+          <div className="pop-card" style={{ background: 'var(--white)', padding: 0, overflow: 'hidden', flexShrink: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, padding: '12px 16px', background: '#baff29', borderBottom: '2.5px solid var(--ink)', flexWrap: 'wrap' }}>
+              <span className="bc" style={{ fontSize: 15, lineHeight: 1 }}>Cette semaine</span>
+              <span style={{ fontSize: 12, fontWeight: 800, color: 'rgba(0,0,0,0.55)' }}>
+                {format(currentMonday, "EEE d", { locale: fr })} → {format(finSemaine, "EEE d MMM yyyy", { locale: fr })}
+              </span>
+            </div>
 
-          return (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 20px', background: '#baff2920', borderBottom: '2.5px solid var(--ink)', flexWrap: 'wrap' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, flexWrap: 'wrap', minWidth: 0 }}>
-                <span style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.07em', color: 'rgba(0,0,0,0.45)', flexShrink: 0 }}>Appliquer la rotation</span>
-                <span className="pop-sticker" style={{ fontSize: 11, padding: '3px 10px', background: 'var(--cream2)' }}>
-                  {SLOT_LABEL[currentSlot]}
+            <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <span style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.08em', color: 'rgba(0,0,0,0.45)' }}>
+                  Console en place
                 </span>
-                <span style={{ fontWeight: 900, fontSize: 14, color: 'rgba(0,0,0,0.4)', flexShrink: 0 }}>→</span>
-                <span className="pop-sticker" style={{ fontSize: 11, padding: '3px 10px', background: '#baff29' }}>
-                  {SLOT_LABEL[nextSlotVal]}
-                </span>
-                {nextGroupGames.length > 0 ? (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                    {nextGroupGames.map(j => (
-                      <div key={j.id} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                        <div style={{ width: 20, height: 20, borderRadius: 4, overflow: 'hidden', background: 'var(--cream2)', flexShrink: 0, border: '1.5px solid var(--ink)' }}>
-                          {j.image_url
-                            ? <img src={j.image_url} alt={j.titre} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                            : <span style={{ fontSize: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>🎮</span>}
-                        </div>
-                        <span style={{ fontSize: 11, fontWeight: 700, maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{j.titre}</span>
-                      </div>
-                    ))}
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {ROTATION_ORDER.map((s2, idx) => {
+                    const isCur = idx === slotIndex;
+                    return (
+                      <button key={s2} onClick={() => acterSlot(idx)} disabled={savingSlot !== null}
+                        title={isCur ? "Console en place cette semaine" : `Acter ${SLOT_LABEL[s2]} comme sélection en cours`}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 6, padding: '7px 13px', borderRadius: 999,
+                          border: isCur ? '2.5px solid var(--ink)' : '2px dashed rgba(0,0,0,0.25)',
+                          background: isCur ? SLOT_COLOR[s2] : 'transparent',
+                          boxShadow: isCur ? '3px 3px 0 var(--ink)' : 'none',
+                          fontWeight: 900, fontSize: 12, cursor: savingSlot !== null ? 'wait' : 'pointer',
+                          color: isCur ? 'var(--ink)' : 'rgba(0,0,0,0.45)', opacity: savingSlot !== null && savingSlot !== idx ? 0.5 : 1,
+                        }}>
+                        {isCur && <span style={{ fontSize: 11 }}>✓</span>}
+                        {SLOT_LABEL[s2]}
+                        {savingSlot === idx && <div className="spin" style={{ width: 11, height: 11, border: '2px solid rgba(0,0,0,0.2)', borderTopColor: 'var(--ink)', borderRadius: '50%' }} />}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p style={{ fontSize: 11, color: 'rgba(0,0,0,0.4)', fontWeight: 600, margin: 0 }}>
+                  Si la console affichée ne correspond pas à ce qui est réellement installé, clique sur la bonne : tout le planning se recale dessus.
+                </p>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                {jeuxActifs.length === 0
+                  ? <span style={{ fontSize: 12, color: 'rgba(0,0,0,0.3)', fontStyle: 'italic', fontWeight: 700 }}>aucun jeu actif sur ce slot</span>
+                  : jeuxActifs.map(j => <GameChip key={j.id} jeu={j} />)}
+              </div>
+            </div>
+          </div>
+
+          {/* ── Prochaine rotation ── */}
+          <div className="pop-card" style={{ background: 'var(--cream2)', padding: 0, overflow: 'hidden', flexShrink: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', borderBottom: '2.5px solid var(--ink)', background: retard >= 2 ? 'var(--orange)' : 'var(--yellow)', flexWrap: 'wrap' }}>
+              <span className="bc" style={{ fontSize: 15, lineHeight: 1 }}>Prochaine rotation</span>
+              <span style={{ fontSize: 11, fontWeight: 800, color: 'rgba(0,0,0,0.6)' }}>
+                {retard === 0
+                  ? `actée cette semaine · prochaine le ${format(addDays(currentMonday, 7), "d MMM", { locale: fr })}`
+                  : retard === 1
+                    ? "à valider pour cette semaine"
+                    : `⚠️ ${retard} semaines sans validation`}
+              </span>
+            </div>
+
+            <div style={{ padding: 16, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, flex: 1, minWidth: 240 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span className="pop-sticker" style={{ fontSize: 11, padding: '4px 11px', background: SLOT_COLOR[currentSlot] }}>{SLOT_LABEL[currentSlot]}</span>
+                  <span style={{ fontWeight: 900, fontSize: 16, color: 'rgba(0,0,0,0.35)' }}>→</span>
+                  <span className="pop-sticker" style={{ fontSize: 11, padding: '4px 11px', background: SLOT_COLOR[nextSlot], boxShadow: '2px 2px 0 var(--ink)' }}>{SLOT_LABEL[nextSlot]}</span>
+                </div>
+                {prochainGroupe && prochainGroupe.games.length > 0 ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    {prochainGroupe.games.map(j => <GameChip key={j.id} jeu={j} size="sm" />)}
                   </div>
                 ) : (
-                  <span style={{ fontSize: 11, color: 'rgba(0,0,0,0.25)', fontStyle: 'italic' }}>aucun jeu planifié</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 12, color: 'rgba(0,0,0,0.35)', fontStyle: 'italic', fontWeight: 700 }}>aucun jeu planifié pour {SLOT_LABEL[nextSlot]}</span>
+                    <button onClick={() => onOpenQueue(nextSlot)} className="pop-btn pop-btn-outline" style={{ fontSize: 11, padding: '4px 10px' }}>
+                      Planifier
+                    </button>
+                  </div>
                 )}
               </div>
-              <button
-                onClick={handleApply}
-                disabled={isApplying}
+              <button onClick={handleApply} disabled={isApplying}
                 className="pop-btn pop-btn-dark"
-                style={{ flexShrink: 0, opacity: isApplying ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: 6 }}>
-                {isApplying ? (
-                  <><div className="spin" style={{ width: 12, height: 12, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%' }} />En cours…</>
-                ) : (
-                  <>🔄 Valider</>
-                )}
+                style={{ flexShrink: 0, opacity: isApplying ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, padding: '10px 18px' }}>
+                {isApplying
+                  ? <><div className="spin" style={{ width: 12, height: 12, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%' }} />En cours…</>
+                  : <>🔄 Valider la rotation</>}
               </button>
             </div>
-          );
-        })()}
+          </div>
 
-        {/* Tableau planning */}
-        <div className="custom-scroll" style={{ overflowY: 'auto', maxHeight: '50vh' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead style={{ position: 'sticky', top: 0, background: 'var(--cream)', borderBottom: '2.5px solid var(--ink)', zIndex: 1 }}>
-              <tr>
-                <th style={{ textAlign: 'left', padding: '10px 20px', fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.08em', color: 'rgba(0,0,0,0.4)', width: 110 }}>Semaine</th>
-                <th style={{ textAlign: 'left', padding: '10px 12px', fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.08em', color: 'rgba(0,0,0,0.4)', width: 120 }}>Console</th>
-                <th style={{ textAlign: 'left', padding: '10px 12px', fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.08em', color: 'rgba(0,0,0,0.4)' }}>Jeux</th>
-              </tr>
-            </thead>
-            <tbody>
-              {planning.map(({ weekOffset, slot: pSlot, date: pDate, games, isActive }) => (
-                <tr key={weekOffset} style={{ background: isActive ? '#baff2920' : 'transparent', borderBottom: '1.5px solid var(--cream2)' }}>
-                  <td style={{ padding: '10px 20px' }}>
-                    <p style={{ fontSize: 12, fontWeight: 900, color: isActive ? 'var(--ink)' : 'rgba(0,0,0,0.4)', margin: 0 }}>
-                      {isActive ? "Cette sem." : `Sem. +${weekOffset}`}
+          {/* ── Semaines suivantes ── */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0 }}>
+            <span style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.08em', color: 'rgba(0,0,0,0.4)' }}>
+              Semaines suivantes
+            </span>
+
+            {planning.filter(p => p.weekOffset > 0).map(({ weekOffset, slot: pSlot, date: pDate, games, groupeRang }) => {
+              const isNext = weekOffset === 1;
+              return (
+                <div key={weekOffset}
+                  style={{
+                    display: 'flex', alignItems: 'stretch', gap: 0,
+                    background: 'var(--white)', border: isNext ? '2.5px solid var(--ink)' : '2px solid rgba(0,0,0,0.15)',
+                    borderRadius: 12, overflow: 'hidden', boxShadow: isNext ? '3px 3px 0 var(--ink)' : 'none',
+                  }}>
+                  {/* Bande couleur console */}
+                  <div style={{ width: 8, background: SLOT_COLOR[pSlot], borderRight: '2px solid var(--ink)', flexShrink: 0 }} />
+
+                  {/* Semaine */}
+                  <div style={{ width: 86, padding: '10px 10px', flexShrink: 0, borderRight: '1.5px dashed rgba(0,0,0,0.15)' }}>
+                    <p style={{ fontSize: 11, fontWeight: 900, color: isNext ? 'var(--ink)' : 'rgba(0,0,0,0.5)', margin: 0, lineHeight: 1.2 }}>
+                      {isNext ? "Sem. proch." : `Sem. +${weekOffset}`}
                     </p>
-                    <p style={{ fontSize: 10, color: 'rgba(0,0,0,0.35)', margin: 0 }}>{format(pDate, "d MMM", { locale: fr })}</p>
-                  </td>
-                  <td style={{ padding: '10px 12px' }}>
-                    <span className="pop-sticker" style={{ fontSize: 10, padding: '3px 8px', background: isActive ? '#baff29' : 'var(--cream2)' }}>
+                    <p style={{ fontSize: 10, color: 'rgba(0,0,0,0.4)', margin: 0, fontWeight: 700 }}>{format(pDate, "d MMM", { locale: fr })}</p>
+                  </div>
+
+                  {/* Console */}
+                  <div style={{ width: 116, padding: '10px 8px', flexShrink: 0, display: 'flex', alignItems: 'center' }}>
+                    <span className="pop-sticker" style={{ fontSize: 10, padding: '3px 9px', background: SLOT_COLOR[pSlot], boxShadow: 'none', border: '2px solid var(--ink)' }}>
                       {SLOT_LABEL[pSlot]}
                     </span>
-                  </td>
-                  <td style={{ padding: '10px 12px' }}>
+                  </div>
+
+                  {/* Jeux */}
+                  <div style={{ flex: 1, minWidth: 0, padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
                     {games.length === 0 ? (
-                      <span style={{ fontSize: 11, color: 'rgba(0,0,0,0.25)', fontStyle: 'italic' }}>— non planifié</span>
+                      <>
+                        <span style={{ fontSize: 11, color: 'rgba(0,0,0,0.3)', fontStyle: 'italic', fontWeight: 700 }}>rien de planifié</span>
+                        <button onClick={() => onOpenQueue(pSlot)}
+                          style={{ fontSize: 10, fontWeight: 800, padding: '3px 9px', borderRadius: 999, border: '2px dashed rgba(0,0,0,0.3)', background: 'transparent', cursor: 'pointer', color: 'rgba(0,0,0,0.45)' }}>
+                          + planifier
+                        </button>
+                      </>
                     ) : (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                        {games.map(j => (
-                          <div key={j.id} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                            <div style={{ width: 20, height: 20, borderRadius: 4, overflow: 'hidden', background: 'var(--cream2)', flexShrink: 0, border: '1.5px solid var(--ink)' }}>
-                              {j.image_url
-                                ? <img src={j.image_url} alt={j.titre} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                : <span style={{ fontSize: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>🎮</span>}
-                            </div>
-                            <span style={{ fontSize: 11, fontWeight: 700 }}>{j.titre}</span>
-                          </div>
-                        ))}
-                      </div>
+                      <>
+                        {groupeRang !== null && (
+                          <span style={{ fontSize: 9, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.06em', color: 'rgba(0,0,0,0.3)', flexShrink: 0 }}>G{groupeRang}</span>
+                        )}
+                        {games.map(j => <GameChip key={j.id} jeu={j} size="sm" />)}
+                      </>
                     )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* ── Réserve par console ── */}
+          <div className="pop-card" style={{ background: 'var(--cream2)', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0 }}>
+            <span style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.08em', color: 'rgba(0,0,0,0.4)' }}>
+              Réserve planifiée
+            </span>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8 }}>
+              {ROTATION_ORDER.map(s2 => {
+                const n = groupesParSlot[s2]?.length ?? 0;
+                return (
+                  <button key={s2} onClick={() => onOpenQueue(s2)}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'var(--white)', border: '2px solid var(--ink)', borderRadius: 10, cursor: 'pointer', textAlign: 'left' }}>
+                    <span style={{ width: 10, height: 10, borderRadius: 3, background: SLOT_COLOR[s2], border: '1.5px solid var(--ink)', flexShrink: 0 }} />
+                    <span style={{ fontSize: 11, fontWeight: 800, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{SLOT_LABEL[s2]}</span>
+                    <span style={{ fontSize: 11, fontWeight: 900, color: n === 0 ? 'var(--rouge)' : 'rgba(0,0,0,0.5)' }}>
+                      {n === 0 ? "vide" : `${n} gr.`}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
 
         <div style={{ padding: '16px 20px', borderTop: '2.5px solid var(--ink)', flexShrink: 0 }}>
@@ -2272,7 +2373,7 @@ function TabSelections({
   onPlanningOpen: () => void;
   onCorrectionOpen: (slot: SelectionSlot) => void;
 }) {
-  const SLOT_BG: Record<SelectionSlot, string> = { PS5: 'var(--bleu)', Switch_Multi: 'var(--rouge)', Switch_Solo: 'var(--rouge)', PC: 'var(--cream2)' };
+  const SLOT_BG = SLOT_COLOR;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -3867,7 +3968,7 @@ export default function JvPage() {
   const [reservations, setReservations] = useState<JvReservation[]>([]);
   const [notes, setNotes] = useState<JvNote[]>([]);
   const [rotationConfig, setRotationConfig] = useState<JvRotationConfig>({
-    id: "main", current_slot_index: 0, week_start: format(new Date(), "yyyy-MM-dd"),
+    id: "main", current_slot_index: 0, week_start: format(startOfWeek(new Date(), { weekStartsOn: 1 }), "yyyy-MM-dd"),
   });
   const [isLoading, setIsLoading] = useState(true);
 
@@ -3896,7 +3997,7 @@ export default function JvPage() {
         ...res,
         joueurs_details: typeof res.joueurs_details === 'string' && res.joueurs_details ? JSON.parse(res.joueurs_details) : (res.joueurs_details ?? null),
       })) as JvReservation[]);
-      if (cfg) setRotationConfig(cfg as JvRotationConfig);
+      if (cfg && Number.isInteger((cfg as any).current_slot_index)) setRotationConfig(cfg as JvRotationConfig);
       setNotes(n as JvNote[]);
       setIsLoading(false);
     };
@@ -4029,8 +4130,8 @@ export default function JvPage() {
       ...toSelection.map(id => fetch(`/api/jv-jeux/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ statut: "selection" }) })),
     ]);
 
-    // 4. Avancer la config
-    const newWeekStart = format(addDays(parseISO(rotationConfig.week_start), 7), "yyyy-MM-dd");
+    // 4. Avancer la config — la rotation est actée sur la semaine réelle en cours
+    const newWeekStart = format(startOfWeek(new Date(), { weekStartsOn: 1 }), "yyyy-MM-dd");
     await handleUpdateRotationConfig(nextSlotIndex, newWeekStart);
 
     // 5. State local
@@ -4212,6 +4313,7 @@ export default function JvPage() {
           rotationConfig={rotationConfig}
           onUpdateConfig={handleUpdateRotationConfig}
           onApplyRotation={handleApplyRotation}
+          onOpenQueue={slot => { setModalPlanning(false); setModalRotation(slot); }}
           onClose={() => setModalPlanning(false)}
         />
       )}
