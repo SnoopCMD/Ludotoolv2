@@ -1698,17 +1698,8 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
                       cursor: "pointer",
                     }}>
 
-                    {/* Vacation band */}
-                    {zonesVacances.length > 0 && (
-                      <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 6, display: "flex", zIndex: 20, pointerEvents: "none", borderBottom: "1.5px solid var(--ink)" }}>
-                        {zonesVacances.includes("Zone A") && <div style={{ flex: 1, backgroundColor: couleurs.zoneA }}></div>}
-                        {zonesVacances.includes("Zone B") && <div style={{ flex: 1, backgroundColor: couleurs.zoneB }}></div>}
-                        {zonesVacances.includes("Zone C") && <div style={{ flex: 1, backgroundColor: couleurs.zoneC }}></div>}
-                      </div>
-                    )}
-
                     {/* Header row: event dots + vacation pastilles + day number */}
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "9px 7px 4px", zIndex: 20, pointerEvents: "none" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "7px 7px 4px", zIndex: 20, pointerEvents: "none" }}>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 3, flex: 1, marginRight: 4, marginTop: 2 }}>
                         {!nomFerie && evenementsDuJour.filter(e => !['Soirée Jeux', 'Heures Exceptionnelles'].includes(e.type)).map((ev, idx) => (
                           <div key={`dot-${idx}`} style={{ width: 9, height: 9, borderRadius: "50%", backgroundColor: getEventColor(ev.type), border: "1.5px solid var(--ink)", flexShrink: 0 }}></div>
@@ -1874,17 +1865,8 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
                          onClick={() => { if (swapSession.active && swapSession.step === 1) toggleSwapDate(dateKey); }}
                          style={{ position: "relative", background: isSelectedForSwap ? "rgba(96,165,250,0.06)" : isToday(jour) ? undefined : "transparent", zIndex: 10, cursor: swapSession.active ? "pointer" : "default", outline: isSelectedForSwap ? "3px solid var(--bleu)" : "none", outlineOffset: -3 }}>
 
-                      {/* Vacation band */}
-                      {zonesVacances.length > 0 && (
-                        <>
-                          <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 6, display: "flex", zIndex: 20, pointerEvents: "none", borderBottom: "1.5px solid var(--ink)" }}>
-                            {zonesVacances.includes("Zone A") && <div style={{ flex: 1, backgroundColor: couleurs.zoneA }}></div>}
-                            {zonesVacances.includes("Zone B") && <div style={{ flex: 1, backgroundColor: couleurs.zoneB }}></div>}
-                            {zonesVacances.includes("Zone C") && <div style={{ flex: 1, backgroundColor: couleurs.zoneC }}></div>}
-                          </div>
-                          <VacancePastilles zones={zonesVacances} size={16} style={{ position: "absolute", top: 10, right: 6, zIndex: 30 }} />
-                        </>
-                      )}
+                      {/* Vacation pastilles */}
+                      <VacancePastilles zones={zonesVacances} size={16} style={{ position: "absolute", top: 6, right: 6, zIndex: 30 }} />
 
                       {/* Ferie block — full column */}
                       {nomFerie && (
