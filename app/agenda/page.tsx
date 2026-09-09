@@ -301,7 +301,7 @@ export default function AgendaPage() {
   
   const [showSettings, setShowSettings] = useState(false);
   const [couleurs, setCouleurs] = useState({
-    accent: '#baff29', equipeA: '#FD495B', equipeB: '#5BE0FB', swap: '#a855f7', zoneA: '#ffaa00', zoneB: '#6ba4ff', zoneC: '#9b51e0'
+    accent: '#baff29', equipeA: '#FD495B', equipeB: '#5BE0FB', swap: '#a855f7', zoneA: '#FF7A00', zoneB: '#1D6BFF', zoneC: '#8A2BE2'
   });
 
 useEffect(() => {
@@ -310,9 +310,49 @@ useEffect(() => {
 
   useEffect(() => {
     const saved = localStorage.getItem('agenda_couleurs');
-    if (saved) try { setCouleurs({...couleurs, ...JSON.parse(saved)}); } catch(e) {}
+    if (saved) try {
+      const parsed = JSON.parse(saved);
+      // Les anciennes couleurs de vacances étaient trop pastel : on les réinitialise une fois.
+      if (!localStorage.getItem('agenda_zones_vives')) {
+        delete parsed.zoneA; delete parsed.zoneB; delete parsed.zoneC;
+        localStorage.setItem('agenda_zones_vives', '1');
+      }
+      setCouleurs(c => ({...c, ...parsed}));
+    } catch(e) {}
   }, []);
   useEffect(() => { localStorage.setItem('agenda_couleurs', JSON.stringify(couleurs)); }, [couleurs]);
+
+  const ZONES_DEF = [
+    { zone: 'Zone A', lettre: 'A', key: 'zoneA' as const },
+    { zone: 'Zone B', lettre: 'B', key: 'zoneB' as const },
+    { zone: 'Zone C', lettre: 'C', key: 'zoneC' as const },
+  ];
+
+  const texteSurCouleur = (hex: string) => {
+    const h = (hex || '').replace('#', '');
+    if (h.length !== 6) return '#0d0d0d';
+    const [r, g, b] = [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16) / 255);
+    const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    return lum > 0.55 ? '#0d0d0d' : '#ffffff';
+  };
+
+  const VacancePastilles = ({ zones, size = 17, style }: { zones: string[]; size?: number; style?: React.CSSProperties }) => {
+    const actives = ZONES_DEF.filter(z => zones.includes(z.zone));
+    if (actives.length === 0) return null;
+    return (
+      <div style={{ display: "flex", gap: 3, alignItems: "center", pointerEvents: "none", ...style }}>
+        {actives.map(z => (
+          <span key={z.zone} title={`Vacances ${z.zone}`} className="bc" style={{
+            width: size, height: size, borderRadius: "50%",
+            background: couleurs[z.key], color: texteSurCouleur(couleurs[z.key]),
+            border: "2px solid var(--ink)", boxShadow: "1.5px 1.5px 0 var(--ink)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: Math.round(size * 0.62), fontWeight: 900, lineHeight: 1, flexShrink: 0,
+          }}>{z.lettre}</span>
+        ))}
+      </div>
+    );
+  };
 
   const getMemberColor = (m: { groupe?: string; couleur?: string }) =>
     m.couleur || (m.groupe === 'A' ? couleurs.equipeA : m.groupe === 'B' ? couleurs.equipeB : couleurs.accent);
@@ -1660,20 +1700,21 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
 
                     {/* Vacation band */}
                     {zonesVacances.length > 0 && (
-                      <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, display: "flex", zIndex: 20, pointerEvents: "none" }}>
-                        {zonesVacances.includes("Zone A") && <div style={{ flex: 1, opacity: 0.35, backgroundColor: couleurs.zoneA }}></div>}
-                        {zonesVacances.includes("Zone B") && <div style={{ flex: 1, opacity: 0.35, backgroundColor: couleurs.zoneB }}></div>}
-                        {zonesVacances.includes("Zone C") && <div style={{ flex: 1, opacity: 0.75, backgroundColor: couleurs.zoneC }}></div>}
+                      <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 6, display: "flex", zIndex: 20, pointerEvents: "none", borderBottom: "1.5px solid var(--ink)" }}>
+                        {zonesVacances.includes("Zone A") && <div style={{ flex: 1, backgroundColor: couleurs.zoneA }}></div>}
+                        {zonesVacances.includes("Zone B") && <div style={{ flex: 1, backgroundColor: couleurs.zoneB }}></div>}
+                        {zonesVacances.includes("Zone C") && <div style={{ flex: 1, backgroundColor: couleurs.zoneC }}></div>}
                       </div>
                     )}
 
-                    {/* Header row: event dots + day number */}
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "7px 7px 4px", zIndex: 20, pointerEvents: "none" }}>
+                    {/* Header row: event dots + vacation pastilles + day number */}
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "9px 7px 4px", zIndex: 20, pointerEvents: "none" }}>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 3, flex: 1, marginRight: 4, marginTop: 2 }}>
                         {!nomFerie && evenementsDuJour.filter(e => !['Soirée Jeux', 'Heures Exceptionnelles'].includes(e.type)).map((ev, idx) => (
                           <div key={`dot-${idx}`} style={{ width: 9, height: 9, borderRadius: "50%", backgroundColor: getEventColor(ev.type), border: "1.5px solid var(--ink)", flexShrink: 0 }}></div>
                         ))}
                       </div>
+                      <VacancePastilles zones={zonesVacances} size={17} style={{ flexShrink: 0, marginRight: 4, marginTop: 1 }} />
                       {isToday(jour) ? (
                         <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
                           <span className="bc" style={{ fontSize: 20, lineHeight: 1, letterSpacing: "-0.5px" }}>
@@ -1835,11 +1876,14 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
 
                       {/* Vacation band */}
                       {zonesVacances.length > 0 && (
-                        <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, display: "flex", zIndex: 20, pointerEvents: "none" }}>
-                          {zonesVacances.includes("Zone A") && <div style={{ flex: 1, opacity: 0.3, backgroundColor: couleurs.zoneA }}></div>}
-                          {zonesVacances.includes("Zone B") && <div style={{ flex: 1, opacity: 0.3, backgroundColor: couleurs.zoneB }}></div>}
-                          {zonesVacances.includes("Zone C") && <div style={{ flex: 1, opacity: 0.75, backgroundColor: couleurs.zoneC }}></div>}
-                        </div>
+                        <>
+                          <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 6, display: "flex", zIndex: 20, pointerEvents: "none", borderBottom: "1.5px solid var(--ink)" }}>
+                            {zonesVacances.includes("Zone A") && <div style={{ flex: 1, backgroundColor: couleurs.zoneA }}></div>}
+                            {zonesVacances.includes("Zone B") && <div style={{ flex: 1, backgroundColor: couleurs.zoneB }}></div>}
+                            {zonesVacances.includes("Zone C") && <div style={{ flex: 1, backgroundColor: couleurs.zoneC }}></div>}
+                          </div>
+                          <VacancePastilles zones={zonesVacances} size={16} style={{ position: "absolute", top: 10, right: 6, zIndex: 30 }} />
+                        </>
                       )}
 
                       {/* Ferie block — full column */}
@@ -3145,6 +3189,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
       {hoveredDay && hoverPos && !selectedDay && (() => {
         const jourHov = new Date(hoveredDay + 'T12:00:00');
         const nomFerieHov = joursFeries[hoveredDay];
+        const zonesVacancesHov = vacances[hoveredDay] || [];
         const typeSemaineHov = getISOWeek(jourHov) % 2 !== 0 ? 'semaineA' : 'semaineB';
         const nomJourHov = format(jourHov, 'EEEE', { locale: fr }).toLowerCase();
         const evsHov = activeEvenements.filter(e => e.date_debut <= hoveredDay && e.date_fin >= hoveredDay);
@@ -3179,10 +3224,11 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
         return (
           <div key="day-hover" style={{ position: "fixed", left, top, width: TOOLTIP_W, zIndex: 190, pointerEvents: "none", animation: "fadeInUp 0.15s ease" }}>
             <div className="pop-card" style={{ padding: 0, overflow: "hidden" }}>
-              <div style={{ background: "var(--ink)", padding: "8px 12px" }}>
+              <div style={{ background: "var(--ink)", padding: "8px 12px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                 <span className="bc" style={{ fontSize: 13, color: "var(--cream)" }}>
                   {format(jourHov, 'EEEE d MMMM', { locale: fr })}
                 </span>
+                <VacancePastilles zones={zonesVacancesHov} size={16} />
               </div>
               <div style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
                 {nomFerieHov && (
@@ -3230,6 +3276,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
       {selectedDay && (() => {
         const jourSel = new Date(selectedDay + 'T12:00:00');
         const nomFerieSel = joursFeries[selectedDay];
+        const zonesVacancesSel = vacances[selectedDay] || [];
         const typeSemaineSel = getISOWeek(jourSel) % 2 !== 0 ? 'semaineA' : 'semaineB';
         const nomJourSel = format(jourSel, 'EEEE', { locale: fr }).toLowerCase();
         const evsDuJour = activeEvenements.filter(e => e.date_debut <= selectedDay && e.date_fin >= selectedDay);
@@ -3257,7 +3304,9 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
         return (
           <div key="day-popup" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: "80px 16px 16px" }}
             onClick={e => { if (e.target === e.currentTarget) setSelectedDay(null); }}>
-            <div className="pop-card" style={{ width: "100%", maxWidth: 420, maxHeight: "calc(100vh - 120px)", overflow: "hidden", display: "flex", flexDirection: "column" }}>
+            <div style={{ position: "relative", width: "100%", maxWidth: 420, display: "flex", flexDirection: "column", maxHeight: "calc(100vh - 120px)" }}>
+              <VacancePastilles zones={zonesVacancesSel} size={30} style={{ position: "absolute", top: -16, right: -12, zIndex: 10, gap: 5 }} />
+              <div className="pop-card" style={{ width: "100%", maxHeight: "100%", overflow: "hidden", display: "flex", flexDirection: "column" }}>
               <div style={{ background: "var(--ink)", padding: "14px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
                 <div>
                   <div className="bc" style={{ fontSize: 36, color: "var(--cream)", lineHeight: 1 }}>
@@ -3398,6 +3447,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
                   style={{ width: "100%", justifyContent: "center", fontSize: 13 }}>
                   + Ajouter un événement
                 </button>
+              </div>
               </div>
             </div>
           </div>
