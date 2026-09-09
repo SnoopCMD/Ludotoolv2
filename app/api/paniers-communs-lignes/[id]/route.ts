@@ -6,7 +6,11 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     const db = await getDB();
     const { id } = await params;
     const body = await request.json() as any;
+    // `votes` est un cache recalculé par /vote depuis paniers_communs_votes :
+    // le laisser passer ici permettrait de forger un score sans voter.
+    delete body.votes;
     const keys = Object.keys(body);
+    if (keys.length === 0) return NextResponse.json({ success: true });
     const sets = keys.map(k => `${k} = ?`).join(', ');
     await db.prepare(`UPDATE paniers_communs_lignes SET ${sets} WHERE id = ?`).bind(...keys.map(k => body[k]), id).run();
     return NextResponse.json({ success: true });

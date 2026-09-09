@@ -4,7 +4,7 @@ import { getDB } from '../../../lib/db';
 export async function GET() {
   try {
     const db = await getDB();
-    const result = await db.prepare('SELECT * FROM commandes ORDER BY created_at DESC').all();
+    const result = await db.prepare('SELECT * FROM commandes ORDER BY date_commande DESC').all();
     return NextResponse.json(result.results.map((r: any) => ({
       ...r,
       lignes: typeof r.lignes === 'string' ? JSON.parse(r.lignes) : (r.lignes ?? []),

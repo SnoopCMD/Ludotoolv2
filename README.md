@@ -16,6 +16,7 @@ toutes les données.
 - [Architecture](#architecture)
 - [Base de données](#base-de-données)
 - [Les comptes](#les-comptes)
+- [Les paniers communs : votes et vérification](#les-paniers-communs--votes-et-vérification)
 - [Sources externes](#sources-externes)
 - [Déploiement](#déploiement)
 - [Conventions de code](#conventions-de-code)
@@ -141,7 +142,8 @@ Base D1 `ludotool-db` (binding `DB`).
 | `commandes` | Réceptions de commandes |
 | `equipe`, `evenements`, `planning_semaine` | Agenda : membres, horaires, absences, planning |
 | `paniers`, `panier_lignes` | Paniers d'achat |
-| `paniers_communs_lignes` | Lignes des commandes communes, avec votes |
+| `paniers_communs_lignes` | Lignes des commandes communes (`votes` = cache du score) |
+| `paniers_communs_votes`, `paniers_communs_commentaires` | Votes nominatifs et commentaires sur ces lignes |
 | `jv_jeux`, `jv_selections`, `jv_reservations`, `jv_rotation_config`, `jv_notes` | Section jeux vidéo |
 | `pieces_manquantes`, `pieces_trouvees`, `reparations` | Suivi du matériel |
 | `alertes`, `suggestions`, `selections` | Alertes, boîte à idées, sélections thématiques |
@@ -192,6 +194,51 @@ npx wrangler d1 execute ludotool-db --remote --command   "UPDATE utilisateurs SE
 
 Si plus aucun compte n'est au mot de passe par défaut, reprendre l'empreinte
 littérale depuis `migrations/0008_utilisateurs.sql`.
+
+---
+
+## Les paniers communs : votes et vérification
+
+**Les votes sont nominatifs.** Une voix appartient à un compte
+(`paniers_communs_votes`, une ligne par couple ligne/utilisateur, `valeur` à
++1 ou -1) : voter demande donc d'être connecté. Revoter la même valeur retire sa
+voix — le bouton est une bascule à trois états (pour / rien / contre).
+
+`paniers_communs_lignes.votes` reste, mais n'est plus qu'un **cache de la
+somme**, réécrit depuis le total réel à chaque vote plutôt qu'incrémenté, pour
+qu'il ne puisse pas dériver. Il sert au tri et à `/api/store/summary`. La mise à
+jour générique d'une ligne (`PUT /api/paniers-communs-lignes/[id]`) refuse
+d'écrire cette colonne : sans ça, on pourrait se fabriquer un score sans voter.
+
+Renvoyer depuis un panier personnel un jeu déjà présent dans le commun ne crée
+pas de doublon : ça vaut un vote « pour » de l'expéditeur, silencieusement ignoré
+s'il n'est pas connecté.
+
+Les **commentaires** (`paniers_communs_commentaires`) suivent la même règle :
+lecture ouverte à tous, écriture réservée aux comptes, et chacun ne peut effacer
+que les siens.
+
+### Le mode vérification
+
+Bascule la liste en cases à cocher pour retirer les jeux réceptionnés. Il
+**recoupe avec les réceptions déjà saisies dans l'atelier** (table `commandes`,
+statut `Reçu`) via `GET /api/paniers-communs-lignes/verification`, avec trois
+niveaux de certitude :
+
+| Niveau | Règle | Coché d'office |
+| --- | --- | --- |
+| `ean` | Même code-barres (`Manuel` exclu : ce n'est pas un identifiant) | oui |
+| `nom` | Noms identiques une fois normalisés (casse, accents, ponctuation) | oui |
+| `proche` | Un nom contient l'autre, au-delà de 5 caractères | non, seulement signalé |
+
+`proche` n'est jamais coché automatiquement : « Dixit » et « Dixit Odyssey » se
+ressemblent, mais ce sont deux boîtes différentes.
+
+**Le recoupement est en lecture seule.** Valider retire les lignes cochées du
+panier commun et ne touche pas à l'atelier, qui reste la seule porte d'entrée des
+réceptions. Si l'inverse devient souhaitable un jour, c'est un vrai choix à
+faire, pas un détail d'implémentation : deux endroits qui créent des réceptions,
+ce sont deux endroits à garder cohérents.
 
 ---
 

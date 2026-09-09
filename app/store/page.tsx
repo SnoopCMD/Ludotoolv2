@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import NavBar from "../../components/NavBar";
+import { useCompte } from "../../components/AuthProvider";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -21,11 +22,23 @@ type PanierLigne = {
   tags: string | null; console: string | null;
 };
 
+type Votant = { utilisateur_id: string; nom: string; valeur: number };
+type Commentaire = { id: string; utilisateur_id: string; nom: string; texte: string; cree_le: string };
+
 type PanierCommunLigne = {
   id: string; panier_commun_id: string; nom: string;
   editeur: string | null; image_url: string | null; ean: string | null;
   prix_unitaire: number | null; quantite: number; notes: string | null;
   profil: string | null; votes: number; created_at: string; console: string | null;
+  votants?: Votant[]; mon_vote?: number; commentaires?: Commentaire[];
+};
+
+/** Recoupement d'une ligne avec les réceptions déjà saisies dans l'atelier. */
+type Correspondance = {
+  ligne_id: string;
+  type: "ean" | "nom" | "proche";
+  reception_nom: string;
+  date_reception: string | null;
 };
 
 type JeuRechercheStore = {
@@ -208,7 +221,7 @@ function ModalEnvoiCommun({
   communLignes: Record<string, PanierCommunLigne[]>;
   onClose: () => void;
   onSent: (panierCommunId: string, newLigne: PanierCommunLigne) => void;
-  onUpvoted: (panierCommunId: string, ligneId: string) => void;
+  onUpvoted: (panierCommunId: string, ligneId: string, res: { votes: number; mon_vote: number; votants: Votant[] }) => void;
 }) {
   const [targetId, setTargetId] = useState(PANIERS_COMMUNS.find(p => p.type === panierType)?.id ?? PANIERS_COMMUNS[0].id);
   const [profil, setProfil] = useState(panierProfil ?? "");
@@ -226,8 +239,13 @@ function ModalEnvoiCommun({
       e.nom.toLowerCase() === ligne.nom.toLowerCase()
     );
     if (duplicate) {
-      await fetch(`/api/paniers-communs-lignes/${duplicate.id}/upvote`, { method: "POST" });
-      onUpvoted(targetId, duplicate.id);
+      // Renvoyer un jeu déjà présent vaut un vote « pour » — silencieux si
+      // l'expéditeur n'est pas connecté, l'envoi lui-même reste possible.
+      const res = await fetch(`/api/paniers-communs-lignes/${duplicate.id}/vote`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ valeur: 1 }),
+      }).then(r => r.ok ? r.json() as Promise<any> : null).catch(() => null);
+      if (res) onUpvoted(targetId, duplicate.id, res);
     } else {
       const payload = {
         panier_commun_id: targetId, nom: ligne.nom, editeur: ligne.editeur,
@@ -300,13 +318,14 @@ type FicheSteam = {
 };
 
 function ModalWishlistSteam({
-  lignes, doublons, onClose, onSupprimer, onUpvote,
+  lignes, doublons, connecte, onClose, onSupprimer, onVote,
 }: {
   lignes: PanierCommunLigne[];
   doublons: Record<string, Doublon>;
+  connecte: boolean;
   onClose: () => void;
   onSupprimer: (ligne: PanierCommunLigne) => void;
-  onUpvote: (ligne: PanierCommunLigne) => void;
+  onVote: (ligne: PanierCommunLigne, valeur: 1 | -1) => void;
 }) {
   const [fiches, setFiches] = useState<Record<string, FicheSteam>>({});
   const [chargement, setChargement] = useState(false);
@@ -421,10 +440,8 @@ function ModalWishlistSteam({
                 </div>
 
                 {/* Votes */}
-                <div style={{ display: "inline-flex", alignItems: "center", gap: 4, border: "2px solid var(--ink)", borderRadius: 20, overflow: "hidden", flexShrink: 0 }}>
-                  <button onClick={() => onUpvote(ligne)}
-                    style={{ padding: "3px 8px", cursor: "pointer", background: "var(--yellow)", border: "none", fontWeight: 900, fontSize: 12, fontFamily: "inherit" }}>▲</button>
-                  <span style={{ fontWeight: 900, fontSize: 13, padding: "0 5px", minWidth: 18, textAlign: "center" }}>{ligne.votes}</span>
+                <div style={{ flexShrink: 0 }}>
+                  <CelluleVotes ligne={ligne} connecte={connecte} onVote={onVote} />
                 </div>
 
                 {/* Prix */}
@@ -466,6 +483,182 @@ function ModalWishlistSteam({
   );
 }
 
+
+// ─── Votes, commentaires, vérification ────────────────────────────────────────
+
+const initiale = (nom: string) => (nom.trim()[0] ?? "?").toUpperCase();
+
+const dateCourte = (iso: string | null) => {
+  if (!iso) return "";
+  const d = new Date(iso.replace(" ", "T"));
+  return isNaN(d.getTime()) ? "" : d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" });
+};
+
+/**
+ * Score et bascule de vote. Le vote est nominatif : les initiales des votants
+ * sont affichées sous le score, en vert pour un « pour », en rouge pour un
+ * « contre ». Hors connexion, les flèches sont inertes et le disent.
+ */
+function CelluleVotes({ ligne, connecte, onVote }: {
+  ligne: PanierCommunLigne;
+  connecte: boolean;
+  onVote: (ligne: PanierCommunLigne, valeur: 1 | -1) => void;
+}) {
+  const monVote = ligne.mon_vote ?? 0;
+  const votants = ligne.votants ?? [];
+  const titre = connecte ? undefined : "Connecte-toi pour voter";
+
+  const fleche = (valeur: 1 | -1, actif: boolean) => ({
+    padding: "4px 10px",
+    cursor: connecte ? "pointer" : "not-allowed",
+    background: actif ? (valeur === 1 ? "var(--vert)" : "var(--rouge)") : "var(--cream2)",
+    border: "none", fontWeight: 900, fontSize: 13, fontFamily: "inherit",
+    opacity: connecte ? 1 : 0.4,
+    color: "var(--ink)",
+  } as React.CSSProperties);
+
+  return (
+    <div style={{ display: "inline-flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
+      <div title={titre} style={{ display: "inline-flex", alignItems: "center", border: "2px solid var(--ink)", borderRadius: 20, overflow: "hidden" }}>
+        <button disabled={!connecte} onClick={() => onVote(ligne, 1)} style={fleche(1, monVote === 1)}>▲</button>
+        <span className="bc" style={{ fontSize: 15, padding: "0 8px", minWidth: 26, textAlign: "center" }}>
+          {ligne.votes > 0 ? "+" : ""}{ligne.votes}
+        </span>
+        <button disabled={!connecte} onClick={() => onVote(ligne, -1)} style={fleche(-1, monVote === -1)}>▼</button>
+      </div>
+      {votants.length > 0 && (
+        <div style={{ display: "flex", gap: 2, flexWrap: "wrap", justifyContent: "center", maxWidth: 96 }}>
+          {votants.map(v => (
+            <span key={v.utilisateur_id} title={`${v.nom} — ${v.valeur === 1 ? "pour" : "contre"}`}
+              style={{
+                width: 16, height: 16, borderRadius: "50%", fontSize: 9, fontWeight: 900,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                background: v.valeur === 1 ? "var(--vert)" : "var(--rouge)",
+                border: "1.5px solid var(--ink)", color: "var(--ink)",
+              }}>
+              {initiale(v.nom)}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BoutonCommentaires({ ligne, onOuvrir }: { ligne: PanierCommunLigne; onOuvrir: () => void }) {
+  const n = (ligne.commentaires ?? []).length;
+  return (
+    <button onClick={onOuvrir} title={n > 0 ? `${n} commentaire${n > 1 ? "s" : ""}` : "Ajouter un commentaire"}
+      style={{
+        display: "inline-flex", alignItems: "center", gap: 4, cursor: "pointer", fontFamily: "inherit",
+        background: n > 0 ? "var(--yellow)" : "transparent",
+        border: n > 0 ? "2px solid var(--ink)" : "2px solid var(--cream2)",
+        borderRadius: 20, padding: "3px 9px", fontWeight: 800, fontSize: 12,
+      }}>
+      💬{n > 0 ? ` ${n}` : ""}
+    </button>
+  );
+}
+
+/** Rappel visuel d'une réception déjà enregistrée dans l'atelier. */
+function PastilleReception({ corr }: { corr: Correspondance | undefined }) {
+  if (!corr) return null;
+  const sur = corr.type === "proche";
+  const date = dateCourte(corr.date_reception);
+  return (
+    <span title={`Atelier : « ${corr.reception_nom} »${date ? ` reçu le ${date}` : ""}`}
+      style={{
+        fontSize: 10, fontWeight: 800, whiteSpace: "nowrap", flexShrink: 0,
+        background: sur ? "var(--cream2)" : "var(--vert)",
+        border: "1.5px solid var(--ink)", borderRadius: 4, padding: "1px 6px",
+      }}>
+      {sur ? "≈ nom proche" : `reçu${date ? " " + date : ""}`}
+    </span>
+  );
+}
+
+/** Fil de commentaires d'une ligne. Lecture ouverte à tous, écriture aux comptes. */
+function PanneauCommentaires({ ligne, compteId, onFermer, onAjouter, onSupprimer }: {
+  ligne: PanierCommunLigne;
+  compteId: string | null;
+  onFermer: () => void;
+  onAjouter: (ligne: PanierCommunLigne, texte: string) => Promise<void>;
+  onSupprimer: (ligne: PanierCommunLigne, commentaireId: string) => Promise<void>;
+}) {
+  const [texte, setTexte] = useState("");
+  const [envoi, setEnvoi] = useState(false);
+  const commentaires = ligne.commentaires ?? [];
+
+  const envoyer = async () => {
+    const contenu = texte.trim();
+    if (!contenu) return;
+    setEnvoi(true);
+    await onAjouter(ligne, contenu);
+    setTexte("");
+    setEnvoi(false);
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: "80px 16px 16px" }}
+      onClick={e => e.target === e.currentTarget && onFermer()}>
+      <div className="pop-card" style={{ width: "100%", maxWidth: 440, maxHeight: "calc(100vh - 120px)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <div style={{ background: "var(--ink)", padding: "14px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexShrink: 0 }}>
+          <div style={{ minWidth: 0 }}>
+            <h2 className="bc" style={{ fontSize: 18, color: "var(--cream)", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ligne.nom}</h2>
+            <p style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", fontWeight: 700, margin: "2px 0 0" }}>
+              {commentaires.length} commentaire{commentaires.length !== 1 ? "s" : ""}
+            </p>
+          </div>
+          <button onClick={onFermer} style={{ width: 28, height: 28, borderRadius: "50%", background: "rgba(255,255,255,0.12)", border: "none", cursor: "pointer", color: "var(--cream)", fontSize: 16, flexShrink: 0 }}>✕</button>
+        </div>
+
+        <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 10, overflowY: "auto" }}>
+          {commentaires.length === 0 && (
+            <p style={{ textAlign: "center", padding: "18px 0", color: "rgba(0,0,0,0.35)", fontWeight: 600, fontSize: 13 }}>
+              Aucun commentaire — dis ce que tu en penses.
+            </p>
+          )}
+          {commentaires.map((c, idx) => (
+            <div key={c.id} style={{ background: "var(--white)", border: "2px solid var(--ink)", borderRadius: 10, padding: "9px 12px", boxShadow: "2px 2px 0 var(--ink)", transform: `rotate(${idx % 2 === 0 ? -0.4 : 0.4}deg)` }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 4 }}>
+                <span className="bc" style={{ width: 20, height: 20, borderRadius: "50%", background: "var(--yellow)", border: "1.5px solid var(--ink)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, flexShrink: 0 }}>
+                  {initiale(c.nom)}
+                </span>
+                <span style={{ fontWeight: 800, fontSize: 12 }}>{c.nom}</span>
+                <span style={{ fontSize: 11, color: "rgba(0,0,0,0.35)", fontWeight: 600 }}>{dateCourte(c.cree_le)}</span>
+                {c.utilisateur_id === compteId && (
+                  <button onClick={() => onSupprimer(ligne, c.id)} title="Supprimer mon commentaire"
+                    style={{ marginLeft: "auto", background: "transparent", border: "none", cursor: "pointer", fontSize: 12, color: "rgba(0,0,0,0.4)", fontFamily: "inherit" }}>✕</button>
+                )}
+              </div>
+              <p style={{ fontSize: 13, lineHeight: 1.45, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{c.texte}</p>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ padding: 16, borderTop: "2.5px solid var(--ink)", flexShrink: 0 }}>
+          {compteId ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <textarea value={texte} onChange={e => setTexte(e.target.value)} rows={3}
+                placeholder="Ton avis sur ce jeu…" className="pop-input"
+                onKeyDown={e => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) envoyer(); }}
+                style={{ width: "100%", resize: "vertical", fontFamily: "inherit", fontSize: 13 }} />
+              <button onClick={envoyer} disabled={envoi || !texte.trim()} className="pop-btn pop-btn-dark"
+                style={{ justifyContent: "center", fontSize: 13, opacity: envoi || !texte.trim() ? 0.5 : 1 }}>
+                {envoi ? "Envoi…" : "Commenter"}
+              </button>
+            </div>
+          ) : (
+            <p style={{ textAlign: "center", fontSize: 12, fontWeight: 700, color: "rgba(0,0,0,0.45)" }}>
+              Connecte-toi pour commenter.
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Page principale ──────────────────────────────────────────────────────────
 
 export default function StorePage() {
@@ -473,8 +666,16 @@ export default function StorePage() {
   const [activeProfil, setActiveProfil] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
+  const { compte } = useCompte();
+
   const [paniers, setPaniers] = useState<Panier[]>([]);
   const [communLignes, setCommunLignes] = useState<Record<string, PanierCommunLigne[]>>({});
+
+  // Commentaires ouverts sur une ligne, mode vérification et son état de cochage
+  const [ligneCommentee, setLigneCommentee] = useState<string | null>(null);
+  const [modeVerification, setModeVerification] = useState(false);
+  const [coches, setCoches] = useState<Set<string>>(new Set());
+  const [correspondances, setCorrespondances] = useState<Correspondance[]>([]);
   const [lignes, setLignes] = useState<PanierLigne[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [summary, setSummary] = useState<StoreSummary>({ communStats: {}, profilStats: {}, membres: [] as MembreSummary[] });
@@ -555,10 +756,28 @@ export default function StorePage() {
 
   useEffect(() => { chargerPaniers(); chargerSummary(); }, []);
 
+  // `mon_vote` dépend de qui regarde : se connecter ou se déconnecter rend le
+  // cache des lignes obsolète, il faut le vider et recharger le panier ouvert.
+  const compteId = compte?.id ?? null;
+  const compteIdPrecedent = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    if (compteIdPrecedent.current === undefined) { compteIdPrecedent.current = compteId; return; }
+    if (compteIdPrecedent.current === compteId) return;
+    compteIdPrecedent.current = compteId;
+    loadedCommunIds.current.clear();
+    setCommunLignes({});
+    if (view === "basket" && isCommun && selectedId) chargerCommunLignes(selectedId);
+  }, [compteId]);
+
   useEffect(() => {
     setFilterTag(null);
     setFilterConsole(null);
     setTagEdit(null);
+    // Changer de panier referme la vérification et son état de cochage.
+    setModeVerification(false);
+    setCoches(new Set());
+    setCorrespondances([]);
+    setLigneCommentee(null);
     if (view !== "basket" || !selectedId) { setLignes([]); return; }
     if (isCommun) { setLignes([]); chargerCommunLignes(selectedId); }
     else chargerLignes(selectedId);
@@ -812,24 +1031,87 @@ export default function StorePage() {
     chargerSummary();
   };
 
-  const handleUpvoteCommun = (panierCommunId: string, ligneId: string) => {
+  const appliquerVote = (panierCommunId: string, ligneId: string, res: { votes: number; mon_vote: number; votants: Votant[] }) => {
     setCommunLignes(prev => ({
       ...prev,
       [panierCommunId]: (prev[panierCommunId] ?? [])
-        .map(l => l.id === ligneId ? { ...l, votes: l.votes + 1 } : l)
+        .map(l => l.id === ligneId ? { ...l, votes: res.votes, mon_vote: res.mon_vote, votants: res.votants } : l)
         .sort((a, b) => b.votes - a.votes),
     }));
     chargerSummary();
   };
 
-  const upvoterLigne = async (ligne: PanierCommunLigne) => {
+  const handleUpvoteCommun = appliquerVote;
+
+  /**
+   * Le serveur fait autorité sur le score : on n'anticipe pas l'affichage, une
+   * bascule (revoter la même valeur retire la voix) se lit mal en optimiste.
+   */
+  const voterLigne = async (ligne: PanierCommunLigne, valeur: 1 | -1) => {
+    if (!compte) return;
+    const res = await fetch(`/api/paniers-communs-lignes/${ligne.id}/vote`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ valeur }),
+    }).then(r => r.ok ? r.json() as Promise<any> : null).catch(() => null);
+    if (res) appliquerVote(ligne.panier_commun_id, ligne.id, res);
+  };
+
+  // ─── Commentaires ─────────────────────────────────────────────────────────────
+
+  const ajouterCommentaire = async (ligne: PanierCommunLigne, texte: string) => {
+    const res = await fetch(`/api/paniers-communs-lignes/${ligne.id}/commentaires`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ texte }),
+    }).then(r => r.ok ? r.json() as Promise<any> : null).catch(() => null);
+    if (!res) return;
     setCommunLignes(prev => ({
       ...prev,
       [ligne.panier_commun_id]: (prev[ligne.panier_commun_id] ?? [])
-        .map(l => l.id === ligne.id ? { ...l, votes: l.votes + 1 } : l)
-        .sort((a, b) => b.votes - a.votes),
+        .map(l => l.id === ligne.id ? { ...l, commentaires: [...(l.commentaires ?? []), res] } : l),
     }));
-    await fetch(`/api/paniers-communs-lignes/${ligne.id}/upvote`, { method: "POST" });
+  };
+
+  const supprimerCommentaire = async (ligne: PanierCommunLigne, commentaireId: string) => {
+    await fetch(`/api/paniers-communs-lignes/${ligne.id}/commentaires/${commentaireId}`, { method: "DELETE" });
+    setCommunLignes(prev => ({
+      ...prev,
+      [ligne.panier_commun_id]: (prev[ligne.panier_commun_id] ?? [])
+        .map(l => l.id === ligne.id ? { ...l, commentaires: (l.commentaires ?? []).filter(c => c.id !== commentaireId) } : l),
+    }));
+  };
+
+  // ─── Mode vérification ────────────────────────────────────────────────────────
+
+  const ouvrirVerification = async () => {
+    if (!selectedId) return;
+    setModeVerification(true);
+    const corrs = await fetch(`/api/paniers-communs-lignes/verification?panier_commun_id=${selectedId}`)
+      .then(r => r.ok ? r.json() as Promise<Correspondance[]> : []).catch(() => []);
+    setCorrespondances(corrs);
+    // Les rapprochements sûrs sont cochés d'office ; « proche » est trop
+    // incertain pour ça, il est seulement signalé.
+    setCoches(new Set(corrs.filter(c => c.type === "ean" || c.type === "nom").map(c => c.ligne_id)));
+  };
+
+  const fermerVerification = () => {
+    setModeVerification(false);
+    setCoches(new Set());
+    setCorrespondances([]);
+  };
+
+  const validerVerification = async () => {
+    const ids = [...coches];
+    if (ids.length === 0) return;
+    const communId = selectedId!;
+    for (const id of ids) {
+      await fetch(`/api/paniers-communs-lignes/${id}`, { method: "DELETE" });
+    }
+    setCommunLignes(prev => ({
+      ...prev,
+      [communId]: (prev[communId] ?? []).filter(l => !coches.has(l.id)),
+    }));
+    fermerVerification();
+    chargerSummary();
   };
 
   const supprimerCommunLigne = async (ligne: PanierCommunLigne) => {
@@ -1165,12 +1447,40 @@ ${filtered.map(l => `<tr>
                         🖥️ Wishlist Steam{lignesWishlist.length > 0 ? ` (${lignesWishlist.length})` : ""}
                       </button>
                     )}
+                    <button onClick={() => modeVerification ? fermerVerification() : ouvrirVerification()} className="pop-btn"
+                      title="Cocher les jeux reçus pour les retirer de la liste"
+                      style={{ fontSize: 13, background: modeVerification ? "var(--vert)" : "transparent", border: modeVerification ? "2.5px solid var(--ink)" : "2px solid var(--cream2)" }}>
+                      ☑️ {modeVerification ? "Quitter la vérification" : "Vérification"}
+                    </button>
                     <button onClick={() => { setPdfConsoles([]); setModalPDF(true); }} className="pop-btn pop-btn-outline" style={{ fontSize: 13 }}>
                       📄 PDF
                     </button>
                     <span className="pop-sticker" style={{ background: TYPE_INFO[panierCommunActuel!.type].bg, border: "2px solid var(--ink)", fontSize: 13 }}>{panierCommunActuel?.type}</span>
                   </div>
                 </div>
+
+                {modeVerification && (
+                  <div className="pop-card" style={{ padding: "12px 18px", background: "var(--vert)", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+                    <div style={{ flex: 1, minWidth: 220 }}>
+                      <p style={{ fontWeight: 800, fontSize: 13 }}>
+                        Coche les jeux réceptionnés, puis retire-les de la liste.
+                      </p>
+                      <p style={{ fontSize: 12, fontWeight: 600, color: "rgba(0,0,0,0.55)", marginTop: 2 }}>
+                        {correspondances.filter(c => c.type !== "proche").length > 0
+                          ? `${correspondances.filter(c => c.type !== "proche").length} ligne(s) déjà cochée(s) d'après les réceptions de l'atelier`
+                          : "Aucune correspondance avec les réceptions de l'atelier"}
+                        {correspondances.some(c => c.type === "proche") && " · les « nom proche » sont à vérifier à la main"}
+                      </p>
+                    </div>
+                    <button onClick={validerVerification} disabled={coches.size === 0} className="pop-btn pop-btn-dark"
+                      style={{ fontSize: 13, opacity: coches.size === 0 ? 0.45 : 1 }}>
+                      Retirer {coches.size} ligne{coches.size !== 1 ? "s" : ""}
+                    </button>
+                    <button onClick={fermerVerification} className="pop-btn pop-btn-outline" style={{ fontSize: 13 }}>
+                      Annuler
+                    </button>
+                  </div>
+                )}
 
                 {/* Filtre console (JV uniquement) */}
                 {isJV && consolesPresentes.length > 0 && (
@@ -1206,23 +1516,43 @@ ${filtered.map(l => `<tr>
                     <table style={{ width: "100%", borderCollapse: "collapse" }}>
                       <thead>
                         <tr style={{ background: "var(--ink)", color: "var(--cream)" }}>
-                          {["Jeu", ...(isJV ? ["Console"] : []), "Éditeur", "Profil", "Qté", "Prix", "Votes", ""].map((h, i, arr) => (
-                            <th key={i} style={{ textAlign: i >= arr.length - 4 ? "center" : "left", padding: "10px 16px", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", width: i === arr.length - 1 ? 40 : undefined }}>{h}</th>
+                          {modeVerification && (
+                            <th style={{ width: 44, padding: "10px 12px" }}>
+                              <input type="checkbox"
+                                checked={coches.size === lignesCommunFiltrees.length && lignesCommunFiltrees.length > 0}
+                                onChange={e => setCoches(e.target.checked ? new Set(lignesCommunFiltrees.map(l => l.id)) : new Set())}
+                                style={{ width: 17, height: 17, cursor: "pointer", accentColor: "var(--vert)" }} />
+                            </th>
+                          )}
+                          {["Jeu", ...(isJV ? ["Console"] : []), "Éditeur", "Profil", "Qté", "Prix", "Votes", "💬", ""].map((h, i, arr) => (
+                            <th key={i} style={{ textAlign: i >= arr.length - 5 ? "center" : "left", padding: "10px 16px", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", width: i === arr.length - 1 ? 40 : undefined }}>{h}</th>
                           ))}
                         </tr>
                       </thead>
                       <tbody>
                         {lignesCommunFiltrees.map((ligne, i) => (
-                          <tr key={ligne.id} style={{ borderBottom: "1px solid var(--cream2)" }}
-                            onMouseEnter={e => (e.currentTarget.style.background = "var(--cream)")}
-                            onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
+                          <tr key={ligne.id} style={{ borderBottom: "1px solid var(--cream2)", background: modeVerification && coches.has(ligne.id) ? "rgba(168,224,99,0.18)" : "transparent" }}
+                            onMouseEnter={e => { if (!(modeVerification && coches.has(ligne.id))) e.currentTarget.style.background = "var(--cream)"; }}
+                            onMouseLeave={e => (e.currentTarget.style.background = modeVerification && coches.has(ligne.id) ? "rgba(168,224,99,0.18)" : "transparent")}>
+                            {modeVerification && (
+                              <td style={{ padding: "10px 12px", textAlign: "center" }}>
+                                <input type="checkbox" checked={coches.has(ligne.id)}
+                                  onChange={e => setCoches(prev => {
+                                    const n = new Set(prev);
+                                    if (e.target.checked) n.add(ligne.id); else n.delete(ligne.id);
+                                    return n;
+                                  })}
+                                  style={{ width: 17, height: 17, cursor: "pointer", accentColor: "var(--vert)" }} />
+                              </td>
+                            )}
                             <td style={{ padding: "10px 16px" }}>
                               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                                {i < 3 && !filterConsole && <span style={{ fontSize: 14, flexShrink: 0 }}>{["🥇", "🥈", "🥉"][i]}</span>}
+                                {i < 3 && !filterConsole && !modeVerification && <span style={{ fontSize: 14, flexShrink: 0 }}>{["🥇", "🥈", "🥉"][i]}</span>}
                                 {ligne.image_url ? <img src={ligne.image_url} alt="" style={{ width: 36, height: 36, objectFit: "contain", borderRadius: 6, background: "var(--cream2)", flexShrink: 0 }} />
                                   : <div style={{ width: 36, height: 36, borderRadius: 6, background: "var(--cream2)", flexShrink: 0 }} />}
                                 <p style={{ fontWeight: 700, fontSize: 14, color: "var(--ink)" }}>{ligne.nom}</p>
                                 <PastilleDoublon doublon={doublons[ligne.nom]} type={panierCommunActuel!.type} />
+                                {modeVerification && <PastilleReception corr={correspondances.find(c => c.ligne_id === ligne.id)} />}
                               </div>
                             </td>
                             {isJV && (
@@ -1251,18 +1581,10 @@ ${filtered.map(l => `<tr>
                                 placeholder="—" style={{ ...inp, width: 80, fontSize: 13 }} />
                             </td>
                             <td style={{ padding: "6px 10px", textAlign: "center" }}>
-                              <div style={{ display: "inline-flex", alignItems: "center", gap: 4, border: "2px solid var(--ink)", borderRadius: 20, overflow: "hidden" }}>
-                                <button onClick={() => upvoterLigne(ligne)}
-                                  style={{ padding: "4px 10px", cursor: "pointer", background: "var(--yellow)", border: "none", fontWeight: 900, fontSize: 13, fontFamily: "inherit" }}>▲</button>
-                                <span style={{ fontWeight: 900, fontSize: 14, padding: "0 6px", minWidth: 24, textAlign: "center" }}>{ligne.votes}</span>
-                                <button onClick={async () => {
-                                  if (ligne.votes <= 0) return;
-                                  const communId = selectedId!;
-                                  setCommunLignes(prev => ({ ...prev, [communId]: (prev[communId] ?? []).map(l => l.id === ligne.id ? { ...l, votes: l.votes - 1 } : l).sort((a, b) => b.votes - a.votes) }));
-                                  await fetch(`/api/paniers-communs-lignes/${ligne.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ votes: ligne.votes - 1 }) });
-                                  chargerSummary();
-                                }} style={{ padding: "4px 10px", cursor: "pointer", background: "var(--cream2)", border: "none", fontWeight: 900, fontSize: 13, fontFamily: "inherit", opacity: ligne.votes <= 0 ? 0.3 : 1 }}>▼</button>
-                              </div>
+                              <CelluleVotes ligne={ligne} connecte={!!compte} onVote={voterLigne} />
+                            </td>
+                            <td style={{ padding: "6px 10px", textAlign: "center" }}>
+                              <BoutonCommentaires ligne={ligne} onOuvrir={() => setLigneCommentee(ligne.id)} />
                             </td>
                             <td style={{ padding: "8px 12px", textAlign: "right" }}>
                               <button onClick={() => supprimerCommunLigne(ligne)}
@@ -1563,14 +1885,29 @@ ${filtered.map(l => `<tr>
           onClose={() => setModalEnvoi(null)} onSent={handleEnvoiCommun} onUpvoted={handleUpvoteCommun} />
       )}
 
+      {ligneCommentee && (() => {
+        const ligne = lignesCommun.find(l => l.id === ligneCommentee);
+        if (!ligne) return null;
+        return (
+          <PanneauCommentaires
+            ligne={ligne}
+            compteId={compte?.id ?? null}
+            onFermer={() => setLigneCommentee(null)}
+            onAjouter={ajouterCommentaire}
+            onSupprimer={supprimerCommentaire}
+          />
+        );
+      })()}
+
       {/* Modal PDF */}
       {modalWishlist && (
         <ModalWishlistSteam
           lignes={lignesWishlist}
           doublons={doublons}
+          connecte={!!compte}
           onClose={() => setModalWishlist(false)}
           onSupprimer={supprimerCommunLigne}
-          onUpvote={upvoterLigne}
+          onVote={voterLigne}
         />
       )}
       {modalPDF && panierCommunActuel && (() => {
