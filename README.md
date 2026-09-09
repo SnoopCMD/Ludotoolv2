@@ -15,6 +15,7 @@ toutes les données.
 - [Les sections de l'application](#les-sections-de-lapplication)
 - [Architecture](#architecture)
 - [Base de données](#base-de-données)
+- [Les comptes](#les-comptes)
 - [Sources externes](#sources-externes)
 - [Déploiement](#déploiement)
 - [Conventions de code](#conventions-de-code)
@@ -71,6 +72,7 @@ En production, ce sont des secrets Cloudflare (`wrangler secret put …`).
 | `/catalogage` | Attribution des codes Syracuse |
 | `/jv` | Jeux vidéo : catalogue, sélections par console, rotations, réservations de postes, stats, notes |
 | `/suggestions` | Boîte à idées interne |
+| `/connexion` | Connexion à son compte (facultative, voir *Les comptes*) |
 | `/contenu`, `/etiquettes` | Génération des fiches de contenu et des étiquettes (PDF) |
 | `/pieces`, `/reparations` | Pièces manquantes ou retrouvées, réparations |
 | `/nouveautes`, `/export` | Mise en avant des nouveautés, exports |
@@ -143,12 +145,53 @@ Base D1 `ludotool-db` (binding `DB`).
 | `jv_jeux`, `jv_selections`, `jv_reservations`, `jv_rotation_config`, `jv_notes` | Section jeux vidéo |
 | `pieces_manquantes`, `pieces_trouvees`, `reparations` | Suivi du matériel |
 | `alertes`, `suggestions`, `selections` | Alertes, boîte à idées, sélections thématiques |
+| `utilisateurs`, `utilisateur_sessions` | Comptes (un par membre de `equipe`) et sessions ouvertes |
 
 Les migrations de `migrations/` sont appliquées manuellement :
 
 ```bash
 npx wrangler d1 execute ludotool-db --remote --file ./migrations/0007_suggestions.sql
 ```
+
+---
+
+## Les comptes
+
+Chaque membre de `equipe` a un compte dans `utilisateurs`, identifié par son
+prénom sans accent (`bernard`, `elisabeth`, `lea`, `pierre`, `timothe`). La
+saisie est tolérante : « Léa » et « lea » ouvrent le même compte.
+
+**La connexion est facultative.** Aucune page n'est protégée : l'outil s'utilise
+exactement comme avant sans être connecté. Le compte sert à savoir *qui* agit,
+pour les écrans qui en auront besoin. Ce choix est structurant — le jour où une
+page doit être réservée, c'est à elle de le décider, pas à un middleware global.
+
+- **Mot de passe par défaut : `ludo92`**, avec `doit_changer_mdp = 1`. À la
+  première connexion, `AuthProvider` impose un nouveau mot de passe avant toute
+  autre action ; la seule autre issue est la déconnexion.
+- **Empreintes** : PBKDF2-SHA256, 50 000 itérations, sel aléatoire par mot de
+  passe, au format `pbkdf2$<iterations>$<sel b64>$<empreinte b64>`. Le nombre
+  d'itérations est stocké dans l'empreinte : l'augmenter plus tard n'invalide pas
+  les mots de passe existants. 50 000 est un compromis assumé avec le temps CPU
+  d'un Worker (~7 ms).
+- **Sessions** : le cookie `ludotool_session` (HttpOnly, SameSite=Lax) ne porte
+  qu'un jeton opaque ; tout l'état est dans `utilisateur_sessions`, ce qui rend
+  une session révocable en base. Durée 30 jours, purge des expirées à chaque
+  connexion.
+
+Côté client, `components/AuthProvider.tsx` expose `useCompte()` :
+`{ compte, chargement, connexion, deconnexion, changerMotDePasse }`. `compte`
+vaut `null` hors connexion — c'est un état normal, pas une erreur.
+
+**Réinitialiser un mot de passe oublié** (il n'y a pas encore d'écran pour ça) :
+
+```bash
+# remet « ludo92 » et réimpose le changement à la prochaine connexion
+npx wrangler d1 execute ludotool-db --remote --command   "UPDATE utilisateurs SET mot_de_passe_hash = (SELECT mot_de_passe_hash FROM utilisateurs WHERE doit_changer_mdp = 1 LIMIT 1), doit_changer_mdp = 1 WHERE identifiant = 'lea'"
+```
+
+Si plus aucun compte n'est au mot de passe par défaut, reprendre l'empreinte
+littérale depuis `migrations/0008_utilisateurs.sql`.
 
 ---
 

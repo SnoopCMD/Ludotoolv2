@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import CompteMenu from "./CompteMenu";
 
 type Page = "accueil" | "inventaire" | "atelier" | "agenda" | "store" | "catalogage" | "jv" | "suggestions";
 
@@ -139,6 +140,8 @@ export default function NavBar({ current }: { current?: Page }) {
           </Link>
         );
       })()}
+
+      <CompteMenu />
 
       {/* Rainbow strip */}
       <div style={{
