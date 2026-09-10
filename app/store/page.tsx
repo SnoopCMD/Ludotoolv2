@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import NavBar from "../../components/NavBar";
+import { useIsMobile } from "../../lib/useIsMobile";
 import { useCompte } from "../../components/AuthProvider";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -161,9 +162,9 @@ function ModalPanier({
   const lbl: React.CSSProperties = { fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "rgba(0,0,0,0.45)", display: "block", marginBottom: 4 };
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: "80px 16px 16px" }}
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: "calc(var(--nav-h) + 12px) 12px 12px" }}
       onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="pop-card" style={{ width: "100%", maxWidth: 440, maxHeight: "calc(100vh - 96px)", overflowY: "auto" }}>
+      <div className="pop-card" style={{ width: "100%", maxWidth: 440, maxHeight: "calc(100dvh - var(--nav-h) - 36px)", overflowY: "auto" }}>
         <div style={{ background: "var(--ink)", padding: "16px 20px" }}>
           <h2 className="bc" style={{ fontSize: 22, color: "var(--cream)", margin: 0 }}>{isEdit ? "Modifier le panier" : "Nouveau panier"}</h2>
         </div>
@@ -263,7 +264,7 @@ function ModalEnvoiCommun({
   };
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: "80px 16px 16px" }}
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: "calc(var(--nav-h) + 12px) 12px 12px" }}
       onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="pop-card" style={{ width: "100%", maxWidth: 400 }}>
         <div style={{ background: "var(--ink)", padding: "16px 20px" }}>
@@ -370,7 +371,7 @@ function ModalWishlistSteam({
   const enPromo = lignes.filter(l => fiches[l.nom]?.remise);
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 60, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "60px 16px 16px", overflowY: "auto" }}
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 60, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "calc(var(--nav-h) + 12px) 12px 12px", overflowY: "auto" }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="pop-card" style={{ background: "var(--cream)", width: "100%", maxWidth: 780, display: "flex", flexDirection: "column", overflow: "hidden", marginBottom: 32 }}>
 
@@ -599,9 +600,9 @@ function PanneauCommentaires({ ligne, compteId, onFermer, onAjouter, onSupprimer
   };
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: "80px 16px 16px" }}
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: "calc(var(--nav-h) + 12px) 12px 12px" }}
       onClick={e => e.target === e.currentTarget && onFermer()}>
-      <div className="pop-card" style={{ width: "100%", maxWidth: 440, maxHeight: "calc(100vh - 120px)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      <div className="pop-card" style={{ width: "100%", maxWidth: 440, maxHeight: "calc(100dvh - var(--nav-h) - 56px)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
         <div style={{ background: "var(--ink)", padding: "14px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexShrink: 0 }}>
           <div style={{ minWidth: 0 }}>
             <h2 className="bc" style={{ fontSize: 18, color: "var(--cream)", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ligne.nom}</h2>
@@ -662,6 +663,7 @@ function PanneauCommentaires({ ligne, compteId, onFermer, onAjouter, onSupprimer
 // ─── Page principale ──────────────────────────────────────────────────────────
 
 export default function StorePage() {
+  const isMobile = useIsMobile();
   const [view, setView] = useState<View>("dashboard");
   const [activeProfil, setActiveProfil] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -1263,18 +1265,18 @@ ${filtered.map(l => `<tr>
   // ─── Rendu ────────────────────────────────────────────────────────────────────
 
   return (
-    <div style={{ minHeight: "100vh", background: "var(--cream)" }}>
+    <div style={{ minHeight: "100dvh", background: "var(--cream)" }}>
       <NavBar current="store" />
 
       <div className="pop-page" style={{ display: "flex", flexDirection: "column", gap: 20 }}>
 
         {/* Titre */}
-        <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between" }}>
+        <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
           <div>
-            <div className="bc" style={{ fontSize: 80, lineHeight: 0.9, textTransform: "uppercase", letterSpacing: "-1px", background: "linear-gradient(135deg, #0d0d0d 40%, var(--rose))", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>Store</div>
+            <div className="bc" style={{ fontSize: isMobile ? 44 : 80, lineHeight: 0.9, textTransform: "uppercase", letterSpacing: "-1px", background: "linear-gradient(135deg, #0d0d0d 40%, var(--rose))", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>Store</div>
             <div style={{ fontSize: 14, color: "rgba(0,0,0,0.4)", fontWeight: 500, marginTop: 6 }}>Devis et recherche de jeux</div>
           </div>
-          <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+          <div style={{ display: "flex", gap: 8, flexShrink: 0, flexWrap: "wrap" }}>
             {[{ href: "https://www.myludo.fr", label: "MyLudo" }, { href: "https://www.espritjeu.com", label: "Esprit Jeu" }, { href: "https://www.ludifolie.com", label: "Ludifolie" }]
               .map(({ href, label }) => (
                 <a key={label} href={href} target="_blank" rel="noopener noreferrer" className="pop-btn pop-btn-outline" style={{ fontSize: 13 }}>{label} ↗</a>
@@ -1289,7 +1291,7 @@ ${filtered.map(l => `<tr>
             {/* Paniers communs */}
             <div>
               <h2 className="bc" style={{ fontSize: 22, marginBottom: 16 }}>Paniers communs</h2>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "minmax(0, 1fr)" : "repeat(3, 1fr)", gap: isMobile ? 12 : 16 }}>
                 {PANIERS_COMMUNS.map(p => {
                   const stats = summary.communStats[p.id];
                   return (
@@ -1327,7 +1329,7 @@ ${filtered.map(l => `<tr>
             {(summary.membres.length > 0 || !isLoading) && (
               <div>
                 <h2 className="bc" style={{ fontSize: 22, marginBottom: 16 }}>Équipe</h2>
-                <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.max(summary.membres.length, 1)}, 1fr)`, gap: 16 }}>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : `repeat(${Math.max(summary.membres.length, 1)}, 1fr)`, gap: isMobile ? 10 : 16 }}>
                   {summary.membres.map(membre => {
                     const stats = summary.profilStats[membre.nom];
                     return (
@@ -1362,7 +1364,7 @@ ${filtered.map(l => `<tr>
           const profilColor = membreInfo?.couleur ?? "#ccc";
           return (
           <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
                 <button onClick={handleBack} style={backBtn}>← Retour</button>
                 <div style={{ width: 52, height: 52, borderRadius: "50%", background: profilColor, border: "3px solid var(--ink)", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -1430,7 +1432,7 @@ ${filtered.map(l => `<tr>
               return (
               /* Panier commun */
               <>
-                <div className="pop-card" style={{ padding: "16px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
+                <div className="pop-card" style={{ padding: isMobile ? "14px 14px" : "16px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                     <span style={{ fontSize: 30 }}>{panierCommunActuel ? TYPE_INFO[panierCommunActuel.type].emoji : ""}</span>
                     <div>
@@ -1440,7 +1442,7 @@ ${filtered.map(l => `<tr>
                       </p>
                     </div>
                   </div>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                     {isJV && (
                       <button onClick={() => setModalWishlist(true)} className="pop-btn"
                         style={{ fontSize: 13, background: "#1b2838", color: "#ffffff" }}>
@@ -1461,7 +1463,7 @@ ${filtered.map(l => `<tr>
 
                 {modeVerification && (
                   <div className="pop-card" style={{ padding: "12px 18px", background: "var(--vert)", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-                    <div style={{ flex: 1, minWidth: 220 }}>
+                    <div style={{ flex: 1, minWidth: isMobile ? 0 : 220 }}>
                       <p style={{ fontWeight: 800, fontSize: 13 }}>
                         Coche les jeux réceptionnés, puis retire-les de la liste.
                       </p>
@@ -1513,7 +1515,7 @@ ${filtered.map(l => `<tr>
                   </div>
                 ) : (
                   <div className="pop-card" style={{ overflow: "hidden" }}>
-                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                    <table className="pop-cards" style={{ width: "100%", borderCollapse: "collapse" }}>
                       <thead>
                         <tr style={{ background: "var(--ink)", color: "var(--cream)" }}>
                           {modeVerification && (
@@ -1556,7 +1558,7 @@ ${filtered.map(l => `<tr>
                               </div>
                             </td>
                             {isJV && (
-                              <td style={{ padding: "6px 10px" }}>
+                              <td data-label="Console" style={{ padding: "6px 10px" }}>
                                 <select value={ligne.console ?? ""}
                                   onChange={e => sauvegarderConsoleCommun(ligne.id, e.target.value || null)}
                                   style={{ ...inp, width: 90, fontSize: 12, padding: "4px 6px" }}>
@@ -1565,14 +1567,14 @@ ${filtered.map(l => `<tr>
                                 </select>
                               </td>
                             )}
-                            <td style={{ padding: "10px 16px", fontSize: 13, color: "rgba(0,0,0,0.45)" }}>{ligne.editeur ?? "—"}</td>
-                            <td style={{ padding: "10px 16px" }}>
+                            <td data-label="Éditeur" style={{ padding: "10px 16px", fontSize: 13, color: "rgba(0,0,0,0.45)" }}>{ligne.editeur ?? "—"}</td>
+                            <td data-label="Profil" data-vide={ligne.profil ? undefined : "1"} style={{ padding: "10px 16px" }}>
                               {ligne.profil && <span style={{ fontSize: 12, background: "rgba(0,0,0,0.06)", borderRadius: 4, padding: "2px 6px", fontWeight: 700 }}>{ligne.profil}</span>}
                             </td>
-                            <td style={{ padding: "10px 16px", textAlign: "center" }}>
+                            <td data-label="Qté" style={{ padding: "10px 16px", textAlign: "center" }}>
                               <span className="bc" style={{ fontSize: 15 }}>{ligne.quantite}</span>
                             </td>
-                            <td style={{ padding: "6px 10px", textAlign: "right" }}>
+                            <td data-label="Prix" style={{ padding: "6px 10px", textAlign: "right" }}>
                               <input type="text" inputMode="decimal"
                                 value={localPrixCommun[ligne.id] ?? (ligne.prix_unitaire != null ? String(ligne.prix_unitaire) : "")}
                                 onChange={e => setLocalPrixCommun(p => ({ ...p, [ligne.id]: e.target.value }))}
@@ -1580,10 +1582,10 @@ ${filtered.map(l => `<tr>
                                 onKeyDown={e => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
                                 placeholder="—" style={{ ...inp, width: 80, fontSize: 13 }} />
                             </td>
-                            <td style={{ padding: "6px 10px", textAlign: "center" }}>
+                            <td data-label="Votes" style={{ padding: "6px 10px", textAlign: "center" }}>
                               <CelluleVotes ligne={ligne} connecte={!!compte} onVote={voterLigne} />
                             </td>
-                            <td style={{ padding: "6px 10px", textAlign: "center" }}>
+                            <td data-label="Commentaires" style={{ padding: "6px 10px", textAlign: "center" }}>
                               <BoutonCommentaires ligne={ligne} onOuvrir={() => setLigneCommentee(ligne.id)} />
                             </td>
                             <td style={{ padding: "8px 12px", textAlign: "right" }}>
@@ -1628,7 +1630,7 @@ ${filtered.map(l => `<tr>
                       ))}
                     </div>
                   </div>
-                  <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+                  <div style={{ display: "flex", gap: 8, flexShrink: 0, flexWrap: "wrap" }}>
                     <button onClick={() => setModalEdit(panierActuel)} className="pop-btn pop-btn-outline" style={{ fontSize: 13 }}>✏️ Modifier</button>
                     <button onClick={exporterPDF} className="pop-btn pop-btn-outline" style={{ fontSize: 13 }}>📄 PDF</button>
                     <button onClick={() => supprimerPanier(panierActuel!.id)} className="pop-btn" style={{ fontSize: 13, background: "var(--rouge)", color: "var(--white)" }}>Supprimer</button>
@@ -1729,7 +1731,7 @@ ${filtered.map(l => `<tr>
                         Aucun jeu avec le tag #{filterTag}
                       </div>
                     )}
-                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                    <table className="pop-cards" style={{ width: "100%", borderCollapse: "collapse" }}>
                       <thead>
                         <tr style={{ background: "var(--ink)", color: "var(--cream)" }}>
                           {["Jeu", "Éditeur", ...(panierActuel?.type === "JV" ? ["Console"] : []), "P.U.", "Qté", "Total", ""].map((h, i, arr) => (
@@ -1806,9 +1808,9 @@ ${filtered.map(l => `<tr>
                                 </div>
                               </div>
                             </td>
-                            <td style={{ padding: "10px 16px", fontSize: 13, color: "rgba(0,0,0,0.45)" }}>{ligne.editeur ?? "—"}</td>
+                            <td data-label="Éditeur" style={{ padding: "10px 16px", fontSize: 13, color: "rgba(0,0,0,0.45)" }}>{ligne.editeur ?? "—"}</td>
                             {panierActuel?.type === "JV" && (
-                              <td style={{ padding: "8px 12px" }}>
+                              <td data-label="Console" style={{ padding: "8px 12px" }}>
                                 <select value={ligne.console ?? ""}
                                   onChange={e => sauvegarderConsole(ligne.id, e.target.value || null)}
                                   style={{ ...inp, width: 120, fontSize: 12 }}>
@@ -1817,7 +1819,7 @@ ${filtered.map(l => `<tr>
                                 </select>
                               </td>
                             )}
-                            <td style={{ padding: "8px 12px", textAlign: "right" }}>
+                            <td data-label="P.U." style={{ padding: "8px 12px", textAlign: "right" }}>
                               <input type="text" inputMode="decimal"
                                 value={localPrix[ligne.id] ?? (ligne.prix_unitaire != null ? String(ligne.prix_unitaire) : "")}
                                 onChange={e => setLocalPrix(p => ({ ...p, [ligne.id]: e.target.value }))}
@@ -1825,7 +1827,7 @@ ${filtered.map(l => `<tr>
                                 onKeyDown={e => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
                                 placeholder="—" style={{ ...inp, width: 80 }} />
                             </td>
-                            <td style={{ padding: "8px 12px", textAlign: "right" }}>
+                            <td data-label="Qté" style={{ padding: "8px 12px", textAlign: "right" }}>
                               <input type="number" min={1}
                                 value={localQte[ligne.id] ?? String(ligne.quantite)}
                                 onChange={e => setLocalQte(q => ({ ...q, [ligne.id]: e.target.value }))}
@@ -1833,7 +1835,7 @@ ${filtered.map(l => `<tr>
                                 onKeyDown={e => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
                                 style={{ ...inp, width: 60 }} />
                             </td>
-                            <td style={{ padding: "10px 16px", textAlign: "right" }}>
+                            <td data-label="Total" style={{ padding: "10px 16px", textAlign: "right" }}>
                               <span className="bc" style={{ fontSize: 16 }}>
                                 {ligne.prix_unitaire != null ? `${(ligne.prix_unitaire * ligne.quantite).toFixed(2)} €` : <span style={{ color: "var(--cream2)" }}>—</span>}
                               </span>
@@ -1916,8 +1918,8 @@ ${filtered.map(l => `<tr>
         return (
           <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" }}
             onClick={e => e.target === e.currentTarget && setModalPDF(false)}>
-            <div className="pop-card" style={{ width: 420, maxWidth: "90vw", padding: 28, display: "flex", flexDirection: "column", gap: 20 }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div className="pop-card" style={{ width: 420, maxWidth: "90vw", padding: isMobile ? 20 : 28, display: "flex", flexDirection: "column", gap: 20 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
                 <h2 className="bc" style={{ fontSize: 20, margin: 0 }}>Exporter en PDF</h2>
                 <button onClick={() => setModalPDF(false)} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", lineHeight: 1 }}>✕</button>
               </div>

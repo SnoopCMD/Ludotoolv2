@@ -331,3 +331,53 @@ body::before {
   .pop-toolbar > * { width: 100%; }
   .pop-toolbar > .pop-btn { justify-content: center; }
 }
+
+/* ── Tableau qui se replie en cartes sur téléphone ──
+   À poser sur le <table>. Chaque <td> porte un data-label : c'est lui qui
+   sert d'intitulé une fois l'en-tête masqué. Une cellule sans data-label
+   (le nom de l'article, la colonne d'actions) prend toute la largeur de la
+   carte, sans intitulé.
+
+   Le fond n'est volontairement pas force ici : plusieurs tableaux posent
+   un `background` en inline sur le <tr> pour signaler une ligne cochee ou
+   survolee, et cette information doit rester visible. La carte tire donc
+   son fond du conteneur, et seul son contour la delimite. */
+@media (max-width: 640px) {
+  table.pop-cards { display: block; padding: 10px; }
+  table.pop-cards thead { display: none; }
+  table.pop-cards tbody,
+  table.pop-cards tr,
+  table.pop-cards td { display: block; width: auto; }
+
+  table.pop-cards tr {
+    /* !important : le bas de ligne est pose en inline sur chaque <tr>. */
+    border: 2px solid var(--ink) !important;
+    border-radius: 10px;
+    box-shadow: 2px 2px 0 var(--ink);
+    margin: 0 0 10px;
+    padding: 6px 2px;
+  }
+  table.pop-cards tr:last-child { margin-bottom: 0; }
+
+  table.pop-cards td {
+    /* !important : padding et alignement viennent des styles inline. */
+    padding: 5px 10px !important;
+    text-align: left !important;
+    border: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 32px;
+  }
+  table.pop-cards td[data-label]::before {
+    content: attr(data-label);
+    flex: 0 0 76px;
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: rgba(0, 0, 0, 0.4);
+  }
+  /* Cellule facultative restée vide : elle n'occupe pas une ligne. */
+  table.pop-cards td[data-vide="1"] { display: none; }
+}
