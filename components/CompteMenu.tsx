@@ -51,7 +51,9 @@ export default function CompteMenu() {
         }}>
           {compte.nom.trim()[0].toUpperCase()}
         </span>
-        {compte.nom}
+        {/* Sur téléphone la place est comptée : l'initiale suffit à identifier
+            le compte, le nom complet reste dans le menu déroulant. */}
+        <span className="desktop-only">{compte.nom}</span>
       </button>
 
       {ouvert && (

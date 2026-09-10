@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useMemo } from "react";
 import NavBar from "../components/NavBar";
+import { useIsMobile } from "../lib/useIsMobile";
 import {
   format, startOfWeek, endOfWeek, eachDayOfInterval,
   isToday, addWeeks, subWeeks, getISOWeek,
@@ -237,6 +238,12 @@ const ALERTE_STYLES: Record<string, { card: React.CSSProperties; badge: React.CS
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function AccueilPage() {
+  const isMobile = useIsMobile();
+  // Sur téléphone la grille de planning n'affiche qu'un jour : à cinq colonnes
+  // il resterait ~60px par jour, trop peu pour lire un bloc d'horaire.
+  // On mémorise une date et non un index : quand la semaine change, la date
+  // n'y est plus et la sélection retombe d'elle-même sur aujourd'hui.
+  const [jourChoisi, setJourChoisi] = useState<string | null>(null);
   const [alertes, setAlertes] = useState<Alerte[]>([]);
   const [rappels, setRappels] = useState<RappelItem[]>([]);
   const [equipe, setEquipe] = useState<MembreEquipe[]>([]);
@@ -443,6 +450,15 @@ export default function AccueilPage() {
 
   const joursAffiches = tousLesJours.slice(1, 6);
   const labelSemaine = `${format(joursAffiches[0], "d MMM", { locale: fr })} – ${format(joursAffiches[4], "d MMM yyyy", { locale: fr })}`;
+
+  // Jour montré par la grille mobile : celui explicitement choisi s'il
+  // appartient à la semaine affichée, sinon aujourd'hui, sinon le lundi.
+  const clesJours = joursAffiches.map(j => format(j, "yyyy-MM-dd"));
+  const indexChoisi = jourChoisi ? clesJours.indexOf(jourChoisi) : -1;
+  const jourMobile = indexChoisi >= 0
+    ? indexChoisi
+    : Math.max(joursAffiches.findIndex(j => isToday(j)), 0);
+
   const joursFeries = useMemo(() => {
     const years = [...new Set(joursAffiches.map(j => j.getFullYear()))];
     return Object.assign({}, ...years.map(y => getJoursFeries(y)));
@@ -487,18 +503,25 @@ export default function AccueilPage() {
     });
   }, [joursAffiches, equipe, evenements]);
 
+  // Ce que la grille dessine réellement : les cinq jours ouvrés sur desktop,
+  // le seul jour choisi sur téléphone. Le reste du rendu s'appuie sur
+  // `nbColonnes` pour ne pas avoir à dupliquer la grille.
+  const donneesVisibles = isMobile ? donneesDuJour.slice(jourMobile, jourMobile + 1) : donneesDuJour;
+  const joursVisibles = isMobile ? joursAffiches.slice(jourMobile, jourMobile + 1) : joursAffiches;
+  const nbColonnes = joursVisibles.length;
+
   const rotationAlertes = nouveautes.filter(j => j.date_sortie && new Date(j.date_sortie) <= new Date());
   const totalCount = alertes.length + rappels.length + rotationAlertes.length;
 
   return (
-    <div style={{ minHeight: "100vh", background: "var(--cream)" }}>
+    <div style={{ minHeight: "100dvh", background: "var(--cream)" }}>
       <NavBar current="accueil" />
 
-      <div className="pop-page" style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      <div className="pop-page" style={{ display: "flex", flexDirection: "column", gap: isMobile ? 16 : 20 }}>
 
         <div>
-          <h1 className="bc" style={{ fontSize: 32, margin: 0 }}>Tableau de bord</h1>
-          <p style={{ color: "rgba(0,0,0,0.4)", fontWeight: 500, marginTop: 4, fontSize: 15 }}>
+          <h1 className="bc" style={{ fontSize: isMobile ? 26 : 32, margin: 0 }}>Tableau de bord</h1>
+          <p style={{ color: "rgba(0,0,0,0.4)", fontWeight: 500, marginTop: 4, fontSize: isMobile ? 13 : 15 }}>
             {format(new Date(), "EEEE d MMMM yyyy", { locale: fr }).replace(/^\w/, c => c.toUpperCase())}
           </p>
         </div>
@@ -532,26 +555,52 @@ export default function AccueilPage() {
         )}
 
         {/* Planning + Alertes */}
-        <div style={{ display: "flex", gap: 20, alignItems: "flex-start" }}>
+        <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 20, alignItems: isMobile ? "stretch" : "flex-start" }}>
 
           {/* Planning */}
           <section style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 12 }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
               <span className="bc" style={{ fontSize: 18 }}>Semaine en cours</span>
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <button onClick={() => setSemaineRef(subWeeks(semaineRef, 1))} className="pop-btn pop-btn-outline" style={{ width: 30, height: 30, padding: 0, fontSize: 16 }}>‹</button>
-                <span style={{ fontSize: 13, fontWeight: 700, color: "rgba(0,0,0,0.45)", minWidth: 170, textAlign: "center" }}>{labelSemaine}</span>
-                <button onClick={() => setSemaineRef(addWeeks(semaineRef, 1))} className="pop-btn pop-btn-outline" style={{ width: 30, height: 30, padding: 0, fontSize: 16 }}>›</button>
-                <button onClick={() => setSemaineRef(new Date())} className="pop-btn pop-btn-outline" style={{ fontSize: 12, padding: "4px 10px" }}>Auj.</button>
-                <a href="/agenda" className="pop-btn pop-btn-dark" style={{ fontSize: 12, padding: "4px 10px", textDecoration: "none" }}>Agenda →</a>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, flex: isMobile ? "1 1 100%" : undefined }}>
+                <button onClick={() => setSemaineRef(subWeeks(semaineRef, 1))} className="pop-btn pop-btn-outline" style={{ width: isMobile ? 38 : 30, height: isMobile ? 38 : 30, minHeight: 0, padding: 0, fontSize: 16, flexShrink: 0, justifyContent: "center" }}>‹</button>
+                <span style={{ fontSize: 13, fontWeight: 700, color: "rgba(0,0,0,0.45)", minWidth: isMobile ? 0 : 170, flex: isMobile ? 1 : undefined, textAlign: "center" }}>{labelSemaine}</span>
+                <button onClick={() => setSemaineRef(addWeeks(semaineRef, 1))} className="pop-btn pop-btn-outline" style={{ width: isMobile ? 38 : 30, height: isMobile ? 38 : 30, minHeight: 0, padding: 0, fontSize: 16, flexShrink: 0, justifyContent: "center" }}>›</button>
+                <button onClick={() => setSemaineRef(new Date())} className="pop-btn pop-btn-outline" style={{ fontSize: 12, padding: "4px 10px", minHeight: 0, flexShrink: 0 }}>Auj.</button>
+                <a href="/agenda" className="pop-btn pop-btn-dark" style={{ fontSize: 12, padding: "4px 10px", minHeight: 0, textDecoration: "none", flexShrink: 0 }}>Agenda →</a>
               </div>
             </div>
 
+            {/* Sélecteur de jour — la grille mobile n'affiche qu'une colonne */}
+            {isMobile && (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 6 }}>
+                {joursAffiches.map((jour, i) => {
+                  const actif = i === jourMobile;
+                  const cejour = isToday(jour);
+                  return (
+                    <button key={jour.toISOString()} onClick={() => setJourChoisi(clesJours[i])}
+                      style={{
+                        display: "flex", flexDirection: "column", alignItems: "center", gap: 1,
+                        padding: "6px 0", minHeight: "var(--tap)", cursor: "pointer", fontFamily: "inherit",
+                        background: actif ? "var(--ink)" : cejour ? "var(--yellow)" : "var(--white)",
+                        color: actif ? "var(--cream)" : "var(--ink)",
+                        border: "2px solid var(--ink)", borderRadius: 8,
+                        boxShadow: actif ? "2px 2px 0 var(--ink)" : "none",
+                      }}>
+                      <span style={{ fontSize: 9, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.06em", opacity: 0.7 }}>
+                        {format(jour, "EEE", { locale: fr })}
+                      </span>
+                      <span className="bc" style={{ fontSize: 17, lineHeight: 1 }}>{format(jour, "d")}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
             <div className="pop-card" style={{ overflow: "hidden" }}>
               {/* En-têtes jours */}
-              <div style={{ display: "grid", gridTemplateColumns: "44px repeat(5, 1fr)", background: "var(--ink)" }}>
+              <div style={{ display: "grid", gridTemplateColumns: `44px repeat(${nbColonnes}, 1fr)`, background: "var(--ink)" }}>
                 <div />
-                {joursAffiches.map(jour => {
+                {joursVisibles.map(jour => {
                   const today = isToday(jour);
                   const dk = format(jour, "yyyy-MM-dd");
                   const ferie = joursFeries[dk];
@@ -587,11 +636,11 @@ export default function AccueilPage() {
                     <div key={h} style={{ position: "absolute", width: "100%", textAlign: "right", paddingRight: 6, fontSize: 10, fontWeight: 700, color: "rgba(0,0,0,0.3)", top: `${calculerPositionTop(`${h}:00`)}%`, marginTop: -7 }}>{h}h</div>
                   ))}
                 </div>
-                <div style={{ flex: 1, display: "grid", gridTemplateColumns: "repeat(5, 1fr)", position: "relative" }}>
-                  <div style={{ position: "absolute", inset: 0, display: "grid", gridTemplateColumns: "repeat(5, 1fr)", pointerEvents: "none" }}>
-                    {Array.from({ length: 5 }).map((_, i) => <div key={i} style={{ borderRight: "1px solid var(--cream2)" }} />)}
+                <div style={{ flex: 1, display: "grid", gridTemplateColumns: `repeat(${nbColonnes}, 1fr)`, position: "relative" }}>
+                  <div style={{ position: "absolute", inset: 0, display: "grid", gridTemplateColumns: `repeat(${nbColonnes}, 1fr)`, pointerEvents: "none" }}>
+                    {Array.from({ length: nbColonnes }).map((_, i) => <div key={i} style={{ borderRight: "1px solid var(--cream2)" }} />)}
                   </div>
-                  {donneesDuJour.map(({ jour, dateKey, blocs, absences, eventsGrille, eventsJournee }) => {
+                  {donneesVisibles.map(({ jour, dateKey, blocs, absences, eventsGrille, eventsJournee }) => {
                     const today = isToday(jour);
                     const ferie = joursFeries[dateKey];
                     return (
@@ -737,7 +786,7 @@ export default function AccueilPage() {
           </section>
 
           {/* Alertes */}
-          <section style={{ width: 300, flexShrink: 0, display: "flex", flexDirection: "column", gap: 12 }}>
+          <section style={{ width: isMobile ? "100%" : 300, flexShrink: 0, display: "flex", flexDirection: "column", gap: 12 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <span className="bc" style={{ fontSize: 18, display: "flex", alignItems: "center", gap: 8 }}>
                 Alertes
@@ -750,7 +799,9 @@ export default function AccueilPage() {
               <button onClick={ouvrirModal} className="pop-btn pop-btn-dark" style={{ fontSize: 12, padding: "5px 12px" }}>+ Nouvelle</button>
             </div>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, overflow: "auto", maxHeight: "calc(100vh - 300px)" }}>
+            {/* Empilée sous le planning sur téléphone, la liste n'a plus besoin
+                de son propre ascenseur : c'est la page qui défile. */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, overflow: isMobile ? "visible" : "auto", maxHeight: isMobile ? "none" : "calc(100vh - 300px)" }}>
               {isLoading ? (
                 <p style={{ color: "rgba(0,0,0,0.35)", fontWeight: 600, fontSize: 14, textAlign: "center", padding: "30px 0" }}>Chargement…</p>
               ) : totalCount === 0 ? (
@@ -813,12 +864,12 @@ export default function AccueilPage() {
         {/* Nouveautés */}
         {nouveautes.length > 0 && (
           <section style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
               <span className="bc" style={{ fontSize: 18 }}>
                 Nouveautés en salle
                 <span style={{ fontSize: 14, fontWeight: 600, color: "rgba(0,0,0,0.4)", marginLeft: 10 }}>({nouveautes.length})</span>
               </span>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                 {dateProchaineRotation && (
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span style={{ fontSize: 11, fontWeight: 800, color: "rgba(0,0,0,0.4)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Prochaine rotation</span>
@@ -831,7 +882,7 @@ export default function AccueilPage() {
                 <a href="/nouveautes" className="pop-btn pop-btn-outline" style={{ fontSize: 12, padding: "4px 12px", textDecoration: "none" }}>Gérer →</a>
               </div>
             </div>
-            <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 6 }}>
+            <div className="pop-scroll-x" style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 6 }}>
               {nouveautes.map(jeu => {
                 const couleur = COULEURS_JEU[jeu.couleur ?? ""] ?? null;
                 const estExpire = jeu.date_sortie && new Date(jeu.date_sortie) <= new Date();
@@ -861,7 +912,7 @@ export default function AccueilPage() {
       {isModalOpen && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 80, display: "flex", alignItems: "center", justifyContent: "center", padding: "80px 16px 16px" }}
           onClick={e => { if (e.target === e.currentTarget) fermerModal(); }}>
-          <div className="pop-card" style={{ width: "100%", maxWidth: 480, maxHeight: "calc(100vh - 96px)", overflow: "auto" }}>
+          <div className="pop-card" style={{ width: "100%", maxWidth: 480, maxHeight: "calc(100dvh - 96px)", overflow: "auto" }}>
             <div style={{ background: "var(--ink)", padding: "14px 20px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <h3 className="bc" style={{ fontSize: 22, color: "var(--cream)", margin: 0 }}>Nouvelle alerte</h3>
               <button onClick={fermerModal} style={{ width: 28, height: 28, borderRadius: "50%", background: "rgba(255,255,255,0.12)", border: "none", cursor: "pointer", color: "var(--cream)", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>

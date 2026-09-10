@@ -28,6 +28,14 @@
   --border-card: 2.5px solid var(--ink);
   --border-sticker: 2px solid var(--ink);
   --border-btn: 2.5px solid var(--ink);
+
+  /* Layout — la hauteur de nav change sur téléphone, tout ce qui s'y réfère
+     doit passer par cette variable et jamais par un 64 en dur. */
+  --nav-h: 64px;
+  --page-pad-x: 32px;
+  --page-pad-y: 28px;
+  /* Cible tactile minimale (recommandation WCAG 2.2 / iOS HIG). */
+  --tap: 44px;
 }
 
 /* ── Base ── */
@@ -160,8 +168,10 @@ body::before {
 
 /* ── Page wrapper ── */
 .pop-page {
-  min-height: calc(100vh - 64px);
-  padding: calc(64px + 28px) 32px 28px;
+  min-height: calc(100dvh - var(--nav-h));
+  padding: calc(var(--nav-h) + var(--page-pad-y)) var(--page-pad-x) var(--page-pad-y);
+  padding-left: max(var(--page-pad-x), env(safe-area-inset-left));
+  padding-right: max(var(--page-pad-x), env(safe-area-inset-right));
   position: relative;
   z-index: 1;
 }
@@ -221,4 +231,103 @@ body::before {
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   MOBILE (≤ 640px)
+   Le breakpoint est aussi défini dans lib/useIsMobile.ts : garder les
+   deux valeurs synchronisées.
+   ══════════════════════════════════════════════════════════════════ */
+
+/* Affichage conditionnel sans re-rendu React : à préférer au hook quand
+   il s'agit juste de montrer/cacher un bloc déjà rendu.
+   Chaque classe n'existe QUE dans le média où elle masque. Écrire à la
+   place `.mobile-only { display: revert !important }` casserait les
+   `display: flex` posés en style inline, qu'un !important de feuille de
+   style l'emporte sur eux. */
+@media (min-width: 641px) {
+  .mobile-only { display: none !important; }
+}
+
+@media (max-width: 640px) {
+  :root {
+    --nav-h: 56px;
+    --page-pad-x: 14px;
+    --page-pad-y: 18px;
+
+    /* Ombres et bordures allégées : le style « pop » reste lisible mais
+       arrête de manger la largeur utile sur un écran étroit. */
+    --shadow-card: 3px 3px 0 var(--ink);
+    --shadow-card-hover: 3px 3px 0 var(--ink);
+    --shadow-btn: 2px 2px 0 var(--ink);
+    --border-card: 2px solid var(--ink);
+    --border-btn: 2px solid var(--ink);
+  }
+
+  .desktop-only { display: none !important; }
+
+  body { font-size: 15px; }
+
+  /* Le motif de fond en pointillés coûte cher au scroll sur mobile. */
+  body::before { background-size: 22px 22px; }
+
+  /* Pas de survol au doigt : les effets hover deviennent du bruit
+     (ils restent « collés » après un tap sur iOS et Android). */
+  .pop-card-hover:hover,
+  .pop-cband:hover,
+  .pop-btn:hover {
+    transform: none;
+    box-shadow: var(--shadow-card) !important;
+  }
+  .pop-btn:hover { box-shadow: var(--shadow-btn) !important; }
+  .pop-btn-outline:hover { background: transparent; }
+
+  /* Cibles tactiles : boutons et champs assez hauts pour le doigt, et
+     champs à 16px pour empêcher le zoom automatique d'iOS à la saisie. */
+  .pop-btn {
+    min-height: var(--tap);
+    padding: 10px 16px;
+  }
+  .pop-input {
+    min-height: var(--tap);
+    width: 100%;
+  }
+  /* iOS zoome automatiquement sur tout champ dont le texte fait moins de
+     16px, et ne dézoome jamais après. La règle vaut donc pour tous les
+     champs, y compris ceux stylés en inline dans les pages — d'où le
+     !important, seul moyen de passer devant un style inline. */
+  input, textarea, select, .pop-input { font-size: 16px !important; }
+
+  /* Un tableau qu'on n'a pas encore converti en cartes reste au moins
+     consultable : à envelopper dans .pop-scroll-x. */
+  .pop-scroll-x {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    /* Déborde jusqu'aux bords de l'écran plutôt que de rétrécir le
+       tableau à l'intérieur des marges de page. */
+    margin-inline: calc(-1 * var(--page-pad-x));
+    padding-inline: var(--page-pad-x);
+  }
+}
+
+/* ── Aides de mise en page réutilisables par les pages ──
+   Sur téléphone, ces grilles s'effondrent en une seule colonne. */
+.pop-grid-2, .pop-grid-3, .pop-grid-4 { display: grid; gap: 14px; }
+.pop-grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.pop-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.pop-grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+/* Barre d'outils (recherche + filtres + actions) : en ligne sur desktop,
+   empilée et pleine largeur sur téléphone. */
+.pop-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+@media (max-width: 640px) {
+  .pop-grid-2, .pop-grid-3, .pop-grid-4 { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  /* Les KPI restent volontiers à deux par ligne : ils sont courts. */
+  .pop-grid-4.keep-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pop-grid-3.keep-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+  .pop-toolbar { flex-direction: column; align-items: stretch; gap: 8px; }
+  .pop-toolbar > * { width: 100%; }
+  .pop-toolbar > .pop-btn { justify-content: center; }
 }

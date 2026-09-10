@@ -18,6 +18,16 @@ export const metadata = {
   description: '',
 };
 
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  // On laisse le zoom accessible : LudoTool affiche des références et des
+  // codes-barres qu'on a parfois besoin d'agrandir.
+  maximumScale: 5,
+  viewportFit: 'cover' as const,
+  themeColor: '#f5f0e6',
+};
+
 export default function RootLayout({
   children,
 }: Readonly<{
