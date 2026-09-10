@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import NavBar from "../../components/NavBar";
 import { useIsMobile } from "../../lib/useIsMobile";
+import BoutonScan from "../../components/ScanCodeBarre";
 
 const BarcodeIcon = () => (
   <svg width="22" height="16" viewBox="0 0 24 18" fill="none" stroke="black" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="mr-1.5 opacity-80">
@@ -649,7 +650,10 @@ export default function Home() {
               <button style={S.closeBtn} onClick={() => { setEtapeActive(null); setRechercheEtape(""); }}>✕</button>
             </div>
             <div style={{ padding: '16px 24px', borderBottom: '2px solid var(--cream2)' }}>
-              <input type="text" placeholder="Rechercher par nom ou EAN…" value={rechercheEtape} onChange={e => setRechercheEtape(e.target.value)} className="pop-input" style={{ width: '100%' }} />
+              <div style={{ display: "flex", gap: 8 }}>
+                <input type="text" placeholder="Rechercher par nom ou EAN…" value={rechercheEtape} onChange={e => setRechercheEtape(e.target.value)} className="pop-input" style={{ flex: 1, minWidth: 0 }} />
+                <BoutonScan onScan={code => setRechercheEtape(code)} />
+              </div>
             </div>
             <div style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 6 }}>
               {jeuxPourEtapeActive.length === 0 ? (
@@ -702,7 +706,10 @@ export default function Home() {
                 </div>
                 <div>
                   <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: 'rgba(0,0,0,0.45)', marginBottom: 6 }}>Code Syracuse</div>
-                  <input ref={scanInputRef} autoFocus type="text" inputMode="numeric" placeholder="Scanner ou saisir le code…" value={scanInput} onChange={e => setScanInput(e.target.value)} onKeyDown={e => e.key === "Enter" && scannerCode()} className="pop-input" style={{ width: '100%', fontSize: 20, fontFamily: 'monospace' }} />
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <input ref={scanInputRef} autoFocus type="text" inputMode="numeric" placeholder="Scanner ou saisir le code…" value={scanInput} onChange={e => setScanInput(e.target.value)} onKeyDown={e => e.key === "Enter" && scannerCode()} className="pop-input" style={{ flex: 1, minWidth: 0, fontSize: 20, fontFamily: "monospace" }} />
+                    <BoutonScan onScan={code => setScanInput(code)} />
+                  </div>
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button className="pop-btn pop-btn-outline" style={{ flex: 1, justifyContent: 'center' }} onClick={passerScan}>Passer →</button>
@@ -796,7 +803,10 @@ export default function Home() {
             <div style={{ padding: '16px 24px', borderBottom: '2px solid var(--cream2)', display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : '1fr 1fr', gap: 12 }}>
               <div>
                 <div style={{ fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: 'rgba(0,0,0,0.45)', marginBottom: 6 }}>Scanner un EAN</div>
-                <input type="text" value={eanInput} onChange={e => setEanInput(e.target.value)} onKeyDown={ajouterEan} className="pop-input" style={{ width: '100%' }} placeholder="Ex: 3770001874241" autoFocus />
+                <div style={{ display: "flex", gap: 8 }}>
+                  <input type="text" value={eanInput} onChange={e => setEanInput(e.target.value)} onKeyDown={ajouterEan} className="pop-input" style={{ flex: 1, minWidth: 0 }} placeholder="Ex: 3770001874241" autoFocus />
+                  <BoutonScan onScan={code => setEanInput(code)} />
+                </div>
               </div>
               <div>
                 <div style={{ fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: 'rgba(0,0,0,0.45)', marginBottom: 6 }}>Taper un nom (EAN inconnu)</div>

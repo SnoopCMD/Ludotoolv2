@@ -13,10 +13,12 @@
     "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "upload": "opennextjs-cloudflare build && opennextjs-cloudflare upload",
-    "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts"
+    "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
+    "sync:wasm": "node -e \"require('fs').copyFileSync('node_modules/zxing-wasm/dist/reader/zxing_reader.wasm','public/zxing_reader.wasm')\""
   },
   "dependencies": {
     "@react-pdf/renderer": "^4.3.2",
+    "barcode-detector": "^3.2.2",
     "cheerio": "^1.2.0",
     "date-fns": "^4.1.0",
     "jspdf": "^4.2.1",

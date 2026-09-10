@@ -2,6 +2,7 @@
 import { useState, useEffect, useMemo } from "react";
 import NavBar from "../components/NavBar";
 import { useIsMobile } from "../lib/useIsMobile";
+import BoutonScan from "../components/ScanCodeBarre";
 import {
   format, startOfWeek, endOfWeek, eachDayOfInterval,
   isToday, addWeeks, subWeeks, getISOWeek,
@@ -947,6 +948,7 @@ export default function AccueilPage() {
                       <input type="text" value={scanCode} onChange={e => { setScanCode(e.target.value); setScanError(null); }}
                         onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); rechercherJeuParScan(scanCode); } }}
                         placeholder="Scannez ou tapez le code…" className="pop-input" style={{ flex: 1 }} />
+                      <BoutonScan onScan={code => { setScanCode(code); setScanError(null); rechercherJeuParScan(code); }} />
                       <button onClick={() => rechercherJeuParScan(scanCode)} className="pop-btn pop-btn-dark" style={{ padding: "8px 14px" }}>🔍</button>
                     </div>
                     {scanError && <p style={{ fontSize: 13, fontWeight: 700, color: "var(--rouge)" }}>{scanError}</p>}

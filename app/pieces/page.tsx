@@ -2,6 +2,7 @@
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useIsMobile } from "../../lib/useIsMobile";
+import BoutonScan from "../../components/ScanCodeBarre";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -674,9 +675,12 @@ export default function PiecesPage() {
           {/* Formulaire ajout */}
           <div style={{ background: "var(--cream2)", border: "2px solid var(--ink)", borderRadius: 10, padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <input type="text" placeholder="Code Syracuse..." value={codeManq}
-                onChange={e => setCodeManq(e.target.value)} onBlur={() => chercherNom(codeManq)}
-                style={{ ...inp, width: isMobile ? "100%" : 140, flexShrink: 0 }} />
+              <div style={{ display: "flex", gap: 8, width: isMobile ? "100%" : 140, flexShrink: 0 }}>
+                <input type="text" placeholder="Code Syracuse..." value={codeManq}
+                  onChange={e => setCodeManq(e.target.value)} onBlur={() => chercherNom(codeManq)}
+                  style={{ ...inp, flex: 1, minWidth: 0 }} />
+                <BoutonScan onScan={code => { setCodeManq(code); chercherNom(code); }} />
+                </div>
               <div style={{ flex: 1, position: "relative" }}>
                 <input type="text" placeholder="Nom du jeu..." value={nomManq}
                   onChange={e => handleRechercheNom(e.target.value)}

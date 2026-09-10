@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useIsMobile } from "../../lib/useIsMobile";
+import BoutonScan from "../../components/ScanCodeBarre";
 
 type Reparation = {
   id: number;
@@ -135,13 +136,16 @@ export default function ReparationsPage() {
 
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
             {/* Code Syracuse */}
-            <input
-              type="text" placeholder="Code Syracuse..." value={eanJeu}
-              onChange={e => setEanJeu(e.target.value)}
-              onBlur={() => chercherJeuViaEan(eanJeu)}
-              onKeyDown={e => e.key === "Enter" && chercherJeuViaEan(eanJeu)}
-              style={{ ...inp, width: isMobile ? "100%" : 160, flexShrink: 0 }}
-            />
+            <div style={{ display: "flex", gap: 8, width: isMobile ? "100%" : 160, flexShrink: 0 }}>
+              <input
+                type="text" placeholder="Code Syracuse..." value={eanJeu}
+                onChange={e => setEanJeu(e.target.value)}
+                onBlur={() => chercherJeuViaEan(eanJeu)}
+                onKeyDown={e => e.key === "Enter" && chercherJeuViaEan(eanJeu)}
+                style={{ ...inp, flex: 1, minWidth: 0 }}
+              />
+              <BoutonScan onScan={code => { setEanJeu(code); chercherJeuViaEan(code); }} />
+            </div>
             {/* Nom — avec autocomplétion */}
             <div style={{ flex: 1, position: "relative" }}>
               <input

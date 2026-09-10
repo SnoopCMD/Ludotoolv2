@@ -5,6 +5,7 @@ import Link from "next/link";
 import { PDFDownloadLink } from "@react-pdf/renderer";
 import { ContenuPDF } from "../../components/ContenuPDF";
 import { useIsMobile } from "../../lib/useIsMobile";
+import BoutonScan from "../../components/ScanCodeBarre";
 
 const CATEGORIES = [
   { id: "vert",  nom: "Vert",  hex: "#a8e063" },
@@ -285,12 +286,16 @@ function ContenuPageInner() {
         <aside style={{ width: isMobile ? '100%' : 300, border: '2.5px solid var(--ink)', borderRadius: 10, boxShadow: '4px 4px 0 var(--ink)', display: 'flex', flexDirection: 'column', height: isMobile ? 420 : 'calc(100dvh - 80px)', position: isMobile ? 'static' : 'sticky', top: 68, flexShrink: 0, overflow: 'hidden', background: 'var(--white)' }}>
           <div style={{ padding: '16px 18px', borderBottom: '2.5px solid var(--ink)', background: 'var(--cream2)' }}>
             <div className="bc" style={{ fontSize: 20, textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 10 }}>Générateur de fiches</div>
-            <input type="text" placeholder="🔍 Rechercher un jeu..." value={recherche} onChange={e => setRecherche(e.target.value)} className="pop-input" style={{ width: '100%', fontSize: 14 }} />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input type="text" placeholder="🔍 Rechercher un jeu..." value={recherche} onChange={e => setRecherche(e.target.value)} className="pop-input" style={{ flex: 1, minWidth: 0, fontSize: 14 }} />
+              <BoutonScan onScan={code => setRecherche(code)} />
+            </div>
           </div>
 
           <div style={{ flex: 1, overflowY: 'auto', padding: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
             {CATEGORIES.map(cat => {
-              const items = contenus[cat.id].filter(c => c.nom.toLowerCase().includes(recherche.toLowerCase()));
+              const r = recherche.trim().toLowerCase();
+              const items = contenus[cat.id].filter(c => c.nom.toLowerCase().includes(r) || (r !== "" && c.ean.toLowerCase().includes(r)));
               if (items.length === 0) return null;
               return (
                 <div key={`side-${cat.id}`} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>

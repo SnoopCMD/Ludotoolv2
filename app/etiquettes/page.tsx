@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { PDFDownloadLink } from "@react-pdf/renderer";
 import { useIsMobile } from "../../lib/useIsMobile";
+import BoutonScan from "../../components/ScanCodeBarre";
 import { EtiquettesPDF } from "../../components/EtiquettesPDF";
 
 const CATEGORIES = [
@@ -551,20 +552,24 @@ export default function EtiquettesPage() {
           {/* Aside header */}
           <div style={{ padding: "16px 18px", borderBottom: "2.5px solid var(--ink)", background: "var(--cream2)" }}>
             <h2 className="bc" style={{ fontSize: 20, margin: "0 0 12px", letterSpacing: "0.03em" }}>Générateur d&apos;étiquettes</h2>
-            <input
-              type="text"
-              placeholder="🔍  Rechercher un jeu..."
-              value={recherche}
-              onChange={(e) => setRecherche(e.target.value)}
-              className="pop-input"
-              style={{ width: "100%", fontSize: 15, boxSizing: "border-box" }}
-            />
+            <div style={{ display: "flex", gap: 8 }}>
+              <input
+                type="text"
+                placeholder="🔍  Rechercher un jeu..."
+                value={recherche}
+                onChange={(e) => setRecherche(e.target.value)}
+                className="pop-input"
+                style={{ flex: 1, minWidth: 0, fontSize: 15, boxSizing: "border-box" }}
+              />
+              <BoutonScan onScan={code => setRecherche(code)} />
+            </div>
           </div>
 
           {/* Game list */}
           <div style={{ flex: 1, overflowY: "auto", padding: "12px 14px", display: "flex", flexDirection: "column", gap: 14 }}>
             {CATEGORIES.map(cat => {
-              const items = etiquettes[cat.id].filter(eti => eti.nom.toLowerCase().includes(recherche.toLowerCase()));
+              const r = recherche.trim().toLowerCase();
+              const items = etiquettes[cat.id].filter(eti => eti.nom.toLowerCase().includes(r) || (r !== "" && eti.ean.toLowerCase().includes(r)));
               if (items.length === 0) return null;
               return (
                 <div key={`side-${cat.id}`} style={{ display: "flex", flexDirection: "column", gap: 6 }}>

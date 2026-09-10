@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import NavBar from "../../components/NavBar";
 import { useIsMobile } from "../../lib/useIsMobile";
+import BoutonScan from "../../components/ScanCodeBarre";
 
 type JeuNote = { texte: string; rappel: boolean };
 
@@ -1127,14 +1128,19 @@ export default function InventairePage() {
     if (!editSelection) return;
     setEditSelection({ ...editSelection, jeux: editSelection.jeux?.filter(j => j.id !== idJeu) });
   };
+  /** Cœur du scan de sélection, partagé par la saisie au clavier (ou à la
+   *  douchette, qui envoie un Entrée) et par le scan à la caméra. */
+  const traiterCodeSelection = (code: string) => {
+    let codeF = code.trim();
+    if (codeF === "") return;
+    if (/^\d+$/.test(codeF) && codeF.length < 8) codeF = codeF.padStart(8, '0');
+    const jeuTrouve = jeux.find(j => j.code_syracuse === codeF || j.ean === codeF);
+    if (jeuTrouve) ajouterJeuSelection(jeuTrouve);
+    else alert("Aucun jeu trouvé avec ce code Syracuse / EAN.");
+  };
+
   const handleScanSyracuseList = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' && scanInput.trim() !== "") {
-      let codeF = scanInput.trim();
-      if (/^\d+$/.test(codeF) && codeF.length < 8) codeF = codeF.padStart(8, '0');
-      const jeuTrouve = jeux.find(j => j.code_syracuse === codeF || j.ean === codeF);
-      if (jeuTrouve) ajouterJeuSelection(jeuTrouve);
-      else alert("Aucun jeu trouvé avec ce code Syracuse / EAN.");
-    }
+    if (e.key === 'Enter') traiterCodeSelection(scanInput);
   };
 
   const ouvrirFicheJeu = async (jeu: JeuType) => {
@@ -1384,7 +1390,8 @@ export default function InventairePage() {
         </div>
 
         {/* Searchbar */}
-        <div style={{ position: "relative", flex: "1 1 200px", maxWidth: isMobile ? "none" : 360, order: isMobile ? 3 : 0 }}>
+        <div style={{ display: "flex", gap: 8, flex: "1 1 200px", maxWidth: isMobile ? "none" : 360, order: isMobile ? 3 : 0 }}>
+        <div style={{ position: "relative", flex: 1, minWidth: 0 }}>
           <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", opacity: 0.4, fontSize: 14 }}>🔍</span>
           <input
             type="text" placeholder="Chercher un jeu, code..." value={recherche}
@@ -1399,6 +1406,8 @@ export default function InventairePage() {
               display: "flex", alignItems: "center", justifyContent: "center",
             }}>✕</button>
           )}
+        </div>
+        <BoutonScan onScan={code => setRecherche(code)} />
         </div>
 
         {/* Settings button — la recherche passe à la ligne sur téléphone
@@ -2327,8 +2336,11 @@ export default function InventairePage() {
                 <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
                   <div style={{ flex: 1, minWidth: 200 }}>
                     <label style={{ fontSize: 11, fontWeight: 800, color: "rgba(0,0,0,0.4)", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 5 }}>Scanner Syracuse / EAN</label>
-                    <input type="text" placeholder="Scanner et Entrée…" value={scanInput} onChange={e => setScanInput(e.target.value)} onKeyDown={handleScanSyracuseList}
-                      style={{ ...inp, fontFamily: "monospace", background: "#f4fce3", border: "2px solid var(--vert)" }} />
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <input type="text" placeholder="Scanner et Entrée…" value={scanInput} onChange={e => setScanInput(e.target.value)} onKeyDown={handleScanSyracuseList}
+                        style={{ ...inp, flex: 1, minWidth: 0, fontFamily: "monospace", background: "#f4fce3", border: "2px solid var(--vert)" }} />
+                      <BoutonScan onScan={code => { setScanInput(code); traiterCodeSelection(code); }} />
+                    </div>
                   </div>
                   <div style={{ flex: 1, minWidth: 200, position: "relative" }}>
                     <label style={{ fontSize: 11, fontWeight: 800, color: "rgba(0,0,0,0.4)", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 5 }}>Recherche manuelle</label>

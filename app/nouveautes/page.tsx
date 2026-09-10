@@ -2,6 +2,7 @@
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useIsMobile } from "../../lib/useIsMobile";
+import BoutonScan from "../../components/ScanCodeBarre";
 
 type JeuNouveaute = {
   id: string | number;
@@ -210,15 +211,16 @@ export default function NouveautesPage() {
           <div />
 
           {/* Barre de recherche */}
-          <div style={{ position: 'relative', width: isMobile ? '100%' : 320, zIndex: 20 }}>
+          <div style={{ position: 'relative', width: isMobile ? '100%' : 320, zIndex: 20, display: 'flex', gap: 8 }}>
             <input
               type="text"
               placeholder="Ajouter par nom ou EAN…"
               value={rechercheAjout}
               onChange={e => setRechercheAjout(e.target.value)}
               className="pop-input"
-              style={{ width: '100%', paddingLeft: 36 }}
+              style={{ flex: 1, minWidth: 0, paddingLeft: 36 }}
             />
+            <BoutonScan onScan={code => setRechercheAjout(code)} />
             <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', opacity: 0.4, pointerEvents: 'none' }}>➕</span>
             {rechercheAjout && (
               <div style={{
