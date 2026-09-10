@@ -2,6 +2,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import NavBar from "../../components/NavBar";
+import { useIsMobile } from "../../lib/useIsMobile";
 import { format, addMonths, subMonths, addWeeks, subWeeks, startOfWeek, endOfWeek, eachDayOfInterval, startOfMonth, endOfMonth, isSameMonth, isToday, subDays, setMonth, setYear, getISOWeek, getYear, addDays } from "date-fns";
 import { fr } from "date-fns/locale";
 
@@ -294,6 +295,7 @@ const getDailyMinutes = (membre: MembreEquipe, dateKey: string, nomJour: string,
 };
 
 export default function AgendaPage() {
+  const isMobile = useIsMobile();
   const [vue, setVue] = useState<"Mois" | "Semaine">("Mois");
   const [dateActuelle, setDateActuelle] = useState(new Date());
   const [joursFeries, setJoursFeries] = useState<Record<string, string>>({});
@@ -1331,6 +1333,22 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
     return vue === "Mois" ? eachDayOfInterval({ start: startOfWeek(debutMois, { weekStartsOn: 1 }), end: endOfWeek(finMois, { weekStartsOn: 1 }) }) : eachDayOfInterval({ start: startOfWeek(dateActuelle, { weekStartsOn: 1 }), end: endOfWeek(dateActuelle, { weekStartsOn: 1 }) });
   }, [dateActuelle, vue]);
 
+  // Vue Semaine sur téléphone : une seule colonne de jour. À sept colonnes
+  // plus la gouttière d'heures, il resterait une quarantaine de pixels par
+  // jour. Comme sur le planning de l'accueil, on mémorise une date et non un
+  // index, pour que la sélection retombe seule sur aujourd'hui quand on
+  // change de semaine.
+  const [jourSemaineChoisi, setJourSemaineChoisi] = useState<string | null>(null);
+  const clesJoursSemaine = joursAffiches.map(j => format(j, 'yyyy-MM-dd'));
+  const indexJourSemaine = (() => {
+    const choisi = jourSemaineChoisi ? clesJoursSemaine.indexOf(jourSemaineChoisi) : -1;
+    return choisi >= 0 ? choisi : Math.max(joursAffiches.findIndex(j => isToday(j)), 0);
+  })();
+  const joursSemaineVisibles = (isMobile && vue === "Semaine")
+    ? joursAffiches.slice(indexJourSemaine, indexJourSemaine + 1)
+    : joursAffiches;
+  const nbColonnesSemaine = joursSemaineVisibles.length;
+
   const planningDays = useMemo(() =>
     eachDayOfInterval({ start: startOfWeek(planningDate, { weekStartsOn: 1 }), end: endOfWeek(planningDate, { weekStartsOn: 1 }) }).slice(1, 6),
   [planningDate]);
@@ -1477,12 +1495,12 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
   const diffHeures = membreActif ? moyenneHeures - membreActif.heures_hebdo_base : 0;
 
   return (
-    <div style={{ minHeight: "100vh", background: "var(--cream)" }}>
+    <div style={{ minHeight: "100dvh", background: "var(--cream)" }}>
       <NavBar current="agenda" />
 
       {isDraftMode && (
-        <div style={{ position: "fixed", top: 64, left: 0, right: 0, background: "#f97316", color: "#fff", zIndex: 9999, padding: "12px 24px", display: "flex", flexDirection: "column", boxShadow: "0 4px 0 var(--ink)", borderBottom: "2.5px solid var(--ink)" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", maxWidth: "96%", margin: "0 auto", width: "100%" }}>
+        <div style={{ position: "fixed", top: "var(--nav-h)", left: 0, right: 0, background: "#f97316", color: "#fff", zIndex: 9999, padding: isMobile ? "10px var(--page-pad-x)" : "12px 24px", display: "flex", flexDirection: "column", boxShadow: "0 4px 0 var(--ink)", borderBottom: "2.5px solid var(--ink)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", maxWidth: "96%", margin: "0 auto", width: "100%", flexWrap: "wrap", gap: 8 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <span className="bc" style={{ fontSize: 15 }}>🛠️ Mode Prévision</span>
               {(alertes.amplitude.length > 0 || alertes.heuresSupp.length > 0) && (
@@ -1506,7 +1524,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
       )}
 
       {swapSession.active && swapSession.step === 1 && (
-        <div style={{ position: "fixed", bottom: 40, left: "50%", transform: "translateX(-50%)", background: "var(--bleu)", color: "var(--ink)", zIndex: 100, padding: "14px 28px", borderRadius: 50, display: "flex", alignItems: "center", gap: 24, border: "2.5px solid var(--ink)", boxShadow: "4px 4px 0 var(--ink)" }}>
+        <div style={{ position: "fixed", bottom: isMobile ? 16 : 40, left: "50%", transform: "translateX(-50%)", maxWidth: "calc(100vw - 20px)", background: "var(--bleu)", color: "var(--ink)", zIndex: 100, padding: isMobile ? "10px 14px" : "14px 28px", borderRadius: isMobile ? 16 : 50, display: "flex", alignItems: "center", gap: isMobile ? 10 : 24, flexWrap: "wrap", justifyContent: "center", border: "2.5px solid var(--ink)", boxShadow: "4px 4px 0 var(--ink)" }}>
           <span className="bc" style={{ fontSize: 15 }}>🔄 Sélectionnez le(s) jour(s) à échanger</span>
           <div style={{ display: "flex", gap: 8 }}>
             <button onClick={() => setSwapSession({ active: false, step: 1, selectedDates: [], m1Id: '', m2Id: '' })} className="pop-btn pop-btn-outline" style={{ fontSize: 13, padding: "6px 14px" }}>Annuler</button>
@@ -1518,7 +1536,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
       )}
 
       {showSettings && (
-        <div className="pop-card" style={{ position: "fixed", bottom: 24, right: 24, width: 260, padding: 20, zIndex: 50 }}>
+        <div className="pop-card" style={{ position: "fixed", bottom: isMobile ? 12 : 24, right: isMobile ? 12 : 24, left: isMobile ? 12 : undefined, width: isMobile ? "auto" : 260, padding: isMobile ? 16 : 20, zIndex: 50 }}>
           <p className="bc" style={{ fontSize: 13, marginBottom: 14, textTransform: "uppercase", letterSpacing: "0.06em" }}>Couleurs du Planning</p>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {[
@@ -1542,14 +1560,14 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
         </div>
       )}
 
-      <div className="pop-page" style={{ display: "flex", flexDirection: "column", gap: 20, paddingTop: isDraftMode ? 160 : undefined }}>
+      <div className="pop-page" style={{ display: "flex", flexDirection: "column", gap: 20, paddingTop: isDraftMode ? (isMobile ? 210 : 160) : undefined }}>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
 
         <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <div>
-              <div className="bc" style={{ fontSize: 80, lineHeight: 0.9, textTransform: "uppercase", letterSpacing: "-1px", background: "linear-gradient(135deg, #0d0d0d 40%, var(--purple))", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>Agenda</div>
+              <div className="bc" style={{ fontSize: isMobile ? 44 : 80, lineHeight: 0.9, textTransform: "uppercase", letterSpacing: "-1px", background: "linear-gradient(135deg, #0d0d0d 40%, var(--purple))", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>Agenda</div>
               <div className="bc" style={{ fontSize: 16, color: "rgba(0,0,0,0.35)", marginTop: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>
                 {vue === "Mois"
                   ? `${format(dateActuelle, 'MMMM yyyy', { locale: fr })} · Vue Stickers`
@@ -1595,11 +1613,37 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
           </div>
         </div>
 
+        {/* Sélecteur de jour — la grille Semaine mobile n'affiche qu'une colonne */}
+        {isMobile && vue === "Semaine" && (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
+            {joursAffiches.map((jour, i) => {
+              const actif = i === indexJourSemaine;
+              const cejour = isToday(jour);
+              return (
+                <button key={format(jour, 'yyyy-MM-dd')} onClick={() => setJourSemaineChoisi(clesJoursSemaine[i])}
+                  style={{
+                    display: "flex", flexDirection: "column", alignItems: "center", gap: 1,
+                    padding: "6px 0", minHeight: "var(--tap)", cursor: "pointer", fontFamily: "inherit",
+                    background: actif ? "var(--ink)" : cejour ? couleurs.accent : "var(--white)",
+                    color: actif ? "var(--cream)" : "var(--ink)",
+                    border: "2px solid var(--ink)", borderRadius: 8,
+                    boxShadow: actif ? "2px 2px 0 var(--ink)" : "none",
+                  }}>
+                  <span style={{ fontSize: 9, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.04em", opacity: 0.7 }}>
+                    {format(jour, 'EEEEE', { locale: fr })}
+                  </span>
+                  <span className="bc" style={{ fontSize: 16, lineHeight: 1 }}>{format(jour, 'd')}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         <div className="pop-card" style={{ display: "flex", flexDirection: "column", overflow: "hidden", flex: 1 }}>
-          <div style={{ display: "grid", borderBottom: "2px solid var(--ink)", background: "var(--ink)", borderRadius: "10px 10px 0 0", gridTemplateColumns: vue === "Semaine" ? "60px 1fr 1fr 1fr 1fr 1fr 1fr 1fr" : "repeat(7, 1fr)" }}>
+          <div style={{ display: "grid", borderBottom: "2px solid var(--ink)", background: "var(--ink)", borderRadius: "10px 10px 0 0", gridTemplateColumns: vue === "Semaine" ? `60px repeat(${nbColonnesSemaine}, 1fr)` : "repeat(7, 1fr)" }}>
             {vue === "Semaine" && <div style={{ padding: "10px 0" }}></div>}
             {vue === "Semaine"
-              ? joursAffiches.map((jour) => {
+              ? joursSemaineVisibles.map((jour) => {
                   const today = isToday(jour);
                   return (
                     <div key={format(jour, 'yyyy-MM-dd')} style={{ padding: "8px 0", textAlign: "center", background: today ? couleurs.accent : "transparent", borderBottom: today ? "2px solid var(--ink)" : "none", marginBottom: today ? -2 : 0, borderRadius: today ? "0" : "0" }}>
@@ -1694,12 +1738,12 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
                       position: "relative",
                       display: "flex",
                       flexDirection: "column",
-                      minHeight: 120,
+                      minHeight: isMobile ? 66 : 120,
                       cursor: "pointer",
                     }}>
 
                     {/* Header row: event dots + vacation pastilles + day number */}
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "7px 7px 4px", zIndex: 20, pointerEvents: "none" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: isMobile ? "4px 4px 2px" : "7px 7px 4px", zIndex: 20, pointerEvents: "none" }}>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 3, flex: 1, marginRight: 4, marginTop: 2 }}>
                         {!nomFerie && evenementsDuJour.filter(e => !['Soirée Jeux', 'Heures Exceptionnelles'].includes(e.type)).map((ev, idx) => (
                           <div key={`dot-${idx}`} style={{ width: 9, height: 9, borderRadius: "50%", backgroundColor: getEventColor(ev.type), border: "1.5px solid var(--ink)", flexShrink: 0 }}></div>
@@ -1728,7 +1772,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
                     </div>
 
                     {/* Event blocks — overflow:visible so rotated stickers aren't clipped by the header */}
-                    <div style={{ flex: 1, display: "flex", flexDirection: "column", padding: "0 5px 5px", gap: 4, zIndex: 10 }}>
+                    <div style={{ flex: 1, display: "flex", flexDirection: "column", padding: isMobile ? "0 3px 3px" : "0 5px 5px", gap: isMobile ? 2 : 4, zIndex: 10 }}>
                       {nomFerie && (
                         <div className="bc" style={{ background: "var(--yellow)", border: "2px solid var(--ink)", borderRadius: 6, padding: "4px 7px", fontWeight: 900, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.06em", boxShadow: "2px 2px 0 var(--ink)", transform: "rotate(-2deg)", transformOrigin: "center", alignSelf: "stretch", lineHeight: 1.2 }}>
                           {nomFerie}
@@ -1750,10 +1794,15 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
                                 );
                               })}
                             </div>
-                            {absInBloc.map((abs, aIdx) => (
+                            {/* Sur téléphone la cellule fait une cinquantaine de
+                                pixels de large : on garde les initiales, qui
+                                portent la couleur, et on laisse le type
+                                d'absence et l'horaire à la fiche du jour, qui
+                                s'ouvre d'une tape. */}
+                            {!isMobile && absInBloc.map((abs, aIdx) => (
                               <span key={aIdx} style={{ fontSize: 8, fontWeight: 800, background: "var(--rose)", color: "var(--ink)", border: "1px solid var(--ink)", borderRadius: 3, padding: "0 3px" }}>{abs.type.replace('Demi-', '½ ')}</span>
                             ))}
-                            <span style={{ fontSize: isSingleBloc ? 10 : 9, fontWeight: 600, opacity: 0.65 }}>{bloc.debut}–{bloc.fin}</span>
+                            {!isMobile && <span style={{ fontSize: isSingleBloc ? 10 : 9, fontWeight: 600, opacity: 0.65 }}>{bloc.debut}–{bloc.fin}</span>}
                           </div>
                         );
                       })}
@@ -1805,14 +1854,14 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
                   </div>
                 ))}
               </div>
-              <div style={{ flex: 1, display: "grid", gridTemplateColumns: "repeat(7, 1fr)", position: "relative" }}>
-                <div style={{ position: "absolute", inset: 0, display: "grid", gridTemplateColumns: "repeat(7, 1fr)", pointerEvents: "none" }}>
-                  {Array.from({ length: 7 }).map((_, i) => (
+              <div style={{ flex: 1, display: "grid", gridTemplateColumns: `repeat(${nbColonnesSemaine}, 1fr)`, position: "relative" }}>
+                <div style={{ position: "absolute", inset: 0, display: "grid", gridTemplateColumns: `repeat(${nbColonnesSemaine}, 1fr)`, pointerEvents: "none" }}>
+                  {Array.from({ length: nbColonnesSemaine }).map((_, i) => (
                     <div key={i} style={{ borderRight: "1px solid rgba(0,0,0,0.07)" }}></div>
                   ))}
                 </div>
 
-                {joursAffiches.map((jour, i) => {
+                {joursSemaineVisibles.map((jour, i) => {
                   const dateKey = format(jour, 'yyyy-MM-dd');
                   const nomFerie = joursFeries[dateKey];
                   const zonesVacances = vacances[dateKey] || [];
@@ -2053,7 +2102,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
       </div>
 
       {swapSession.active && swapSession.step === 2 && (
-        <div style={{ position: "fixed", top: 64, bottom: 0, left: 0, right: 0, background: "rgba(0,0,0,0.5)", zIndex: 9999, display: "flex", justifyContent: "center", alignItems: "center", backdropFilter: "blur(4px)", padding: 16 }}
+        <div style={{ position: "fixed", top: "var(--nav-h)", bottom: 0, left: 0, right: 0, background: "rgba(0,0,0,0.5)", zIndex: 9999, display: "flex", justifyContent: "center", alignItems: "center", backdropFilter: "blur(4px)", padding: 16 }}
           onClick={e => { if (e.target === e.currentTarget) setSwapSession({ active: false, step: 1, selectedDates: [], m1Id: '', m2Id: '' }); }}>
           <div className="pop-card animate-fade-in" style={{ width: "100%", maxWidth: 440, padding: "28px 32px", maxHeight: "90vh", overflowY: "auto", display: "flex", flexDirection: "column", gap: 20 }} >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -2091,10 +2140,10 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
       )}
 
       {showEquipePanel && (
-        <div style={{ position: "fixed", top: 64, bottom: 0, left: 0, right: 0, background: "rgba(0,0,0,0.5)", zIndex: 50, display: "flex", justifyContent: "flex-end", backdropFilter: "blur(4px)" }}
+        <div style={{ position: "fixed", top: "var(--nav-h)", bottom: 0, left: 0, right: 0, background: "rgba(0,0,0,0.5)", zIndex: 50, display: "flex", justifyContent: "flex-end", backdropFilter: "blur(4px)" }}
           onClick={e => { if (e.target === e.currentTarget) { setShowEquipePanel(false); setMembreActif(null); } }}>
           <div style={{ background: "var(--white)", width: "100%", maxWidth: 520, height: "100%", display: "flex", flexDirection: "column", border: "2.5px solid var(--ink)", borderRight: "none", boxShadow: "-6px 0 0 var(--ink)" }} className="animate-slide-in-right">
-            <div style={{ padding: "20px 24px", borderBottom: "2px solid rgba(0,0,0,0.08)", display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--white)" }}>
+            <div style={{ padding: isMobile ? "14px 16px" : "20px 24px", borderBottom: "2px solid rgba(0,0,0,0.08)", display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--white)" }}>
               <div>
                 <h2 className="bc" style={{ fontSize: 26, margin: 0 }}>Équipe</h2>
                 <p style={{ fontSize: 12, color: "rgba(0,0,0,0.4)", fontWeight: 500, marginTop: 2 }}>Profils, horaires et suivi RH</p>
@@ -2184,7 +2233,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
                             )}
                           </div>
                         </div>
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "minmax(0, 1fr)" : "1fr 1fr", gap: 10 }}>
                           {[
                             { label: "Base (h/sem)", value: membreActif.heures_hebdo_base, onChange: (v: string) => setMembreActif({...membreActif, heures_hebdo_base: parseFloat(v) || 0}) },
                             { label: "Solde Récup (h)", value: membreActif.solde_recup ?? 0, onChange: (v: string) => setMembreActif({...membreActif, solde_recup: parseFloat(v)}) },
@@ -2417,10 +2466,10 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
       )}
 
       {showEventsListPanel && (
-        <div style={{ position: "fixed", top: 64, bottom: 0, left: 0, right: 0, background: "rgba(0,0,0,0.5)", zIndex: 50, display: "flex", justifyContent: "flex-end", backdropFilter: "blur(4px)" }}
+        <div style={{ position: "fixed", top: "var(--nav-h)", bottom: 0, left: 0, right: 0, background: "rgba(0,0,0,0.5)", zIndex: 50, display: "flex", justifyContent: "flex-end", backdropFilter: "blur(4px)" }}
           onClick={e => { if (e.target === e.currentTarget) setShowEventsListPanel(false); }}>
           <div style={{ background: "var(--white)", width: "100%", maxWidth: 520, height: "100%", display: "flex", flexDirection: "column", border: "2.5px solid var(--ink)", borderRight: "none", boxShadow: "-6px 0 0 var(--ink)" }} className="animate-slide-in-right">
-            <div style={{ padding: "20px 24px", borderBottom: "2px solid rgba(0,0,0,0.08)", display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--white)" }}>
+            <div style={{ padding: isMobile ? "14px 16px" : "20px 24px", borderBottom: "2px solid rgba(0,0,0,0.08)", display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--white)" }}>
               <div>
                 <h2 className="bc" style={{ fontSize: 26, margin: 0 }}>Événements</h2>
                 <p style={{ fontSize: 12, color: "rgba(0,0,0,0.4)", fontWeight: 500, marginTop: 2 }}>Ponctuels et séries récurrentes</p>
@@ -2533,7 +2582,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
       )}
 
       {showEventModal && (
-        <div style={{ position: "fixed", top: 64, bottom: 0, left: 0, right: 0, background: "rgba(0,0,0,0.5)", zIndex: 9999, display: "flex", justifyContent: "center", alignItems: "center", backdropFilter: "blur(4px)", padding: 16 }}
+        <div style={{ position: "fixed", top: "var(--nav-h)", bottom: 0, left: 0, right: 0, background: "rgba(0,0,0,0.5)", zIndex: 9999, display: "flex", justifyContent: "center", alignItems: "center", backdropFilter: "blur(4px)", padding: 16 }}
           onClick={e => { if (e.target === e.currentTarget) setShowEventModal(false); }}>
           <div className="pop-card animate-fade-in" style={{ width: "100%", maxWidth: 460, maxHeight: "100%", display: "flex", flexDirection: "column", overflow: "hidden" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "18px 22px", borderBottom: "1.5px solid rgba(0,0,0,0.08)", flexShrink: 0 }}>
@@ -2639,7 +2688,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
                     <button type="button" onClick={() => setNouvelEvent({...nouvelEvent, membres: []})} className="pop-sticker" style={{ cursor: "pointer", background: "var(--white)", fontSize: 9 }}>Vider</button>
                   </div>
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "minmax(0, 1fr)" : "1fr 1fr", gap: 6 }}>
                   {activeEquipe.map(m => {
                     const isAbsent = membresEnConge.includes(m.id);
                     const isSelected = nouvelEvent.membres.includes(m.id);
@@ -2726,7 +2775,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
       )}
 
       {showPlanningModal && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: "80px 16px 16px" }}
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: "calc(var(--nav-h) + 12px) 12px 12px" }}
           onClick={e => { if (e.target === e.currentTarget) setShowPlanningModal(false); }}>
           <div className="pop-card" style={{ width: "100%", maxWidth: 1400, height: "90vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
             {/* Header */}
@@ -2746,8 +2795,12 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
               </div>
             </div>
             <div style={{ height: 5, background: "linear-gradient(90deg,#a8e063 0%,#a8e063 16.6%,#f472b6 16.6%,#f472b6 33.2%,#60a5fa 33.2%,#60a5fa 49.8%,#f87171 49.8%,#f87171 66.4%,#fb923c 66.4%,#fb923c 83%,#c084fc 83%,#c084fc 100%)", flexShrink: 0 }} />
-            {/* Body */}
-            <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+            {/* Body — cet éditeur de planning se pilote au glisser-déposer
+                (on tire une initiale de la colonne de gauche vers un créneau)
+                et reste un outil de bureau : sur téléphone on ne le replie
+                pas, on le laisse défiler horizontalement pour qu'il garde ses
+                proportions au lieu de s'écraser. */}
+            <div style={{ flex: 1, display: "flex", overflowY: "hidden", overflowX: isMobile ? "auto" : "hidden" }}>
               {/* Member sidebar */}
               <div style={{ width: 100, borderRight: "2.5px solid var(--ink)", padding: "16px 8px", display: "flex", flexDirection: "column", gap: 10, overflowY: "auto", background: "var(--cream)", flexShrink: 0 }}>
                 <span className="bc" style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "rgba(0,0,0,0.35)", paddingBottom: 6, borderBottom: "1.5px solid rgba(0,0,0,0.1)", display: "block" }}>Équipe</span>
@@ -2831,7 +2884,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
                 </div>
               </div>
               {/* Grid */}
-              <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+              <div style={{ flex: 1, minWidth: isMobile ? 440 : undefined, display: "flex", flexDirection: "column", overflow: "hidden" }}>
                 {/* Day headers */}
                 <div style={{ display: "grid", gridTemplateColumns: "44px repeat(5, 1fr)", background: "var(--white)", borderBottom: "2px solid var(--ink)", flexShrink: 0 }}>
                   <div />
@@ -3098,7 +3151,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
       )}
 
       {showPdfSelector && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center", padding: "80px 16px 16px" }}
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center", padding: "calc(var(--nav-h) + 12px) 12px 12px" }}
           onClick={e => { if (e.target === e.currentTarget) setShowPdfSelector(false); }}>
           <div className="pop-card" style={{ width: "100%", maxWidth: 440, overflow: "hidden" }}>
             <div style={{ background: "var(--ink)", padding: "14px 20px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -3284,9 +3337,9 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
         const isEmpty = !nomFerieSel && blocsSelJour.length === 0 && evsDuJour.length === 0;
 
         return (
-          <div key="day-popup" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: "80px 16px 16px" }}
+          <div key="day-popup" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: "calc(var(--nav-h) + 12px) 12px 12px" }}
             onClick={e => { if (e.target === e.currentTarget) setSelectedDay(null); }}>
-            <div style={{ position: "relative", width: "100%", maxWidth: 420, display: "flex", flexDirection: "column", maxHeight: "calc(100vh - 120px)" }}>
+            <div style={{ position: "relative", width: "100%", maxWidth: 420, display: "flex", flexDirection: "column", maxHeight: "calc(100dvh - var(--nav-h) - 56px)" }}>
               <VacancePastilles zones={zonesVacancesSel} size={30} style={{ position: "absolute", top: -16, right: -12, zIndex: 10, gap: 5 }} />
               <div className="pop-card" style={{ width: "100%", maxHeight: "100%", overflow: "hidden", display: "flex", flexDirection: "column" }}>
               <div style={{ background: "var(--ink)", padding: "14px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
@@ -3437,7 +3490,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
       })()}
 
       {quickEditEv && (
-        <div style={{ position: "fixed", top: 64, bottom: 0, left: 0, right: 0, background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)", zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
+        <div style={{ position: "fixed", top: "var(--nav-h)", bottom: 0, left: 0, right: 0, background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)", zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
           onClick={e => { if (e.target === e.currentTarget) setQuickEditEv(null); }}>
           <div className="pop-card" style={{ width: "100%", maxWidth: 380 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px", borderBottom: "1.5px solid rgba(0,0,0,0.08)" }}>
