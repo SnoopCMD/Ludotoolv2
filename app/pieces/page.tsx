@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
+import { useIsMobile } from "../../lib/useIsMobile";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -71,6 +72,7 @@ const normaliserEditeur = (str: string) =>
 // ─── Composant ────────────────────────────────────────────────────────────────
 
 export default function PiecesPage() {
+  const isMobile = useIsMobile();
   const [manquantes,     setManquantes]     = useState<PieceManquante[]>([]);
   const [trouvees,       setTrouvees]       = useState<PieceTrouvee[]>([]);
   const [filtreType,     setFiltreType]     = useState<string | null>(null);
@@ -622,13 +624,13 @@ export default function PiecesPage() {
   });
 
   return (
-    <div style={{ minHeight: "100vh", background: "var(--cream)", display: "flex", flexDirection: "column" }}>
+    <div style={{ minHeight: "100dvh", background: "var(--cream)", display: "flex", flexDirection: "column" }}>
 
       {/* Mini sticky header */}
       <header style={{
         position: "sticky", top: 0, zIndex: 200, height: 56,
         background: "var(--cream)", borderBottom: "2.5px solid var(--ink)",
-        display: "flex", alignItems: "center", padding: "0 24px", gap: 16,
+        display: "flex", alignItems: "center", padding: "0 var(--page-pad-x)", gap: isMobile ? 8 : 16, flexWrap: "wrap",
       }}>
         <Link href="/atelier" style={{
           display: "inline-flex", alignItems: "center", gap: 6,
@@ -638,7 +640,7 @@ export default function PiecesPage() {
           boxShadow: "2px 2px 0 rgba(0,0,0,0.3)", fontFamily: "inherit",
         }}>← Atelier</Link>
         <h1 className="bc" style={{
-          fontSize: 24, letterSpacing: "0.03em", margin: 0,
+          fontSize: isMobile ? 17 : 24, letterSpacing: "0.03em", margin: 0,
           background: "linear-gradient(90deg, var(--rouge), var(--vert))",
           WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
         }}>Pièces manquantes</h1>
@@ -660,21 +662,21 @@ export default function PiecesPage() {
         </button>
       </header>
 
-      <main style={{ padding: "20px 24px", display: "flex", gap: 20, alignItems: "flex-start", flex: 1, flexWrap: "wrap" }}>
+      <main style={{ padding: "var(--page-pad-y) var(--page-pad-x)", display: "flex", gap: 20, alignItems: "flex-start", flex: 1, flexWrap: "wrap" }}>
 
         {/* ── JEUX INCOMPLETS ── */}
         <div className="pop-card" style={{
-          flex: 1, minWidth: 340, display: "flex", flexDirection: "column", gap: 16,
-          borderTop: "4px solid var(--rouge)", padding: "20px 22px",
+          flex: 1, minWidth: isMobile ? 0 : 340, width: isMobile ? "100%" : undefined, display: "flex", flexDirection: "column", gap: 16,
+          borderTop: "4px solid var(--rouge)", padding: isMobile ? "16px 14px" : "20px 22px",
         }}>
           <p className="bc" style={{ fontSize: 22, margin: 0, letterSpacing: "0.02em" }}>Jeux incomplets</p>
 
           {/* Formulaire ajout */}
           <div style={{ background: "var(--cream2)", border: "2px solid var(--ink)", borderRadius: 10, padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
-            <div style={{ display: "flex", gap: 10 }}>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
               <input type="text" placeholder="Code Syracuse..." value={codeManq}
                 onChange={e => setCodeManq(e.target.value)} onBlur={() => chercherNom(codeManq)}
-                style={{ ...inp, width: 140, flexShrink: 0 }} />
+                style={{ ...inp, width: isMobile ? "100%" : 140, flexShrink: 0 }} />
               <div style={{ flex: 1, position: "relative" }}>
                 <input type="text" placeholder="Nom du jeu..." value={nomManq}
                   onChange={e => handleRechercheNom(e.target.value)}
@@ -790,8 +792,8 @@ export default function PiecesPage() {
 
         {/* ── PIÈCES ORPHELINES ── */}
         <div className="pop-card" style={{
-          flex: 1, minWidth: 340, display: "flex", flexDirection: "column", gap: 16,
-          borderTop: "4px solid var(--vert)", padding: "20px 22px",
+          flex: 1, minWidth: isMobile ? 0 : 340, width: isMobile ? "100%" : undefined, display: "flex", flexDirection: "column", gap: 16,
+          borderTop: "4px solid var(--vert)", padding: isMobile ? "16px 14px" : "20px 22px",
         }}>
           <p className="bc" style={{ fontSize: 22, margin: 0, letterSpacing: "0.02em" }}>Pièces orphelines</p>
 
@@ -879,8 +881,8 @@ export default function PiecesPage() {
 
       {/* ── Popup confirmation liaison partielle/totale ── */}
       {lienConfirm && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 90, display: "flex", alignItems: "center", justifyContent: "center", padding: "80px 16px 16px" }}>
-          <div className="pop-card" style={{ background: "var(--white)", width: "100%", maxWidth: 440, padding: 32, display: "flex", flexDirection: "column", gap: 20 }}>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 90, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px 12px" }}>
+          <div className="pop-card" style={{ background: "var(--white)", width: "100%", maxWidth: 440, padding: isMobile ? 20 : 32, display: "flex", flexDirection: "column", gap: 20 }}>
             <div style={{ textAlign: "center" }}>
               <p className="bc" style={{ fontSize: 24, margin: "0 0 4px", letterSpacing: "0.02em" }}>Liaison des pièces</p>
               <p style={{ fontSize: 15, color: "rgba(0,0,0,0.45)", margin: 0 }}>
@@ -932,8 +934,8 @@ export default function PiecesPage() {
 
       {/* ── Modal Commander ── */}
       {isCommandeOpen && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 80, display: "flex", alignItems: "center", justifyContent: "center", padding: "80px 16px 16px" }}>
-          <div className="pop-card" style={{ background: "var(--white)", width: "100%", maxWidth: 640, maxHeight: "calc(100vh - 96px)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 80, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px 12px" }}>
+          <div className="pop-card" style={{ background: "var(--white)", width: "100%", maxWidth: 640, maxHeight: "calc(100dvh - 48px)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
             {/* Header */}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 24px", borderBottom: "2px solid var(--ink)", flexShrink: 0 }}>
               <div>
@@ -1058,8 +1060,8 @@ export default function PiecesPage() {
 
       {/* ── Modal Éditeurs CRUD ── */}
       {isEditeursOpen && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 90, display: "flex", alignItems: "center", justifyContent: "center", padding: "80px 16px 16px" }}>
-          <div className="pop-card" style={{ background: "var(--white)", width: "100%", maxWidth: 640, maxHeight: "calc(100vh - 96px)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 90, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px 12px" }}>
+          <div className="pop-card" style={{ background: "var(--white)", width: "100%", maxWidth: 640, maxHeight: "calc(100dvh - 48px)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
             {/* Header */}
             <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: "18px 24px", borderBottom: "2px solid var(--ink)", flexShrink: 0 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>

@@ -4,6 +4,7 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { PDFDownloadLink } from "@react-pdf/renderer";
 import { ContenuPDF } from "../../components/ContenuPDF";
+import { useIsMobile } from "../../lib/useIsMobile";
 
 const CATEGORIES = [
   { id: "vert",  nom: "Vert",  hex: "#a8e063" },
@@ -24,6 +25,7 @@ export type ContenuType = {
 };
 
 function ContenuPageInner() {
+  const isMobile = useIsMobile();
   const searchParams = useSearchParams();
   const [isClient, setIsClient] = useState(false);
 
@@ -171,15 +173,15 @@ function ContenuPageInner() {
   const totalContenus = Object.values(contenus).flat().reduce((sum, c) => sum + c.quantity, 0);
 
   return (
-    <div style={{ minHeight: '100vh' }}>
+    <div style={{ minHeight: '100dvh' }}>
       {/* Mini header retour */}
-      <div style={{ position: 'sticky', top: 0, zIndex: 100, background: 'var(--cream)', borderBottom: '3px solid var(--ink)', padding: '0 28px', height: 56, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div style={{ position: 'sticky', top: 0, zIndex: 100, background: 'var(--cream)', borderBottom: '3px solid var(--ink)', padding: '0 var(--page-pad-x)', height: 56, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <Link href="/atelier" className="pop-sticker" style={{ background: 'var(--ink)', color: 'var(--white)', textDecoration: 'none', fontSize: 14 }}>← Atelier</Link>
-        <div className="bc" style={{ fontSize: 24, textTransform: 'uppercase', letterSpacing: '.04em', background: 'linear-gradient(135deg,#0d0d0d 40%,#60a5fa)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Impression contenu</div>
-        <div style={{ width: 80 }} />
+        <div className="bc" style={{ fontSize: isMobile ? 17 : 24, textTransform: 'uppercase', letterSpacing: '.04em', background: 'linear-gradient(135deg,#0d0d0d 40%,#60a5fa)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Impression contenu</div>
+        <div style={{ width: isMobile ? 0 : 80 }} />
       </div>
 
-      <div style={{ display: 'flex', gap: 16, padding: '24px 28px', alignItems: 'flex-start' }}>
+      <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: 16, padding: 'var(--page-pad-y) var(--page-pad-x)', alignItems: isMobile ? 'stretch' : 'flex-start' }}>
 
         {/* ── MAIN ── */}
         <main style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
@@ -203,10 +205,13 @@ function ContenuPageInner() {
                 </div>
 
                 {isOpen && (
-                  <div style={{ background: 'var(--cream2)', padding: 16, display: 'flex', gap: 12, alignItems: 'flex-start', borderLeft: '2.5px solid var(--ink)', borderRight: '2.5px solid var(--ink)', borderBottom: '2.5px solid var(--ink)', borderRadius: '0 0 10px 10px' }}>
+                  <div style={{ background: 'var(--cream2)', padding: isMobile ? 10 : 16, display: 'flex', gap: 12, alignItems: 'flex-start', borderLeft: '2.5px solid var(--ink)', borderRight: '2.5px solid var(--ink)', borderBottom: '2.5px solid var(--ink)', borderRadius: '0 0 10px 10px' }}>
 
-                    {/* Alpha scroll */}
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 112, height: 'calc(100vh - 160px)', background: 'var(--white)', border: '2px solid var(--ink)', borderRadius: 20, padding: '6px 3px', boxShadow: '2px 2px 0 var(--ink)', width: 22, flexShrink: 0 }}>
+                    {/* Alpha scroll — retiré sur téléphone : 22px de large
+                        pour 26 lettres, ce n'est pas visable au doigt et ça
+                        prend une colonne sur une largeur déjà comptée. */}
+                    {!isMobile && (
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 112, height: 'calc(100dvh - 160px)', background: 'var(--white)', border: '2px solid var(--ink)', borderRadius: 20, padding: '6px 3px', boxShadow: '2px 2px 0 var(--ink)', width: 22, flexShrink: 0 }}>
                       {"ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").map(l => (
                         <button key={l} onClick={() => scrollToLetter(l, cat.id)} style={{ fontSize: 8, fontWeight: 900, color: 'rgba(0,0,0,0.35)', background: 'none', border: 'none', cursor: 'pointer', flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%' }}
                           onMouseEnter={e => (e.currentTarget.style.color = 'var(--ink)')} onMouseLeave={e => (e.currentTarget.style.color = 'rgba(0,0,0,0.35)')}>
@@ -214,6 +219,7 @@ function ContenuPageInner() {
                         </button>
                       ))}
                     </div>
+                    )}
 
                     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
                       <button onClick={() => ajouterLigne(cat.id)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 14, fontWeight: 700, color: 'rgba(0,0,0,0.45)', background: 'transparent', border: '2px dashed rgba(0,0,0,0.2)', borderRadius: 8, padding: '8px 16px', cursor: 'pointer', width: 'max-content', margin: '0 auto 4px' }}>
@@ -276,7 +282,7 @@ function ContenuPageInner() {
         </main>
 
         {/* ── ASIDE ── */}
-        <aside style={{ width: 300, border: '2.5px solid var(--ink)', borderRadius: 10, boxShadow: '4px 4px 0 var(--ink)', display: 'flex', flexDirection: 'column', height: 'calc(100vh - 80px)', position: 'sticky', top: 68, flexShrink: 0, overflow: 'hidden', background: 'var(--white)' }}>
+        <aside style={{ width: isMobile ? '100%' : 300, border: '2.5px solid var(--ink)', borderRadius: 10, boxShadow: '4px 4px 0 var(--ink)', display: 'flex', flexDirection: 'column', height: isMobile ? 420 : 'calc(100dvh - 80px)', position: isMobile ? 'static' : 'sticky', top: 68, flexShrink: 0, overflow: 'hidden', background: 'var(--white)' }}>
           <div style={{ padding: '16px 18px', borderBottom: '2.5px solid var(--ink)', background: 'var(--cream2)' }}>
             <div className="bc" style={{ fontSize: 20, textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 10 }}>Générateur de fiches</div>
             <input type="text" placeholder="🔍 Rechercher un jeu..." value={recherche} onChange={e => setRecherche(e.target.value)} className="pop-input" style={{ width: '100%', fontSize: 14 }} />

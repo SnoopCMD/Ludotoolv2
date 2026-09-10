@@ -405,26 +405,26 @@ export default function ExportPage() {
       `}</style>
 
       {/* ── Navigation ── */}
-      <header className="flex justify-between items-center w-full max-w-[96%] mx-auto shrink-0 relative">
+      <header className="flex flex-wrap justify-between items-center w-full max-w-[96%] mx-auto shrink-0 relative gap-3">
         <div className="w-10 h-10 bg-black rounded flex items-center justify-center text-white font-black text-xl italic">+</div>
-        <nav className="absolute left-1/2 -translate-x-1/2 bg-[#2d2d2d] text-white p-1.5 rounded-full flex items-center text-sm font-bold shadow-lg z-10 gap-1">
-          <Link href="/" className="px-6 py-2.5 rounded-full hover:bg-white/10 transition">Accueil</Link>
-          <Link href="/inventaire" className="px-6 py-2.5 rounded-full hover:bg-white/10 transition">Inventaire</Link>
-          <Link href="/atelier" className="px-6 py-2.5 rounded-full hover:bg-white/10 transition">Atelier</Link>
-          <Link href="/agenda" className="px-6 py-2.5 rounded-full hover:bg-white/10 transition">Agenda</Link>
-          <Link href="/store" className="px-6 py-2.5 rounded-full hover:bg-white/10 transition">Store</Link>
-          <Link href="/catalogage" className="px-6 py-2.5 rounded-full hover:bg-white/10 transition">Catalogage</Link>
+        <nav className="order-3 w-full overflow-x-auto sm:order-none sm:absolute sm:left-1/2 sm:-translate-x-1/2 sm:w-auto bg-[#2d2d2d] text-white p-1.5 rounded-full flex items-center text-sm font-bold shadow-lg z-10 gap-1">
+          <Link href="/" className="px-4 sm:px-6 py-2.5 rounded-full whitespace-nowrap hover:bg-white/10 transition">Accueil</Link>
+          <Link href="/inventaire" className="px-4 sm:px-6 py-2.5 rounded-full whitespace-nowrap hover:bg-white/10 transition">Inventaire</Link>
+          <Link href="/atelier" className="px-4 sm:px-6 py-2.5 rounded-full whitespace-nowrap hover:bg-white/10 transition">Atelier</Link>
+          <Link href="/agenda" className="px-4 sm:px-6 py-2.5 rounded-full whitespace-nowrap hover:bg-white/10 transition">Agenda</Link>
+          <Link href="/store" className="px-4 sm:px-6 py-2.5 rounded-full whitespace-nowrap hover:bg-white/10 transition">Store</Link>
+          <Link href="/catalogage" className="px-4 sm:px-6 py-2.5 rounded-full whitespace-nowrap hover:bg-white/10 transition">Catalogage</Link>
         </nav>
         <div className="w-10" />
       </header>
 
       {/* ── Contenu principal ── */}
-      <main className="bg-white rounded-[3rem] p-8 lg:p-10 w-full max-w-[96%] mx-auto flex-1 shadow-md flex flex-col gap-6">
+      <main className="bg-white rounded-3xl p-4 sm:rounded-[3rem] sm:p-8 lg:p-10 w-full max-w-[96%] mx-auto flex-1 shadow-md flex flex-col gap-6">
 
         {/* Titre */}
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <h1 className="text-4xl font-black text-black">Export notices Syracuse</h1>
+            <h1 className="text-2xl sm:text-4xl font-black text-black">Export notices Syracuse</h1>
             <p className="text-slate-400 font-medium mt-1">
               Génère un fichier .mrc au format ISO2709 / UNIMARC compatible WIKILUDO
             </p>
@@ -434,7 +434,7 @@ export default function ExportPage() {
           <button
             onClick={exportMrc}
             disabled={selected.size === 0 || isExporting}
-            className="flex items-center gap-2 px-6 py-3.5 bg-black text-white rounded-2xl font-bold text-sm hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0"
+            className="flex items-center justify-center gap-2 w-full sm:w-auto px-6 py-3.5 bg-black text-white rounded-2xl font-bold text-sm hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0"
           >
             {isExporting ? (
               <>
@@ -516,7 +516,7 @@ export default function ExportPage() {
             <p className="font-bold text-slate-400">Aucun jeu trouvé</p>
           </div>
         ) : (
-          <div className="flex flex-col gap-2 overflow-y-auto custom-scroll" style={{ maxHeight: "calc(100vh - 380px)" }}>
+          <div className="flex flex-col gap-2 overflow-y-auto custom-scroll" style={{ maxHeight: "calc(100dvh - 380px)" }}>
             {filtered.map(game => {
               const isSelected = selected.has(game.ean);
               const score = completenessScore(game);

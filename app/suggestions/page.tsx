@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo } from "react";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import NavBar from "../../components/NavBar";
+import { useIsMobile } from "../../lib/useIsMobile";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -209,6 +210,7 @@ function ListBlockView({ block }: { block: NoteListBlock }) {
 // ─── StickyNote ───────────────────────────────────────────────────────────────
 
 function StickyNote({ note, rotation, onClick, onToggleDone }: { note: Suggestion; rotation: number; onClick: () => void; onToggleDone: (e: React.MouseEvent) => void }) {
+  const isMobile = useIsMobile();
   const [hovered, setHovered] = useState(false);
   const col = NOTE_COLORS[note.couleur] ?? NOTE_COLORS.yellow;
   const dateStr = (() => { try { return format(new Date(note.updated_at), 'dd MMM', { locale: fr }); } catch { return ''; } })();
@@ -219,7 +221,7 @@ function StickyNote({ note, rotation, onClick, onToggleDone }: { note: Suggestio
       onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
       onClick={onClick} onKeyDown={e => e.key === 'Enter' && onClick()}
       style={{
-        width: 230, minHeight: 230, flexShrink: 0,
+        width: isMobile ? '100%' : 230, minHeight: isMobile ? 180 : 230, flexShrink: 0,
         background: isDone ? '#f3f4f6' : col.bg,
         border: `2px solid ${isDone ? '#d1d5db' : col.border}`,
         borderRadius: 3, padding: '26px 16px 16px',
@@ -290,13 +292,14 @@ function StickyNote({ note, rotation, onClick, onToggleDone }: { note: Suggestio
 }
 
 function StickyNoteNew({ onClick }: { onClick: () => void }) {
+  const isMobile = useIsMobile();
   const [hovered, setHovered] = useState(false);
   return (
     <div role="button" tabIndex={0}
       onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
       onClick={onClick} onKeyDown={e => e.key === 'Enter' && onClick()}
       style={{
-        width: 230, minHeight: 230, flexShrink: 0,
+        width: isMobile ? '100%' : 230, minHeight: isMobile ? 180 : 230, flexShrink: 0,
         background: hovered ? 'rgba(0,0,0,0.04)' : 'transparent',
         border: `2.5px dashed ${hovered ? 'rgba(0,0,0,0.35)' : 'rgba(0,0,0,0.18)'}`,
         borderRadius: 3, cursor: 'pointer',
@@ -377,7 +380,7 @@ function ModalSuggestion({ note, onClose, onSaved, onDeleted }: {
 
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px 16px', overflowY: 'auto' }}>
-      <div onClick={e => e.stopPropagation()} style={{ maxWidth: 560, width: '95vw', background: col.bg, border: `3px solid ${col.border}`, boxShadow: '10px 14px 50px rgba(0,0,0,0.3)', borderRadius: 6, padding: '32px 28px 24px', position: 'relative' }}>
+      <div onClick={e => e.stopPropagation()} style={{ maxWidth: 560, width: '95vw', background: col.bg, border: `3px solid ${col.border}`, boxShadow: '10px 14px 50px rgba(0,0,0,0.3)', borderRadius: 6, padding: '30px 18px 18px', position: 'relative' }}>
         {/* Scotch */}
         <div style={{ position: 'absolute', top: -12, left: '50%', transform: 'translateX(-50%)', width: 56, height: 22, background: col.tape, opacity: 0.6, borderRadius: 4, boxShadow: '0 2px 6px rgba(0,0,0,0.15)' }} />
 
@@ -531,6 +534,7 @@ function ModalSuggestion({ note, onClose, onSaved, onDeleted }: {
 // ─── Page principale ──────────────────────────────────────────────────────────
 
 export default function SuggestionsPage() {
+  const isMobile = useIsMobile();
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [modal, setModal] = useState<Suggestion | null | undefined>(undefined);
@@ -586,29 +590,29 @@ export default function SuggestionsPage() {
   const handleDeleted = (id: string) => setSuggestions(prev => prev.filter(s => s.id !== id));
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--cream)' }}>
+    <div style={{ minHeight: '100dvh', background: 'var(--cream)' }}>
       <NavBar current="suggestions" />
 
-      <div className="pop-page" style={{ display: 'flex', flexDirection: 'column', gap: 20, paddingTop: 84 }}>
+      <div className="pop-page" style={{ display: 'flex', flexDirection: 'column', gap: 20, paddingTop: 'calc(var(--nav-h) + 20px)' }}>
 
         {/* Titre */}
         <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
           <div>
-            <div className="bc" style={{ fontSize: 72, lineHeight: 0.9, textTransform: 'uppercase', letterSpacing: '-1px', background: 'linear-gradient(135deg, #0d0d0d 40%, #a78bfa)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+            <div className="bc" style={{ fontSize: isMobile ? 40 : 72, lineHeight: 0.9, textTransform: 'uppercase', letterSpacing: '-1px', background: 'linear-gradient(135deg, #0d0d0d 40%, #a78bfa)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
               Suggestions
             </div>
             <div style={{ fontSize: 14, color: 'rgba(0,0,0,0.4)', fontWeight: 500, marginTop: 6 }}>
               Idées et pistes d&apos;amélioration du logiciel
             </div>
           </div>
-          <button onClick={() => setModal(null)} className="pop-btn pop-btn-dark" style={{ fontSize: 15, padding: '10px 20px' }}>
+          <button onClick={() => setModal(null)} className="pop-btn pop-btn-dark" style={{ fontSize: 15, padding: '10px 20px', flex: isMobile ? '1 1 100%' : undefined, justifyContent: 'center' }}>
             + Nouvelle suggestion
           </button>
         </div>
 
         {/* Recherche + filtres statut */}
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-          <div style={{ position: 'relative', flex: 1, maxWidth: 400 }}>
+          <div style={{ position: 'relative', flex: isMobile ? '1 1 100%' : 1, maxWidth: isMobile ? 'none' : 400 }}>
             <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 14, pointerEvents: 'none' }}>🔍</span>
             <input type="text" value={recherche} onChange={e => setRecherche(e.target.value)}
               placeholder="Rechercher dans les suggestions…"
@@ -643,7 +647,7 @@ export default function SuggestionsPage() {
         {isLoading ? (
           <div style={{ textAlign: 'center', padding: '80px 0', color: 'rgba(0,0,0,0.3)', fontWeight: 600, fontSize: 15 }}>Chargement…</div>
         ) : (
-          <div style={{ display: 'flex', flexWrap: 'wrap', flexDirection: 'row', gap: 0, paddingTop: 10, paddingBottom: 10, paddingLeft: 10, paddingRight: 28 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', flexDirection: 'row', gap: isMobile ? 14 : 0, paddingTop: 10, paddingBottom: 10, paddingLeft: isMobile ? 0 : 10, paddingRight: isMobile ? 0 : 28 }}>
             <StickyNoteNew onClick={() => setModal(null)} />
             {filtered.length === 0 ? (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, padding: '60px 0', gap: 10 }}>

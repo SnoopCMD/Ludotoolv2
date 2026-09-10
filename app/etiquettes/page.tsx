@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { PDFDownloadLink } from "@react-pdf/renderer";
+import { useIsMobile } from "../../lib/useIsMobile";
 import { EtiquettesPDF } from "../../components/EtiquettesPDF";
 
 const CATEGORIES = [
@@ -67,6 +68,7 @@ const S = {
 };
 
 export default function EtiquettesPage() {
+  const isMobile = useIsMobile();
   const [isClient, setIsClient] = useState(false);
 
   const [etiquettes, setEtiquettes] = useState<Record<string, Etiquette[]>>({
@@ -245,7 +247,7 @@ export default function EtiquettesPage() {
   const totalEtiquettes = Object.values(etiquettes).flat().reduce((sum, eti) => sum + eti.quantity, 0);
 
   return (
-    <div style={{ minHeight: "100vh", background: "var(--cream)", display: "flex", flexDirection: "column" }}>
+    <div style={{ minHeight: "100dvh", background: "var(--cream)", display: "flex", flexDirection: "column" }}>
 
       {/* Mini sticky header */}
       <header style={{
@@ -253,7 +255,7 @@ export default function EtiquettesPage() {
         height: 56, background: "var(--cream)",
         borderBottom: "2.5px solid var(--ink)",
         display: "flex", alignItems: "center",
-        padding: "0 24px", gap: 16,
+        padding: "0 var(--page-pad-x)", gap: isMobile ? 8 : 16,
       }}>
         <Link href="/atelier" style={{
           display: "inline-flex", alignItems: "center", gap: 6,
@@ -265,7 +267,7 @@ export default function EtiquettesPage() {
         }}>
           ← Atelier
         </Link>
-        <h1 className="bc" style={{ fontSize: 24, letterSpacing: "0.03em", margin: 0,
+        <h1 className="bc" style={{ fontSize: isMobile ? 16 : 24, letterSpacing: "0.03em", margin: 0,
           background: "linear-gradient(90deg, var(--rouge), var(--orange))",
           WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
         }}>
@@ -274,7 +276,7 @@ export default function EtiquettesPage() {
       </header>
 
       {/* Main layout */}
-      <div style={{ display: "flex", gap: 20, padding: "20px 24px", alignItems: "flex-start", flex: 1 }}>
+      <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 20, padding: "var(--page-pad-y) var(--page-pad-x)", alignItems: isMobile ? "stretch" : "flex-start", flex: 1 }}>
 
         {/* Accordions */}
         <main style={{ flex: 1, display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
@@ -343,12 +345,14 @@ export default function EtiquettesPage() {
                     position: "relative",
                   }}>
 
-                    {/* Alpha scroll sidebar */}
+                    {/* Alpha scroll sidebar — masquée sur téléphone : 28px de
+                        large pour 26 lettres, ce n'est pas visable au doigt. */}
+                    {!isMobile && (
                     <div style={{
                       display: "flex", flexDirection: "column", alignItems: "center",
                       justifyContent: "space-between",
                       position: "sticky", top: 112,
-                      height: "calc(100vh - 160px)",
+                      height: "calc(100dvh - 160px)",
                       background: "var(--cream2)",
                       borderRight: "2px solid var(--ink)",
                       borderRadius: "0 0 0 10px",
@@ -371,6 +375,7 @@ export default function EtiquettesPage() {
                         >{l}</button>
                       ))}
                     </div>
+                    )}
 
                     {/* Table */}
                     <div style={{ flex: 1, overflowX: "auto", paddingBottom: 8 }}>
@@ -537,10 +542,10 @@ export default function EtiquettesPage() {
 
         {/* Aside */}
         <aside className="pop-card" style={{
-          width: 300, borderRadius: 10,
+          width: isMobile ? "100%" : 300, borderRadius: 10,
           display: "flex", flexDirection: "column",
-          height: "calc(100vh - 96px)",
-          position: "sticky", top: 76,
+          height: isMobile ? 420 : "calc(100dvh - 96px)",
+          position: isMobile ? "static" : "sticky", top: 76,
           flexShrink: 0, overflow: "hidden",
         }}>
           {/* Aside header */}

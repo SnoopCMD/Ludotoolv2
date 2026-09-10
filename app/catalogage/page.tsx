@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import NavBar from "../../components/NavBar";
+import { useIsMobile } from "../../lib/useIsMobile";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -336,10 +337,10 @@ function ModalCatalogage({ game: initGame, onClose, onSaved }: {
 
   return (
     <div
-      style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 80, display: "flex", alignItems: "center", justifyContent: "center", padding: "80px 16px 16px" }}
+      style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 80, display: "flex", alignItems: "center", justifyContent: "center", padding: "calc(var(--nav-h) + 12px) 12px 12px" }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="pop-card" style={{ width: "100%", maxWidth: 680, maxHeight: "calc(100vh - 96px)", overflow: "hidden", display: "flex", flexDirection: "column" }}>
+      <div className="pop-card" style={{ width: "100%", maxWidth: 680, maxHeight: "calc(100dvh - var(--nav-h) - 36px)", overflow: "hidden", display: "flex", flexDirection: "column" }}>
 
         {/* Header */}
         <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 20px", background: "var(--ink)" }}>
@@ -522,6 +523,7 @@ function ModalCatalogage({ game: initGame, onClose, onSaved }: {
 // ─── Page principale ──────────────────────────────────────────────────────────
 
 function CataloguePageInner() {
+  const isMobile = useIsMobile();
   const searchParams = useSearchParams();
   const [catalogue, setCatalogue] = useState<CatalogueEntry[]>([]);
   const [codesMap, setCodesMap] = useState<Record<string, string[]>>({});
@@ -605,7 +607,7 @@ function CataloguePageInner() {
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: "var(--cream)" }}>
+    <div style={{ minHeight: "100dvh", background: "var(--cream)" }}>
       <NavBar current="catalogage" />
 
       <div className="pop-page" style={{ display: "flex", flexDirection: "column", gap: 20 }}>
@@ -613,10 +615,10 @@ function CataloguePageInner() {
         {/* Titre + export */}
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
           <div>
-            <div className="bc" style={{ fontSize: 80, lineHeight: 0.9, textTransform: "uppercase", letterSpacing: "-1px", background: "linear-gradient(135deg, #0d0d0d 40%, var(--orange))", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>Catalogage</div>
+            <div className="bc" style={{ fontSize: isMobile ? 44 : 80, lineHeight: 0.9, textTransform: "uppercase", letterSpacing: "-1px", background: "linear-gradient(135deg, #0d0d0d 40%, var(--orange))", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>Catalogage</div>
             <p style={{ color: "rgba(0,0,0,0.4)", fontWeight: 500, marginTop: 6, fontSize: 15 }}>Enrichis les notices et exporte-les pour Syracuse</p>
           </div>
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, flexShrink: 0 }}>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: isMobile ? "stretch" : "flex-end", gap: 6, flexShrink: 0, flex: isMobile ? "1 1 100%" : undefined }}>
             <button onClick={exportMrc} disabled={selected.size === 0 || isExporting}
               className="pop-btn pop-btn-dark"
               style={{ opacity: selected.size === 0 || isExporting ? 0.4 : 1, cursor: selected.size === 0 || isExporting ? "not-allowed" : "pointer" }}>
@@ -652,7 +654,7 @@ function CataloguePageInner() {
 
         {/* Filtres */}
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <div style={{ flex: 1, minWidth: 200, position: "relative" }}>
+          <div style={{ flex: 1, minWidth: isMobile ? 0 : 200, position: "relative", width: isMobile ? "100%" : undefined }}>
             <input type="text" value={recherche} onChange={e => setRecherche(e.target.value)}
               placeholder="Rechercher un jeu ou éditeur…"
               className="pop-input" style={{ width: "100%", paddingLeft: 36 }} />
@@ -662,7 +664,7 @@ function CataloguePageInner() {
             style={{ background: filterComplet ? "var(--ink)" : "var(--white)", color: filterComplet ? "var(--cream)" : "var(--ink)" }}>
             Notices complètes (≥ 7/10)
           </button>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginLeft: "auto" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginLeft: isMobile ? 0 : "auto" }}>
             <span style={{ fontSize: 14, color: "rgba(0,0,0,0.4)", fontWeight: 600 }}>{filtered.length} jeu{filtered.length > 1 ? "x" : ""}</span>
             <button onClick={() => setSelected(new Set(filtered.map(g => g.ean)))}
               style={{ fontSize: 13, fontWeight: 700, background: "none", border: "none", cursor: "pointer", textDecoration: "underline", color: "var(--ink)", fontFamily: "inherit" }}>
@@ -678,7 +680,7 @@ function CataloguePageInner() {
             <p style={{ color: "rgba(0,0,0,0.4)", fontWeight: 600, fontSize: 15 }}>Chargement…</p>
           </div>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 6, overflow: "auto", maxHeight: "calc(100vh - 360px)" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, overflow: isMobile ? "visible" : "auto", maxHeight: isMobile ? "none" : "calc(100dvh - 360px)" }}>
             {filtered.map(game => {
               const isSelected = selected.has(game.ean);
               const score = completenessScore(game);

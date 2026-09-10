@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
+import { useIsMobile } from "../../lib/useIsMobile";
 
 type JeuNouveaute = {
   id: string | number;
@@ -37,6 +38,7 @@ const estDepassee = (dateStr?: string | null) => {
 };
 
 export default function NouveautesPage() {
+  const isMobile = useIsMobile();
   const [jeux, setJeux] = useState<JeuNouveaute[]>([]);
   const [jeuxDispos, setJeuxDispos] = useState<JeuNouveaute[]>([]);
   const [rechercheAjout, setRechercheAjout] = useState("");
@@ -179,13 +181,13 @@ export default function NouveautesPage() {
   );
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--cream)', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ minHeight: '100dvh', background: 'var(--cream)', display: 'flex', flexDirection: 'column' }}>
 
       {/* Mini sticky header */}
       <header style={{
         position: 'sticky', top: 0, zIndex: 200, height: 56,
         background: 'var(--cream)', borderBottom: '2.5px solid var(--ink)',
-        display: 'flex', alignItems: 'center', padding: '0 24px', gap: 16,
+        display: 'flex', alignItems: 'center', padding: '0 var(--page-pad-x)', gap: isMobile ? 8 : 16,
       }}>
         <Link href="/inventaire" style={{
           display: 'inline-flex', alignItems: 'center', gap: 6,
@@ -196,19 +198,19 @@ export default function NouveautesPage() {
           fontFamily: 'inherit',
         }}>← Inventaire</Link>
         <h1 className="bc" style={{
-          fontSize: 24, letterSpacing: '0.03em', margin: 0,
+          fontSize: isMobile ? 19 : 24, letterSpacing: '0.03em', margin: 0,
           background: 'linear-gradient(90deg, var(--vert), var(--bleu))',
           WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
         }}>Nouveautés</h1>
       </header>
 
-      <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 1200, width: '100%' }}>
+      <div style={{ padding: 'var(--page-pad-y) var(--page-pad-x)', display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 1200, width: '100%' }}>
         {/* Titre + recherche */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
           <div />
 
           {/* Barre de recherche */}
-          <div style={{ position: 'relative', width: 320, zIndex: 20 }}>
+          <div style={{ position: 'relative', width: isMobile ? '100%' : 320, zIndex: 20 }}>
             <input
               type="text"
               placeholder="Ajouter par nom ou EAN…"
@@ -260,7 +262,7 @@ export default function NouveautesPage() {
                 <span>🎲 Salle Jeux</span>
                 <div />
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : '1fr 1fr', gap: isMobile ? 14 : 20 }}>
 
                 {/* File d'attente */}
                 <div className="pop-card" style={{ padding: 20 }}>
@@ -301,7 +303,7 @@ export default function NouveautesPage() {
                 <span>🟢 Salle Premiers Jeux</span>
                 <div />
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : '1fr 1fr', gap: isMobile ? 14 : 20 }}>
 
                 {/* File d'attente */}
                 <div className="pop-card" style={{ padding: 20 }}>

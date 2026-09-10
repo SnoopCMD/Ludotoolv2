@@ -34,10 +34,10 @@ export default function ConnexionPage() {
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: "var(--cream)" }}>
+    <div style={{ minHeight: "100dvh", background: "var(--cream)" }}>
       <NavBar />
-      <main style={{ paddingTop: 64, display: "flex", alignItems: "flex-start", justifyContent: "center" }}>
-        <div style={{ width: "100%", maxWidth: 400, padding: "48px 16px" }}>
+      <main style={{ paddingTop: "var(--nav-h)", display: "flex", alignItems: "flex-start", justifyContent: "center" }}>
+        <div style={{ width: "100%", maxWidth: 400, padding: "32px var(--page-pad-x)" }}>
           <div className="pop-card" style={{ overflow: "hidden" }}>
             <div style={{ background: "var(--ink)", padding: "18px 22px" }}>
               <h1 className="bc" style={{ fontSize: 26, color: "var(--cream)", margin: 0 }}>Connexion</h1>

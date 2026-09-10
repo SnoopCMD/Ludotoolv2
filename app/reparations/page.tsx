@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useIsMobile } from "../../lib/useIsMobile";
 
 type Reparation = {
   id: number;
@@ -12,6 +13,7 @@ type Reparation = {
 };
 
 export default function ReparationsPage() {
+  const isMobile = useIsMobile();
   const [reparations, setReparations] = useState<Reparation[]>([]);
   const [eanJeu, setEanJeu] = useState("");
   const [nomJeu, setNomJeu] = useState("");
@@ -97,13 +99,13 @@ export default function ReparationsPage() {
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: "var(--cream)", display: "flex", flexDirection: "column" }}>
+    <div style={{ minHeight: "100dvh", background: "var(--cream)", display: "flex", flexDirection: "column" }}>
 
       {/* Mini sticky header */}
       <header style={{
         position: "sticky", top: 0, zIndex: 200, height: 56,
         background: "var(--cream)", borderBottom: "2.5px solid var(--ink)",
-        display: "flex", alignItems: "center", padding: "0 24px", gap: 16,
+        display: "flex", alignItems: "center", padding: "0 var(--page-pad-x)", gap: isMobile ? 8 : 16,
       }}>
         <Link href="/atelier" style={{
           display: "inline-flex", alignItems: "center", gap: 6,
@@ -114,7 +116,7 @@ export default function ReparationsPage() {
           fontFamily: "inherit",
         }}>← Atelier</Link>
         <h1 className="bc" style={{
-          fontSize: 24, letterSpacing: "0.03em", margin: 0,
+          fontSize: isMobile ? 19 : 24, letterSpacing: "0.03em", margin: 0,
           background: "linear-gradient(90deg, var(--orange), var(--rouge))",
           WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
         }}>Réparations</h1>
@@ -125,20 +127,20 @@ export default function ReparationsPage() {
         }}>{aFaire.length} à faire</span>
       </header>
 
-      <div style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: 20, maxWidth: 900, width: "100%" }}>
+      <div style={{ padding: "var(--page-pad-y) var(--page-pad-x)", display: "flex", flexDirection: "column", gap: 20, maxWidth: 900, width: "100%" }}>
 
         {/* Formulaire ajout */}
         <div className="pop-card" style={{ padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
           <p className="bc" style={{ fontSize: 18, margin: 0, letterSpacing: "0.03em" }}>Signaler une réparation</p>
 
-          <div style={{ display: "flex", gap: 12 }}>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
             {/* Code Syracuse */}
             <input
               type="text" placeholder="Code Syracuse..." value={eanJeu}
               onChange={e => setEanJeu(e.target.value)}
               onBlur={() => chercherJeuViaEan(eanJeu)}
               onKeyDown={e => e.key === "Enter" && chercherJeuViaEan(eanJeu)}
-              style={{ ...inp, width: 160, flexShrink: 0 }}
+              style={{ ...inp, width: isMobile ? "100%" : 160, flexShrink: 0 }}
             />
             {/* Nom — avec autocomplétion */}
             <div style={{ flex: 1, position: "relative" }}>
@@ -191,7 +193,7 @@ export default function ReparationsPage() {
               {typeRep === "Autre" && (
                 <input type="text" placeholder="Préciser..." value={customType}
                   onChange={e => setCustomType(e.target.value)}
-                  style={{ ...inp, width: 140 }}
+                  style={{ ...inp, width: isMobile ? "100%" : 140 }}
                 />
               )}
             </div>
@@ -201,14 +203,14 @@ export default function ReparationsPage() {
               type="text" placeholder="Coin déchiré, scotch à remettre..."
               value={desc} onChange={e => setDesc(e.target.value)}
               onKeyDown={e => e.key === "Enter" && ajouterReparation()}
-              style={{ ...inp, flex: 1, minWidth: 180 }}
+              style={{ ...inp, flex: 1, minWidth: isMobile ? 0 : 180 }}
             />
 
             <button
               onClick={ajouterReparation}
               disabled={!nomJeu && !eanJeu}
               className="pop-btn pop-btn-dark"
-              style={{ padding: "9px 20px", fontSize: 15, opacity: (!nomJeu && !eanJeu) ? 0.4 : 1, cursor: (!nomJeu && !eanJeu) ? "not-allowed" : "pointer" }}
+              style={{ padding: "9px 20px", fontSize: 15, flex: isMobile ? "1 1 100%" : undefined, justifyContent: "center", opacity: (!nomJeu && !eanJeu) ? 0.4 : 1, cursor: (!nomJeu && !eanJeu) ? "not-allowed" : "pointer" }}
             >
               <span className="bc" style={{ fontSize: 16 }}>Ajouter</span>
             </button>
