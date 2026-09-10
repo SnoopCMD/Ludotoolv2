@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useRef, useMemo, useCallback, Fragment } from "react";
 import NavBar from "../../components/NavBar";
+import { useIsMobile } from "../../lib/useIsMobile";
 import { format, addDays, startOfWeek, eachDayOfInterval, isToday, parseISO, getDay, differenceInCalendarWeeks } from "date-fns";
 import { fr } from "date-fns/locale";
 
@@ -272,6 +273,7 @@ function ModalJeu({
   onSaved: (j: JvJeu) => void;
   onDeleted?: (id: string) => void;
 }) {
+  const isMobileX = useIsMobile();
   const isNew = !jeu;
 
   // Step 1 = recherche, Step 2 = sélection résultat, Step 3 = formulaire
@@ -428,10 +430,10 @@ function ModalJeu({
     : (CONSOLE_BG_M[form.console ?? 'PS5'] ?? 'var(--cream2)');
 
   const Slabel: React.CSSProperties = { fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: 'rgba(0,0,0,0.4)', marginBottom: 5, display: 'block' };
-  const Sbox: React.CSSProperties  = { background: 'var(--cream)', border: '3px solid var(--ink)', borderRadius: 12, boxShadow: '8px 8px 0 var(--ink)', width: '100%', maxWidth: 520, display: 'flex', flexDirection: 'column', maxHeight: 'calc(100vh - 96px)', overflow: 'hidden', marginBottom: 32 };
+  const Sbox: React.CSSProperties  = { background: 'var(--cream)', border: '3px solid var(--ink)', borderRadius: 12, boxShadow: '8px 8px 0 var(--ink)', width: '100%', maxWidth: 520, display: 'flex', flexDirection: 'column', maxHeight: 'calc(100dvh - var(--nav-h) - 36px)', overflow: 'hidden', marginBottom: 32 };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 50, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '80px 16px 16px', overflowY: 'auto' }}
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 50, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 'calc(var(--nav-h) + 12px) 12px 12px', overflowY: 'auto' }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div style={Sbox}>
 
@@ -579,7 +581,7 @@ function ModalJeu({
                   placeholder="Nom du jeu…" className="pop-input" style={{ width: '100%' }} />
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobileX ? 'minmax(0, 1fr)' : '1fr 1fr', gap: 12 }}>
                 <div>
                   <label style={Slabel}>Console *</label>
                   <select value={form.console ?? "PS5"} onChange={e => set("console", e.target.value as Console)}
@@ -594,7 +596,7 @@ function ModalJeu({
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobileX ? 'repeat(2, minmax(0, 1fr))' : '1fr 1fr 1fr', gap: 12 }}>
                 <div>
                   <label style={Slabel}>Année</label>
                   <input type="number" value={form.annee ?? ""} onChange={e => set("annee", e.target.value ? parseInt(e.target.value) : null)}
@@ -615,7 +617,7 @@ function ModalJeu({
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobileX ? 'minmax(0, 1fr)' : '1fr 1fr', gap: 12 }}>
                 <div>
                   <label style={Slabel}>Éditeur</label>
                   <input type="text" value={form.editeur ?? ""} onChange={e => set("editeur", e.target.value || null)}
@@ -895,9 +897,9 @@ function ModalRotation({
   const isPickerOpen = pickerGroupe !== null;
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 50, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '80px 16px 16px', overflowY: 'auto' }}
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 50, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 'calc(var(--nav-h) + 12px) 12px 12px', overflowY: 'auto' }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="pop-card" style={{ background: 'var(--cream)', width: '100%', maxWidth: isPickerOpen ? 1040 : 560, display: 'flex', flexDirection: 'column', height: isPickerOpen ? 'calc(100vh - 128px)' : undefined, maxHeight: 'calc(100vh - 128px)', overflow: 'hidden', marginBottom: 32, position: 'relative' }}>
+      <div className="pop-card" style={{ background: 'var(--cream)', width: '100%', maxWidth: isPickerOpen ? 1040 : 560, display: 'flex', flexDirection: 'column', height: isPickerOpen ? 'calc(100dvh - var(--nav-h) - 68px)' : undefined, maxHeight: 'calc(100dvh - var(--nav-h) - 68px)', overflow: 'hidden', marginBottom: 32, position: 'relative' }}>
 
         {/* Header */}
         <div style={{ background: headerBgR, padding: '20px 24px 20px', display: 'flex', alignItems: 'center', gap: 12, borderBottom: '2.5px solid var(--ink)', flexShrink: 0 }}>
@@ -1201,6 +1203,7 @@ function ModalRotationPlanning({
   onOpenQueue: (slot: SelectionSlot) => void;
   onClose: () => void;
 }) {
+  const isMobileX = useIsMobile();
   const [isApplying, setIsApplying] = useState(false);
   const [savingSlot, setSavingSlot] = useState<number | null>(null);
 
@@ -1286,7 +1289,7 @@ function ModalRotationPlanning({
   const finSemaine = addDays(currentMonday, 6);
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 50, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '80px 16px 16px', overflowY: 'auto' }}
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 50, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 'calc(var(--nav-h) + 12px) 12px 12px', overflowY: 'auto' }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="pop-card" style={{ background: 'var(--cream)', width: '100%', maxWidth: 720, display: 'flex', flexDirection: 'column', overflow: 'hidden', marginBottom: 32 }}>
 
@@ -1301,7 +1304,7 @@ function ModalRotationPlanning({
           <button onClick={onClose} style={{ width: 36, height: 36, border: '2.5px solid var(--ink)', borderRadius: 8, background: 'var(--white)', fontWeight: 900, fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>✕</button>
         </div>
 
-        <div className="custom-scroll" style={{ overflowY: 'auto', maxHeight: 'calc(100vh - 260px)', padding: 18, display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div className="custom-scroll" style={{ overflowY: 'auto', maxHeight: 'calc(100dvh - var(--nav-h) - 200px)', padding: 18, display: 'flex', flexDirection: 'column', gap: 16 }}>
 
           {/* ── Cette semaine ── */}
           <div className="pop-card" style={{ background: 'var(--white)', padding: 0, overflow: 'hidden', flexShrink: 0 }}>
@@ -1365,7 +1368,7 @@ function ModalRotationPlanning({
             </div>
 
             <div style={{ padding: 16, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, flex: 1, minWidth: 240 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, flex: 1, minWidth: isMobileX ? 0 : 240 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span className="pop-sticker" style={{ fontSize: 11, padding: '4px 11px', background: SLOT_COLOR[currentSlot] }}>{SLOT_LABEL[currentSlot]}</span>
                   <span style={{ fontWeight: 900, fontSize: 16, color: 'rgba(0,0,0,0.35)' }}>→</span>
@@ -1421,7 +1424,7 @@ function ModalRotationPlanning({
                   </div>
 
                   {/* Console */}
-                  <div style={{ width: 116, padding: '10px 8px', flexShrink: 0, display: 'flex', alignItems: 'center' }}>
+                  <div style={{ width: isMobileX ? 84 : 116, padding: '10px 8px', flexShrink: 0, display: 'flex', alignItems: 'center' }}>
                     <span className="pop-sticker" style={{ fontSize: 10, padding: '3px 9px', background: SLOT_COLOR[pSlot], boxShadow: 'none', border: '2px solid var(--ink)' }}>
                       {SLOT_LABEL[pSlot]}
                     </span>
@@ -1505,6 +1508,7 @@ function ModalReservation({
   onClose: () => void;
   onSaved: (r: JvReservation) => void;
 }) {
+  const isMobileX = useIsMobile();
   const [posteId, setPosteId] = useState(prePoste ?? "ps5");
   const [date, setDate] = useState(preDate ?? nextOpenDay());
   const [heureDebut, setHeureDebut] = useState("");
@@ -1617,9 +1621,9 @@ function ModalReservation({
   const Slabel: React.CSSProperties = { fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: 'rgba(0,0,0,0.4)', marginBottom: 5, display: 'block' };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 50, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '80px 16px 16px', overflowY: 'auto' }}
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 50, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 'calc(var(--nav-h) + 12px) 12px 12px', overflowY: 'auto' }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="pop-card" style={{ background: 'var(--cream)', width: '100%', maxWidth: 480, display: 'flex', flexDirection: 'column', maxHeight: 'calc(100vh - 96px)', overflow: 'hidden', marginBottom: 32 }}>
+      <div className="pop-card" style={{ background: 'var(--cream)', width: '100%', maxWidth: 480, display: 'flex', flexDirection: 'column', maxHeight: 'calc(100dvh - var(--nav-h) - 36px)', overflow: 'hidden', marginBottom: 32 }}>
 
         {/* Header */}
         <div style={{ background: 'var(--vert)', padding: '20px 24px', display: 'flex', alignItems: 'center', gap: 12, borderBottom: '2.5px solid var(--ink)', flexShrink: 0 }}>
@@ -1662,7 +1666,7 @@ function ModalReservation({
 
           {/* Heure début + durée */}
           {isJourOuvert && plage && (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobileX ? 'minmax(0, 1fr)' : '1fr 1fr', gap: 10 }}>
               <div>
                 <label style={Slabel}>Début *</label>
                 {availableStartTimes.length > 0 ? (
@@ -1997,9 +2001,9 @@ function ModalReservationDetail({
   const DS_BG: Record<DisplayStatus, string> = { a_venir: 'var(--cream2)', en_cours: '#baff29', passee: 'var(--cream2)', annulee: 'var(--rose)' };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 50, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '80px 16px 16px', overflowY: 'auto' }}
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 50, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 'calc(var(--nav-h) + 12px) 12px 12px', overflowY: 'auto' }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="pop-card" style={{ background: 'var(--cream)', width: '100%', maxWidth: 480, display: 'flex', flexDirection: 'column', maxHeight: 'calc(100vh - 96px)', overflow: 'hidden', marginBottom: 32 }}>
+      <div className="pop-card" style={{ background: 'var(--cream)', width: '100%', maxWidth: 480, display: 'flex', flexDirection: 'column', maxHeight: 'calc(100dvh - var(--nav-h) - 36px)', overflow: 'hidden', marginBottom: 32 }}>
 
         {/* Header */}
         <div style={{ background: DS_BG[displayStatus], padding: '20px 24px', display: 'flex', alignItems: 'center', gap: 12, borderBottom: '2.5px solid var(--ink)', flexShrink: 0 }}>
@@ -2248,6 +2252,7 @@ function TabCatalogue({
   onAdd: () => void;
   onEdit: (j: JvJeu) => void;
 }) {
+  const isMobileX = useIsMobile();
   const [recherche, setRecherche] = useState("");
   const [filtreConsole, setFiltreConsole] = useState<Console | "Toutes">("Toutes");
   const [filtreStatut, setFiltreStatut] = useState<string>("tous");
@@ -2283,9 +2288,9 @@ function TabCatalogue({
             <button key={c}
               onClick={() => setFiltreConsole(filtreConsole === c ? "Toutes" : c)}
               className="pop-card pop-card-hover"
-              style={{ background: isActive ? 'var(--ink)' : CONSOLE_BG[c], padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 4, textAlign: 'left', cursor: 'pointer', width: '100%', position: 'relative', overflow: 'hidden' }}>
+              style={{ background: isActive ? 'var(--ink)' : CONSOLE_BG[c], padding: isMobileX ? '12px 10px' : '18px 20px', display: 'flex', flexDirection: 'column', gap: 4, textAlign: 'left', cursor: 'pointer', width: '100%', position: 'relative', overflow: 'hidden' }}>
               <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(circle,rgba(0,0,0,0.06) 1.2px,transparent 1.2px)', backgroundSize: '12px 12px', pointerEvents: 'none' }} />
-              <span className="bc" style={{ fontSize: 52, lineHeight: 1, color: isActive ? 'var(--white)' : 'var(--ink)', position: 'relative' }}>{counts[c]}</span>
+              <span className="bc" style={{ fontSize: isMobileX ? 32 : 52, lineHeight: 1, color: isActive ? 'var(--white)' : 'var(--ink)', position: 'relative' }}>{counts[c]}</span>
               <span style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: isActive ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.5)', position: 'relative' }}>{c}</span>
             </button>
           );
@@ -2294,7 +2299,7 @@ function TabCatalogue({
 
       {/* Filtres */}
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-        <div style={{ position: 'relative', flex: 1, minWidth: 200 }}>
+        <div style={{ position: 'relative', flex: 1, minWidth: isMobileX ? 0 : 200, width: isMobileX ? '100%' : undefined }}>
           <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 14, pointerEvents: 'none' }}>🔍</span>
           <input type="text" value={recherche} onChange={e => setRecherche(e.target.value)}
             placeholder="Rechercher un jeu…"
@@ -2317,7 +2322,7 @@ function TabCatalogue({
       </div>
 
       {/* Liste */}
-      <div className="custom-scroll" style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 'calc(100vh - 400px)', overflowY: 'auto' }}>
+      <div className="custom-scroll" style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 'calc(100dvh - var(--nav-h) - 340px)', overflowY: 'auto' }}>
         {filtered.length === 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '60px 0', gap: 10 }}>
             <span style={{ fontSize: 48 }}>🎮</span>
@@ -2426,9 +2431,9 @@ function ModalCorrectionSemaine({
   const CONSOLE_BG_CS: Record<string, string> = { PS5: 'var(--bleu)', Switch: 'var(--rouge)', PC: 'var(--cream2)' };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 50, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '80px 16px 16px', overflowY: 'auto' }}
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 50, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 'calc(var(--nav-h) + 12px) 12px 12px', overflowY: 'auto' }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="pop-card" style={{ background: 'var(--cream)', width: '100%', maxWidth: 520, display: 'flex', flexDirection: 'column', maxHeight: 'calc(100vh - 96px)', overflow: 'hidden', marginBottom: 32 }}>
+      <div className="pop-card" style={{ background: 'var(--cream)', width: '100%', maxWidth: 520, display: 'flex', flexDirection: 'column', maxHeight: 'calc(100dvh - var(--nav-h) - 36px)', overflow: 'hidden', marginBottom: 32 }}>
 
         {/* Header */}
         <div style={{ background: CONSOLE_BG_CS[consoleName] ?? 'var(--cream2)', padding: '20px 24px', display: 'flex', alignItems: 'center', gap: 12, borderBottom: '2.5px solid var(--ink)', flexShrink: 0 }}>
@@ -2764,6 +2769,7 @@ function TabReservations({
   onNouvelle: (date?: string, heureDebut?: string, poste?: string) => void;
   onOpenDetail: (r: JvReservation) => void;
 }) {
+  const isMobileX = useIsMobile();
   const [semaine, setSemaine] = useState(new Date());
   const lundi = startOfWeek(semaine, { weekStartsOn: 1 });
   const joursOuverts = eachDayOfInterval({ start: addDays(lundi, 1), end: addDays(lundi, 4) });
@@ -2812,19 +2818,19 @@ function TabReservations({
 
       {/* Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
-        <div className="pop-card" style={{ background: '#baff29', padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div className="pop-card" style={{ background: '#baff29', padding: isMobileX ? '12px 10px' : '16px 20px', display: 'flex', alignItems: 'center', gap: 10 }}>
           {countByStatus.en_cours > 0 && <span className="pulse" style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--vert)', flexShrink: 0, display: 'inline-block' }} />}
           <div>
-            <p className="bc" style={{ fontSize: 40, lineHeight: 1, margin: 0 }}>{countByStatus.en_cours}</p>
+            <p className="bc" style={{ fontSize: isMobileX ? 28 : 40, lineHeight: 1, margin: 0 }}>{countByStatus.en_cours}</p>
             <p style={{ fontSize: 11, fontWeight: 700, color: 'rgba(0,0,0,0.5)', margin: 0, marginTop: 2 }}>En cours</p>
           </div>
         </div>
-        <div className="pop-card" style={{ background: 'var(--cream2)', padding: '16px 20px' }}>
-          <p className="bc" style={{ fontSize: 40, lineHeight: 1, margin: 0 }}>{countByStatus.a_venir}</p>
+        <div className="pop-card" style={{ background: 'var(--cream2)', padding: isMobileX ? '12px 10px' : '16px 20px' }}>
+          <p className="bc" style={{ fontSize: isMobileX ? 28 : 40, lineHeight: 1, margin: 0 }}>{countByStatus.a_venir}</p>
           <p style={{ fontSize: 11, fontWeight: 700, color: 'rgba(0,0,0,0.4)', margin: 0, marginTop: 2 }}>À venir</p>
         </div>
-        <div className="pop-card" style={{ background: 'var(--cream2)', padding: '16px 20px' }}>
-          <p className="bc" style={{ fontSize: 40, lineHeight: 1, margin: 0 }}>{countByStatus.passee}</p>
+        <div className="pop-card" style={{ background: 'var(--cream2)', padding: isMobileX ? '12px 10px' : '16px 20px' }}>
+          <p className="bc" style={{ fontSize: isMobileX ? 28 : 40, lineHeight: 1, margin: 0 }}>{countByStatus.passee}</p>
           <p style={{ fontSize: 11, fontWeight: 700, color: 'rgba(0,0,0,0.4)', margin: 0, marginTop: 2 }}>Passées</p>
         </div>
       </div>
@@ -3585,6 +3591,7 @@ function StickyNote({
   onClick: () => void;
 }) {
   const [hovered, setHovered] = useState(false);
+  const isMobileX = useIsMobile();
   const col = NOTE_COLORS[note.couleur] ?? NOTE_COLORS.yellow;
   const dateStr = (() => {
     try { return format(new Date(note.updated_at), 'dd MMM', { locale: fr }); } catch { return ''; }
@@ -3599,8 +3606,8 @@ function StickyNote({
       onClick={onClick}
       onKeyDown={e => e.key === 'Enter' && onClick()}
       style={{
-        width: 230,
-        minHeight: 230,
+        width: isMobileX ? '100%' : 230,
+        minHeight: isMobileX ? 170 : 230,
         flexShrink: 0,
         background: col.bg,
         border: `2px solid ${col.border}`,
@@ -3711,6 +3718,7 @@ function StickyNote({
 // ─── Carte "Nouvelle note" ────────────────────────────────────────────────────
 
 function StickyNoteNew({ onClick }: { onClick: () => void }) {
+  const isMobileX = useIsMobile();
   const [hovered, setHovered] = useState(false);
   return (
     <div
@@ -3721,8 +3729,8 @@ function StickyNoteNew({ onClick }: { onClick: () => void }) {
       onClick={onClick}
       onKeyDown={e => e.key === 'Enter' && onClick()}
       style={{
-        width: 230,
-        minHeight: 230,
+        width: isMobileX ? '100%' : 230,
+        minHeight: isMobileX ? 170 : 230,
         flexShrink: 0,
         background: hovered ? 'rgba(0,0,0,0.04)' : 'transparent',
         border: `2.5px dashed ${hovered ? 'rgba(0,0,0,0.35)' : 'rgba(0,0,0,0.18)'}`,
@@ -4063,6 +4071,7 @@ function TabNotes({
   onNoteOpen: (note: JvNote) => void;
   onNewNote: () => void;
 }) {
+  const isMobileX = useIsMobile();
   const [recherche, setRecherche] = useState('');
   const [activeTags, setActiveTags] = useState<string[]>([]);
 
@@ -4135,7 +4144,7 @@ function TabNotes({
       )}
 
       {/* Tableau de stickers */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', flexDirection: 'row', gap: 0, paddingTop: 10, paddingBottom: 10, paddingLeft: 10, paddingRight: 28 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', flexDirection: 'row', gap: isMobileX ? 12 : 0, paddingTop: 10, paddingBottom: 10, paddingLeft: isMobileX ? 0 : 10, paddingRight: isMobileX ? 0 : 28 }}>
         <StickyNoteNew onClick={onNewNote} />
 
         {filtered.length === 0 ? (
@@ -4161,6 +4170,7 @@ function TabNotes({
 // ─── Page principale ──────────────────────────────────────────────────────────
 
 export default function JvPage() {
+  const isMobile = useIsMobile();
   const [onglet, setOnglet] = useState<"catalogue" | "selections" | "reservations" | "stats" | "notes">("catalogue");
   const [jeux, setJeux] = useState<JvJeu[]>([]);
   const [selections, setSelections] = useState<JvSelection[]>([]);
@@ -4386,7 +4396,7 @@ export default function JvPage() {
   const totalResasVenir = reservations.filter(r => { const ds = getDisplayStatus(r); return ds === "a_venir" || ds === "en_cours"; }).length;
 
   return (
-    <div style={{ minHeight: '100vh' }}>
+    <div style={{ minHeight: '100dvh' }}>
       <style>{`
         .custom-scroll::-webkit-scrollbar{width:4px}
         .custom-scroll::-webkit-scrollbar-track{background:transparent}
@@ -4398,31 +4408,31 @@ export default function JvPage() {
       <div className="pop-page">
 
         {/* ── PAGE HEADER ── */}
-        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 28, flexWrap: 'wrap', gap: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: isMobile ? 18 : 28, flexWrap: 'wrap', gap: 16 }}>
           <div>
-            <div className="bc" style={{ fontSize: 80, lineHeight: 0.9, textTransform: 'uppercase', letterSpacing: '-1px', background: 'linear-gradient(135deg, #0d0d0d 40%, #60a5fa)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+            <div className="bc" style={{ fontSize: isMobile ? 44 : 80, lineHeight: 0.9, textTransform: 'uppercase', letterSpacing: '-1px', background: 'linear-gradient(135deg, #0d0d0d 40%, #60a5fa)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
               Jeux<br/>Vidéo
             </div>
             <div style={{ fontSize: 14, color: 'rgba(0,0,0,0.4)', marginTop: 6 }}>Catalogue · Sélections · Réservations</div>
           </div>
-          <div style={{ display: 'flex', gap: 10 }}>
-            <div className="pop-card" style={{ padding: '12px 18px', textAlign: 'center', background: 'var(--cream2)', minWidth: 70 }}>
-              <div className="bc" style={{ fontSize: 36, lineHeight: 1 }}>{totalJeux}</div>
+          <div style={{ display: 'flex', gap: 10, flex: isMobile ? '1 1 100%' : undefined }}>
+            <div className="pop-card" style={{ padding: isMobile ? '10px 8px' : '12px 18px', textAlign: 'center', background: 'var(--cream2)', minWidth: 70, flex: isMobile ? 1 : undefined }}>
+              <div className="bc" style={{ fontSize: isMobile ? 26 : 36, lineHeight: 1 }}>{totalJeux}</div>
               <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: 'rgba(0,0,0,0.4)', letterSpacing: '.07em', marginTop: 4 }}>Jeux</div>
             </div>
-            <div className="pop-card" style={{ padding: '12px 18px', textAlign: 'center', background: 'var(--bleu)', minWidth: 70 }}>
-              <div className="bc" style={{ fontSize: 36, lineHeight: 1 }}>{totalConsolesActives}</div>
+            <div className="pop-card" style={{ padding: isMobile ? '10px 8px' : '12px 18px', textAlign: 'center', background: 'var(--bleu)', minWidth: 70, flex: isMobile ? 1 : undefined }}>
+              <div className="bc" style={{ fontSize: isMobile ? 26 : 36, lineHeight: 1 }}>{totalConsolesActives}</div>
               <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: 'rgba(0,0,0,0.4)', letterSpacing: '.07em', marginTop: 4 }}>Consoles</div>
             </div>
-            <div className="pop-card" style={{ padding: '12px 18px', textAlign: 'center', background: '#baff29', minWidth: 70 }}>
-              <div className="bc" style={{ fontSize: 36, lineHeight: 1 }}>{totalResasVenir}</div>
+            <div className="pop-card" style={{ padding: isMobile ? '10px 8px' : '12px 18px', textAlign: 'center', background: '#baff29', minWidth: 70, flex: isMobile ? 1 : undefined }}>
+              <div className="bc" style={{ fontSize: isMobile ? 26 : 36, lineHeight: 1 }}>{totalResasVenir}</div>
               <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: 'rgba(0,0,0,0.4)', letterSpacing: '.07em', marginTop: 4 }}>Résa</div>
             </div>
           </div>
         </div>
 
         {/* ── ONGLETS ── */}
-        <div style={{ display: 'flex', gap: 8, marginBottom: 24, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: isMobile ? 5 : 8, marginBottom: isMobile ? 16 : 24, flexWrap: 'wrap' }}>
           {([
             { key: "catalogue", label: "Catalogue" },
             { key: "selections", label: "Sélections" },
@@ -4431,7 +4441,8 @@ export default function JvPage() {
             { key: "notes", label: " Notes" },
           ] as const).map(t => (
             <button key={t.key} onClick={() => setOnglet(t.key)}
-              className={onglet === t.key ? 'pop-btn pop-btn-dark' : 'pop-btn pop-btn-outline'}>
+              className={onglet === t.key ? 'pop-btn pop-btn-dark' : 'pop-btn pop-btn-outline'}
+              style={isMobile ? { fontSize: 12, padding: '6px 11px', minHeight: 36 } : undefined}>
               {t.label}
             </button>
           ))}
