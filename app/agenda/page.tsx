@@ -1568,7 +1568,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <div>
               <div className="bc" style={{ fontSize: isMobile ? 44 : 80, lineHeight: 0.9, textTransform: "uppercase", letterSpacing: "-1px", background: "linear-gradient(135deg, #0d0d0d 40%, var(--purple))", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>Agenda</div>
-              <div className="bc" style={{ fontSize: 16, color: "rgba(0,0,0,0.35)", marginTop: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+              <div className="bc" style={{ fontSize: isMobile ? 13 : 16, color: "rgba(0,0,0,0.35)", marginTop: 4, textTransform: "uppercase", letterSpacing: "0.06em" }}>
                 {vue === "Mois"
                   ? `${format(dateActuelle, 'MMMM yyyy', { locale: fr })} · Vue Stickers`
                   : `Semaine ${getISOWeek(dateActuelle)} · ${format(startOfWeek(dateActuelle, { weekStartsOn: 1 }), 'd', { locale: fr })}–${format(endOfWeek(dateActuelle, { weekStartsOn: 1 }), 'd MMM yyyy', { locale: fr })}`
@@ -1576,7 +1576,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
               </div>
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
-              <button onClick={() => setDateActuelle(vue === "Mois" ? subMonths(dateActuelle, 1) : subWeeks(dateActuelle, 1))} className="pop-btn pop-btn-outline" style={{ padding: "8px 12px", fontSize: 14 }}>◀</button>
+              <button onClick={() => setDateActuelle(vue === "Mois" ? subMonths(dateActuelle, 1) : subWeeks(dateActuelle, 1))} className="pop-btn pop-btn-outline" style={{ padding: isMobile ? "4px 10px" : "8px 12px", minHeight: isMobile ? 34 : undefined, fontSize: 14 }}>◀</button>
               <div className="pop-card" style={{ display: "flex", padding: "4px 6px", gap: 0 }}>
                 <select value={dateActuelle.getMonth()} onChange={e => setDateActuelle(setMonth(dateActuelle, parseInt(e.target.value)))} style={{ background: "transparent", border: "none", padding: "6px 8px", fontWeight: 700, fontSize: 13, color: "var(--ink)", cursor: "pointer", outline: "none", fontFamily: "inherit" }} className="capitalize">
                   {Array.from({ length: 12 }).map((_, i) => <option key={i} value={i}>{format(new Date(2000, i, 1), 'MMMM', { locale: fr })}</option>)}
@@ -1585,31 +1585,31 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
                   {Array.from({ length: 10 }).map((_, i) => <option key={i} value={new Date().getFullYear() - 2 + i}>{new Date().getFullYear() - 2 + i}</option>)}
                 </select>
               </div>
-              <button onClick={() => setDateActuelle(new Date())} className="pop-btn pop-btn-outline" style={{ fontSize: 13, padding: "8px 14px" }}>Aujourd'hui</button>
-              <button onClick={() => setDateActuelle(vue === "Mois" ? addMonths(dateActuelle, 1) : addWeeks(dateActuelle, 1))} className="pop-btn pop-btn-outline" style={{ padding: "8px 12px", fontSize: 14 }}>▶</button>
+              <button onClick={() => setDateActuelle(new Date())} className="pop-btn pop-btn-outline" style={{ fontSize: isMobile ? 12 : 13, padding: isMobile ? "4px 10px" : "8px 14px", minHeight: isMobile ? 34 : undefined }}>Aujourd'hui</button>
+              <button onClick={() => setDateActuelle(vue === "Mois" ? addMonths(dateActuelle, 1) : addWeeks(dateActuelle, 1))} className="pop-btn pop-btn-outline" style={{ padding: isMobile ? "4px 10px" : "8px 12px", minHeight: isMobile ? 34 : undefined, fontSize: 14 }}>▶</button>
               <div className="pop-card" style={{ display: "flex", padding: 4, gap: 0 }}>
-                <button onClick={() => setVue("Mois")} className="pop-btn" style={{ fontSize: 13, padding: "6px 16px", background: vue === "Mois" ? "var(--yellow)" : "transparent", boxShadow: vue === "Mois" ? "2px 2px 0 var(--ink)" : "none", border: vue === "Mois" ? "2px solid var(--ink)" : "2px solid transparent" }}>Mois</button>
-                <button onClick={() => setVue("Semaine")} className="pop-btn" style={{ fontSize: 13, padding: "6px 16px", background: vue === "Semaine" ? "var(--yellow)" : "transparent", boxShadow: vue === "Semaine" ? "2px 2px 0 var(--ink)" : "none", border: vue === "Semaine" ? "2px solid var(--ink)" : "2px solid transparent" }}>Semaine</button>
+                <button onClick={() => setVue("Mois")} className="pop-btn" style={{ fontSize: isMobile ? 12 : 13, padding: isMobile ? "4px 12px" : "6px 16px", minHeight: isMobile ? 34 : undefined, background: vue === "Mois" ? "var(--yellow)" : "transparent", boxShadow: vue === "Mois" ? "2px 2px 0 var(--ink)" : "none", border: vue === "Mois" ? "2px solid var(--ink)" : "2px solid transparent" }}>Mois</button>
+                <button onClick={() => setVue("Semaine")} className="pop-btn" style={{ fontSize: isMobile ? 12 : 13, padding: isMobile ? "4px 12px" : "6px 16px", minHeight: isMobile ? 34 : undefined, background: vue === "Semaine" ? "var(--yellow)" : "transparent", boxShadow: vue === "Semaine" ? "2px 2px 0 var(--ink)" : "none", border: vue === "Semaine" ? "2px solid var(--ink)" : "2px solid transparent" }}>Semaine</button>
               </div>
             </div>
           </div>
 
           <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
             {!isDraftMode && (
-              <button onClick={toggleDraftMode} className="pop-btn pop-btn-outline" style={{ fontSize: 13, background: "#fff7ed", borderColor: "#fb923c", color: "#ea580c" }}>
+              <button onClick={toggleDraftMode} className="pop-btn pop-btn-outline" style={{ fontSize: isMobile ? 12 : 13, padding: isMobile ? "4px 10px" : undefined, minHeight: isMobile ? 34 : undefined, background: "#fff7ed", borderColor: "#fb923c", color: "#ea580c" }}>
                 🛠️ Prévision
               </button>
             )}
-            <button onClick={() => setShowEventsListPanel(true)} className="pop-btn pop-btn-outline" style={{ fontSize: 13 }}>Événements</button>
-            <button onClick={() => { setOngletMembre("profil"); setShowEquipePanel(true); }} className="pop-btn pop-btn-outline" style={{ fontSize: 13 }}>Équipe</button>
-            <button onClick={() => setShowSettings(!showSettings)} className="pop-btn pop-btn-outline" style={{ fontSize: 13, padding: "6px 10px" }}>Réglages</button>
+            <button onClick={() => setShowEventsListPanel(true)} className="pop-btn pop-btn-outline" style={{ fontSize: isMobile ? 12 : 13, padding: isMobile ? "4px 10px" : undefined, minHeight: isMobile ? 34 : undefined }}>Événements</button>
+            <button onClick={() => { setOngletMembre("profil"); setShowEquipePanel(true); }} className="pop-btn pop-btn-outline" style={{ fontSize: isMobile ? 12 : 13, padding: isMobile ? "4px 10px" : undefined, minHeight: isMobile ? 34 : undefined }}>Équipe</button>
+            <button onClick={() => setShowSettings(!showSettings)} className="pop-btn pop-btn-outline" style={{ fontSize: isMobile ? 12 : 13, padding: isMobile ? "4px 10px" : "6px 10px", minHeight: isMobile ? 34 : undefined }}>Réglages</button>
             <button onClick={() => {
               const dStr = format(dateActuelle, 'yyyy-MM-dd');
               setNouvelEvent({...eventParDefaut, date_debut: dStr, date_fin: dStr});
               setEditMode('single');
               setRep({ active: false, interval: 1, period: 'weeks', date_limite: format(addMonths(new Date(), 1), 'yyyy-MM-dd'), rotation: false });
               setShowEventModal(true);
-            }} className="pop-btn pop-btn-dark" style={{ fontSize: 13 }}>+ Ajouter</button>
+            }} className="pop-btn pop-btn-dark" style={{ fontSize: isMobile ? 12 : 13, padding: isMobile ? "4px 12px" : undefined, minHeight: isMobile ? 34 : undefined }}>+ Ajouter</button>
           </div>
         </div>
 
@@ -1639,8 +1639,14 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
           </div>
         )}
 
-        <div className="pop-card" style={{ display: "flex", flexDirection: "column", overflow: "hidden", flex: 1 }}>
-          <div style={{ display: "grid", borderBottom: "2px solid var(--ink)", background: "var(--ink)", borderRadius: "10px 10px 0 0", gridTemplateColumns: vue === "Semaine" ? `60px repeat(${nbColonnesSemaine}, 1fr)` : "repeat(7, 1fr)" }}>
+        {/* `flex: 1` vaut `flex: 1 1 0%` : la hauteur de la carte vient de
+            l'espace libre du conteneur, pas de son contenu. Sur desktop il en
+            reste assez pour les six rangees du mois ; sur telephone l'entete
+            en mange la majeure partie et `overflow: hidden` coupait le
+            calendrier au bout de deux rangees. La carte prend donc sa hauteur
+            naturelle sur telephone, et c'est la page qui defile. */}
+        <div className="pop-card" style={{ display: "flex", flexDirection: "column", overflow: "hidden", flex: isMobile ? "none" : 1 }}>
+          <div style={{ display: "grid", borderBottom: "2px solid var(--ink)", background: "var(--ink)", borderRadius: "10px 10px 0 0", gridTemplateColumns: vue === "Semaine" ? `60px repeat(${nbColonnesSemaine}, minmax(0, 1fr))` : "repeat(7, minmax(0, 1fr))" }}>
             {vue === "Semaine" && <div style={{ padding: "10px 0" }}></div>}
             {vue === "Semaine"
               ? joursSemaineVisibles.map((jour) => {
@@ -1662,7 +1668,10 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
           <div style={{ height: 6, background: "linear-gradient(90deg,#a8e063 0%,#a8e063 16.6%,#f472b6 16.6%,#f472b6 33.2%,#60a5fa 33.2%,#60a5fa 49.8%,#f87171 49.8%,#f87171 66.4%,#fb923c 66.4%,#fb923c 83%,#c084fc 83%,#c084fc 100%)", flexShrink: 0 }}></div>
 
           {vue === "Mois" ? (
-            <div style={{ flex: 1, display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gridAutoRows: "1fr" }}>
+            /* `1fr` vaut `minmax(auto, 1fr)` : toutes les rangées s'alignent
+               sur la plus chargée, ce qui gonfle la grille dès qu'une cellule
+               déborde. Sur téléphone chaque rangée prend sa propre hauteur. */
+            <div style={{ flex: 1, display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gridAutoRows: isMobile ? "minmax(66px, auto)" : "1fr" }}>
               {joursAffiches.map((jour, i) => {
                 const dateKey = format(jour, 'yyyy-MM-dd');
                 const nomFerie = joursFeries[dateKey];
@@ -1749,10 +1758,10 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
                           <div key={`dot-${idx}`} style={{ width: 9, height: 9, borderRadius: "50%", backgroundColor: getEventColor(ev.type), border: "1.5px solid var(--ink)", flexShrink: 0 }}></div>
                         ))}
                       </div>
-                      <VacancePastilles zones={zonesVacances} size={17} style={{ flexShrink: 0, marginRight: 4, marginTop: 1 }} />
+                      <VacancePastilles zones={zonesVacances} size={isMobile ? 11 : 17} style={{ flexShrink: 0, marginRight: isMobile ? 2 : 4, marginTop: 1 }} />
                       {isToday(jour) ? (
                         <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
-                          <span className="bc" style={{ fontSize: 20, lineHeight: 1, letterSpacing: "-0.5px" }}>
+                          <span className="bc" style={{ fontSize: isMobile ? 15 : 20, lineHeight: 1, letterSpacing: "-0.5px" }}>
                             {format(jour, 'd')}
                           </span>
                           <span style={{ background: "var(--ink)", color: "var(--yellow)", borderRadius: 4, padding: "1px 5px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em" }}>
@@ -1761,8 +1770,8 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
                         </div>
                       ) : (
                         <span style={{
-                          fontWeight: 900, fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center",
-                          width: 26, height: 26, borderRadius: "50%", flexShrink: 0,
+                          fontWeight: 900, fontSize: isMobile ? 12 : 13, display: "flex", alignItems: "center", justifyContent: "center",
+                          width: isMobile ? 18 : 26, height: isMobile ? 18 : 26, borderRadius: "50%", flexShrink: 0,
                           background: "transparent",
                           color: nomFerie ? "var(--rouge)" : "var(--ink)",
                         }}>
@@ -1854,8 +1863,8 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
                   </div>
                 ))}
               </div>
-              <div style={{ flex: 1, display: "grid", gridTemplateColumns: `repeat(${nbColonnesSemaine}, 1fr)`, position: "relative" }}>
-                <div style={{ position: "absolute", inset: 0, display: "grid", gridTemplateColumns: `repeat(${nbColonnesSemaine}, 1fr)`, pointerEvents: "none" }}>
+              <div style={{ flex: 1, display: "grid", gridTemplateColumns: `repeat(${nbColonnesSemaine}, minmax(0, 1fr))`, position: "relative" }}>
+                <div style={{ position: "absolute", inset: 0, display: "grid", gridTemplateColumns: `repeat(${nbColonnesSemaine}, minmax(0, 1fr))`, pointerEvents: "none" }}>
                   {Array.from({ length: nbColonnesSemaine }).map((_, i) => (
                     <div key={i} style={{ borderRight: "1px solid rgba(0,0,0,0.07)" }}></div>
                   ))}
