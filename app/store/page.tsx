@@ -1548,7 +1548,7 @@ ${filtered.map(l => `<tr>
                               </td>
                             )}
                             <td style={{ padding: "10px 16px" }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                                 {i < 3 && !filterConsole && !modeVerification && <span style={{ fontSize: 14, flexShrink: 0 }}>{["🥇", "🥈", "🥉"][i]}</span>}
                                 {ligne.image_url ? <img src={ligne.image_url} alt="" style={{ width: 36, height: 36, objectFit: "contain", borderRadius: 6, background: "var(--cream2)", flexShrink: 0 }} />
                                   : <div style={{ width: 36, height: 36, borderRadius: 6, background: "var(--cream2)", flexShrink: 0 }} />}
@@ -1748,7 +1748,7 @@ ${filtered.map(l => `<tr>
                             onMouseEnter={e => (e.currentTarget.style.background = "var(--cream)")}
                             onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
                             <td style={{ padding: "10px 16px" }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                                 {ligne.image_url ? <img src={ligne.image_url} alt="" style={{ width: 36, height: 36, objectFit: "contain", borderRadius: 6, background: "var(--cream2)", flexShrink: 0 }} />
                                   : <div style={{ width: 36, height: 36, borderRadius: 6, background: "var(--cream2)", flexShrink: 0 }} />}
                                 <div>
