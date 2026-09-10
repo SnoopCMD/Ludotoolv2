@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import NavBar from "../../components/NavBar";
+import { useIsMobile } from "../../lib/useIsMobile";
 
 const BarcodeIcon = () => (
   <svg width="22" height="16" viewBox="0 0 24 18" fill="none" stroke="black" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="mr-1.5 opacity-80">
@@ -72,6 +73,7 @@ let uidCounter = 0;
 const nextUid = () => ++uidCounter;
 
 export default function Home() {
+  const isMobile = useIsMobile();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isListeOpen, setIsListeOpen] = useState(false);
   const [etapeActive, setEtapeActive] = useState<string | null>(null);
@@ -433,7 +435,7 @@ export default function Home() {
           <input type="text" value={jeu.nom}
             onChange={e => setter(prev => { const l = [...prev]; l[index] = { ...l[index], nom: e.target.value }; return l; })}
             onBlur={() => setEditingIdx(null)} onKeyDown={e => e.key === "Enter" && setEditingIdx(null)}
-            autoFocus style={{ fontWeight: 700, fontSize: 18, background: 'transparent', borderBottom: '2px solid var(--ink)', outline: 'none', width: 200 }} />
+            autoFocus style={{ fontWeight: 700, fontSize: 18, background: 'transparent', borderBottom: '2px solid var(--ink)', outline: 'none', width: 200, maxWidth: '100%' }} />
         ) : (
           <span style={{ fontWeight: 700, fontSize: 18 }}>{jeu.nom}</span>
         )}
@@ -461,7 +463,7 @@ export default function Home() {
           <input type="text" value={jeu.ean === "Manuel" ? "" : jeu.ean}
             onChange={e => setter(prev => { const l = [...prev]; l[index] = { ...l[index], ean: e.target.value || "Manuel" }; return l; })}
             onBlur={() => setEditingEanIdx(null)} onKeyDown={e => e.key === "Enter" && setEditingEanIdx(null)}
-            autoFocus style={{ background: 'transparent', borderBottom: '2px solid var(--ink)', outline: 'none', width: 160, fontSize: 13 }} />
+            autoFocus style={{ background: 'transparent', borderBottom: '2px solid var(--ink)', outline: 'none', width: 160, maxWidth: '100%', fontSize: 13 }} />
         ) : <span>EAN : {jeu.ean}</span>}
       </div>
       <div style={{ display: 'flex', gap: 5, marginBottom: 10 }}>
@@ -499,13 +501,13 @@ export default function Home() {
   );
 
   const S = {
-    modal:    { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '80px 16px 16px' } as React.CSSProperties,
-    modalBox: { background: 'var(--cream)', border: '3px solid var(--ink)', borderRadius: 12, boxShadow: '8px 8px 0 var(--ink)', width: '100%', display: 'flex', flexDirection: 'column', maxHeight: 'calc(100vh - 96px)', overflow: 'hidden' } as React.CSSProperties,
+    modal:    { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'calc(var(--nav-h) + 12px) 12px 12px' } as React.CSSProperties,
+    modalBox: { background: 'var(--cream)', border: '3px solid var(--ink)', borderRadius: 12, boxShadow: '8px 8px 0 var(--ink)', width: '100%', display: 'flex', flexDirection: 'column', maxHeight: 'calc(100dvh - var(--nav-h) - 36px)', overflow: 'hidden' } as React.CSSProperties,
     closeBtn: { width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--ink)', color: 'var(--white)', border: '2px solid var(--ink)', borderRadius: 6, boxShadow: '2px 2px 0 rgba(0,0,0,0.3)', fontWeight: 700, fontSize: 16, cursor: 'pointer', flexShrink: 0 } as React.CSSProperties,
   };
 
   return (
-    <div style={{ minHeight: '100vh' }}>
+    <div style={{ minHeight: '100dvh' }}>
       <style>{`
         input[type="checkbox"].custom-cb { accent-color: #0d0d0d; width: 1.1rem; height: 1.1rem; cursor: pointer; }
         input[type="checkbox"].custom-cb:disabled { cursor: default; opacity: 0.5; }
@@ -516,15 +518,15 @@ export default function Home() {
       <div className="pop-page">
 
         {/* ── PAGE HEADER ── */}
-        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 28 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: isMobile ? 18 : 28, flexWrap: 'wrap', gap: 12 }}>
           <div>
-            <div className="bc" style={{ fontSize: 80, lineHeight: 0.9, textTransform: 'uppercase', letterSpacing: '-1px', background: 'linear-gradient(135deg, #0d0d0d 40%, #a8e063)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+            <div className="bc" style={{ fontSize: isMobile ? 44 : 80, lineHeight: 0.9, textTransform: 'uppercase', letterSpacing: '-1px', background: 'linear-gradient(135deg, #0d0d0d 40%, #a8e063)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
               Atelier
             </div>
             <div style={{ fontSize: 14, color: 'rgba(0,0,0,0.4)', marginTop: 6 }}>{totalEnPrepa} jeux en préparation</div>
           </div>
-          <div style={{ display: 'flex', gap: 10 }}>
-            <button onClick={() => { setIsCommandesOpen(true); fetchHistorique(); }} className="pop-btn pop-btn-outline">
+          <div style={{ display: 'flex', gap: 10, flex: isMobile ? '1 1 100%' : undefined }}>
+            <button onClick={() => { setIsCommandesOpen(true); fetchHistorique(); }} className="pop-btn pop-btn-outline" style={{ flex: isMobile ? 1 : undefined, justifyContent: 'center' }}>
               📦 Réceptions
               {historiqueEntrees.length > 0 && (
                 <span style={{ background: 'var(--bleu)', color: 'var(--ink)', border: '2px solid var(--ink)', borderRadius: 20, padding: '1px 7px', fontSize: 12, fontWeight: 700, marginLeft: 4 }}>
@@ -532,26 +534,28 @@ export default function Home() {
                 </span>
               )}
             </button>
-            <button onClick={() => setIsModalOpen(true)} className="pop-btn pop-btn-dark">+ Ajouter un jeu</button>
+            <button onClick={() => setIsModalOpen(true)} className="pop-btn pop-btn-dark" style={{ flex: isMobile ? 1 : undefined, justifyContent: 'center' }}>+ Ajouter un jeu</button>
           </div>
         </div>
 
         {/* ── MAIN 3-COL GRID ── */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14, marginBottom: 20 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : '1fr 1fr 1fr', gap: 14, marginBottom: 20 }}>
 
           {/* Compteur */}
           <div
             onClick={() => { setIsListeOpen(true); setRechercheJeu(""); }}
-            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 380, position: 'relative', overflow: 'visible', cursor: 'pointer' }}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: isMobile ? 250 : 380, position: 'relative', overflow: 'visible', cursor: 'pointer' }}
             onMouseEnter={e => { const s = e.currentTarget.querySelector<HTMLElement>('.sticker-main'); if (s) s.style.transform = 'rotate(-3deg) scale(1.04)'; }}
             onMouseLeave={e => { const s = e.currentTarget.querySelector<HTMLElement>('.sticker-main'); if (s) s.style.transform = 'rotate(-4deg) scale(1)'; }}
           >
             <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(circle,rgba(0,0,0,0.06) 1.5px,transparent 1.5px)', backgroundSize: '14px 14px', borderRadius: 10, pointerEvents: 'none' }} />
-            <div className="sticker-main" style={{ background: 'var(--yellow)', border: '4px solid var(--ink)', borderRadius: 22, padding: '32px 52px', transform: 'rotate(-4deg) scale(1)', boxShadow: '10px 10px 0 var(--ink)', transition: 'transform .15s ease', textAlign: 'center', position: 'relative', zIndex: 1, userSelect: 'none' }}>
+            {/* Le gros chiffre jaune : à 180px il déborderait largement d'un
+                écran de téléphone, gros comme il est déjà penché de 4°. */}
+            <div className="sticker-main" style={{ background: 'var(--yellow)', border: '4px solid var(--ink)', borderRadius: 22, padding: isMobile ? '20px 28px' : '32px 52px', transform: 'rotate(-4deg) scale(1)', boxShadow: isMobile ? '6px 6px 0 var(--ink)' : '10px 10px 0 var(--ink)', transition: 'transform .15s ease', textAlign: 'center', position: 'relative', zIndex: 1, userSelect: 'none' }}>
               <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(circle,rgba(0,0,0,0.07) 1.2px,transparent 1.2px)', backgroundSize: '12px 12px', borderRadius: 18, pointerEvents: 'none' }} />
               <div style={{ position: 'absolute', top: -18, left: '50%', transform: 'translateX(-50%)', background: 'var(--ink)', color: 'var(--white)', border: '2.5px solid var(--ink)', borderRadius: 20, padding: '4px 18px', fontWeight: 700, fontSize: 14, textTransform: 'uppercase', letterSpacing: '.1em', boxShadow: '2px 2px 0 rgba(0,0,0,0.3)', whiteSpace: 'nowrap' }}>En préparation</div>
-              <div className="bc" style={{ fontSize: 180, lineHeight: 0.88, letterSpacing: '-8px', color: 'var(--ink)', position: 'relative', zIndex: 1, marginTop: 16 }}>{formatNum(totalEnPrepa)}</div>
-              <div style={{ fontSize: 15, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.12em', color: 'rgba(0,0,0,0.5)', marginTop: 10, position: 'relative', zIndex: 1 }}>Jeux en préparation</div>
+              <div className="bc" style={{ fontSize: isMobile ? 92 : 180, lineHeight: 0.88, letterSpacing: isMobile ? '-4px' : '-8px', color: 'var(--ink)', position: 'relative', zIndex: 1, marginTop: 16 }}>{formatNum(totalEnPrepa)}</div>
+              <div style={{ fontSize: isMobile ? 12 : 15, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.12em', color: 'rgba(0,0,0,0.5)', marginTop: 10, position: 'relative', zIndex: 1 }}>Jeux en préparation</div>
               <div style={{ marginTop: 14, position: 'relative', zIndex: 1 }} onClick={e => e.stopPropagation()}>
                 <input type="text" placeholder="Rechercher un jeu…" value={rechercheJeu}
                   onChange={e => { setRechercheJeu(e.target.value); setIsSearchDropdownOpen(true); }}
@@ -575,10 +579,10 @@ export default function Home() {
           </div>
 
           {/* Impression */}
-          <div className="pop-card" style={{ background: 'var(--vert)', padding: 28, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', position: 'relative', overflow: 'hidden' }}>
+          <div className="pop-card" style={{ background: 'var(--vert)', padding: isMobile ? 18 : 28, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', position: 'relative', overflow: 'hidden' }}>
             <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(circle,rgba(0,0,0,0.09) 1.2px,transparent 1.2px)', backgroundSize: '12px 12px', pointerEvents: 'none' }} />
             <div style={{ position: 'relative', zIndex: 1 }}>
-              <div className="bc" style={{ fontSize: 32, textTransform: 'uppercase', letterSpacing: '.02em', marginBottom: 20 }}>Impression</div>
+              <div className="bc" style={{ fontSize: isMobile ? 24 : 32, textTransform: 'uppercase', letterSpacing: '.02em', marginBottom: isMobile ? 14 : 20 }}>Impression</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <Link href="/etiquettes"><button className="pop-btn pop-btn-dark" style={{ width: '100%', justifyContent: 'center' }}>Étiquettes →</button></Link>
                 <Link href="/contenu"><button className="pop-btn" style={{ width: '100%', justifyContent: 'center', background: 'var(--white)' }}>Contenu →</button></Link>
@@ -587,10 +591,10 @@ export default function Home() {
           </div>
 
           {/* Réparation */}
-          <div className="pop-card" style={{ background: 'var(--orange)', padding: 28, display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden' }}>
+          <div className="pop-card" style={{ background: 'var(--orange)', padding: isMobile ? 18 : 28, display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden' }}>
             <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(circle,rgba(0,0,0,0.09) 1.2px,transparent 1.2px)', backgroundSize: '12px 12px', pointerEvents: 'none' }} />
             <div style={{ position: 'relative', zIndex: 1 }}>
-              <div className="bc" style={{ fontSize: 32, textTransform: 'uppercase', letterSpacing: '.02em', marginBottom: 16 }}>Réparation</div>
+              <div className="bc" style={{ fontSize: isMobile ? 24 : 32, textTransform: 'uppercase', letterSpacing: '.02em', marginBottom: isMobile ? 12 : 16 }}>Réparation</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {[
                   { href: '/reparations', label: '🛠️ À réparer',      count: nbReparations },
@@ -610,20 +614,22 @@ export default function Home() {
         </div>
 
         {/* ── ÉTAPES ── */}
-        <div className="pop-card" style={{ background: 'var(--ink)', padding: '28px 32px', position: 'relative', overflow: 'hidden' }}>
+        <div className="pop-card" style={{ background: 'var(--ink)', padding: isMobile ? '18px 16px' : '28px 32px', position: 'relative', overflow: 'hidden' }}>
           <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(circle,rgba(255,255,255,0.05) 1px,transparent 1px)', backgroundSize: '16px 16px', pointerEvents: 'none' }} />
           <div style={{ position: 'relative', zIndex: 1 }}>
             <div className="bc" style={{ fontSize: 24, textTransform: 'uppercase', letterSpacing: '.04em', color: 'rgba(255,255,255,0.55)', marginBottom: 18, borderBottom: '3px solid rgba(255,255,255,0.1)', paddingBottom: 10 }}>Préparations à faire</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 10 }}>
+            {/* Sept étapes : trois par ligne sur téléphone. À sept colonnes
+                chaque carré ferait 40px de côté, chiffre compris. */}
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(3, 1fr)' : 'repeat(7, 1fr)', gap: isMobile ? 8 : 10 }}>
               {etapesVisuelles.map(etape => (
                 <div key={etape.id}
                   onClick={() => { setEtapeActive(etape.id); setRechercheEtape(""); setJeuxSelectionnes([]); }}
-                  style={{ background: etape.hex, border: '2.5px solid var(--ink)', borderRadius: 10, boxShadow: '4px 4px 0 rgba(0,0,0,0.4)', padding: '16px 14px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', aspectRatio: '1', cursor: 'pointer', transition: 'transform .12s, box-shadow .12s', position: 'relative', overflow: 'hidden' }}
+                  style={{ background: etape.hex, border: '2.5px solid var(--ink)', borderRadius: 10, boxShadow: '4px 4px 0 rgba(0,0,0,0.4)', padding: isMobile ? '10px 10px' : '16px 14px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', aspectRatio: '1', cursor: 'pointer', transition: 'transform .12s, box-shadow .12s', position: 'relative', overflow: 'hidden' }}
                   onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'translate(-2px,-2px)'; (e.currentTarget as HTMLElement).style.boxShadow = '6px 6px 0 rgba(0,0,0,0.4)'; }}
                   onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = ''; (e.currentTarget as HTMLElement).style.boxShadow = '4px 4px 0 rgba(0,0,0,0.4)'; }}>
                   <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(circle,rgba(0,0,0,0.07) 1px,transparent 1px)', backgroundSize: '10px 10px', pointerEvents: 'none' }} />
-                  <span style={{ fontWeight: 700, fontSize: 13, textTransform: 'uppercase', letterSpacing: '.04em', position: 'relative', zIndex: 1 }}>{etape.nom}</span>
-                  <span className="bc" style={{ fontSize: 52, lineHeight: 1, letterSpacing: '-2px', position: 'relative', zIndex: 1 }}>{formatNum(comptesEtapes[etape.id] || 0)}</span>
+                  <span style={{ fontWeight: 700, fontSize: isMobile ? 10 : 13, textTransform: 'uppercase', letterSpacing: '.04em', position: 'relative', zIndex: 1, lineHeight: 1.2 }}>{etape.nom}</span>
+                  <span className="bc" style={{ fontSize: isMobile ? 34 : 52, lineHeight: 1, letterSpacing: '-2px', position: 'relative', zIndex: 1 }}>{formatNum(comptesEtapes[etape.id] || 0)}</span>
                 </div>
               ))}
             </div>
@@ -661,7 +667,7 @@ export default function Home() {
                 ))
               }
             </div>
-            <div style={{ padding: '16px 24px', borderTop: '3px solid var(--ink)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+            <div style={{ padding: '16px 24px', borderTop: '3px solid var(--ink)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
               <button style={{ fontWeight: 700, fontSize: 15, background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(0,0,0,0.5)', textDecoration: 'underline' }}
                 onClick={() => setJeuxSelectionnes(jeuxPourEtapeActive.length === jeuxSelectionnes.length ? [] : jeuxPourEtapeActive.map(j => j.id))}>
                 {jeuxPourEtapeActive.length === jeuxSelectionnes.length ? "Tout désélectionner" : "Tout sélectionner"}
@@ -787,7 +793,7 @@ export default function Home() {
               <div className="bc" style={{ fontSize: 24, textTransform: 'uppercase' }}>Ajouter des jeux</div>
               <button style={S.closeBtn} onClick={() => setIsModalOpen(false)}>✕</button>
             </div>
-            <div style={{ padding: '16px 24px', borderBottom: '2px solid var(--cream2)', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div style={{ padding: '16px 24px', borderBottom: '2px solid var(--cream2)', display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : '1fr 1fr', gap: 12 }}>
               <div>
                 <div style={{ fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: 'rgba(0,0,0,0.45)', marginBottom: 6 }}>Scanner un EAN</div>
                 <input type="text" value={eanInput} onChange={e => setEanInput(e.target.value)} onKeyDown={ajouterEan} className="pop-input" style={{ width: '100%' }} placeholder="Ex: 3770001874241" autoFocus />
@@ -837,7 +843,7 @@ export default function Home() {
                 <div className="bc" style={{ fontSize: 15, textTransform: 'uppercase', letterSpacing: '.06em', color: 'rgba(0,0,0,0.4)', marginBottom: 12 }}>
                   Jeux reçus aujourd&apos;hui — {new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : '1fr 1fr', gap: 12, marginBottom: 12 }}>
                   <div>
                     <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: 'rgba(0,0,0,0.4)', marginBottom: 5 }}>Scanner un EAN</div>
                     <input type="text" value={eanReceptionInput} onChange={e => setEanReceptionInput(e.target.value)} onKeyDown={ajouterEanReception} className="pop-input" style={{ width: '100%' }} placeholder="Ex: 3770001874241" />
