@@ -2,6 +2,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import NavBar from "../../components/NavBar";
+import { useIsMobile } from "../../lib/useIsMobile";
 
 type JeuNote = { texte: string; rappel: boolean };
 
@@ -323,6 +324,7 @@ const readFileAsync = (file: File): Promise<string> => {
 };
 
 export default function InventairePage() {
+  const isMobile = useIsMobile();
   const [jeux, setJeux] = useState<JeuType[]>([]);
   const [selections, setSelections] = useState<SelectionThematique[]>([]);
   const [catalogueImages, setCatalogueImages] = useState<Record<string, string>>({});
@@ -1359,20 +1361,20 @@ export default function InventairePage() {
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: "var(--cream)", display: "flex", flexDirection: "column", paddingTop: 64 }}>
+    <div style={{ minHeight: "100dvh", background: "var(--cream)", display: "flex", flexDirection: "column", paddingTop: "var(--nav-h)" }}>
       <NavBar current="inventaire" />
 
       {/* ── Sticky header ── */}
       <header style={{
-        position: "sticky", top: 64, zIndex: 40, background: "var(--cream)",
+        position: "sticky", top: "var(--nav-h)", zIndex: 40, background: "var(--cream)",
         borderBottom: "2.5px solid var(--ink)",
         display: "flex", alignItems: "center", flexWrap: "wrap",
-        padding: "10px 24px", gap: 12,
+        padding: "10px var(--page-pad-x)", gap: isMobile ? 8 : 12,
       }}>
         {/* Titre */}
         <div style={{ display: "flex", flexDirection: "column", marginRight: 8 }}>
           <h1 className="bc" style={{
-            fontSize: 36, margin: 0, letterSpacing: "0.02em",
+            fontSize: isMobile ? 26 : 36, margin: 0, letterSpacing: "0.02em",
             background: "linear-gradient(90deg, var(--bleu), var(--purple))",
             WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
           }}>Inventaire</h1>
@@ -1382,7 +1384,7 @@ export default function InventairePage() {
         </div>
 
         {/* Searchbar */}
-        <div style={{ position: "relative", flex: "1 1 200px", maxWidth: 360 }}>
+        <div style={{ position: "relative", flex: "1 1 200px", maxWidth: isMobile ? "none" : 360, order: isMobile ? 3 : 0 }}>
           <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", opacity: 0.4, fontSize: 14 }}>🔍</span>
           <input
             type="text" placeholder="Chercher un jeu, code..." value={recherche}
@@ -1399,8 +1401,9 @@ export default function InventairePage() {
           )}
         </div>
 
-        {/* Settings button */}
-        <div style={{ position: "relative" }}>
+        {/* Settings button — la recherche passe à la ligne sur téléphone
+            (order: 3), le rouage reste donc collé à droite du titre. */}
+        <div style={{ position: "relative", marginLeft: isMobile ? "auto" : undefined }}>
           <button
             onClick={() => setIsSettingsOpen(!isSettingsOpen)}
             className="pop-btn"
@@ -1448,7 +1451,7 @@ export default function InventairePage() {
         </div>
       </header>
 
-      <main style={{ padding: "24px 24px", display: "flex", flexDirection: "column", gap: 24, flex: 1, position: "relative", zIndex: 1 }}>
+      <main style={{ padding: "var(--page-pad-y) var(--page-pad-x)", display: "flex", flexDirection: "column", gap: isMobile ? 16 : 24, flex: 1, position: "relative", zIndex: 1 }}>
 
         {isLoading ? (
           <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "80px 0" }}>
@@ -1458,7 +1461,9 @@ export default function InventairePage() {
           <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
 
             {/* ── KPI Couleurs ── */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 14 }}>
+            {/* Cinq pastilles de couleur : trois par ligne sur téléphone,
+                soit deux rangées, plutôt qu'une bande de 70px de large. */}
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(3, 1fr)" : "repeat(5, 1fr)", gap: isMobile ? 8 : 14 }}>
               {COULEURS.map(c => {
                 const count = jeuxEnStock.filter(j => j.couleur === c.id).length;
                 return (
@@ -1466,25 +1471,25 @@ export default function InventairePage() {
                     style={{
                       background: c.hex, border: "2.5px solid var(--ink)",
                       borderRadius: 10, boxShadow: "4px 4px 0 var(--ink)",
-                      padding: "20px 12px", display: "flex", flexDirection: "column",
+                      padding: isMobile ? "12px 6px" : "20px 12px", display: "flex", flexDirection: "column",
                       alignItems: "center", justifyContent: "center", cursor: "pointer",
                       transition: "transform 0.12s, box-shadow 0.12s",
                     }}
                     onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = "translate(-2px,-2px)"; (e.currentTarget as HTMLElement).style.boxShadow = "6px 6px 0 var(--ink)"; }}
                     onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = ""; (e.currentTarget as HTMLElement).style.boxShadow = "4px 4px 0 var(--ink)"; }}
                   >
-                    <span className="bc" style={{ fontSize: 48, lineHeight: 1, color: c.id === 'vert' || c.id === 'jaune' ? "var(--ink)" : "var(--white)" }}>{count}</span>
-                    <span style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: c.id === 'vert' || c.id === 'jaune' ? "var(--ink)" : "var(--white)", marginTop: 4, opacity: 0.8 }}>{c.label}</span>
+                    <span className="bc" style={{ fontSize: isMobile ? 30 : 48, lineHeight: 1, color: c.id === 'vert' || c.id === 'jaune' ? "var(--ink)" : "var(--white)" }}>{count}</span>
+                    <span style={{ fontSize: isMobile ? 9 : 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", color: c.id === 'vert' || c.id === 'jaune' ? "var(--ink)" : "var(--white)", marginTop: 4, opacity: 0.8 }}>{c.label}</span>
                   </div>
                 );
               })}
             </div>
 
             {/* ── 3 colonnes ── */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 20 }}>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "minmax(0, 1fr)" : "repeat(3, 1fr)", gap: isMobile ? 14 : 20 }}>
 
               {/* Nouveautés */}
-              <div className="pop-card" style={{ display: "flex", flexDirection: "column", borderTop: "4px solid var(--yellow)", maxHeight: 520, overflow: "hidden" }}>
+              <div className="pop-card" style={{ display: "flex", flexDirection: "column", borderTop: "4px solid var(--yellow)", maxHeight: isMobile ? 340 : 520, overflow: "hidden" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 20px 12px", borderBottom: "2px solid var(--cream2)", flexShrink: 0 }}>
                   <span className="bc" style={{ fontSize: 20, letterSpacing: "0.02em" }}>Nouveautés</span>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -1575,7 +1580,7 @@ export default function InventairePage() {
               </div>
 
               {/* Sélection */}
-              <div className="pop-card" style={{ display: "flex", flexDirection: "column", borderTop: "4px solid var(--rose)", maxHeight: 520, overflow: "hidden" }}>
+              <div className="pop-card" style={{ display: "flex", flexDirection: "column", borderTop: "4px solid var(--rose)", maxHeight: isMobile ? 340 : 520, overflow: "hidden" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 20px 12px", borderBottom: "2px solid var(--cream2)", flexShrink: 0 }}>
                   <span className="bc" style={{ fontSize: 20, letterSpacing: "0.02em" }}>Sélection</span>
                   <div style={{ display: "flex", gap: 8 }}>
@@ -1630,7 +1635,7 @@ export default function InventairePage() {
               </div>
 
               {/* Atelier */}
-              <div className="pop-card" style={{ display: "flex", flexDirection: "column", borderTop: "4px solid var(--orange)", maxHeight: 520, overflow: "hidden" }}>
+              <div className="pop-card" style={{ display: "flex", flexDirection: "column", borderTop: "4px solid var(--orange)", maxHeight: isMobile ? 340 : 520, overflow: "hidden" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 20px 12px", borderBottom: "2px solid var(--cream2)", flexShrink: 0 }}>
                   <span className="bc" style={{ fontSize: 20, letterSpacing: "0.02em" }}>Atelier</span>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -1684,28 +1689,33 @@ export default function InventairePage() {
                   <button onClick={() => setCouleurFiltre(null)} className="pop-btn" style={{ padding: "5px 12px", fontSize: 12 }}>✕ Retirer</button>
                 </div>
               )}
-              <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
-                <button onClick={() => setTri(tri === "A-Z" ? "Z-A" : "A-Z")} className="pop-btn" style={{ padding: "6px 14px", fontSize: 13 }}>
+              {/* Six contrôles : alignés sur desktop, en grille de deux sur
+                  téléphone. Empilés un par ligne, ils repousseraient la
+                  liste sous deux écrans de haut. */}
+              <div style={isMobile
+                ? { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", alignItems: "center", gap: 8 }
+                : { display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+                <button onClick={() => setTri(tri === "A-Z" ? "Z-A" : "A-Z")} className="pop-btn" style={{ padding: "6px 14px", fontSize: 13, justifyContent: "center" }}>
                   Nom {tri === "A-Z" ? "↓" : "↑"}
                 </button>
-                <input type="number" min="1" max="99" placeholder="👥 Joueurs" value={filtreJoueurs} onChange={e => setFiltreJoueurs(e.target.value)} style={{ ...inp, width: 110 }} />
-                <select value={filtreType} onChange={e => setFiltreType(e.target.value)} style={{ ...inp, width: "auto", cursor: "pointer" }}>
+                <input type="number" min="1" max="99" placeholder="👥 Joueurs" value={filtreJoueurs} onChange={e => setFiltreJoueurs(e.target.value)} style={{ ...inp, width: isMobile ? "100%" : 110 }} />
+                <select value={filtreType} onChange={e => setFiltreType(e.target.value)} style={{ ...inp, width: isMobile ? "100%" : "auto", cursor: "pointer" }}>
                   <option value="">⚔️ Type</option><option value="Coop">🤝 Coop</option><option value="Versus">⚔️ Versus</option><option value="Solo">👤 Solo</option>
                 </select>
-                <select value={filtreMeca} onChange={e => setFiltreMeca(e.target.value)} style={{ ...inp, width: "auto", cursor: "pointer" }}>
+                <select value={filtreMeca} onChange={e => setFiltreMeca(e.target.value)} style={{ ...inp, width: isMobile ? "100%" : "auto", cursor: "pointer" }}>
                   <option value="">⚙️ Méca.</option>
                   {mecasDispos.map(m => <option key={m as string} value={m as string}>{m}</option>)}
                 </select>
-                <select value={filtreTemps} onChange={e => setFiltreTemps(e.target.value)} style={{ ...inp, width: "auto", cursor: "pointer" }}>
+                <select value={filtreTemps} onChange={e => setFiltreTemps(e.target.value)} style={{ ...inp, width: isMobile ? "100%" : "auto", cursor: "pointer" }}>
                   <option value="">⏳ Durée</option><option value="Rapide">Rapide (&lt;30m)</option><option value="Moyen">Moyen (30-60m)</option><option value="Long">Long (&gt;60m)</option>
                 </select>
-                <select value={filtreEtoiles} onChange={e => setFiltreEtoiles(e.target.value)} style={{ ...inp, width: "auto", cursor: "pointer" }}>
+                <select value={filtreEtoiles} onChange={e => setFiltreEtoiles(e.target.value)} style={{ ...inp, width: isMobile ? "100%" : "auto", cursor: "pointer" }}>
                   <option value="">⭐ Étoiles</option><option value="1">1 Étoile</option><option value="2">2 Étoiles</option><option value="3">3 Étoiles</option>
                 </select>
                 {(filtreJoueurs || filtreMeca || filtreTemps || filtreEtoiles || filtreType) && (
-                  <button onClick={clearAllFilters} className="pop-btn" style={{ padding: "6px 10px", fontSize: 12, background: "var(--rouge)", color: "var(--white)" }}>✕ Reset</button>
+                  <button onClick={clearAllFilters} className="pop-btn" style={{ padding: "6px 10px", fontSize: 12, background: "var(--rouge)", color: "var(--white)", justifyContent: "center" }}>✕ Reset</button>
                 )}
-                <span style={{ marginLeft: "auto", fontWeight: 700, fontSize: 13, color: "rgba(0,0,0,0.45)" }}>{jeuxGroupes.length} résultat{jeuxGroupes.length !== 1 ? "s" : ""}</span>
+                <span style={{ marginLeft: isMobile ? 0 : "auto", gridColumn: isMobile ? "1 / -1" : undefined, fontWeight: 700, fontSize: 13, color: "rgba(0,0,0,0.45)" }}>{jeuxGroupes.length} résultat{jeuxGroupes.length !== 1 ? "s" : ""}</span>
               </div>
             </div>
 
@@ -1728,7 +1738,7 @@ export default function InventairePage() {
                     <div key={jeu.ean} style={{ marginBottom: 10, border: "2.5px solid var(--ink)", borderRadius: 10, background: "var(--white)", boxShadow: "3px 3px 0 var(--ink)", overflow: "hidden" }}>
                       <div
                         onClick={() => ouvrirFicheJeu(jeu)}
-                        style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", cursor: "pointer" }}
+                        style={{ display: "flex", alignItems: "center", gap: 12, padding: isMobile ? "10px 12px" : "12px 16px", cursor: "pointer", flexWrap: isMobile ? "wrap" : "nowrap" }}
                         onMouseEnter={e => (e.currentTarget.style.background = "var(--cream2)")}
                         onMouseLeave={e => (e.currentTarget.style.background = "var(--white)")}
                       >
@@ -1757,6 +1767,13 @@ export default function InventairePage() {
                           </div>
                         </div>
 
+                        {/* EAN + statut. Sur téléphone ils descendent ensemble
+                            sur une deuxième ligne pleine largeur ; sur desktop
+                            `display: contents` efface ce conteneur et les deux
+                            restent des enfants directs de la ligne. */}
+                        <div style={isMobile
+                          ? { display: "flex", flexBasis: "100%", alignItems: "center", justifyContent: "space-between", gap: 8, order: 3 }
+                          : { display: "contents" }}>
                         {/* EAN */}
                         <span style={{ fontFamily: "monospace", fontSize: 12, color: "rgba(0,0,0,0.35)", flexShrink: 0 }}>{jeu.ean}</span>
 
@@ -1785,6 +1802,7 @@ export default function InventairePage() {
                               {groupe.filter(g => g.statut === 'En préparation').length > 0 && <span style={{ color: "var(--orange)" }}>{groupe.filter(g => g.statut === 'En préparation').length} en prépa</span>}
                             </div>
                           )}
+                        </div>
                         </div>
 
                         {/* Actions */}
@@ -1834,8 +1852,8 @@ export default function InventairePage() {
 
       {/* --- MODAL COLORFIX --- */}
       {isColorFixOpen && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", padding: "80px 16px 16px" }}>
-          <div className="pop-card" style={{ width: "100%", maxWidth: 560, maxHeight: "calc(100vh - 96px)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", padding: "calc(var(--nav-h) + 12px) 12px 12px" }}>
+          <div className="pop-card" style={{ width: "100%", maxWidth: 560, maxHeight: "calc(100dvh - var(--nav-h) - 36px)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "18px 24px", borderBottom: "2px solid var(--ink)", flexShrink: 0 }}>
               <div>
                 <h2 className="bc" style={{ fontSize: 22, margin: 0, letterSpacing: "0.02em" }}>Scanner Correctif Couleurs</h2>
@@ -1887,8 +1905,8 @@ export default function InventairePage() {
 
       {/* --- MODAL MÉCANIQUES --- */}
       {isMecaFixModalOpen && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 90, display: "flex", alignItems: "center", justifyContent: "center", padding: "80px 16px 16px" }}>
-          <div className="pop-card" style={{ width: "100%", maxWidth: 720, maxHeight: "calc(100vh - 96px)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 90, display: "flex", alignItems: "center", justifyContent: "center", padding: "calc(var(--nav-h) + 12px) 12px 12px" }}>
+          <div className="pop-card" style={{ width: "100%", maxWidth: 720, maxHeight: "calc(100dvh - var(--nav-h) - 36px)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "18px 24px", borderBottom: "2px solid var(--ink)", flexShrink: 0 }}>
               <div>
                 <h2 className="bc" style={{ fontSize: 22, margin: 0, letterSpacing: "0.02em" }}>Nettoyage des Mécaniques</h2>
@@ -1933,8 +1951,8 @@ export default function InventairePage() {
 
       {/* --- MODAL DOUBLONS --- */}
       {isDoublonsModalOpen && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 90, display: "flex", alignItems: "center", justifyContent: "center", padding: "80px 16px 16px" }}>
-          <div className="pop-card" style={{ width: "100%", maxWidth: 800, maxHeight: "calc(100vh - 96px)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 90, display: "flex", alignItems: "center", justifyContent: "center", padding: "calc(var(--nav-h) + 12px) 12px 12px" }}>
+          <div className="pop-card" style={{ width: "100%", maxWidth: 800, maxHeight: "calc(100dvh - var(--nav-h) - 36px)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "18px 24px", borderBottom: "2px solid var(--ink)", flexShrink: 0 }}>
               <div>
                 <h2 className="bc" style={{ fontSize: 22, margin: 0, letterSpacing: "0.02em" }}>Nettoyage des Doublons</h2>
@@ -2004,8 +2022,8 @@ export default function InventairePage() {
 
       {/* --- MODAL EAN TEMPORAIRES --- */}
       {isTempEanModalOpen && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 90, display: "flex", alignItems: "center", justifyContent: "center", padding: "80px 16px 16px" }}>
-          <div className="pop-card" style={{ width: "100%", maxWidth: 720, maxHeight: "calc(100vh - 96px)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 90, display: "flex", alignItems: "center", justifyContent: "center", padding: "calc(var(--nav-h) + 12px) 12px 12px" }}>
+          <div className="pop-card" style={{ width: "100%", maxWidth: 720, maxHeight: "calc(100dvh - var(--nav-h) - 36px)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "18px 24px", borderBottom: "2px solid var(--ink)", flexShrink: 0 }}>
               <div>
                 <h2 className="bc" style={{ fontSize: 22, margin: 0, letterSpacing: "0.02em" }}>EAN Temporaires</h2>
@@ -2087,8 +2105,8 @@ export default function InventairePage() {
 
       {/* --- MODAL VIGNETTES --- */}
       {isVignettesOpen && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 90, display: "flex", alignItems: "center", justifyContent: "center", padding: "80px 16px 16px" }}>
-          <div className="pop-card" style={{ width: "100%", maxWidth: 480, maxHeight: "calc(100vh - 96px)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 90, display: "flex", alignItems: "center", justifyContent: "center", padding: "calc(var(--nav-h) + 12px) 12px 12px" }}>
+          <div className="pop-card" style={{ width: "100%", maxWidth: 480, maxHeight: "calc(100dvh - var(--nav-h) - 36px)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "18px 24px", borderBottom: "2px solid var(--ink)", flexShrink: 0 }}>
               <div>
                 <h2 className="bc" style={{ fontSize: 22, margin: 0, letterSpacing: "0.02em" }}>Enrichir les Vignettes</h2>
@@ -2158,8 +2176,8 @@ export default function InventairePage() {
 
       {/* --- MODAL IMPORT SYRACUSE --- */}
       {isImportModalOpen && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 90, display: "flex", alignItems: "center", justifyContent: "center", padding: "80px 16px 16px" }}>
-          <div className="pop-card" style={{ width: "100%", maxWidth: 860, maxHeight: "calc(100vh - 96px)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 90, display: "flex", alignItems: "center", justifyContent: "center", padding: "calc(var(--nav-h) + 12px) 12px 12px" }}>
+          <div className="pop-card" style={{ width: "100%", maxWidth: 860, maxHeight: "calc(100dvh - var(--nav-h) - 36px)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "18px 24px", borderBottom: "2px solid var(--ink)", flexShrink: 0 }}>
               <div>
                 <h2 className="bc" style={{ fontSize: 22, margin: 0, letterSpacing: "0.02em" }}>Importation Syracuse</h2>
@@ -2273,8 +2291,8 @@ export default function InventairePage() {
 
       {/* --- MODAL SÉLECTION --- */}
       {isSelectionModalOpen && editSelection && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 70, display: "flex", alignItems: "center", justifyContent: "center", padding: "80px 16px 16px" }}>
-          <div className="pop-card" style={{ width: "100%", maxWidth: 720, maxHeight: "calc(100vh - 96px)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 70, display: "flex", alignItems: "center", justifyContent: "center", padding: "calc(var(--nav-h) + 12px) 12px 12px" }}>
+          <div className="pop-card" style={{ width: "100%", maxWidth: 720, maxHeight: "calc(100dvh - var(--nav-h) - 36px)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "18px 24px", borderBottom: "2px solid var(--ink)", flexShrink: 0 }}>
               <h2 className="bc" style={{ fontSize: 22, margin: 0, letterSpacing: "0.02em" }}>
                 {editSelection.titre ? "Modifier la sélection" : "Nouvelle sélection"}
@@ -2369,8 +2387,8 @@ export default function InventairePage() {
 
       {/* --- MODAL AGRANDIR --- */}
       {isAgrandirOpen && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", padding: "80px 16px 16px" }}>
-          <div className="pop-card" style={{ width: "100%", maxWidth: 900, maxHeight: "calc(100vh - 96px)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", padding: "calc(var(--nav-h) + 12px) 12px 12px" }}>
+          <div className="pop-card" style={{ width: "100%", maxWidth: 900, maxHeight: "calc(100dvh - var(--nav-h) - 36px)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "18px 24px", borderBottom: "2px solid var(--ink)", flexShrink: 0 }}>
               <div>
                 <h2 className="bc" style={{ fontSize: 26, margin: 0, letterSpacing: "0.02em" }}>Toutes les Sélections</h2>
@@ -2432,8 +2450,8 @@ export default function InventairePage() {
         const couleurFiche = COULEURS.find(c => c.id === (isEditingFiche && editedFiche ? editedFiche.couleur : ficheJeu.couleur));
 
         return (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 80, display: "flex", alignItems: "center", justifyContent: "center", padding: "80px 16px 16px", overflow: "hidden" }}>
-          <div style={{ background: "var(--cream)", width: "100%", maxWidth: 1000, maxHeight: "calc(100vh - 96px)", display: "flex", flexDirection: "column", border: "2.5px solid var(--ink)", borderRadius: 10, boxShadow: "6px 6px 0 var(--ink)", overflow: "hidden" }}>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 80, display: "flex", alignItems: "center", justifyContent: "center", padding: "calc(var(--nav-h) + 12px) 12px 12px", overflow: "hidden" }}>
+          <div style={{ background: "var(--cream)", width: "100%", maxWidth: 1000, maxHeight: "calc(100dvh - var(--nav-h) - 36px)", display: "flex", flexDirection: "column", border: "2.5px solid var(--ink)", borderRadius: 10, boxShadow: "6px 6px 0 var(--ink)", overflow: "hidden" }}>
 
             {/* Header */}
             <div style={{ background: couleurFiche ? couleurFiche.hex : "var(--bleu)", borderBottom: "2.5px solid var(--ink)", padding: "14px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0, gap: 12, flexWrap: "wrap" }}>
@@ -2473,7 +2491,7 @@ export default function InventairePage() {
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
                 {!isEditingFiche && (
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, overflowX: "auto", maxWidth: 340 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, overflowX: "auto", maxWidth: isMobile ? "100%" : 340 }}>
                     {ficheJeu.copies.map((copy, index) => (
                       <button key={copy.id} onClick={() => changerExemplaire(index)}
                         style={{ padding: "4px 10px", borderRadius: 6, fontSize: 11, fontWeight: 800, border: "1.5px solid var(--ink)", cursor: "pointer", whiteSpace: "nowrap", background: index === ficheJeu.activeCopyIndex ? "var(--ink)" : "rgba(255,255,255,0.8)", color: index === ficheJeu.activeCopyIndex ? "var(--white)" : "var(--ink)" }}>
@@ -2494,11 +2512,13 @@ export default function InventairePage() {
             </div>
 
             {/* Corps */}
-            <div style={{ flex: 1, overflowY: "auto", padding: "20px", display: "flex", gap: 20, flexWrap: "wrap", background: "var(--cream2)" }}>
+            <div style={{ flex: 1, overflowY: "auto", padding: isMobile ? 14 : 20, display: "flex", gap: isMobile ? 14 : 20, flexWrap: "wrap", background: "var(--cream2)" }}>
 
-              {/* Colonne gauche : image */}
-              <div style={{ width: 220, flexShrink: 0, display: "flex", flexDirection: "column", gap: 12 }}>
-                <div style={{ aspectRatio: "3/4", background: "var(--white)", border: "2.5px solid var(--ink)", borderRadius: 10, boxShadow: "4px 4px 0 var(--ink)", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              {/* Colonne gauche : image. Sur téléphone elle prend la largeur
+                  mais la vignette reste bridée : en 3/4 pleine largeur elle
+                  ferait presque 500px de haut avant le moindre texte. */}
+              <div style={{ width: isMobile ? "100%" : 220, flexShrink: 0, display: "flex", flexDirection: "column", gap: 12 }}>
+                <div style={{ aspectRatio: "3/4", width: "100%", maxWidth: isMobile ? 180 : undefined, alignSelf: isMobile ? "center" : undefined, background: "var(--white)", border: "2.5px solid var(--ink)", borderRadius: 10, boxShadow: "4px 4px 0 var(--ink)", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
                   {ficheJeu.image_url && !isEditingFiche ? (
                     <img src={ficheJeu.image_url} alt={ficheJeu.nom} style={{ width: "100%", height: "100%", objectFit: "contain" }} />
                   ) : (
@@ -2517,7 +2537,7 @@ export default function InventairePage() {
               </div>
 
               {/* Colonne droite : infos */}
-              <div style={{ flex: 1, minWidth: 300, display: "flex", flexDirection: "column", gap: 16 }}>
+              <div style={{ flex: 1, minWidth: isMobile ? 0 : 300, display: "flex", flexDirection: "column", gap: 16 }}>
 
                 {/* Infos grille */}
                 <div className="pop-card" style={{ padding: "18px 20px", borderTop: "4px solid var(--bleu)" }}>
