@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { format, parseISO } from "date-fns";
 import { fr } from "date-fns/locale";
+import { COULEURS_JEU, chargerResolveurCouleur, type ResolveurCouleur } from "../lib/couleursJeux";
 
 // ─── Types partagés avec la page d'accueil ────────────────────────────────────
 
@@ -39,10 +40,6 @@ type DefinitionModule = {
 /** Présentation hors connexion, et point de départ d'un compte qui n'a encore
  *  rien personnalisé : les nouveautés, comme avant l'arrivée des modules. */
 export const MODULES_PAR_DEFAUT = ["nouveautes"];
-
-const COULEURS_JEU: Record<string, string> = {
-  vert: "#a8e063", rose: "#f472b6", bleu: "#60a5fa", rouge: "#f87171", jaune: "#fb923c",
-};
 
 const toArr = (d: any) => (Array.isArray(d) ? d : []);
 const charger = (url: string) =>
@@ -281,15 +278,11 @@ function ModuleAtelier({ ctx }: { ctx: ContexteAccueil }) {
 
 // ─── Couleur de pastille des jeux ─────────────────────────────────────────────
 
-/** Couleur de pastille (catalogue) par EAN, pour teinter les blocs qui parlent
- *  d'un jeu précis : on retrouve le jeu d'un coup d'œil, comme sur l'étagère. */
-async function chargerCouleurs(eans: string[]): Promise<Record<string, string>> {
-  const liste = [...new Set(eans.filter(Boolean))];
-  if (!liste.length) return {};
-  const cat = await charger(`/api/catalogue?eans=${encodeURIComponent(liste.join(","))}&fields=ean,couleur`);
-  const couleurs: Record<string, string> = {};
-  for (const c of cat) if (COULEURS_JEU[c.couleur]) couleurs[c.ean] = COULEURS_JEU[c.couleur];
-  return couleurs;
+/** Résolveur de couleur (lib/couleursJeux), chargé une fois par module. */
+function useCouleurJeu(): ResolveurCouleur {
+  const [couleurDe, setCouleurDe] = useState<ResolveurCouleur>(() => () => null);
+  useEffect(() => { chargerResolveurCouleur().then(f => setCouleurDe(() => f)); }, []);
+  return couleurDe;
 }
 
 // ─── Module : réparations à faire ─────────────────────────────────────────────
@@ -298,14 +291,8 @@ type Reparation = { id: number; ean: string; nom: string; type_reparation: strin
 
 function ModuleReparations({ ctx }: { ctx: ContexteAccueil }) {
   const [reparations, setReparations] = useState<Reparation[] | null>(null);
-  const [couleurs, setCouleurs] = useState<Record<string, string>>({});
-  useEffect(() => {
-    charger("/api/reparations").then(async l => {
-      const liste = l as Reparation[];
-      setCouleurs(await chargerCouleurs(liste.filter(r => r.statut === "À faire").map(r => r.ean)));
-      setReparations(liste);
-    });
-  }, []);
+  const couleurDe = useCouleurJeu();
+  useEffect(() => { charger("/api/reparations").then(l => setReparations(l as Reparation[])); }, []);
   const aFaire = (reparations ?? []).filter(r => r.statut === "À faire");
   return (
     <section style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -313,7 +300,7 @@ function ModuleReparations({ ctx }: { ctx: ContexteAccueil }) {
       {reparations === null ? <Chargement /> : aFaire.length === 0 ? <Vide texte="Aucune réparation en attente" /> : (
         <div style={{ display: "grid", gridTemplateColumns: ctx.isMobile ? "1fr" : "repeat(auto-fill, minmax(240px, 1fr))", gap: 10 }}>
           {aFaire.slice(0, 8).map(r => (
-            <div key={r.id} className="pop-card" style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 4, background: couleurs[r.ean] ?? "var(--white)" }}>
+            <div key={r.id} className="pop-card" style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 4, background: couleurDe({ ean: r.ean, nom: r.nom }) ?? "var(--white)" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                 <span className="pop-sticker" style={{ background: "var(--white)", fontSize: 10 }}>🔧 {r.type_reparation}</span>
               </div>
@@ -333,14 +320,8 @@ type PieceManquante = { id: number; ean: string; nom: string; element_manquant: 
 
 function ModulePiecesManquantes({ ctx }: { ctx: ContexteAccueil }) {
   const [pieces, setPieces] = useState<PieceManquante[] | null>(null);
-  const [couleurs, setCouleurs] = useState<Record<string, string>>({});
-  useEffect(() => {
-    charger("/api/pieces-manquantes").then(async l => {
-      const liste = l as PieceManquante[];
-      setCouleurs(await chargerCouleurs(liste.filter(p => p.statut === "Manquant" || p.statut === "Commandé").map(p => p.ean)));
-      setPieces(liste);
-    });
-  }, []);
+  const couleurDe = useCouleurJeu();
+  useEffect(() => { charger("/api/pieces-manquantes").then(l => setPieces(l as PieceManquante[])); }, []);
   const ouvertes = (pieces ?? []).filter(p => p.statut === "Manquant" || p.statut === "Commandé");
   return (
     <section style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -348,7 +329,7 @@ function ModulePiecesManquantes({ ctx }: { ctx: ContexteAccueil }) {
       {pieces === null ? <Chargement /> : ouvertes.length === 0 ? <Vide texte="Aucune pièce manquante" /> : (
         <div style={{ display: "grid", gridTemplateColumns: ctx.isMobile ? "1fr" : "repeat(auto-fill, minmax(240px, 1fr))", gap: 10 }}>
           {ouvertes.slice(0, 8).map(p => (
-            <div key={p.id} className="pop-card" style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 4, background: couleurs[p.ean] ?? "var(--white)" }}>
+            <div key={p.id} className="pop-card" style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 4, background: couleurDe({ ean: p.ean, nom: p.nom }) ?? "var(--white)" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <span className="pop-sticker" style={{ background: p.statut === "Commandé" ? "var(--bleu)" : "var(--rouge)", color: p.statut === "Commandé" ? "var(--ink)" : "var(--white)", fontSize: 10 }}>{p.statut}</span>
               </div>

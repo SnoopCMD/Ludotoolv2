@@ -2,6 +2,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import { useIsMobile } from "../../lib/useIsMobile";
+import { chargerResolveurCouleur, type ResolveurCouleur } from "../../lib/couleursJeux";
 
 type PieceDetachee = { id: number; nom_jeu: string; description: string; quantite: number; created_at: string };
 
@@ -12,6 +13,9 @@ export default function PiecesDetacheesPage() {
   const isMobile = useIsMobile();
   const [pieces, setPieces] = useState<PieceDetachee[]>([]);
   const [recherche, setRecherche] = useState("");
+  // Teinte des cartes : la couleur de pastille du jeu, retrouvée par son nom.
+  const [couleurDe, setCouleurDe] = useState<ResolveurCouleur>(() => () => null);
+  useEffect(() => { chargerResolveurCouleur().then(f => setCouleurDe(() => f)); }, []);
 
   // Ajout
   const [nomJeu, setNomJeu] = useState("");
@@ -257,7 +261,7 @@ export default function PiecesDetacheesPage() {
             {colonnes.map((items, ci) => (
             <div key={ci} style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
             {items.map(g => (
-              <div key={g.nom} className="pop-card" style={{ padding: "12px 16px 8px", background: "var(--white)" }}>
+              <div key={g.nom} className="pop-card" style={{ padding: "12px 16px 8px", background: couleurDe({ nom: g.nom }) ?? "var(--white)" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
                   <span style={{ fontWeight: 800, fontSize: 17, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={g.nom}>{g.nom}</span>
                   <span style={{

@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useIsMobile } from "../../lib/useIsMobile";
 import BoutonScan from "../../components/ScanCodeBarre";
+import { chargerResolveurCouleur, type ResolveurCouleur } from "../../lib/couleursJeux";
 
 type Reparation = {
   id: number;
@@ -16,6 +17,9 @@ type Reparation = {
 export default function ReparationsPage() {
   const isMobile = useIsMobile();
   const [reparations, setReparations] = useState<Reparation[]>([]);
+  // Teinte des cartes : la couleur de pastille du jeu (par EAN, code Syracuse ou nom).
+  const [couleurDe, setCouleurDe] = useState<ResolveurCouleur>(() => () => null);
+  useEffect(() => { chargerResolveurCouleur().then(f => setCouleurDe(() => f)); }, []);
   const [eanJeu, setEanJeu] = useState("");
   const [nomJeu, setNomJeu] = useState("");
   const [typeRep, setTypeRep] = useState("Boîte");
@@ -228,7 +232,7 @@ export default function ReparationsPage() {
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(340px, 1fr))", gap: 14, alignItems: "stretch" }}>
             {aFaire.map(r => (
-              <div key={r.id} className="pop-card" style={{ padding: "16px 18px", display: "flex", flexDirection: "column", justifyContent: "space-between", gap: 12, background: "var(--white)" }}>
+              <div key={r.id} className="pop-card" style={{ padding: "16px 18px", display: "flex", flexDirection: "column", justifyContent: "space-between", gap: 12, background: couleurDe({ ean: r.ean, nom: r.nom }) ?? "var(--white)" }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 4 }}>
                     <span style={{ fontWeight: 800, fontSize: 18 }}>{r.nom || "Jeu inconnu"}</span>
