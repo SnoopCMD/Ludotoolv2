@@ -7,8 +7,16 @@ Font.registerHyphenationCallback((word) => [word]);
 const PAGE_USABLE_HEIGHT = 275; // A4 297mm - padding 10mm*2 - petite marge de sécurité
 const BOX_MARGIN = 5;           // marginBottom du box
 const HEADER_HEIGHT = 12;       // titre (fontSize 14 + lineHeight) + padding 2mm*2 + bordure
+const HEADER_EXTRA_LINE = 6.5;  // hauteur d'une ligne de titre supplémentaire (retour à la ligne)
 const ITEM_HEIGHT = 9;          // fontSize 11 * lineHeight 1.3 + paddingVertical 1.5mm*2 + bordure (un peu conservateur)
+const ITEM_EXTRA_LINE = 5.2;    // hauteur d'une ligne de texte supplémentaire (fontSize 11 * 1.3 = 14.3pt ≈ 5mm)
 const SEP_HEIGHT = 4;           // separateur de ligne vide
+// Nombre de caractères approximatif par ligne avant retour automatique (Helvetica 11pt, largeur utile ~74mm)
+const CHARS_PAR_LIGNE = 34;
+const CHARS_PAR_LIGNE_SOUS_LISTE = 30; // paddingLeft 8mm au lieu de 3mm
+const CHARS_PAR_LIGNE_TITRE = 20;      // fontSize 14, majuscules, largeur utile ~76mm
+// Hauteur minimale pour ouvrir un morceau de fiche dans une colonne (titre + 2 lignes)
+const MIN_CHUNK_HEIGHT = HEADER_HEIGHT + 2 * ITEM_HEIGHT;
 
 const styles = StyleSheet.create({
   page: {
@@ -28,8 +36,10 @@ const styles = StyleSheet.create({
     display: 'flex',
     flexDirection: 'column',
     marginBottom: '4mm',
+    flexShrink: 0,
   },
   headerBox: {
+    flexShrink: 0,
     padding: '2mm',
     borderBottom: '1pt solid #000000',
     backgroundColor: '#f6f6f6',
@@ -41,6 +51,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   listItemContainer: {
+    flexShrink: 0,
     paddingVertical: '1.5mm',
     paddingHorizontal: '3mm',
     borderBottom: '0.5pt solid #ececec',
@@ -51,18 +62,44 @@ const styles = StyleSheet.create({
   }
 });
 
+function nbLignesVisuelles(texte: string, charsParLigne: number): number {
+  return Math.max(1, Math.ceil(texte.trim().length / charsParLigne));
+}
+
+function hauteurTitre(nom: string): number {
+  return HEADER_HEIGHT + (nbLignesVisuelles(nom || '', CHARS_PAR_LIGNE_TITRE) - 1) * HEADER_EXTRA_LINE;
+}
+
+function hauteurLigne(ligne: string): number {
+  if (ligne.trim() === '') return SEP_HEIGHT;
+  const estSousListe = !!ligne.match(/^\s+[-*•>]/);
+  const chars = estSousListe ? CHARS_PAR_LIGNE_SOUS_LISTE : CHARS_PAR_LIGNE;
+  return ITEM_HEIGHT + (nbLignesVisuelles(ligne, chars) - 1) * ITEM_EXTRA_LINE;
+}
+
+function decouperLignes(fiche: any): string[] {
+  return fiche.elements ? fiche.elements.split('\n') : [];
+}
+
 function estimerHauteur(fiche: any): number {
-  const lignes = fiche.elements ? fiche.elements.split('\n') : [];
-  let hauteur = HEADER_HEIGHT;
-  for (const ligne of lignes) {
-    hauteur += ligne.trim() === '' ? SEP_HEIGHT : ITEM_HEIGHT;
+  let hauteur = hauteurTitre(fiche.nom);
+  for (const ligne of decouperLignes(fiche)) {
+    hauteur += hauteurLigne(ligne);
   }
   return hauteur + BOX_MARGIN;
 }
 
+// Un morceau de fiche à afficher : soit la fiche entière, soit une partie
+// (les fiches trop grandes pour une colonne sont découpées en plusieurs cadres "suite").
+interface Morceau {
+  fiche: any;
+  nom: string;
+  lignes: string[];
+}
+
 interface PageLayout {
-  gauche: any[];
-  droite: any[];
+  gauche: Morceau[];
+  droite: Morceau[];
 }
 
 // Algorithme de bin-packing glouton : remplit la colonne gauche en premier,
@@ -73,21 +110,74 @@ function construireLayout(fiches: any[]): PageLayout[] {
   let hauteurGauche = 0;
   let hauteurDroite = 0;
 
+  const nouvellePage = () => {
+    pages.push(pageActuelle);
+    pageActuelle = { gauche: [], droite: [] };
+    hauteurGauche = 0;
+    hauteurDroite = 0;
+  };
+
   for (const fiche of fiches) {
     const h = estimerHauteur(fiche);
 
-    if (hauteurGauche + h <= PAGE_USABLE_HEIGHT) {
-      pageActuelle.gauche.push(fiche);
-      hauteurGauche += h;
-    } else if (hauteurDroite + h <= PAGE_USABLE_HEIGHT) {
-      pageActuelle.droite.push(fiche);
-      hauteurDroite += h;
-    } else {
-      // Les deux colonnes sont pleines : nouvelle page
-      pages.push(pageActuelle);
-      pageActuelle = { gauche: [fiche], droite: [] };
-      hauteurGauche = h;
-      hauteurDroite = 0;
+    if (h <= PAGE_USABLE_HEIGHT) {
+      // Fiche qui tient dans une colonne : on la place entière
+      const morceau: Morceau = { fiche, nom: fiche.nom, lignes: decouperLignes(fiche) };
+      if (hauteurGauche + h <= PAGE_USABLE_HEIGHT) {
+        pageActuelle.gauche.push(morceau);
+        hauteurGauche += h;
+      } else if (hauteurDroite + h <= PAGE_USABLE_HEIGHT) {
+        pageActuelle.droite.push(morceau);
+        hauteurDroite += h;
+      } else {
+        // Les deux colonnes sont pleines : nouvelle page
+        nouvellePage();
+        pageActuelle.gauche.push(morceau);
+        hauteurGauche = h;
+      }
+      continue;
+    }
+
+    // Fiche trop grande pour une colonne : on la découpe en plusieurs cadres
+    // en remplissant l'espace restant de chaque colonne.
+    const lignes = decouperLignes(fiche);
+    let index = 0;
+    let partie = 0;
+    while (index < lignes.length) {
+      const nom = partie === 0 ? fiche.nom : `${fiche.nom} (suite)`;
+      const hTitre = hauteurTitre(nom);
+
+      // Choix de la colonne : celle qui a au moins la place pour un titre + 2 lignes
+      let colonne: 'gauche' | 'droite';
+      if (PAGE_USABLE_HEIGHT - hauteurGauche >= MIN_CHUNK_HEIGHT + BOX_MARGIN) {
+        colonne = 'gauche';
+      } else if (PAGE_USABLE_HEIGHT - hauteurDroite >= MIN_CHUNK_HEIGHT + BOX_MARGIN) {
+        colonne = 'droite';
+      } else {
+        nouvellePage();
+        colonne = 'gauche';
+      }
+      const dispo = PAGE_USABLE_HEIGHT - (colonne === 'gauche' ? hauteurGauche : hauteurDroite) - BOX_MARGIN;
+
+      let hauteur = hTitre;
+      const morceauLignes: string[] = [];
+      while (index < lignes.length) {
+        const hl = hauteurLigne(lignes[index]);
+        if (hauteur + hl > dispo && morceauLignes.length > 0) break;
+        hauteur += hl;
+        morceauLignes.push(lignes[index]);
+        index++;
+      }
+
+      const morceau: Morceau = { fiche, nom, lignes: morceauLignes };
+      if (colonne === 'gauche') {
+        pageActuelle.gauche.push(morceau);
+        hauteurGauche += hauteur + BOX_MARGIN;
+      } else {
+        pageActuelle.droite.push(morceau);
+        hauteurDroite += hauteur + BOX_MARGIN;
+      }
+      partie++;
     }
   }
 
@@ -98,8 +188,8 @@ function construireLayout(fiches: any[]): PageLayout[] {
   return pages;
 }
 
-function renderFiche(c: any, cle: string) {
-  const lignes = c.elements ? c.elements.split('\n') : [];
+function renderFiche(m: Morceau, cle: string) {
+  const lignes = m.lignes;
   let indexCouleur = 0;
 
   const renderLigne = (ligne: string, i: number) => {
@@ -108,7 +198,7 @@ function renderFiche(c: any, cle: string) {
     const estSousListe = !!ligne.match(/^\s+[-*•>]/);
 
     if (estVide) {
-      return <View key={`sep-${i}`} style={{ height: '3mm', borderBottom: '0.5pt solid #e2e8f0' }} />;
+      return <View key={`sep-${i}`} style={{ height: '3mm', flexShrink: 0, borderBottom: '0.5pt solid #e2e8f0' }} />;
     }
 
     let bgColor: string;
@@ -143,7 +233,7 @@ function renderFiche(c: any, cle: string) {
     // wrap={false} : sécurité supplémentaire pour éviter toute coupure résiduelle
     <View key={cle} style={styles.box} wrap={false}>
       <View style={styles.headerBox}>
-        <Text style={styles.title}>{c.nom}</Text>
+        <Text style={styles.title}>{m.nom}</Text>
       </View>
       {lignes.map((ligne: string, i: number) => renderLigne(ligne, i))}
     </View>
@@ -171,10 +261,10 @@ export const ContenuPDF = ({ contenus }: { contenus: Record<string, any[]> }) =>
       {pages.map((page, pi) => (
         <Page key={pi} size="A4" style={styles.page}>
           <View style={styles.colonneWrapper}>
-            {page.gauche.map((c, i) => renderFiche(c, `p${pi}-g-${c.id}-${i}`))}
+            {page.gauche.map((m, i) => renderFiche(m, `p${pi}-g-${m.fiche.id}-${i}`))}
           </View>
           <View style={styles.colonneWrapper}>
-            {page.droite.map((c, i) => renderFiche(c, `p${pi}-d-${c.id}-${i}`))}
+            {page.droite.map((m, i) => renderFiche(m, `p${pi}-d-${m.fiche.id}-${i}`))}
           </View>
         </Page>
       ))}
