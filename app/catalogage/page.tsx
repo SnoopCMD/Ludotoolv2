@@ -241,10 +241,11 @@ function ScoreBar({ score }: { score: number }) {
 
 // ─── Modal Catalogage ─────────────────────────────────────────────────────────
 
-function ModalCatalogage({ game: initGame, onClose, onSaved }: {
+function ModalCatalogage({ game: initGame, onClose, onSaved, onSelect }: {
   game: CatalogueEntry;
   onClose: () => void;
   onSaved: (g: CatalogueEntry) => void;
+  onSelect: (ean: string) => void;
 }) {
   const [game, setGame] = useState<CatalogueEntry>(initGame);
   const [auteurs, setAuteurs] = useState<AuteurStructure[]>(parseAuteurs(initGame.auteurs_json));
@@ -323,7 +324,7 @@ function ModalCatalogage({ game: initGame, onClose, onSaved }: {
   const updateAuteur = (i: number, field: keyof AuteurStructure, value: string) =>
     setAuteurs(a => a.map((au, idx) => idx === i ? { ...au, [field]: value } : au));
 
-  const saveGame = async () => {
+  const saveGame = async (alsoSelect = false) => {
     setIsSaving(true);
     const filteredAuteurs = auteurs.filter(a => a.nom.trim() || a.prenom.trim());
     const auteursText = filteredAuteurs.map(a => [a.prenom, a.nom].filter(Boolean).join(" ")).join(", ");
@@ -341,6 +342,7 @@ function ModalCatalogage({ game: initGame, onClose, onSaved }: {
       for (const j of jeuxRows) await fetch(`/api/jeux/${j.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ etape_notice: 1 }) });
     }
     onSaved({ ...game, ...payload });
+    if (alsoSelect) onSelect(game.ean);
     setIsSaving(false);
     onClose();
   };
@@ -596,10 +598,13 @@ function ModalCatalogage({ game: initGame, onClose, onSaved }: {
         </div>
 
         {/* Footer */}
-        <div style={{ display: "flex", gap: 10, padding: "14px 20px", borderTop: "2.5px solid var(--ink)" }}>
-          <button onClick={onClose} className="pop-btn pop-btn-outline" style={{ flex: 1 }}>Annuler</button>
-          <button onClick={saveGame} disabled={isSaving} className="pop-btn pop-btn-dark" style={{ flex: 1, opacity: isSaving ? 0.5 : 1 }}>
+        <div style={{ display: "flex", gap: 10, padding: "14px 20px", borderTop: "2.5px solid var(--ink)", flexWrap: "wrap" }}>
+          <button onClick={onClose} className="pop-btn pop-btn-outline" style={{ flex: "1 1 90px" }}>Annuler</button>
+          <button onClick={() => saveGame(false)} disabled={isSaving} className="pop-btn pop-btn-outline" style={{ flex: "1 1 120px", opacity: isSaving ? 0.5 : 1 }}>
             {isSaving ? "Sauvegarde…" : "Enregistrer"}
+          </button>
+          <button onClick={() => saveGame(true)} disabled={isSaving} className="pop-btn pop-btn-dark" style={{ flex: "1 1 160px", opacity: isSaving ? 0.5 : 1 }}>
+            {isSaving ? "Sauvegarde…" : "Enregistrer + sélectionner"}
           </button>
         </div>
       </div>
@@ -833,6 +838,7 @@ function CataloguePageInner() {
           game={editGame}
           onClose={() => setEditGame(null)}
           onSaved={updated => { handleSaved(updated); setEditGame(null); }}
+          onSelect={ean => setSelected(prev => new Set(prev).add(ean))}
         />
       )}
     </div>
