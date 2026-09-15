@@ -146,6 +146,7 @@ Base D1 `ludotool-db` (binding `DB`).
 | `paniers_communs_votes`, `paniers_communs_commentaires` | Votes nominatifs et commentaires sur ces lignes |
 | `jv_jeux`, `jv_selections`, `jv_reservations`, `jv_rotation_config`, `jv_notes` | Section jeux vidéo |
 | `pieces_manquantes`, `pieces_trouvees`, `reparations` | Suivi du matériel |
+| `pieces_detachees` | Stock de pièces de rechange, rangées par jeu |
 | `alertes`, `suggestions`, `selections` | Alertes, boîte à idées, sélections thématiques |
 | `utilisateurs`, `utilisateur_sessions` | Comptes (un par membre de `equipe`) et sessions ouvertes |
 

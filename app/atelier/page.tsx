@@ -83,6 +83,7 @@ export default function Home() {
   const [nbReparations, setNbReparations] = useState(0);
   const [nbManquants, setNbManquants] = useState(0);
   const [nbOrphelines, setNbOrphelines] = useState(0);
+  const [nbDetachees, setNbDetachees] = useState(0);
 
   const [jeuxAttente, setJeuxAttente] = useState<JeuAttenteType[]>([]);
   const [jeuxEnPrepa, setJeuxEnPrepa] = useState<JeuType[]>([]);
@@ -155,14 +156,17 @@ export default function Home() {
     });
 
     const toArr = (d: any) => Array.isArray(d) ? d : [];
-    const [repsData, manqData, orphData] = await Promise.all([
+    const [repsData, manqData, orphData, detData] = await Promise.all([
       fetch('/api/reparations').then(r => r.json() as Promise<any>).then(toArr).catch(() => []),
       fetch('/api/pieces-manquantes').then(r => r.json() as Promise<any>).then(toArr).catch(() => []),
       fetch('/api/pieces-trouvees').then(r => r.json() as Promise<any>).then(toArr).catch(() => []),
+      fetch('/api/pieces-detachees').then(r => r.json() as Promise<any>).then(toArr).catch(() => []),
     ]);
     setNbReparations((repsData as any[]).filter(r => r.statut === 'À faire').length);
     setNbManquants((manqData as any[]).filter(m => ['Manquant', 'Commandé'].includes(m.statut)).length);
     setNbOrphelines((orphData as any[]).filter(o => o.statut === 'En attente').length);
+    // Compté par jeu et non par ligne : c'est le nombre de jeux pour lesquels on a du rab.
+    setNbDetachees(new Set((detData as any[]).map(d => String(d.nom_jeu ?? '').toLowerCase().trim())).size);
   };
 
   useEffect(() => { fetchDashboardData(); fetchHistorique(); }, []);
@@ -602,6 +606,7 @@ export default function Home() {
                   { href: '/reparations', label: '🛠️ À réparer',      count: nbReparations },
                   { href: '/pieces',      label: '🧩 Jeux incomplets', count: nbManquants   },
                   { href: '/pieces',      label: '🔍 Pièces trouvées', count: nbOrphelines  },
+                  { href: '/pieces-detachees', label: '🔩 Pièces détachées', count: nbDetachees },
                 ].map(item => (
                   <Link key={item.href + item.label} href={item.href}>
                     <div className="pop-card pop-card-hover" style={{ background: 'rgba(255,255,255,0.55)', padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}>
