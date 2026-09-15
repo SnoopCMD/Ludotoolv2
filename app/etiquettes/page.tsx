@@ -28,6 +28,18 @@ const MECANIQUES = [
 
 const TEMPS_DE_JEU_OPTIONS = ["5-10", "10-20", "20-30", "30-45", "45-60", "1h30", "2h", "4h+"];
 
+/** Convertit une durée MyLudo (en minutes) vers l'un des paliers d'étiquette */
+function dureeVersPalier(minutes: number): string {
+  if (minutes <= 10) return "5-10";
+  if (minutes <= 20) return "10-20";
+  if (minutes <= 30) return "20-30";
+  if (minutes <= 45) return "30-45";
+  if (minutes <= 60) return "45-60";
+  if (minutes <= 90) return "1h30";
+  if (minutes <= 120) return "2h";
+  return "4h+";
+}
+
 type Etiquette = {
   id: string | number;
   ean: string;
@@ -79,6 +91,7 @@ export default function EtiquettesPage() {
     vert: false, rose: false, bleu: false, rouge: false, jaune: false
   });
   const [recherche, setRecherche] = useState("");
+  const [mlLoading, setMlLoading] = useState<Set<string | number>>(new Set());
 
   useEffect(() => {
     setIsClient(true);
@@ -200,6 +213,41 @@ export default function EtiquettesPage() {
         return eti;
       })
     }));
+  };
+
+  // Complète les joueurs / le temps depuis MyLudo (source d'appoint)
+  const completerDepuisMyLudo = async (couleurId: string, eti: Etiquette) => {
+    if (mlLoading.has(eti.id)) return;
+    if (!eti.ean && !eti.nom) return;
+    setMlLoading(prev => new Set(prev).add(eti.id));
+    try {
+      const params = new URLSearchParams();
+      if (eti.ean) params.set("ean", eti.ean);
+      if (eti.nom) params.set("nom", eti.nom);
+      const data = await fetch(`/api/myludo?${params}`).then(r => r.json() as Promise<any>).catch(() => null);
+      if (!data || data.notFound || data.error) return;
+
+      const joueurs = data.players_min
+        ? (data.players_max && data.players_max !== data.players_min ? `${data.players_min}-${data.players_max}` : `${data.players_min}`)
+        : "";
+      const dureeMin = Number(data.duration);
+      const temps = Number.isFinite(dureeMin) && dureeMin > 0 ? dureeVersPalier(dureeMin) : "";
+
+      setEtiquettes(prev => ({
+        ...prev, [couleurId]: prev[couleurId].map(e => {
+          if (e.id !== eti.id) return e;
+          const updated: Etiquette = {
+            ...e,
+            nb_de_joueurs: joueurs || e.nb_de_joueurs,
+            temps_de_jeu: temps || e.temps_de_jeu,
+          };
+          sauvegarderLigneEnBase(updated, couleurId);
+          return updated;
+        })
+      }));
+    } finally {
+      setMlLoading(prev => { const n = new Set(prev); n.delete(eti.id); return n; });
+    }
   };
 
   const genererPDF = async () => {
@@ -388,7 +436,7 @@ export default function EtiquettesPage() {
                                 padding: "10px 12px", textAlign: i === 0 || i >= 4 ? "center" : "left",
                                 fontSize: 14, letterSpacing: "0.05em", color: "var(--ink)",
                                 whiteSpace: "nowrap",
-                                width: [64, 128, 180, 140, 90, 110, 90, 80, 48][i],
+                                width: [64, 128, 180, 140, 90, 110, 90, 80, 84][i],
                               }}>{h}</th>
                             ))}
                           </tr>
@@ -513,19 +561,32 @@ export default function EtiquettesPage() {
                                       {cat.maxStars === 3 && <option value={3}>★★★</option>}
                                     </select>
                                   </td>
-                                  {/* Delete */}
-                                  <td style={{ padding: "6px 8px", textAlign: "center" }}>
-                                    <button
-                                      onClick={() => supprimerLigne(cat.id, eti.id)}
-                                      title="Supprimer la ligne"
-                                      style={{
-                                        background: "none", border: "none", cursor: "pointer",
-                                        fontSize: 20, padding: "4px 6px", borderRadius: 4,
-                                        transition: "background 0.1s",
-                                      }}
-                                      onMouseEnter={e => (e.currentTarget.style.background = "#fff0f0")}
-                                      onMouseLeave={e => (e.currentTarget.style.background = "none")}
-                                    >🗑️</button>
+                                  {/* Actions */}
+                                  <td style={{ padding: "6px 8px" }}>
+                                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
+                                      <button
+                                        onClick={() => completerDepuisMyLudo(cat.id, eti)}
+                                        disabled={mlLoading.has(eti.id) || (!eti.ean && !eti.nom)}
+                                        title="Compléter joueurs et temps depuis MyLudo"
+                                        style={{
+                                          background: "var(--cream2)", border: "2px solid var(--ink)", borderRadius: 6,
+                                          cursor: (mlLoading.has(eti.id) || (!eti.ean && !eti.nom)) ? "not-allowed" : "pointer",
+                                          fontSize: 11, fontWeight: 800, padding: "4px 6px", lineHeight: 1,
+                                          opacity: (!eti.ean && !eti.nom) ? 0.4 : 1, fontFamily: "inherit",
+                                        }}
+                                      >{mlLoading.has(eti.id) ? "…" : "ML"}</button>
+                                      <button
+                                        onClick={() => supprimerLigne(cat.id, eti.id)}
+                                        title="Supprimer la ligne"
+                                        style={{
+                                          background: "none", border: "none", cursor: "pointer",
+                                          fontSize: 20, padding: "4px 4px", borderRadius: 4,
+                                          transition: "background 0.1s",
+                                        }}
+                                        onMouseEnter={e => (e.currentTarget.style.background = "#fff0f0")}
+                                        onMouseLeave={e => (e.currentTarget.style.background = "none")}
+                                      >🗑️</button>
+                                    </div>
                                   </td>
                                 </tr>
                               );

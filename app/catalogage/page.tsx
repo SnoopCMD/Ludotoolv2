@@ -255,19 +255,13 @@ function ModalCatalogage({ game: initGame, onClose, onSaved, onSelect }: {
     resume: string | null;
     description: string | null;
     url: string;
+    titre?: string | null;
+    image?: string | null;
     auteurs?: string[];
     illustrateurs?: string[];
     editeur?: string | null;
   } | null>(null);
   const [searchError, setSearchError] = useState<string | null>(null);
-  const [isSearchingMl, setIsSearchingMl] = useState(false);
-  const [mlData, setMlData] = useState<{
-    url: string; title: string; edition: number | null; image: string | null;
-    age: string | null; players: string | null; duration: number | null; note: string | null;
-    nb_de_joueurs: string | null; temps_de_jeu: string | null;
-  } | null>(null);
-  const [mlError, setMlError] = useState<string | null>(null);
-  const [mlImported, setMlImported] = useState<Set<string>>(new Set());
 
   const searchEspritJeu = async () => {
     setIsSearching(true); setSearchError(null); setEspritData(null);
@@ -282,26 +276,6 @@ function ModalCatalogage({ game: initGame, onClose, onSaved, onSelect }: {
       setEspritData(data);
     } catch { setSearchError("Erreur de connexion"); }
     finally { setIsSearching(false); }
-  };
-
-  const searchMyLudo = async () => {
-    setIsSearchingMl(true); setMlError(null); setMlData(null); setMlImported(new Set());
-    try {
-      const params = new URLSearchParams();
-      if (game.ean) params.set("ean", game.ean);
-      params.set("nom", game.nom);
-      const resp = await fetch(`/api/myludo?${params}`);
-      const data = await resp.json() as any;
-      if (data.notFound) { setMlError("Jeu introuvable sur MyLudo"); return; }
-      if (data.error) { setMlError(data.error); return; }
-      setMlData(data);
-    } catch { setMlError("Erreur de connexion"); }
-    finally { setIsSearchingMl(false); }
-  };
-
-  const importMl = (field: "nb_de_joueurs" | "temps_de_jeu" | "image_url", value: string) => {
-    setGame(g => ({ ...g, [field]: value }));
-    setMlImported(s => new Set(s).add(field));
   };
 
   const importAuteursEspritJeu = (data: NonNullable<typeof espritData>) => {
@@ -331,8 +305,6 @@ function ModalCatalogage({ game: initGame, onClose, onSaved, onSelect }: {
     const payload: Partial<CatalogueEntry> & { auteurs_json: string; auteurs: string } = {
       description: game.description, resume: game.resume,
       boite_format: game.boite_format, editeur: game.editeur,
-      nb_de_joueurs: game.nb_de_joueurs, temps_de_jeu: game.temps_de_jeu,
-      image_url: game.image_url,
       auteurs_json: JSON.stringify(filteredAuteurs), auteurs: auteursText,
     };
     const res = await fetch(`/api/catalogue/${encodeURIComponent(game.ean)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
@@ -420,11 +392,21 @@ function ModalCatalogage({ game: initGame, onClose, onSaved, onSelect }: {
             {searchError && <p style={{ fontSize: 13, fontWeight: 700, color: "var(--rouge)" }}>{searchError}</p>}
             {espritData && (
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {espritData.url && (
-                  <a href={espritData.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: "rgba(0,0,0,0.4)", textDecoration: "underline", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {espritData.url}
-                  </a>
-                )}
+                {/* Fiche trouvée — vignette + titre pour vérifier visuellement le match */}
+                <div style={{ display: "flex", gap: 12, alignItems: "center", padding: "10px 12px", background: "var(--cream)", border: "2px solid var(--ink)", borderRadius: 8 }}>
+                  <div style={{ width: 56, height: 56, borderRadius: 8, overflow: "hidden", background: "var(--cream2)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", border: "1.5px solid var(--cream2)" }}>
+                    {espritData.image
+                      ? <img src={espritData.image} alt={espritData.titre ?? "Jeu"} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                      : <span style={{ fontSize: 24 }}>🎲</span>}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 10, fontWeight: 800, color: "var(--vert)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Fiche trouvée</div>
+                    <div style={{ fontSize: 14, fontWeight: 800, color: "var(--ink)", lineHeight: 1.25, marginTop: 2 }}>{espritData.titre ?? game.nom}</div>
+                    <a href={espritData.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: "rgba(0,0,0,0.4)", textDecoration: "underline", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block", marginTop: 3 }}>
+                      {espritData.url.replace(/^https:\/\/www\.espritjeu\.com/, "")}
+                    </a>
+                  </div>
+                </div>
                 {espritData.resume && (
                   <div style={{ border: "2px solid var(--cream2)", borderRadius: 8, overflow: "hidden" }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 14px", background: "var(--cream)", borderBottom: "1px solid var(--cream2)" }}>
@@ -470,63 +452,6 @@ function ModalCatalogage({ game: initGame, onClose, onSaved, onSelect }: {
                 rows={5} placeholder="Résumé ou description du jeu…"
                 style={{ ...inpStyle, resize: "vertical" }} />
             </div>
-          </div>
-
-          {/* MyLudo — complément d'infos (joueurs / âge / durée / visuel) */}
-          <div style={sectionStyle}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span style={labelStyle}>Complément MyLudo</span>
-              <button onClick={searchMyLudo} disabled={isSearchingMl} className="pop-btn pop-btn-dark" style={{ fontSize: 12, padding: "6px 14px", opacity: isSearchingMl ? 0.5 : 1 }}>
-                {isSearchingMl ? "Recherche…" : "Chercher sur MyLudo"}
-              </button>
-            </div>
-            {mlError && <p style={{ fontSize: 13, fontWeight: 700, color: "var(--rouge)" }}>{mlError}</p>}
-            {mlData && (
-              <div style={{ border: "2px solid var(--cream2)", borderRadius: 8, overflow: "hidden" }}>
-                <div style={{ display: "flex", gap: 12, padding: "12px 14px", background: "var(--cream)", borderBottom: "1px solid var(--cream2)" }}>
-                  {mlData.image && (
-                    <img src={mlData.image} alt={mlData.title} style={{ width: 48, height: 48, borderRadius: 8, objectFit: "cover", flexShrink: 0, background: "var(--cream2)" }} />
-                  )}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <a href={mlData.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)", textDecoration: "underline" }}>
-                      {mlData.title}{mlData.edition ? ` (${mlData.edition})` : ""}
-                    </a>
-                    <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
-                      {mlData.players && <span className="pop-sticker" style={{ background: "var(--white)", fontSize: 10 }}>👥 {mlData.players}</span>}
-                      {mlData.age && <span className="pop-sticker" style={{ background: "var(--white)", fontSize: 10 }}>🎂 {mlData.age}</span>}
-                      {mlData.duration && <span className="pop-sticker" style={{ background: "var(--white)", fontSize: 10 }}>⏱ {mlData.duration} min</span>}
-                      {mlData.note && <span className="pop-sticker" style={{ background: "var(--white)", fontSize: 10 }}>⭐ {mlData.note}</span>}
-                    </div>
-                  </div>
-                </div>
-                <div style={{ padding: "10px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
-                  {mlData.nb_de_joueurs && (
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                      <span style={{ fontSize: 12, color: "rgba(0,0,0,0.6)" }}>Nombre de joueurs — <strong>{mlData.nb_de_joueurs}</strong></span>
-                      <button onClick={() => importMl("nb_de_joueurs", mlData.nb_de_joueurs!)} className="pop-btn pop-btn-yellow" style={{ fontSize: 11, padding: "3px 10px", flexShrink: 0 }}>
-                        {mlImported.has("nb_de_joueurs") ? "✓ Importé" : "Importer →"}
-                      </button>
-                    </div>
-                  )}
-                  {mlData.temps_de_jeu && (
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                      <span style={{ fontSize: 12, color: "rgba(0,0,0,0.6)" }}>Durée de jeu — <strong>{mlData.temps_de_jeu}</strong></span>
-                      <button onClick={() => importMl("temps_de_jeu", mlData.temps_de_jeu!)} className="pop-btn pop-btn-yellow" style={{ fontSize: 11, padding: "3px 10px", flexShrink: 0 }}>
-                        {mlImported.has("temps_de_jeu") ? "✓ Importé" : "Importer →"}
-                      </button>
-                    </div>
-                  )}
-                  {mlData.image && !game.image_url && (
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                      <span style={{ fontSize: 12, color: "rgba(0,0,0,0.6)" }}>Visuel de couverture</span>
-                      <button onClick={() => importMl("image_url", mlData.image!)} className="pop-btn pop-btn-yellow" style={{ fontSize: 11, padding: "3px 10px", flexShrink: 0 }}>
-                        {mlImported.has("image_url") ? "✓ Importé" : "Utiliser →"}
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
           </div>
 
           {/* Auteurs */}

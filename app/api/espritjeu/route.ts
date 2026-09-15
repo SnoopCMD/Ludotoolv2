@@ -238,8 +238,15 @@ export async function GET(req: NextRequest) {
     const { resume, description } = extractTexts(productHtml);
     const { auteurs, illustrateurs, editeur } = extractCarac(productHtml);
 
+    // Vignette + titre du produit (og:*) pour vérification visuelle côté client
+    const ogImage = productHtml.match(/og:image['"]\s+content=['"]([^'"]+)['"]/i);
+    const ogTitle = productHtml.match(/og:title['"]\s+content=['"]([^'"]+)['"]/i);
+    const titre = ogTitle ? stripHtml(ogTitle[1]).replace(/\s*-\s*Espritjeu\.com\s*$/i, "").trim() : null;
+
     return NextResponse.json({
       url: productUrl,
+      titre,
+      image: ogImage ? ogImage[1] : null,
       resume: resume || null,
       description: description || null,
       auteurs,
