@@ -37,6 +37,100 @@ function nameToSlug(name: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
+// ─── Résolution d'URL produit via le sitemap Esprit Jeu ────────────────────────
+// Les fiches produit ont un préfixe de catégorie variable
+// (ex. /jeux-de-strategie/le-renard-des-bois-duo.html), impossible à deviner à
+// partir du seul nom. On s'appuie donc sur le sitemap produit officiel, qui liste
+// toutes les URLs canoniques, pour retrouver la bonne fiche de façon fiable.
+
+const SITEMAP_URL = "https://www.espritjeu.com/siteMapsFRProduit1.xml";
+const SITEMAP_TTL = 6 * 60 * 60 * 1000; // 6 h
+
+type SitemapEntry = { slug: string; tokens: string[]; url: string };
+let sitemapCache: { at: number; entries: SitemapEntry[] } | null = null;
+
+/** Découpe un slug en tokens significatifs (≥ 2 caractères, sans mots vides) */
+const STOPWORDS = new Set(["le", "la", "les", "un", "une", "des", "de", "du", "et", "a", "the"]);
+function slugTokens(slug: string): string[] {
+  return slug.split("-").filter(t => t.length >= 2 && !STOPWORDS.has(t));
+}
+
+async function getSitemapEntries(): Promise<SitemapEntry[]> {
+  if (sitemapCache && Date.now() - sitemapCache.at < SITEMAP_TTL) {
+    return sitemapCache.entries;
+  }
+  const resp = await fetch(SITEMAP_URL, {
+    headers: HEADERS,
+    // met en cache le sitemap au niveau de l'edge Cloudflare
+    cf: { cacheTtl: SITEMAP_TTL / 1000, cacheEverything: true },
+  } as RequestInit);
+  if (!resp.ok) {
+    if (sitemapCache) return sitemapCache.entries; // on garde l'ancien cache si dispo
+    throw new Error(`Sitemap inaccessible (${resp.status})`);
+  }
+  const xml = await resp.text();
+  const entries: SitemapEntry[] = [];
+  const seen = new Set<string>();
+  for (const m of xml.matchAll(/<loc>\s*(https:\/\/www\.espritjeu\.com\/[^<\s]+\.html)\s*<\/loc>/gi)) {
+    const url = m[1];
+    if (seen.has(url)) continue;
+    seen.add(url);
+    const slug = url.replace(/^.*\//, "").replace(/\.html$/i, "");
+    entries.push({ slug, tokens: slugTokens(slug), url });
+  }
+  sitemapCache = { at: Date.now(), entries };
+  return entries;
+}
+
+/**
+ * Retrouve l'URL de la fiche produit correspondant le mieux au nom fourni.
+ * Stratégie :
+ *  1. correspondance exacte du slug ;
+ *  2. sinon, fiche contenant TOUS les mots de la requête (on prend la plus courte,
+ *     donc la plus proche du titre exact) ;
+ *  3. sinon, meilleure couverture partielle des mots (≥ 60 %).
+ */
+function resolveProductUrl(nom: string, entries: SitemapEntry[]): string | null {
+  const targetSlug = nameToSlug(nom);
+  if (!targetSlug) return null;
+
+  // 1. slug exact
+  const exact = entries.find(e => e.slug === targetSlug);
+  if (exact) return exact.url;
+
+  const target = slugTokens(targetSlug);
+  if (!target.length) return null;
+
+  let bestFull: SitemapEntry | null = null;   // couvre tous les mots
+  let bestPartial: SitemapEntry | null = null;
+  let bestPartialScore = 0;
+
+  for (const e of entries) {
+    if (!e.tokens.length) continue;
+    let matched = 0;
+    for (const t of target) if (e.tokens.includes(t)) matched++;
+    if (matched === 0) continue;
+
+    if (matched === target.length) {
+      // toutes les correspondances : on préfère le slug le plus court (moins de
+      // mots superflus → titre le plus proche)
+      if (!bestFull || e.tokens.length < bestFull.tokens.length) bestFull = e;
+    } else {
+      const score = matched / target.length;
+      // pénalise les fiches avec beaucoup de mots en trop
+      const precision = matched / e.tokens.length;
+      const combined = score * 0.7 + precision * 0.3;
+      if (score >= 0.6 && combined > bestPartialScore) {
+        bestPartialScore = combined;
+        bestPartial = e;
+      }
+    }
+  }
+
+  if (bestFull) return bestFull.url;
+  return bestPartial ? bestPartial.url : null;
+}
+
 /** Retourne le HTML à partir de la première occurrence du pattern, sur maxLen caractères */
 function zoneFrom(html: string, pattern: RegExp, maxLen = 6000): string | null {
   const idx = html.search(pattern);
@@ -114,39 +208,18 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    // 1. Trouver la page produit
+    // 1. Trouver la page produit via le sitemap officiel (URLs canoniques fiables)
     let productUrl: string | null = null;
 
-    // Essai 1 : slug direct depuis le nom complet
     if (nom) {
-      const slug = nameToSlug(nom);
-      const directUrl = `https://www.espritjeu.com/${slug}.html`;
-      const headResp = await fetch(directUrl, { headers: HEADERS, method: "HEAD" });
-      if (headResp.ok) productUrl = directUrl;
-    }
+      const entries = await getSitemapEntries();
+      productUrl = resolveProductUrl(nom, entries);
 
-    // Essai 2 : slug des 2-3 premiers mots significatifs (ignore articles/tirets)
-    if (!productUrl && nom) {
-      const words = nom.split(/[\s\-–—]+/).filter(w => w.length > 2).slice(0, 3);
-      if (words.length >= 2) {
-        const shortSlug = nameToSlug(words.join(" "));
-        const shortUrl = `https://www.espritjeu.com/${shortSlug}.html`;
-        const headResp = await fetch(shortUrl, { headers: HEADERS, method: "HEAD" });
-        if (headResp.ok) productUrl = shortUrl;
-      }
-    }
-
-    // Essai 3 : recherche par mots-clés (EAN prioritaire, sinon 2 premiers mots du nom)
-    if (!productUrl) {
-      const keywords = ean ?? (nom ? nom.split(/[\s\-–—]+/).filter(w => w.length > 2).slice(0, 2).join(" ") : "");
-      if (keywords) {
-        const searchUrl = `https://www.espritjeu.com/dhtml/resultat_recherche.php?keywords=${encodeURIComponent(keywords)}`;
-        const searchResp = await fetch(searchUrl, { headers: HEADERS });
-        if (searchResp.ok) {
-          const searchHtml = await searchResp.text();
-          const firstLink = searchHtml.match(/href="(https?:\/\/www\.espritjeu\.com\/[a-z0-9][a-z0-9-]*\.html)"/i);
-          if (firstLink) productUrl = firstLink[1];
-        }
+      // Repli : si le nom contient un article/sous-titre après « : » ou « - », on
+      // retente sur la partie principale du titre.
+      if (!productUrl) {
+        const main = nom.split(/[:–—]|(?:\s-\s)/)[0].trim();
+        if (main && main !== nom) productUrl = resolveProductUrl(main, entries);
       }
     }
 
