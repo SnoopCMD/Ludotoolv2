@@ -2,6 +2,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import { useIsMobile } from "../../lib/useIsMobile";
+import BoutonScan from "../../components/ScanCodeBarre";
 import { chargerResolveurCouleur, type ResolveurCouleur } from "../../lib/couleursJeux";
 
 type PieceDetachee = { id: number; nom_jeu: string; description: string; quantite: number; created_at: string };
@@ -23,6 +24,8 @@ export default function PiecesDetacheesPage() {
   const [desc, setDesc] = useState("");
   const [suggestionsNom, setSuggestionsNom] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
+  const [codeJeu, setCodeJeu] = useState("");
+  const [erreurCode, setErreurCode] = useState<string | null>(null);
 
   // Édition en ligne (description ou quantité)
   const [editId, setEditId] = useState<number | null>(null);
@@ -49,6 +52,29 @@ export default function PiecesDetacheesPage() {
     setNomJeu(text);
     const n = normaliser(text);
     setSuggestionsNom(n.length > 1 ? nomsExistants.filter(nom => normaliser(nom).includes(n) && normaliser(nom) !== n).slice(0, 6) : []);
+  };
+
+  // Scan d'un EAN ou d'un code Syracuse : on reprend le nom du jeu tel qu'il
+  // est dans l'inventaire, ce qui garantit aussi la couleur de la carte.
+  const chercherJeuParCode = async (brut: string) => {
+    const code = brut.trim();
+    if (!code) return;
+    setErreurCode(null);
+    const codeF = /^\d+$/.test(code) && code.length < 8 ? code.padStart(8, "0") : code;
+    const lire = (url: string) => fetch(url).then(r => r.json() as Promise<any>).then(d => Array.isArray(d) ? d : []).catch(() => []);
+    const [parSyracuse, parEan] = await Promise.all([
+      lire(`/api/jeux?fields=nom&code_syracuse=${encodeURIComponent(codeF)}&limit=1`),
+      lire(`/api/jeux?fields=nom&ean=${encodeURIComponent(codeF)}&limit=1`),
+    ]);
+    const jeu = parSyracuse[0] ?? parEan[0] ?? null;
+    if (jeu?.nom) {
+      // Un nom déjà présent dans le stock garde son orthographe, pour que les pièces restent groupées.
+      setNomJeu(nomsExistants.find(nom => normaliser(nom) === normaliser(jeu.nom)) ?? jeu.nom);
+      setSuggestionsNom([]);
+      setCodeJeu("");
+    } else {
+      setErreurCode(`Aucun jeu pour le code « ${codeF} »`);
+    }
   };
 
   const formulaireValide = !!nomJeu.trim() && !!desc.trim() && Number(qte) >= 1;
@@ -187,6 +213,18 @@ export default function PiecesDetacheesPage() {
           <div className="pop-card" style={{ padding: 20, display: "flex", flexDirection: "column", gap: 12 }}>
             <p className="bc" style={{ fontSize: 18, margin: 0, letterSpacing: "0.03em" }}>Ranger une pièce</p>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              {/* EAN ou code Syracuse, saisi ou scanné : remplit le nom du jeu */}
+              <div style={{ display: "flex", gap: 8, flex: isMobile ? "1 1 100%" : "0 0 200px" }}>
+                <input
+                  type="text" placeholder="EAN / code..." value={codeJeu}
+                  onChange={e => { setCodeJeu(e.target.value); setErreurCode(null); }}
+                  onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); chercherJeuParCode(codeJeu); } }}
+                  onBlur={() => chercherJeuParCode(codeJeu)}
+                  style={{ ...inp, flex: 1, minWidth: 0 }}
+                />
+                <BoutonScan onScan={code => { setCodeJeu(code); chercherJeuParCode(code); }} />
+              </div>
+
               {/* Nom du jeu — avec autocomplétion sur les jeux déjà en stock */}
               <div style={{ flex: isMobile ? "1 1 100%" : "1 1 220px", position: "relative" }}>
                 <input
@@ -237,6 +275,7 @@ export default function PiecesDetacheesPage() {
                 <span className="bc" style={{ fontSize: 16 }}>Ajouter</span>
               </button>
             </div>
+            {erreurCode && <p style={{ fontSize: 13, fontWeight: 700, color: "var(--rouge)", margin: 0 }}>{erreurCode}</p>}
           </div>
 
           <div className="pop-card" style={{ padding: 20, display: "flex", flexDirection: "column", gap: 12, justifyContent: "center" }}>
