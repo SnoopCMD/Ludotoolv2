@@ -279,13 +279,33 @@ function ModuleAtelier({ ctx }: { ctx: ContexteAccueil }) {
   );
 }
 
+// ─── Couleur de pastille des jeux ─────────────────────────────────────────────
+
+/** Couleur de pastille (catalogue) par EAN, pour teinter les blocs qui parlent
+ *  d'un jeu précis : on retrouve le jeu d'un coup d'œil, comme sur l'étagère. */
+async function chargerCouleurs(eans: string[]): Promise<Record<string, string>> {
+  const liste = [...new Set(eans.filter(Boolean))];
+  if (!liste.length) return {};
+  const cat = await charger(`/api/catalogue?eans=${encodeURIComponent(liste.join(","))}&fields=ean,couleur`);
+  const couleurs: Record<string, string> = {};
+  for (const c of cat) if (COULEURS_JEU[c.couleur]) couleurs[c.ean] = COULEURS_JEU[c.couleur];
+  return couleurs;
+}
+
 // ─── Module : réparations à faire ─────────────────────────────────────────────
 
-type Reparation = { id: number; nom: string; type_reparation: string; description: string | null; statut: string };
+type Reparation = { id: number; ean: string; nom: string; type_reparation: string; description: string | null; statut: string };
 
 function ModuleReparations({ ctx }: { ctx: ContexteAccueil }) {
   const [reparations, setReparations] = useState<Reparation[] | null>(null);
-  useEffect(() => { charger("/api/reparations").then(l => setReparations(l as Reparation[])); }, []);
+  const [couleurs, setCouleurs] = useState<Record<string, string>>({});
+  useEffect(() => {
+    charger("/api/reparations").then(async l => {
+      const liste = l as Reparation[];
+      setCouleurs(await chargerCouleurs(liste.filter(r => r.statut === "À faire").map(r => r.ean)));
+      setReparations(liste);
+    });
+  }, []);
   const aFaire = (reparations ?? []).filter(r => r.statut === "À faire");
   return (
     <section style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -293,9 +313,9 @@ function ModuleReparations({ ctx }: { ctx: ContexteAccueil }) {
       {reparations === null ? <Chargement /> : aFaire.length === 0 ? <Vide texte="Aucune réparation en attente" /> : (
         <div style={{ display: "grid", gridTemplateColumns: ctx.isMobile ? "1fr" : "repeat(auto-fill, minmax(240px, 1fr))", gap: 10 }}>
           {aFaire.slice(0, 8).map(r => (
-            <div key={r.id} className="pop-card" style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 4 }}>
+            <div key={r.id} className="pop-card" style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 4, background: couleurs[r.ean] ?? "var(--white)" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                <span className="pop-sticker" style={{ background: "var(--orange)", fontSize: 10 }}>🔧 {r.type_reparation}</span>
+                <span className="pop-sticker" style={{ background: "var(--white)", fontSize: 10 }}>🔧 {r.type_reparation}</span>
               </div>
               <p style={{ fontSize: 13, fontWeight: 800 }}>{r.nom}</p>
               {r.description && <p style={{ fontSize: 12, color: "rgba(0,0,0,0.55)", lineHeight: 1.4 }}>{r.description}</p>}
@@ -309,11 +329,18 @@ function ModuleReparations({ ctx }: { ctx: ContexteAccueil }) {
 
 // ─── Module : pièces manquantes ───────────────────────────────────────────────
 
-type PieceManquante = { id: number; nom: string; element_manquant: string; statut: string };
+type PieceManquante = { id: number; ean: string; nom: string; element_manquant: string; statut: string };
 
 function ModulePiecesManquantes({ ctx }: { ctx: ContexteAccueil }) {
   const [pieces, setPieces] = useState<PieceManquante[] | null>(null);
-  useEffect(() => { charger("/api/pieces-manquantes").then(l => setPieces(l as PieceManquante[])); }, []);
+  const [couleurs, setCouleurs] = useState<Record<string, string>>({});
+  useEffect(() => {
+    charger("/api/pieces-manquantes").then(async l => {
+      const liste = l as PieceManquante[];
+      setCouleurs(await chargerCouleurs(liste.filter(p => p.statut === "Manquant" || p.statut === "Commandé").map(p => p.ean)));
+      setPieces(liste);
+    });
+  }, []);
   const ouvertes = (pieces ?? []).filter(p => p.statut === "Manquant" || p.statut === "Commandé");
   return (
     <section style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -321,7 +348,7 @@ function ModulePiecesManquantes({ ctx }: { ctx: ContexteAccueil }) {
       {pieces === null ? <Chargement /> : ouvertes.length === 0 ? <Vide texte="Aucune pièce manquante" /> : (
         <div style={{ display: "grid", gridTemplateColumns: ctx.isMobile ? "1fr" : "repeat(auto-fill, minmax(240px, 1fr))", gap: 10 }}>
           {ouvertes.slice(0, 8).map(p => (
-            <div key={p.id} className="pop-card" style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 4 }}>
+            <div key={p.id} className="pop-card" style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 4, background: couleurs[p.ean] ?? "var(--white)" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <span className="pop-sticker" style={{ background: p.statut === "Commandé" ? "var(--bleu)" : "var(--rouge)", color: p.statut === "Commandé" ? "var(--ink)" : "var(--white)", fontSize: 10 }}>{p.statut}</span>
               </div>
