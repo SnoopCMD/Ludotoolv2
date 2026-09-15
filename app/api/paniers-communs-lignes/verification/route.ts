@@ -36,8 +36,10 @@ export async function GET(request: Request) {
     ]);
 
     const recues = (receptions.results as any[]).map(r => ({ ...r, nomNormalise: normaliser(r.nom) }));
-    // `ean` vaut 'Manuel' pour les saisies sans code-barres : ce n'est pas un
-    // identifiant, il ne doit jamais servir à rapprocher deux jeux.
+    // Les anciennes saisies sans code-barres ont `ean = 'Manuel'` (avant la
+    // migration 0010) : ce n'est pas un identifiant, il ne doit jamais servir à
+    // rapprocher deux jeux. Les nouveaux codes `CUST-…` sont uniques et ne
+    // figurent jamais dans un panier, donc ils ne posent pas ce problème.
     const parEan = new Map<string, any>();
     for (const r of recues) {
       if (r.ean && r.ean !== 'Manuel' && !parEan.has(r.ean)) parEan.set(r.ean, r);

@@ -227,7 +227,7 @@ niveaux de certitude :
 
 | Niveau | Règle | Coché d'office |
 | --- | --- | --- |
-| `ean` | Même code-barres (`Manuel` exclu : ce n'est pas un identifiant) | oui |
+| `ean` | Même code-barres (l'ancien `Manuel` exclu : ce n'est pas un identifiant) | oui |
 | `nom` | Noms identiques une fois normalisés (casse, accents, ponctuation) | oui |
 | `proche` | Un nom contient l'autre, au-delà de 5 caractères | non, seulement signalé |
 

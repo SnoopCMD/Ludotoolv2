@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import NavBar from "../../components/NavBar";
 import { useIsMobile } from "../../lib/useIsMobile";
+import { genererEanCustom } from "../../lib/eanCustom";
 import BoutonScan from "../../components/ScanCodeBarre";
 
 const BarcodeIcon = () => (
@@ -214,7 +215,7 @@ export default function Home() {
 
   const ajouterManuel = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key !== "Enter" || !manuelInput.trim()) return;
-    setJeuxAttente(prev => [{ uid: nextUid(), ean: "Manuel", nom: manuelInput.trim(), typeAjout: "nouveaute", etapes: { ...defaultEtapes }, couleur: "" }, ...prev]);
+    setJeuxAttente(prev => [{ uid: nextUid(), ean: genererEanCustom(), nom: manuelInput.trim(), typeAjout: "nouveaute", etapes: { ...defaultEtapes }, couleur: "" }, ...prev]);
     setManuelInput("");
   };
 
@@ -227,7 +228,7 @@ export default function Home() {
 
   const ajouterManuelReception = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key !== "Enter" || !manuelReceptionInput.trim()) return;
-    setJeuxReception(prev => [{ uid: nextUid(), ean: "Manuel", nom: manuelReceptionInput.trim(), typeAjout: "nouveaute", etapes: { ...defaultEtapes }, couleur: "" }, ...prev]);
+    setJeuxReception(prev => [{ uid: nextUid(), ean: genererEanCustom(), nom: manuelReceptionInput.trim(), typeAjout: "nouveaute", etapes: { ...defaultEtapes }, couleur: "" }, ...prev]);
     setManuelReceptionInput("");
   };
 
@@ -285,7 +286,7 @@ export default function Home() {
     }
 
     const catMap = new Map<string, { ean: string; nom: string; couleur: string }>();
-    jeuxAttente.filter(j => j.ean !== "Manuel").forEach(j => catMap.set(j.ean, { ean: j.ean, nom: j.nom, couleur: j.couleur }));
+    jeuxAttente.forEach(j => catMap.set(j.ean, { ean: j.ean, nom: j.nom, couleur: j.couleur }));
     const catUpdates = [...catMap.values()];
     if (catUpdates.length > 0) {
       await fetch('/api/catalogue', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(catUpdates) });
@@ -313,7 +314,7 @@ export default function Home() {
     }
 
     const catMap = new Map<string, { ean: string; nom: string; couleur: string }>();
-    jeuxReception.filter(j => j.ean !== "Manuel").forEach(j => catMap.set(j.ean, { ean: j.ean, nom: j.nom, couleur: j.couleur }));
+    jeuxReception.forEach(j => catMap.set(j.ean, { ean: j.ean, nom: j.nom, couleur: j.couleur }));
     const catUpdates = [...catMap.values()];
     if (catUpdates.length > 0) {
       await fetch('/api/catalogue', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(catUpdates) });
@@ -461,9 +462,9 @@ export default function Home() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, color: 'rgba(0,0,0,0.4)', marginBottom: 10 }}>
         <BarcodeIcon />
         {editingEanIdx === index ? (
-          <input type="text" value={jeu.ean === "Manuel" ? "" : jeu.ean}
-            onChange={e => setter(prev => { const l = [...prev]; l[index] = { ...l[index], ean: e.target.value || "Manuel" }; return l; })}
-            onBlur={() => setEditingEanIdx(null)} onKeyDown={e => e.key === "Enter" && setEditingEanIdx(null)}
+          <input type="text" value={jeu.ean}
+            onChange={e => setter(prev => { const l = [...prev]; l[index] = { ...l[index], ean: e.target.value }; return l; })}
+            onBlur={() => { setter(prev => { const l = [...prev]; if (!l[index].ean.trim()) l[index] = { ...l[index], ean: genererEanCustom() }; return l; }); setEditingEanIdx(null); }} onKeyDown={e => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
             autoFocus style={{ background: 'transparent', borderBottom: '2px solid var(--ink)', outline: 'none', width: 160, maxWidth: '100%', fontSize: 13 }} />
         ) : <span>EAN : {jeu.ean}</span>}
       </div>
