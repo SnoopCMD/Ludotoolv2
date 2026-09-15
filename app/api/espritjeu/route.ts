@@ -46,18 +46,38 @@ function nameToSlug(name: string): string {
 const SITEMAP_URL = "https://www.espritjeu.com/siteMapsFRProduit1.xml";
 const SITEMAP_TTL = 6 * 60 * 60 * 1000; // 6 h
 
-type SitemapEntry = { slug: string; tokens: string[]; url: string };
-let sitemapCache: { at: number; entries: SitemapEntry[] } | null = null;
+type SitemapEntry = { slug: string; tokens: string[] };
+type Sitemap = { entries: (SitemapEntry & { url: string; weight: number })[]; idf: (t: string) => number };
+let sitemapCache: { at: number; sitemap: Sitemap } | null = null;
 
 /** Découpe un slug en tokens significatifs (≥ 2 caractères, sans mots vides) */
-const STOPWORDS = new Set(["le", "la", "les", "un", "une", "des", "de", "du", "et", "a", "the"]);
+const STOPWORDS = new Set(["le", "la", "les", "un", "une", "des", "de", "du", "et", "a", "the", "au", "aux", "en", "pour", "avec", "sur", "dans", "ou"]);
+// Mots génériques de catégorie/format : jamais distinctifs d'un titre. Ils sont
+// exclus de la comparaison (sinon « Azul - Jeu de société » matcherait n'importe
+// quelle fiche « …-jeu-de-societe ») et servent à nettoyer un suffixe descriptif
+// du type « Mistigri - Jeu de cartes ».
+const GENERIC = new Set(["jeu", "jeux", "de", "du", "des", "la", "le", "les", "un", "une", "d", "cartes", "carte", "societe", "plateau", "ambiance", "ambiances", "familial", "enfant", "enfants", "strategie", "cooperatif"]);
+const IGNORE = new Set([...STOPWORDS, ...GENERIC]);
+
 function slugTokens(slug: string): string[] {
-  return slug.split("-").filter(t => t.length >= 2 && !STOPWORDS.has(t));
+  return slug.split("-").filter(t => t.length >= 2 && !IGNORE.has(t));
 }
 
-async function getSitemapEntries(): Promise<SitemapEntry[]> {
+/** Retire un suffixe descriptif générique (« - Jeu de cartes », « : jeu d'ambiance »…) */
+function stripDescriptor(nom: string): string {
+  const parts = nom.split(/\s[-–—:]\s|\s?:\s/);
+  if (parts.length < 2) return nom;
+  while (parts.length > 1) {
+    const words = parts[parts.length - 1].toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").match(/[a-z0-9]+/g) ?? [];
+    if (words.length && words.every(w => GENERIC.has(w))) parts.pop();
+    else break;
+  }
+  return parts.join(" - ").trim();
+}
+
+async function getSitemap(): Promise<Sitemap> {
   if (sitemapCache && Date.now() - sitemapCache.at < SITEMAP_TTL) {
-    return sitemapCache.entries;
+    return sitemapCache.sitemap;
   }
   const resp = await fetch(SITEMAP_URL, {
     headers: HEADERS,
@@ -65,32 +85,42 @@ async function getSitemapEntries(): Promise<SitemapEntry[]> {
     cf: { cacheTtl: SITEMAP_TTL / 1000, cacheEverything: true },
   } as RequestInit);
   if (!resp.ok) {
-    if (sitemapCache) return sitemapCache.entries; // on garde l'ancien cache si dispo
+    if (sitemapCache) return sitemapCache.sitemap; // on garde l'ancien cache si dispo
     throw new Error(`Sitemap inaccessible (${resp.status})`);
   }
   const xml = await resp.text();
-  const entries: SitemapEntry[] = [];
+  const base: (SitemapEntry & { url: string })[] = [];
   const seen = new Set<string>();
+  const df = new Map<string, number>();
   for (const m of xml.matchAll(/<loc>\s*(https:\/\/www\.espritjeu\.com\/[^<\s]+\.html)\s*<\/loc>/gi)) {
     const url = m[1];
     if (seen.has(url)) continue;
     seen.add(url);
     const slug = url.replace(/^.*\//, "").replace(/\.html$/i, "");
-    entries.push({ slug, tokens: slugTokens(slug), url });
+    const tokens = slugTokens(slug);
+    base.push({ slug, tokens, url });
+    for (const t of new Set(tokens)) df.set(t, (df.get(t) ?? 0) + 1);
   }
-  sitemapCache = { at: Date.now(), entries };
-  return entries;
+  // IDF : un mot rare (ex. « mistigri ») pèse bien plus qu'un mot courant (« jeu »)
+  const N = base.length;
+  const idf = (t: string) => Math.log((N + 1) / ((df.get(t) ?? 0) + 1));
+  const entries = base.map(e => ({ ...e, weight: e.tokens.reduce((s, t) => s + idf(t), 0) }));
+  const sitemap: Sitemap = { entries, idf };
+  sitemapCache = { at: Date.now(), sitemap };
+  return sitemap;
 }
 
 /**
  * Retrouve l'URL de la fiche produit correspondant le mieux au nom fourni.
  * Stratégie :
  *  1. correspondance exacte du slug ;
- *  2. sinon, fiche contenant TOUS les mots de la requête (on prend la plus courte,
- *     donc la plus proche du titre exact) ;
- *  3. sinon, meilleure couverture partielle des mots (≥ 60 %).
+ *  2. sinon, fiche contenant TOUS les mots de la requête (la plus courte) ;
+ *  3. sinon, meilleure couverture PONDÉRÉE (IDF) des mots, à condition que le mot
+ *     le plus distinctif de la requête soit présent — pour éviter qu'un simple
+ *     « jeu de cartes » commun ne fasse matcher n'importe quelle fiche.
  */
-function resolveProductUrl(nom: string, entries: SitemapEntry[]): string | null {
+function resolveProductUrl(nom: string, sitemap: Sitemap): string | null {
+  const { entries, idf } = sitemap;
   const targetSlug = nameToSlug(nom);
   if (!targetSlug) return null;
 
@@ -100,29 +130,32 @@ function resolveProductUrl(nom: string, entries: SitemapEntry[]): string | null 
 
   const target = slugTokens(targetSlug);
   if (!target.length) return null;
+  const targetWeight = target.reduce((s, t) => s + idf(t), 0);
+  const maxIdf = Math.max(...target.map(idf));
 
-  let bestFull: SitemapEntry | null = null;   // couvre tous les mots
-  let bestPartial: SitemapEntry | null = null;
+  let bestFull: (typeof entries)[number] | null = null;
+  let bestPartial: (typeof entries)[number] | null = null;
   let bestPartialScore = 0;
 
   for (const e of entries) {
     if (!e.tokens.length) continue;
-    let matched = 0;
-    for (const t of target) if (e.tokens.includes(t)) matched++;
+    const set = new Set(e.tokens);
+    let matched = 0, matchedWeight = 0, maxMatchedIdf = 0;
+    for (const t of target) {
+      if (set.has(t)) { matched++; matchedWeight += idf(t); maxMatchedIdf = Math.max(maxMatchedIdf, idf(t)); }
+    }
     if (matched === 0) continue;
 
     if (matched === target.length) {
-      // toutes les correspondances : on préfère le slug le plus court (moins de
-      // mots superflus → titre le plus proche)
       if (!bestFull || e.tokens.length < bestFull.tokens.length) bestFull = e;
     } else {
-      const score = matched / target.length;
-      // pénalise les fiches avec beaucoup de mots en trop
-      const precision = matched / e.tokens.length;
-      const combined = score * 0.7 + precision * 0.3;
-      if (score >= 0.6 && combined > bestPartialScore) {
-        bestPartialScore = combined;
-        bestPartial = e;
+      const coverage = matchedWeight / targetWeight;
+      // le mot le plus rare de la requête doit être présent
+      const distinctiveMatched = maxMatchedIdf >= maxIdf * 0.999;
+      if (coverage >= 0.6 && distinctiveMatched) {
+        const precision = matchedWeight / e.weight;
+        const combined = coverage * 0.7 + precision * 0.3;
+        if (combined > bestPartialScore) { bestPartialScore = combined; bestPartial = e; }
       }
     }
   }
@@ -212,14 +245,14 @@ export async function GET(req: NextRequest) {
     let productUrl: string | null = null;
 
     if (nom) {
-      const entries = await getSitemapEntries();
-      productUrl = resolveProductUrl(nom, entries);
+      const sitemap = await getSitemap();
+      productUrl = resolveProductUrl(nom, sitemap);
 
-      // Repli : si le nom contient un article/sous-titre après « : » ou « - », on
-      // retente sur la partie principale du titre.
+      // Repli : on retire un suffixe descriptif générique (« - Jeu de cartes »,
+      // « : jeu d'ambiance »…) qui n'appartient pas au titre et fausse la recherche.
       if (!productUrl) {
-        const main = nom.split(/[:–—]|(?:\s-\s)/)[0].trim();
-        if (main && main !== nom) productUrl = resolveProductUrl(main, entries);
+        const stripped = stripDescriptor(nom);
+        if (stripped && stripped !== nom) productUrl = resolveProductUrl(stripped, sitemap);
       }
     }
 
