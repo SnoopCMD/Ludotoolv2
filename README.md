@@ -65,7 +65,7 @@ En production, ce sont des secrets Cloudflare (`wrangler secret put …`).
 
 | Page | Rôle |
 | --- | --- |
-| `/` | Tableau de bord : présences du jour, événements, nouveautés |
+| `/` | Tableau de bord : présences du jour, alertes, puis des modules au choix (nouveautés, réservations JV, atelier…) |
 | `/inventaire` | Parc de jeux : recherche, fiches, statuts, doubles |
 | `/atelier` | Jeux en préparation et étapes (plastification, contenu, étiquette, équipement, encodage, notice), réceptions de commandes |
 | `/agenda` | Planning de l'équipe : horaires, absences, événements, échanges de jours, PDF |
@@ -149,6 +149,7 @@ Base D1 `ludotool-db` (binding `DB`).
 | `pieces_detachees` | Stock de pièces de rechange, rangées par jeu |
 | `alertes`, `suggestions`, `selections` | Alertes, boîte à idées, sélections thématiques |
 | `utilisateurs`, `utilisateur_sessions` | Comptes (un par membre de `equipe`) et sessions ouvertes |
+| `utilisateur_preferences` | Modules choisis sur le tableau de bord, par compte |
 
 Les migrations de `migrations/` sont appliquées manuellement :
 
@@ -185,6 +186,18 @@ page doit être réservée, c'est à elle de le décider, pas à un middleware g
 Côté client, `components/AuthProvider.tsx` expose `useCompte()` :
 `{ compte, chargement, connexion, deconnexion, changerMotDePasse }`. `compte`
 vaut `null` hors connexion — c'est un état normal, pas une erreur.
+
+### Les modules du tableau de bord
+
+L'agenda et les alertes sont fixes. Le reste de l'accueil est une liste de
+modules (`components/ModulesAccueil.tsx`, registre `MODULES`) : nouveautés en
+salle, réservations jeux vidéo, jeux en préparation, réparations, pièces
+manquantes, boîte à idées. Hors connexion, c'est la présentation par défaut
+(`MODULES_PAR_DEFAUT`, les nouveautés seules). Connecté, chacun choisit et
+ordonne ses modules via « Personnaliser », enregistrés dans
+`utilisateur_preferences.accueil_modules` (tableau JSON d'identifiants, route
+`/api/auth/preferences`). Un identifiant inconnu est ignoré à la lecture :
+retirer un module du registre ne casse aucun compte.
 
 **Réinitialiser un mot de passe oublié** (il n'y a pas encore d'écran pour ça) :
 

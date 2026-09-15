@@ -3,6 +3,8 @@ import { useState, useEffect, useMemo } from "react";
 import NavBar from "../components/NavBar";
 import { useIsMobile } from "../lib/useIsMobile";
 import BoutonScan from "../components/ScanCodeBarre";
+import { useCompte } from "../components/AuthProvider";
+import { ListeModules, ModalPersonnaliser, MODULES_PAR_DEFAUT, modulesValides, type Nouveaute } from "../components/ModulesAccueil";
 import {
   format, startOfWeek, endOfWeek, eachDayOfInterval,
   isToday, addWeeks, subWeeks, getISOWeek,
@@ -36,15 +38,6 @@ type Evenement = {
   heure_debut?: string | null;
   heure_fin?: string | null;
   membres: string[];
-};
-
-type Nouveaute = {
-  id: string | number;
-  nom: string;
-  ean: string;
-  couleur?: string;
-  date_sortie?: string | null;
-  image_url?: string;
 };
 
 type Alerte = {
@@ -224,11 +217,7 @@ function getJoursFeries(year: number): Record<string, string> {
   };
 }
 
-// ─── Couleurs jeux & alertes ──────────────────────────────────────────────────
-
-const COULEURS_JEU: Record<string, string> = {
-  vert: "#a8e063", rose: "#f472b6", bleu: "#60a5fa", rouge: "#f87171", jaune: "#fb923c",
-};
+// ─── Alertes ──────────────────────────────────────────────────────────────────
 
 const ALERTE_STYLES: Record<string, { card: React.CSSProperties; badge: React.CSSProperties; label: string; icon: string }> = {
   urgent: { card: { background: "#fecaca", border: "2.5px solid var(--ink)" }, badge: { background: "var(--rouge)", color: "var(--white)" }, label: "Urgent", icon: "🚨" },
@@ -240,6 +229,7 @@ const ALERTE_STYLES: Record<string, { card: React.CSSProperties; badge: React.CS
 
 export default function AccueilPage() {
   const isMobile = useIsMobile();
+  const { compte } = useCompte();
   // Sur téléphone la grille de planning n'affiche qu'un jour : à cinq colonnes
   // il resterait ~60px par jour, trop peu pour lire un bloc d'horaire.
   // On mémorise une date et non un index : quand la semaine change, la date
@@ -253,6 +243,32 @@ export default function AccueilPage() {
   const [semaineRef, setSemaineRef] = useState(new Date());
   const [weekPlanningSlots, setWeekPlanningSlots] = useState<PlanningSlot[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Modules du tableau de bord. Hors connexion, et pour un compte qui n'a rien
+  // personnalisé, c'est la présentation par défaut ; l'agenda et les alertes ne
+  // sont pas des modules, ils sont toujours là.
+  const [modules, setModules] = useState<string[]>(MODULES_PAR_DEFAUT);
+  const [modalModules, setModalModules] = useState(false);
+  useEffect(() => {
+    if (!compte) { setModules(MODULES_PAR_DEFAUT); return; }
+    let annule = false;
+    fetch('/api/auth/preferences', { cache: 'no-store' })
+      .then(r => r.ok ? r.json() as Promise<{ accueil_modules: string[] | null }> : null)
+      .then(d => { if (!annule && d?.accueil_modules) setModules(modulesValides(d.accueil_modules)); })
+      .catch(() => {});
+    return () => { annule = true; };
+  }, [compte?.id]);
+
+  const enregistrerModules = async (ids: string[]) => {
+    const r = await fetch('/api/auth/preferences', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accueil_modules: ids }),
+    });
+    const d = await r.json().catch(() => ({})) as { accueil_modules?: string[]; error?: string };
+    if (!r.ok) throw new Error(d.error || "Impossible d'enregistrer.");
+    setModules(modulesValides(d.accueil_modules ?? ids));
+  };
 
   const [agendaCouleurs, setAgendaCouleurs] = useState({
     accent: '#a8e063', equipeA: '#f87171', equipeB: '#60a5fa', swap: '#c4b5fd',
@@ -862,52 +878,26 @@ export default function AccueilPage() {
           </section>
         </div>
 
-        {/* Nouveautés */}
-        {nouveautes.length > 0 && (
-          <section style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-              <span className="bc" style={{ fontSize: 18 }}>
-                Nouveautés en salle
-                <span style={{ fontSize: 14, fontWeight: 600, color: "rgba(0,0,0,0.4)", marginLeft: 10 }}>({nouveautes.length})</span>
-              </span>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                {dateProchaineRotation && (
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ fontSize: 11, fontWeight: 800, color: "rgba(0,0,0,0.4)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Prochaine rotation</span>
-                    <span className="pop-sticker" style={{ background: dateProchaineRotation <= new Date() ? "var(--rouge)" : "var(--orange)", color: dateProchaineRotation <= new Date() ? "var(--white)" : "var(--ink)", fontSize: 12 }}>
-                      {dateProchaineRotation <= new Date() ? "⚠️ " : "⏳ "}
-                      {format(dateProchaineRotation, "d MMM yyyy", { locale: fr })}
-                    </span>
-                  </div>
-                )}
-                <a href="/nouveautes" className="pop-btn pop-btn-outline" style={{ fontSize: 12, padding: "4px 12px", textDecoration: "none" }}>Gérer →</a>
-              </div>
-            </div>
-            <div className="pop-scroll-x" style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 6 }}>
-              {nouveautes.map(jeu => {
-                const couleur = COULEURS_JEU[jeu.couleur ?? ""] ?? null;
-                const estExpire = jeu.date_sortie && new Date(jeu.date_sortie) <= new Date();
-                return (
-                  <div key={jeu.id} style={{ flexShrink: 0, display: "flex", flexDirection: "column", gap: 6, width: 90 }} title={jeu.nom}>
-                    <div style={{ width: 90, height: 90, borderRadius: 10, overflow: "hidden", border: "2.5px solid var(--ink)", boxShadow: "2px 2px 0 var(--ink)", position: "relative" }}>
-                      {jeu.image_url
-                        ? <img src={jeu.image_url} alt={jeu.nom} style={{ width: "100%", height: "100%", objectFit: "cover" }} loading="lazy" />
-                        : <div style={{ width: "100%", height: "100%", background: couleur ?? "var(--cream2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>🎲</div>}
-                      {estExpire && (
-                        <div style={{ position: "absolute", inset: 0, background: "rgba(248,113,113,0.25)", display: "flex", alignItems: "flex-end", justifyContent: "center", paddingBottom: 4 }}>
-                          <span style={{ fontSize: 9, fontWeight: 900, background: "var(--rouge)", color: "var(--white)", padding: "1px 6px", borderRadius: 4 }}>À sortir</span>
-                        </div>
-                      )}
-                    </div>
-                    <p style={{ fontSize: 11, fontWeight: 700, color: "var(--ink)", textAlign: "center", lineHeight: 1.3, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" as any }}>{jeu.nom}</p>
-                    {jeu.date_sortie && <p style={{ fontSize: 10, fontWeight: 700, textAlign: "center", color: estExpire ? "var(--rouge)" : "rgba(0,0,0,0.4)" }}>{format(new Date(jeu.date_sortie), "d MMM", { locale: fr })}</p>}
-                  </div>
-                );
-              })}
-            </div>
-          </section>
+        {/* Modules personnalisables */}
+        {compte && (
+          <div className="pop-sec-head" style={{ marginBottom: 0, marginTop: 4 }}>
+            <span>Mes modules</span><div />
+            <button onClick={() => setModalModules(true)} className="pop-btn pop-btn-outline" style={{ fontSize: 12, padding: "4px 12px", flexShrink: 0 }}>
+              ⚙️ Personnaliser
+            </button>
+          </div>
         )}
+        {compte && modules.length === 0 && (
+          <p style={{ fontSize: 13, fontWeight: 600, color: "rgba(0,0,0,0.4)", textAlign: "center", padding: "10px 0" }}>
+            Aucun module : clique sur « Personnaliser » pour en ajouter.
+          </p>
+        )}
+        <ListeModules ids={modules} ctx={{ isMobile, connecte: !!compte, nouveautes, dateProchaineRotation }} />
       </div>
+
+      {modalModules && (
+        <ModalPersonnaliser actifs={modules} onFermer={() => setModalModules(false)} onEnregistrer={enregistrerModules} />
+      )}
 
       {/* Modal alerte */}
       {isModalOpen && (
