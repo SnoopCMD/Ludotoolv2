@@ -24,12 +24,16 @@ export async function POST(request: Request) {
     const body = await request.json() as any;
     const nom_jeu = String(body.nom_jeu ?? '').trim();
     const description = String(body.description ?? '').trim();
+    const quantite = Math.floor(Number(body.quantite ?? 1));
     if (!nom_jeu || !description) {
       return NextResponse.json({ error: 'nom_jeu et description sont obligatoires' }, { status: 400 });
     }
+    if (!Number.isFinite(quantite) || quantite < 1) {
+      return NextResponse.json({ error: 'quantite doit être un entier ≥ 1' }, { status: 400 });
+    }
     const result = await db.prepare(
-      'INSERT INTO pieces_detachees (nom_jeu, description) VALUES (?, ?)'
-    ).bind(nom_jeu, description).run();
+      'INSERT INTO pieces_detachees (nom_jeu, description, quantite) VALUES (?, ?, ?)'
+    ).bind(nom_jeu, description, quantite).run();
     return NextResponse.json({ id: result.meta.last_row_id });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });

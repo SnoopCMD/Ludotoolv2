@@ -3,7 +3,7 @@ import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useIsMobile } from "../../lib/useIsMobile";
 
-type PieceDetachee = { id: number; nom_jeu: string; description: string; created_at: string };
+type PieceDetachee = { id: number; nom_jeu: string; description: string; quantite: number; created_at: string };
 
 const normaliser = (str: string) =>
   str.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
@@ -15,13 +15,16 @@ export default function PiecesDetacheesPage() {
 
   // Ajout
   const [nomJeu, setNomJeu] = useState("");
+  const [qte, setQte] = useState<number | "">(1);
   const [desc, setDesc] = useState("");
   const [suggestionsNom, setSuggestionsNom] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Édition en ligne
+  // Édition en ligne (description ou quantité)
   const [editId, setEditId] = useState<number | null>(null);
   const [editDesc, setEditDesc] = useState("");
+  const [editQteId, setEditQteId] = useState<number | null>(null);
+  const [editQte, setEditQte] = useState("");
 
   useEffect(() => { chargerPieces(); }, []);
 
@@ -44,13 +47,15 @@ export default function PiecesDetacheesPage() {
     setSuggestionsNom(n.length > 1 ? nomsExistants.filter(nom => normaliser(nom).includes(n) && normaliser(nom) !== n).slice(0, 6) : []);
   };
 
+  const formulaireValide = !!nomJeu.trim() && !!desc.trim() && Number(qte) >= 1;
+
   const ajouter = async () => {
-    if (!nomJeu.trim() || !desc.trim() || isSaving) return;
+    if (!formulaireValide || isSaving) return;
     setIsSaving(true);
     // On réutilise la casse d'un nom déjà présent pour éviter les doublons « Azul » / « azul ».
     const nomFinal = nomsExistants.find(nom => normaliser(nom) === normaliser(nomJeu)) ?? nomJeu.trim();
-    await fetch('/api/pieces-detachees', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nom_jeu: nomFinal, description: desc }) });
-    setDesc("");
+    await fetch('/api/pieces-detachees', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nom_jeu: nomFinal, description: desc, quantite: Number(qte) }) });
+    setDesc(""); setQte(1);
     setSuggestionsNom([]);
     setIsSaving(false);
     chargerPieces();
@@ -61,9 +66,22 @@ export default function PiecesDetacheesPage() {
     setPieces(prev => prev.filter(p => p.id !== id));
   };
 
-  const commencerEdition = (p: PieceDetachee) => { setEditId(p.id); setEditDesc(p.description); };
+  // Changement de quantité : à 0 la ligne disparaît (l'API la supprime).
+  const changerQuantite = async (p: PieceDetachee, nouvelle: number) => {
+    const q = Math.max(0, Math.floor(nouvelle));
+    if (q === p.quantite) return;
+    if (q === 0 && !confirm(`Plus aucun(e) « ${p.description} » pour ${p.nom_jeu} : retirer la ligne ?`)) return;
+    await fetch(`/api/pieces-detachees/${p.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ quantite: q }) });
+    setPieces(prev => q === 0 ? prev.filter(x => x.id !== p.id) : prev.map(x => x.id === p.id ? { ...x, quantite: q } : x));
+  };
 
-  const validerEdition = async () => {
+  const validerEditQte = (p: PieceDetachee) => {
+    const q = parseInt(editQte, 10);
+    setEditQteId(null);
+    if (Number.isFinite(q)) changerQuantite(p, q);
+  };
+
+  const validerEditDesc = async () => {
     if (editId === null) return;
     const description = editDesc.trim();
     if (description) {
@@ -87,11 +105,19 @@ export default function PiecesDetacheesPage() {
   }, [pieces, recherche]);
 
   const nbJeux = useMemo(() => new Set(pieces.map(p => normaliser(p.nom_jeu))).size, [pieces]);
+  const nbPieces = useMemo(() => pieces.reduce((s, p) => s + (p.quantite || 0), 0), [pieces]);
 
   const inp: React.CSSProperties = {
     border: "2px solid var(--ink)", borderRadius: 8, padding: "9px 14px",
     background: "var(--white)", outline: "none", fontSize: 15,
     fontFamily: "inherit", width: "100%", boxSizing: "border-box",
+  };
+
+  const stepBtn: React.CSSProperties = {
+    width: 26, height: 26, borderRadius: 6, border: "2px solid var(--ink)",
+    background: "var(--white)", cursor: "pointer", fontWeight: 800, fontSize: 15,
+    lineHeight: 1, padding: 0, fontFamily: "inherit", flexShrink: 0,
+    display: "inline-flex", alignItems: "center", justifyContent: "center",
   };
 
   return (
@@ -120,107 +146,133 @@ export default function PiecesDetacheesPage() {
           marginLeft: "auto", background: "var(--orange)", color: "var(--ink)",
           border: "2px solid var(--ink)", borderRadius: 20, padding: "2px 12px",
           fontSize: 14, fontWeight: 700, boxShadow: "2px 2px 0 var(--ink)", whiteSpace: "nowrap",
-        }}>{nbJeux} jeu{nbJeux > 1 ? "x" : ""}</span>
+        }}>{nbJeux} jeu{nbJeux > 1 ? "x" : ""}{!isMobile && ` · ${nbPieces} pièces`}</span>
       </header>
 
-      <div style={{ padding: "var(--page-pad-y) var(--page-pad-x)", display: "flex", flexDirection: "column", gap: 20, maxWidth: 900, width: "100%" }}>
+      <div style={{ padding: "var(--page-pad-y) var(--page-pad-x)", display: "flex", flexDirection: "column", gap: 20, width: "100%", boxSizing: "border-box" }}>
 
-        {/* Formulaire ajout */}
-        <div className="pop-card" style={{ padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
-          <p className="bc" style={{ fontSize: 18, margin: 0, letterSpacing: "0.03em" }}>Ranger une pièce</p>
-          <p style={{ margin: 0, fontSize: 14, color: "rgba(0,0,0,0.5)", fontWeight: 500 }}>
-            Les pièces en surplus conservées à la ludothèque, dans lesquelles on pioche quand un jeu est incomplet.
-          </p>
+        {/* Formulaire ajout + recherche, côte à côte sur grand écran */}
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 2fr) minmax(0, 1fr)", gap: 16, alignItems: "stretch" }}>
+          <div className="pop-card" style={{ padding: 20, display: "flex", flexDirection: "column", gap: 12 }}>
+            <p className="bc" style={{ fontSize: 18, margin: 0, letterSpacing: "0.03em" }}>Ranger une pièce</p>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              {/* Nom du jeu — avec autocomplétion sur les jeux déjà en stock */}
+              <div style={{ flex: isMobile ? "1 1 100%" : "1 1 220px", position: "relative" }}>
+                <input
+                  type="text" placeholder="Nom du jeu..." value={nomJeu}
+                  onChange={e => handleNomJeu(e.target.value)}
+                  onBlur={() => setTimeout(() => setSuggestionsNom([]), 150)}
+                  style={{ ...inp, fontWeight: 700 }}
+                />
+                {suggestionsNom.length > 0 && (
+                  <div style={{
+                    position: "absolute", top: "100%", left: 0, right: 0, zIndex: 50,
+                    background: "var(--white)", border: "2px solid var(--ink)",
+                    borderRadius: 8, boxShadow: "4px 4px 0 var(--ink)", marginTop: 4,
+                    overflow: "hidden",
+                  }}>
+                    {suggestionsNom.map(nom => (
+                      <div key={nom} onMouseDown={() => { setNomJeu(nom); setSuggestionsNom([]); }}
+                        style={{ padding: "10px 14px", cursor: "pointer", fontWeight: 700, fontSize: 15, borderBottom: "1px solid var(--cream2)" }}
+                        onMouseEnter={e => (e.currentTarget.style.background = "var(--cream2)")}
+                        onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+                      >{nom}</div>
+                    ))}
+                  </div>
+                )}
+              </div>
 
-          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-            {/* Nom du jeu — avec autocomplétion sur les jeux déjà en stock */}
-            <div style={{ flex: isMobile ? "1 1 100%" : "0 0 260px", position: "relative" }}>
+              {/* Quantité */}
               <input
-                type="text" placeholder="Nom du jeu..." value={nomJeu}
-                onChange={e => handleNomJeu(e.target.value)}
-                onBlur={() => setTimeout(() => setSuggestionsNom([]), 150)}
-                style={{ ...inp, fontWeight: 700 }}
+                type="number" min={1} inputMode="numeric" placeholder="Qté" value={qte}
+                onChange={e => setQte(e.target.value === "" ? "" : Math.max(1, parseInt(e.target.value, 10) || 1))}
+                style={{ ...inp, width: isMobile ? 80 : 90, flex: "0 0 auto", textAlign: "center", fontWeight: 800 }}
               />
-              {suggestionsNom.length > 0 && (
-                <div style={{
-                  position: "absolute", top: "100%", left: 0, right: 0, zIndex: 50,
-                  background: "var(--white)", border: "2px solid var(--ink)",
-                  borderRadius: 8, boxShadow: "4px 4px 0 var(--ink)", marginTop: 4,
-                  overflow: "hidden",
-                }}>
-                  {suggestionsNom.map(nom => (
-                    <div key={nom} onMouseDown={() => { setNomJeu(nom); setSuggestionsNom([]); }}
-                      style={{ padding: "10px 14px", cursor: "pointer", fontWeight: 700, fontSize: 15, borderBottom: "1px solid var(--cream2)" }}
-                      onMouseEnter={e => (e.currentTarget.style.background = "var(--cream2)")}
-                      onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
-                    >{nom}</div>
-                  ))}
-                </div>
-              )}
+
+              {/* Nature de la pièce */}
+              <input
+                type="text" placeholder="pions rouges, cartes, dé..."
+                value={desc} onChange={e => setDesc(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && ajouter()}
+                style={{ ...inp, flex: "1 1 200px", minWidth: 0 }}
+              />
+
+              <button
+                onClick={ajouter}
+                disabled={!formulaireValide || isSaving}
+                className="pop-btn pop-btn-dark"
+                style={{ padding: "9px 20px", fontSize: 15, flex: isMobile ? "1 1 100%" : "0 0 auto", justifyContent: "center", opacity: formulaireValide ? 1 : 0.4, cursor: formulaireValide ? "pointer" : "not-allowed" }}
+              >
+                <span className="bc" style={{ fontSize: 16 }}>Ajouter</span>
+              </button>
             </div>
+          </div>
 
-            {/* Description : quantité + pièce */}
+          <div className="pop-card" style={{ padding: 20, display: "flex", flexDirection: "column", gap: 12, justifyContent: "center" }}>
+            <p className="bc" style={{ fontSize: 18, margin: 0, letterSpacing: "0.03em" }}>Chercher</p>
             <input
-              type="text" placeholder="3 pions rouges, 1 dé, 12 cartes..."
-              value={desc} onChange={e => setDesc(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && ajouter()}
-              style={{ ...inp, flex: 1, minWidth: isMobile ? 0 : 180 }}
+              type="text" placeholder="🔍 Jeu ou pièce..."
+              value={recherche} onChange={e => setRecherche(e.target.value)}
+              style={{ ...inp, fontSize: 16 }}
             />
-
-            <button
-              onClick={ajouter}
-              disabled={!nomJeu.trim() || !desc.trim() || isSaving}
-              className="pop-btn pop-btn-dark"
-              style={{ padding: "9px 20px", fontSize: 15, flex: isMobile ? "1 1 100%" : undefined, justifyContent: "center", opacity: (!nomJeu.trim() || !desc.trim()) ? 0.4 : 1, cursor: (!nomJeu.trim() || !desc.trim()) ? "not-allowed" : "pointer" }}
-            >
-              <span className="bc" style={{ fontSize: 16 }}>Ajouter</span>
-            </button>
+            {recherche && <span style={{ fontSize: 13, color: "rgba(0,0,0,0.45)", fontWeight: 600 }}>{groupes.length} jeu{groupes.length > 1 ? "x" : ""} trouvé{groupes.length > 1 ? "s" : ""}</span>}
           </div>
         </div>
 
-        {/* Recherche */}
-        <input
-          type="text" placeholder="🔍 Rechercher un jeu ou une pièce..."
-          value={recherche} onChange={e => setRecherche(e.target.value)}
-          style={{ ...inp, fontSize: 16, padding: "11px 16px" }}
-        />
-
-        {/* Liste par jeu */}
+        {/* Grille des jeux */}
         {groupes.length === 0 ? (
           <p style={{ textAlign: "center", color: "rgba(0,0,0,0.35)", fontWeight: 700, padding: "40px 0" }}>
             {pieces.length === 0 ? "Aucune pièce détachée en stock." : "Aucun jeu ne correspond."}
           </p>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(300px, 1fr))", gap: 14, alignItems: "start" }}>
             {groupes.map(g => (
-              <div key={g.nom} className="pop-card" style={{ padding: "14px 20px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-                  <span style={{ fontWeight: 800, fontSize: 18 }}>{g.nom}</span>
+              <div key={g.nom} className="pop-card" style={{ padding: "12px 16px 8px", background: "var(--white)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+                  <span style={{ fontWeight: 800, fontSize: 17, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={g.nom}>{g.nom}</span>
                   <span style={{
-                    fontSize: 12, fontWeight: 800, background: "var(--orange)", color: "var(--ink)",
-                    border: "1.5px solid var(--ink)", borderRadius: 6, padding: "2px 8px",
-                    boxShadow: "1px 1px 0 var(--ink)",
-                  }}>{g.pieces.length}</span>
+                    fontSize: 11, fontWeight: 800, background: "var(--orange)", color: "var(--ink)",
+                    border: "1.5px solid var(--ink)", borderRadius: 6, padding: "1px 7px",
+                    boxShadow: "1px 1px 0 var(--ink)", whiteSpace: "nowrap",
+                  }}>{g.pieces.length} type{g.pieces.length > 1 ? "s" : ""}</span>
                 </div>
-                <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 4 }}>
+                <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
                   {g.pieces.map(p => (
-                    <li key={p.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "4px 0", borderTop: "1px solid var(--cream2)" }}>
+                    <li key={p.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderTop: "1px solid var(--cream2)" }}>
+                      {/* Stepper de quantité : − / valeur éditable / + */}
+                      <button onClick={() => changerQuantite(p, p.quantite - 1)} title="En retirer une" style={stepBtn}>−</button>
+                      {editQteId === p.id ? (
+                        <input
+                          autoFocus type="number" min={0} inputMode="numeric" value={editQte}
+                          onChange={e => setEditQte(e.target.value)}
+                          onBlur={() => validerEditQte(p)}
+                          onKeyDown={e => { if (e.key === "Enter") validerEditQte(p); if (e.key === "Escape") setEditQteId(null); }}
+                          style={{ ...inp, width: 56, padding: "2px 4px", textAlign: "center", fontWeight: 800, fontSize: 15 }}
+                        />
+                      ) : (
+                        <span onClick={() => { setEditQteId(p.id); setEditQte(String(p.quantite)); }} title="Cliquer pour saisir la quantité"
+                          className="bc" style={{ minWidth: 34, textAlign: "center", fontSize: 19, cursor: "text", lineHeight: 1 }}>
+                          {p.quantite}
+                        </span>
+                      )}
+                      <button onClick={() => changerQuantite(p, p.quantite + 1)} title="En ajouter une" style={stepBtn}>+</button>
+
                       {editId === p.id ? (
                         <input
                           autoFocus type="text" value={editDesc}
                           onChange={e => setEditDesc(e.target.value)}
-                          onBlur={validerEdition}
-                          onKeyDown={e => { if (e.key === "Enter") validerEdition(); if (e.key === "Escape") setEditId(null); }}
-                          style={{ ...inp, padding: "5px 10px", flex: 1 }}
+                          onBlur={validerEditDesc}
+                          onKeyDown={e => { if (e.key === "Enter") validerEditDesc(); if (e.key === "Escape") setEditId(null); }}
+                          style={{ ...inp, padding: "4px 8px", flex: 1, fontSize: 14 }}
                         />
                       ) : (
-                        <span onClick={() => commencerEdition(p)} title="Cliquer pour modifier"
-                          style={{ flex: 1, minWidth: 0, fontWeight: 500, fontSize: 15, color: "rgba(0,0,0,0.75)", cursor: "text" }}>
+                        <span onClick={() => { setEditId(p.id); setEditDesc(p.description); }} title="Cliquer pour modifier"
+                          style={{ flex: 1, minWidth: 0, fontWeight: 500, fontSize: 14, color: "rgba(0,0,0,0.75)", cursor: "text", lineHeight: 1.25 }}>
                           {p.description}
                         </span>
                       )}
-                      <button onClick={() => supprimer(p.id)} title="Retirer du stock"
-                        style={{ background: "none", border: "none", cursor: "pointer", fontSize: 15, padding: "2px 6px", opacity: 0.6 }}>🗑️</button>
+                      <button onClick={() => { if (confirm(`Retirer toute la ligne « ${p.quantite} ${p.description} » de ${p.nom_jeu} ?`)) supprimer(p.id); }} title="Retirer toute la ligne"
+                        style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14, padding: "2px 4px", opacity: 0.5, flexShrink: 0 }}>🗑️</button>
                     </li>
                   ))}
                 </ul>

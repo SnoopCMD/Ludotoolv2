@@ -128,7 +128,7 @@ export default function ReparationsPage() {
         }}>{aFaire.length} à faire</span>
       </header>
 
-      <div style={{ padding: "var(--page-pad-y) var(--page-pad-x)", display: "flex", flexDirection: "column", gap: 20, maxWidth: 900, width: "100%" }}>
+      <div style={{ padding: "var(--page-pad-y) var(--page-pad-x)", display: "flex", flexDirection: "column", gap: 20, width: "100%", boxSizing: "border-box" }}>
 
         {/* Formulaire ajout */}
         <div className="pop-card" style={{ padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
@@ -225,9 +225,10 @@ export default function ReparationsPage() {
         {aFaire.length === 0 && termines.length === 0 ? (
           <p style={{ textAlign: "center", color: "rgba(0,0,0,0.35)", fontWeight: 700, padding: "40px 0" }}>Aucune réparation en cours !</p>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(340px, 1fr))", gap: 14, alignItems: "stretch" }}>
             {aFaire.map(r => (
-              <div key={r.id} className="pop-card" style={{ padding: "16px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16 }}>
+              <div key={r.id} className="pop-card" style={{ padding: "16px 18px", display: "flex", flexDirection: "column", justifyContent: "space-between", gap: 12, background: "var(--white)" }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 4 }}>
                     <span style={{ fontWeight: 800, fontSize: 18 }}>{r.nom || "Jeu inconnu"}</span>
@@ -240,7 +241,7 @@ export default function ReparationsPage() {
                   </div>
                   {r.description && <p style={{ color: "rgba(0,0,0,0.55)", fontWeight: 500, fontSize: 15, margin: 0 }}>{r.description}</p>}
                 </div>
-                <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+                <div style={{ display: "flex", gap: 8, flexShrink: 0, justifyContent: "flex-end" }}>
                   <button onClick={() => changerStatut(r.id, r.statut)}
                     className="pop-btn"
                     style={{
@@ -259,6 +260,7 @@ export default function ReparationsPage() {
                 </div>
               </div>
             ))}
+            </div>
 
             {/* Terminées (repliées) */}
             {termines.length > 0 && (
@@ -266,9 +268,10 @@ export default function ReparationsPage() {
                 <p className="bc" style={{ fontSize: 15, color: "rgba(0,0,0,0.35)", letterSpacing: "0.05em", margin: "0 0 8px" }}>
                   TERMINÉES ({termines.length})
                 </p>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(340px, 1fr))", gap: 8 }}>
                 {termines.map(r => (
                   <div key={r.id} style={{
-                    padding: "12px 20px", marginBottom: 6, borderRadius: 8,
+                    padding: "12px 20px", borderRadius: 8,
                     border: "2px solid var(--cream2)", background: "var(--white)",
                     display: "flex", justifyContent: "space-between", alignItems: "center",
                     gap: 12, opacity: 0.55,
@@ -287,6 +290,7 @@ export default function ReparationsPage() {
                     </div>
                   </div>
                 ))}
+                </div>
               </div>
             )}
           </div>
