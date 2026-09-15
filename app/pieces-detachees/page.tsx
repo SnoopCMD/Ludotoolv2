@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import { useIsMobile } from "../../lib/useIsMobile";
 
@@ -103,6 +103,33 @@ export default function PiecesDetacheesPage() {
     }
     return [...parJeu.values()].sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
   }, [pieces, recherche]);
+
+  // Disposition « Pinterest » : les jeux restent triés par ordre alphabétique,
+  // mais chaque carte va dans la colonne la moins haute pour combler les trous.
+  // La hauteur est estimée (en-tête + une ligne par pièce, deux si le libellé
+  // est long) : suffisant pour équilibrer, sans mesurer le DOM.
+  const gridRef = useRef<HTMLDivElement>(null);
+  const [nbColonnes, setNbColonnes] = useState(1);
+  useEffect(() => {
+    const el = gridRef.current;
+    if (!el) return;
+    const calc = () => setNbColonnes(isMobile ? 1 : Math.max(1, Math.floor((el.clientWidth + 14) / (300 + 14))));
+    calc();
+    const ro = new ResizeObserver(calc);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [isMobile]);
+
+  const colonnes = useMemo(() => {
+    const cols: { hauteur: number; items: typeof groupes }[] = Array.from({ length: nbColonnes }, () => ({ hauteur: 0, items: [] }));
+    for (const g of groupes) {
+      const h = 48 + g.pieces.reduce((s, p) => s + (p.description.length > 26 ? 52 : 38), 0) + 14;
+      const cible = cols.reduce((min, c) => c.hauteur < min.hauteur ? c : min, cols[0]);
+      cible.items.push(g);
+      cible.hauteur += h;
+    }
+    return cols.map(c => c.items);
+  }, [groupes, nbColonnes]);
 
   const nbJeux = useMemo(() => new Set(pieces.map(p => normaliser(p.nom_jeu))).size, [pieces]);
   const nbPieces = useMemo(() => pieces.reduce((s, p) => s + (p.quantite || 0), 0), [pieces]);
@@ -220,13 +247,16 @@ export default function PiecesDetacheesPage() {
         </div>
 
         {/* Grille des jeux */}
+        <div ref={gridRef} style={{ width: "100%" }}>
         {groupes.length === 0 ? (
           <p style={{ textAlign: "center", color: "rgba(0,0,0,0.35)", fontWeight: 700, padding: "40px 0" }}>
             {pieces.length === 0 ? "Aucune pièce détachée en stock." : "Aucun jeu ne correspond."}
           </p>
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(300px, 1fr))", gap: 14, alignItems: "start" }}>
-            {groupes.map(g => (
+          <div style={{ display: "grid", gridTemplateColumns: `repeat(${nbColonnes}, minmax(0, 1fr))`, gap: 14, alignItems: "start" }}>
+            {colonnes.map((items, ci) => (
+            <div key={ci} style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
+            {items.map(g => (
               <div key={g.nom} className="pop-card" style={{ padding: "12px 16px 8px", background: "var(--white)" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
                   <span style={{ fontWeight: 800, fontSize: 17, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={g.nom}>{g.nom}</span>
@@ -278,8 +308,11 @@ export default function PiecesDetacheesPage() {
                 </ul>
               </div>
             ))}
+            </div>
+            ))}
           </div>
         )}
+        </div>
       </div>
     </div>
   );
