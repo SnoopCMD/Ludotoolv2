@@ -1,10 +1,12 @@
 "use client";
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { PDFDownloadLink } from "@react-pdf/renderer";
+import dynamic from "next/dynamic";
 import { useIsMobile } from "../../lib/useIsMobile";
 import BoutonScan from "../../components/ScanCodeBarre";
-import { EtiquettesPDF } from "../../components/EtiquettesPDF";
+
+// react-pdf uniquement côté navigateur : jamais dans le bundle serveur du worker
+const LienPDFEtiquettes = dynamic(() => import("../../components/LienPDFEtiquettes"), { ssr: false });
 
 const CATEGORIES = [
   { id: "vert",  nom: "Vert",  hex: "#a8e063", maxStars: 3 },
@@ -668,7 +670,7 @@ export default function EtiquettesPage() {
               {totalEtiquettes} étiquette(s)
             </p>
             {isClient ? (
-              <PDFDownloadLink document={<EtiquettesPDF etiquettesParCouleur={etiquettes} />} fileName="etiquettes_ludo.pdf">
+              <LienPDFEtiquettes etiquettesParCouleur={etiquettes} fileName="etiquettes_ludo.pdf">
                 {({ loading }) => (
                   <button
                     onClick={genererPDF}
@@ -686,7 +688,7 @@ export default function EtiquettesPage() {
                     </span>
                   </button>
                 )}
-              </PDFDownloadLink>
+              </LienPDFEtiquettes>
             ) : (
               <button disabled className="pop-btn pop-btn-dark" style={{ width: "100%", padding: "12px 0", opacity: 0.45, cursor: "not-allowed" }}>
                 <span className="bc" style={{ fontSize: 16 }}>CHARGEMENT...</span>

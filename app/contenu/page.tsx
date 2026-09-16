@@ -2,10 +2,12 @@
 import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { PDFDownloadLink } from "@react-pdf/renderer";
-import { ContenuPDF } from "../../components/ContenuPDF";
+import dynamic from "next/dynamic";
 import { useIsMobile } from "../../lib/useIsMobile";
 import BoutonScan from "../../components/ScanCodeBarre";
+
+// react-pdf uniquement côté navigateur : jamais dans le bundle serveur du worker
+const LienPDFContenu = dynamic(() => import("../../components/LienPDFContenu"), { ssr: false });
 
 const CATEGORIES = [
   { id: "vert",  nom: "Vert",  hex: "#a8e063" },
@@ -321,13 +323,13 @@ function ContenuPageInner() {
           <div style={{ padding: '16px 18px', borderTop: '2.5px solid var(--ink)', background: 'var(--cream2)' }}>
             <div style={{ textAlign: 'center', fontSize: 14, fontWeight: 700, color: 'rgba(0,0,0,0.45)', marginBottom: 10 }}>{totalContenus} fiche(s) sélectionnée(s)</div>
             {isClient ? (
-              <PDFDownloadLink document={<ContenuPDF contenus={contenus} />} fileName="contenu_ludo.pdf">
+              <LienPDFContenu contenus={contenus} fileName="contenu_ludo.pdf">
                 {({ loading }) => (
                   <button onClick={genererPDF} disabled={totalContenus === 0 || loading} className="pop-btn pop-btn-dark" style={{ width: '100%', justifyContent: 'center', opacity: totalContenus === 0 ? 0.4 : 1 }}>
                     {loading ? 'PRÉPARATION...' : 'GÉNÉRER LES FICHES →'}
                   </button>
                 )}
-              </PDFDownloadLink>
+              </LienPDFContenu>
             ) : (
               <button disabled className="pop-btn" style={{ width: '100%', justifyContent: 'center', opacity: 0.4 }}>CHARGEMENT...</button>
             )}
