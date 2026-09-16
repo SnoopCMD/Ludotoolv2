@@ -43,15 +43,28 @@ async function chargerDetecteur(): Promise<Detecteur> {
   return new BarcodeDetector({ formats: [...FORMATS] }) as unknown as Detecteur;
 }
 
+/** Retour affiché dans la caméra en mode continu, après chaque lecture. */
+export type RetourScan = { texte: string; ton: "ok" | "alerte" | "erreur" | "attente" };
+
+const COULEUR_TON: Record<RetourScan["ton"], string> = {
+  ok: "var(--vert)", alerte: "#ff9f1c", erreur: "var(--rouge)", attente: "var(--yellow)",
+};
+
 /** Bouton caméra à coller contre un champ de saisie de code.
  *
  *  Ne s'affiche que sur téléphone et seulement si le navigateur expose une
  *  caméra : `navigator.mediaDevices` est absent hors contexte sécurisé, donc
  *  en HTTP le bouton disparaît de lui-même plutôt que d'échouer au clic.
+ *
+ *  En mode `continu`, la caméra reste ouverte après chaque lecture (pour
+ *  enchaîner les boîtes) et affiche `retour`, le verdict que le parent a tiré
+ *  du dernier code, pour qu'on n'ait pas à quitter la caméra pour le voir.
  */
-export default function BoutonScan({ onScan, titre = "Scanner un code-barres" }: {
+export default function BoutonScan({ onScan, titre = "Scanner un code-barres", continu = false, retour = null }: {
   onScan: (code: string) => void;
   titre?: string;
+  continu?: boolean;
+  retour?: RetourScan | null;
 }) {
   const isMobile = useIsMobile();
   const estClient = useEstClient();
@@ -78,12 +91,21 @@ export default function BoutonScan({ onScan, titre = "Scanner un code-barres" }:
       {ouvert && (
         <VueCamera
           onFermer={() => setOuvert(false)}
-          onCode={code => { setOuvert(false); onScan(code); }}
+          onCode={code => { if (!continu) setOuvert(false); onScan(code); }}
+          continu={continu}
+          retour={retour}
         />
       )}
     </>
   );
 }
+
+type PropsCamera = {
+  onCode: (code: string) => void;
+  onFermer: () => void;
+  continu: boolean;
+  retour: RetourScan | null;
+};
 
 /** Le plein écran de la caméra est monté directement sous `<body>`.
  *
@@ -92,7 +114,7 @@ export default function BoutonScan({ onScan, titre = "Scanner un code-barres" }:
  *  `z-index: 40`, la barre de navigation en 100 : le bandeau du scanner, et
  *  donc son bouton de fermeture, passaient dessous.
  */
-function VueCamera(props: { onCode: (code: string) => void; onFermer: () => void }) {
+function VueCamera(props: PropsCamera) {
   if (typeof document === "undefined") return null;
   return createPortal(<PleinEcranCamera {...props} />, document.body);
 }
@@ -111,9 +133,14 @@ type Reglages = MediaTrackConstraintSet & {
   zoom?: number;
 };
 
-function PleinEcranCamera({ onCode, onFermer }: { onCode: (code: string) => void; onFermer: () => void }) {
+function PleinEcranCamera({ onCode, onFermer, continu, retour }: PropsCamera) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const pisteRef = useRef<MediaStreamTrack | null>(null);
+  /** `onCode` est lu via une ref : le parent le recrée à chaque rendu, et en
+   *  mode continu il se re-rend à chaque lecture. Le mettre en dépendance de
+   *  l'effet relancerait la caméra à chaque code. */
+  const onCodeRef = useRef(onCode);
+  useEffect(() => { onCodeRef.current = onCode; }, [onCode]);
   const [etat, setEtat] = useState<"demarrage" | "lecture" | "erreur">("demarrage");
   const [erreur, setErreur] = useState("");
   const [capacites, setCapacites] = useState<Capacites | null>(null);
@@ -197,20 +224,40 @@ function PleinEcranCamera({ onCode, onFermer }: { onCode: (code: string) => void
           caps.torch ? "torche" : "sans torche",
         ].join(" · "));
 
+        // En continu, le même code reste dans le champ tant que la boîte
+        // n'a pas bougé : on le retient pour ne pas le renvoyer en boucle,
+        // et on laisse un court délai avant toute nouvelle lecture.
+        let dernierCode = "";
+        let lisibleApres = 0;
+        let imagesVides = 0;
+
         minuteur = setInterval(async () => {
           // Le repli WASM peut dépasser 300 ms par image : sans ce verrou les
           // lectures s'empileraient et bloqueraient le rendu.
-          if (enCours) return;
+          if (enCours || Date.now() < lisibleApres) return;
           const v = videoRef.current;
           if (!v || v.readyState < 2) return;
           enCours = true;
           try {
             const trouves = await detecteur.detect(v);
             const code = trouves[0]?.rawValue?.trim();
-            if (code) {
+            if (code && !continu) {
               if (minuteur) clearInterval(minuteur);
               navigator.vibrate?.(60);
-              onCode(code);
+              onCodeRef.current(code);
+            } else if (code && code !== dernierCode) {
+              dernierCode = code;
+              imagesVides = 0;
+              lisibleApres = Date.now() + 1200;
+              navigator.vibrate?.(60);
+              onCodeRef.current(code);
+            } else if (code) {
+              imagesVides = 0;
+            } else if (++imagesVides >= 5) {
+              // Plus rien devant l'objectif depuis ~1,5 s : le prochain code
+              // peut être le même (une autre boîte du même jeu). Une image
+              // floue isolée ne suffit pas, sinon on relirait la même boîte.
+              dernierCode = "";
             }
           } catch {
             // Une image illisible n'est pas une erreur : on retente.
@@ -236,7 +283,7 @@ function PleinEcranCamera({ onCode, onFermer }: { onCode: (code: string) => void
       flux?.getTracks().forEach(t => t.stop());
       pisteRef.current = null;
     };
-  }, [onCode]);
+  }, [continu]);
 
   const changerZoom = async (v: number) => {
     setZoom(v);
@@ -288,6 +335,19 @@ function PleinEcranCamera({ onCode, onFermer }: { onCode: (code: string) => void
             Safari ouvre la vidéo en plein écran natif au lieu de l'incruster. */}
         <video ref={videoRef} playsInline muted
           style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+
+        {/* Verdict du dernier scan, par-dessus l'image : en continu on ne
+            quitte pas la caméra, c'est ici qu'on lit le résultat. */}
+        {continu && retour && (
+          <div key={retour.texte} style={{
+            position: "absolute", top: 12, left: 12, right: 12, zIndex: 2,
+            background: COULEUR_TON[retour.ton], color: retour.ton === "erreur" ? "#fff" : "var(--ink)",
+            border: "2.5px solid var(--ink)", borderRadius: 10, padding: "10px 14px",
+            fontWeight: 800, fontSize: 14, lineHeight: 1.3, boxShadow: "3px 3px 0 var(--ink)",
+          }}>
+            {retour.texte}
+          </div>
+        )}
 
         {etat === "lecture" && (
           <div style={{

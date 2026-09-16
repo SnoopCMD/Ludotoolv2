@@ -4,6 +4,7 @@ import Link from "next/link";
 import NavBar from "../../components/NavBar";
 import { useIsMobile } from "../../lib/useIsMobile";
 import BoutonScan from "../../components/ScanCodeBarre";
+import VerificationScan from "../../components/VerificationScan";
 
 type JeuNote = { texte: string; rappel: boolean };
 
@@ -394,6 +395,8 @@ export default function InventairePage() {
   const [isTempEanModalOpen, setIsTempEanModalOpen] = useState(false);
   const [tempEanItems, setTempEanItems] = useState<TempEanItem[]>([]);
   const [isTempLoading, setIsTempLoading] = useState(false);
+
+  const [isVerifScanOpen, setIsVerifScanOpen] = useState(false);
 
   const fetchInventaire = async () => {
     setIsLoading(true);
@@ -1439,6 +1442,7 @@ export default function InventairePage() {
                 { icon: "🛠️", label: "Corriger Couleurs", action: () => { setIsColorFixOpen(true); setIsSettingsOpen(false); } },
                 { icon: "🔍", label: "Nettoyer Doublons", action: () => detecterDoublons() },
                 { icon: "🔖", label: "EAN temporaires", action: () => detecterTempEans() },
+                { icon: "📦", label: "Contrôle par scan", action: () => { setIsVerifScanOpen(true); setIsSettingsOpen(false); } },
                 { icon: "🖼️", label: "Enrichir Vignettes", action: () => ouvrirVignettes() },
               ].map((item, i) => (
                 <button key={i} onClick={item.action}
@@ -1447,7 +1451,7 @@ export default function InventairePage() {
                     width: "100%", padding: "10px 16px", border: "none",
                     background: "transparent", cursor: "pointer", fontFamily: "inherit",
                     fontWeight: 700, fontSize: 13, textAlign: "left",
-                    borderBottom: i < 5 ? "1px solid var(--cream2)" : "none",
+                    borderBottom: i < 6 ? "1px solid var(--cream2)" : "none",
                   }}
                   onMouseEnter={e => (e.currentTarget.style.background = "var(--cream2)")}
                   onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
@@ -2030,6 +2034,11 @@ export default function InventairePage() {
       )}
 
       {/* --- MODAL EAN TEMPORAIRES --- */}
+      {/* --- MODAL CONTRÔLE PAR SCAN --- */}
+      {isVerifScanOpen && (
+        <VerificationScan jeux={jeux} onFermer={() => setIsVerifScanOpen(false)} onModifie={fetchInventaire} />
+      )}
+
       {isTempEanModalOpen && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 90, display: "flex", alignItems: "center", justifyContent: "center", padding: "calc(var(--nav-h) + 12px) 12px 12px" }}>
           <div className="pop-card" style={{ width: "100%", maxWidth: 720, maxHeight: "calc(100dvh - var(--nav-h) - 36px)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
