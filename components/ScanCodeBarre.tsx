@@ -120,18 +120,48 @@ function VueCamera(props: PropsCamera) {
 }
 
 /** Réglages caméra que les navigateurs exposent sans être au standard :
- *  Chrome Android les gère, Safari iOS presque pas. Tout est donc optionnel
- *  et vérifié via `getCapabilities()` avant usage. */
+ *  Chrome/Opera Android les gèrent, Safari iOS presque pas. Tout est donc
+ *  optionnel et vérifié via `getCapabilities()` avant usage. */
 type Capacites = MediaTrackCapabilities & {
   focusMode?: string[];
+  focusDistance?: { min: number; max: number; step: number };
   torch?: boolean;
   zoom?: { min: number; max: number; step: number };
 };
 type Reglages = MediaTrackConstraintSet & {
   focusMode?: string;
+  focusDistance?: number;
+  pointsOfInterest?: { x: number; y: number }[];
   torch?: boolean;
   zoom?: number;
 };
+type ReglagesLus = MediaTrackSettings & {
+  focusMode?: string;
+  focusDistance?: number;
+  zoom?: number;
+};
+
+/** Préférences retenues d'un scan à l'autre : les étiquettes se lisent
+ *  toujours à peu près à la même distance, avec la même caméra. */
+const CLE_CAMERA = "scan.cameraId";
+const CLE_NETTETE = "scan.focusDistance";
+function lirePref(cle: string): string | null {
+  try { return localStorage.getItem(cle); } catch { return null; }
+}
+function ecrirePref(cle: string, valeur: string | null) {
+  try {
+    if (valeur === null) localStorage.removeItem(cle);
+    else localStorage.setItem(cle, valeur);
+  } catch {}
+}
+
+/** Caméras arrière candidates : on écarte celles dont le libellé dit
+ *  « avant », le reste (principale, grand-angle, macro…) est proposé au
+ *  choix, car `facingMode: environment` tombe parfois sur un capteur sans
+ *  autofocus. */
+function estCameraAvant(d: MediaDeviceInfo): boolean {
+  return /front|avant|face|user|selfie/i.test(d.label);
+}
 
 function PleinEcranCamera({ onCode, onFermer, continu, retour }: PropsCamera) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -146,28 +176,73 @@ function PleinEcranCamera({ onCode, onFermer, continu, retour }: PropsCamera) {
   const [capacites, setCapacites] = useState<Capacites | null>(null);
   const [zoom, setZoom] = useState<number | null>(null);
   const [torche, setTorche] = useState(false);
+  /** `null` = autofocus continu ; sinon distance fixée par le curseur. */
+  const [nettete, setNettete] = useState<number | null>(null);
+  const netteteRef = useRef<number | null>(null);
+  useEffect(() => { netteteRef.current = nettete; }, [nettete]);
+  const [cameras, setCameras] = useState<MediaDeviceInfo[]>([]);
+  const [cameraId, setCameraId] = useState<string | null>(() => lirePref(CLE_CAMERA));
   const [diagnostic, setDiagnostic] = useState("");
+  const [reglagesLus, setReglagesLus] = useState("");
 
-  /** Redemande une mise au point.
+  /** Applique un réglage sur la piste et relit ce que l'appareil a
+   *  effectivement retenu : c'est la seule façon de savoir si le focus a
+   *  vraiment bougé, un appareil pouvant accepter la contrainte sans en tenir
+   *  compte. */
+  const appliquer = async (reglages: Reglages): Promise<boolean> => {
+    const piste = pisteRef.current;
+    if (!piste) return false;
+    let ok = true;
+    try { await piste.applyConstraints({ advanced: [reglages] }); } catch { ok = false; }
+    const lus = piste.getSettings() as ReglagesLus;
+    setReglagesLus([
+      lus.focusMode ? `focus ${lus.focusMode}` : null,
+      lus.focusDistance !== undefined ? `dist ${lus.focusDistance}` : null,
+      lus.zoom !== undefined ? `zoom ${lus.zoom}` : null,
+    ].filter(Boolean).join(" · "));
+    return ok;
+  };
+
+  /** Mise au point manuelle à une distance donnée (mémorisée), ou retour
+   *  à l'autofocus continu si `distance` est null. */
+  const reglerNettete = async (distance: number | null) => {
+    setNettete(distance);
+    netteteRef.current = distance;
+    ecrirePref(CLE_NETTETE, distance === null ? null : String(distance));
+    if (distance === null) await appliquer({ focusMode: "continuous" });
+    else await appliquer({ focusMode: "manual", focusDistance: distance });
+  };
+
+  /** Tap sur l'image : refait le point à l'endroit touché.
    *
-   *  Beaucoup d'appareils ne refont le point que sur changement de
-   *  contrainte : on repasse donc par `manual` avant de revenir en continu,
-   *  sinon l'image reste figée sur le point choisi à l'ouverture.
+   *  `single-shot` + `pointsOfInterest` est le vrai « tap to focus » de
+   *  Chromium ; à défaut on repasse par `manual` avant de revenir en continu,
+   *  car beaucoup d'appareils ne refont le point que sur changement de mode.
+   *  En netteté manuelle (curseur), le tap ne fait rien : c'est le curseur
+   *  qui commande.
    */
-  const refaireLePoint = async () => {
+  const refaireLePoint = async (e?: React.MouseEvent<HTMLElement>) => {
     const piste = pisteRef.current;
     const modes = (piste?.getCapabilities?.() as Capacites | undefined)?.focusMode;
-    if (!piste || !modes?.length) return;
-    try {
-      if (modes.includes("manual") && modes.includes("continuous")) {
-        await piste.applyConstraints({ advanced: [{ focusMode: "manual" } as Reglages] });
-        await new Promise(r => setTimeout(r, 80));
-      }
-      const vise = modes.includes("continuous") ? "continuous" : modes[0];
-      await piste.applyConstraints({ advanced: [{ focusMode: vise } as Reglages] });
-    } catch {
-      // Un appareil peut annoncer un mode puis le refuser : sans gravité.
+    if (!piste || !modes?.length || netteteRef.current !== null) return;
+    let point: { x: number; y: number } | undefined;
+    if (e) {
+      const r = e.currentTarget.getBoundingClientRect();
+      point = { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height };
     }
+    if (modes.includes("single-shot")) {
+      await appliquer({ focusMode: "single-shot", ...(point ? { pointsOfInterest: [point] } : {}) });
+      if (modes.includes("continuous")) {
+        await new Promise(r => setTimeout(r, 1500));
+        if (pisteRef.current === piste && netteteRef.current === null) await appliquer({ focusMode: "continuous" });
+      }
+      return;
+    }
+    if (modes.includes("manual") && modes.includes("continuous")) {
+      await appliquer({ focusMode: "manual" });
+      await new Promise(r => setTimeout(r, 80));
+    }
+    await appliquer({ focusMode: modes.includes("continuous") ? "continuous" : modes[0] });
   };
 
   useEffect(() => {
@@ -180,16 +255,26 @@ function PleinEcranCamera({ onCode, onFermer, continu, retour }: PropsCamera) {
       try {
         // Résolution la plus haute acceptée : un code-barres occupe peu de
         // pixels, et c'est souvent ça qui fait échouer la lecture avant même
-        // la question de la netteté. `facingMode` demande la caméra arrière.
-        flux = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: { ideal: "environment" },
-            width: { ideal: 1920 },
-            height: { ideal: 1080 },
-            advanced: [{ focusMode: "continuous" } as Reglages],
-          },
-          audio: false,
-        });
+        // la question de la netteté. Une caméra choisie précédemment prime
+        // sur `facingMode` ; si elle n'existe plus, on retombe sur l'arrière.
+        const base = {
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+          advanced: [{ focusMode: "continuous" } as Reglages],
+        };
+        try {
+          flux = await navigator.mediaDevices.getUserMedia({
+            video: cameraId ? { ...base, deviceId: { exact: cameraId } } : { ...base, facingMode: { ideal: "environment" } },
+            audio: false,
+          });
+        } catch (e) {
+          if (!cameraId) throw e;
+          ecrirePref(CLE_CAMERA, null);
+          flux = await navigator.mediaDevices.getUserMedia({
+            video: { ...base, facingMode: { ideal: "environment" } },
+            audio: false,
+          });
+        }
         if (annule) { flux.getTracks().forEach(t => t.stop()); return; }
 
         const video = videoRef.current;
@@ -201,7 +286,25 @@ function PleinEcranCamera({ onCode, onFermer, continu, retour }: PropsCamera) {
         pisteRef.current = piste;
         const caps = (piste.getCapabilities?.() ?? {}) as Capacites;
         setCapacites(caps);
-        await refaireLePoint();
+
+        // Les libellés ne sont lisibles qu'une fois la permission accordée,
+        // d'où l'énumération après `getUserMedia`.
+        try {
+          const tous = await navigator.mediaDevices.enumerateDevices();
+          setCameras(tous.filter(d => d.kind === "videoinput" && !estCameraAvant(d)));
+        } catch {}
+
+        // Netteté : distance mémorisée si l'appareil sait la fixer, sinon
+        // autofocus continu relancé.
+        const memo = Number(lirePref(CLE_NETTETE));
+        if (caps.focusDistance && memo > 0 && caps.focusMode?.includes("manual")) {
+          const d = Math.min(Math.max(memo, caps.focusDistance.min), caps.focusDistance.max);
+          setNettete(d);
+          netteteRef.current = d;
+          await appliquer({ focusMode: "manual", focusDistance: d });
+        } else {
+          await refaireLePoint();
+        }
 
         // Un léger zoom permet de cadrer le code de plus loin, au-delà de la
         // distance minimale de mise au point de l'objectif : c'est souvent ça
@@ -209,7 +312,7 @@ function PleinEcranCamera({ onCode, onFermer, continu, retour }: PropsCamera) {
         if (caps.zoom && caps.zoom.max > caps.zoom.min) {
           const depart = Math.min(caps.zoom.min + (caps.zoom.max - caps.zoom.min) * 0.25, caps.zoom.max);
           setZoom(depart);
-          try { await piste.applyConstraints({ advanced: [{ zoom: depart } as Reglages] }); } catch {}
+          await appliquer({ zoom: depart });
         }
 
         const detecteur = await chargerDetecteur();
@@ -218,8 +321,10 @@ function PleinEcranCamera({ onCode, onFermer, continu, retour }: PropsCamera) {
 
         const reglages = piste.getSettings();
         setDiagnostic([
+          piste.label || "caméra",
           `${reglages.width ?? "?"}x${reglages.height ?? "?"}`,
           caps.focusMode?.length ? `focus ${caps.focusMode.join("/")}` : "focus non reglable",
+          caps.focusDistance ? `dist ${caps.focusDistance.min}-${caps.focusDistance.max}` : "dist non reglable",
           caps.zoom ? `zoom ${caps.zoom.min}-${caps.zoom.max}` : "zoom non reglable",
           caps.torch ? "torche" : "sans torche",
         ].join(" · "));
@@ -283,17 +388,38 @@ function PleinEcranCamera({ onCode, onFermer, continu, retour }: PropsCamera) {
       flux?.getTracks().forEach(t => t.stop());
       pisteRef.current = null;
     };
-  }, [continu]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [continu, cameraId]);
 
   const changerZoom = async (v: number) => {
     setZoom(v);
-    try { await pisteRef.current?.applyConstraints({ advanced: [{ zoom: v } as Reglages] }); } catch {}
+    await appliquer({ zoom: v });
   };
 
   const basculerTorche = async () => {
     const suivant = !torche;
     setTorche(suivant);
-    try { await pisteRef.current?.applyConstraints({ advanced: [{ torch: suivant } as Reglages] }); } catch {}
+    await appliquer({ torch: suivant });
+  };
+
+  /** Passe à la caméra arrière suivante ; l'effet relance le flux. */
+  const cameraSuivante = () => {
+    if (cameras.length < 2) return;
+    const actuelle = pisteRef.current?.getSettings().deviceId;
+    const i = cameras.findIndex(c => c.deviceId === actuelle);
+    const suivante = cameras[(i + 1) % cameras.length].deviceId;
+    ecrirePref(CLE_CAMERA, suivante);
+    setEtat("demarrage");
+    setCapacites(null);
+    setZoom(null);
+    setTorche(false);
+    setCameraId(suivante);
+  };
+
+  const boutonEntete: React.CSSProperties = {
+    width: 40, height: 40, borderRadius: 8, background: "rgba(255,255,255,0.14)",
+    border: "none", color: "var(--cream)", fontSize: 18, cursor: "pointer",
+    display: "flex", alignItems: "center", justifyContent: "center",
   };
 
   return (
@@ -308,28 +434,20 @@ function PleinEcranCamera({ onCode, onFermer, continu, retour }: PropsCamera) {
       }}>
         <span className="bc" style={{ fontSize: 16, letterSpacing: "0.04em" }}>SCANNER UN CODE</span>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          {cameras.length > 1 && (
+            <button type="button" onClick={cameraSuivante} aria-label="Changer de caméra" title="Changer de caméra"
+              style={boutonEntete}>🔄</button>
+          )}
           {capacites?.torch && (
             <button type="button" onClick={basculerTorche} aria-label="Torche"
-              style={{
-                width: 40, height: 40, borderRadius: 8,
-                background: torche ? "var(--yellow)" : "rgba(255,255,255,0.14)",
-                border: "none", color: torche ? "var(--ink)" : "var(--cream)",
-                fontSize: 18, cursor: "pointer",
-                display: "flex", alignItems: "center", justifyContent: "center",
-              }}>🔦</button>
+              style={{ ...boutonEntete, background: torche ? "var(--yellow)" : boutonEntete.background, color: torche ? "var(--ink)" : boutonEntete.color }}>🔦</button>
           )}
-          <button type="button" onClick={onFermer} aria-label="Fermer le scanner"
-            style={{
-              width: 40, height: 40, borderRadius: 8, background: "rgba(255,255,255,0.14)",
-              border: "none", color: "var(--cream)", fontSize: 18, cursor: "pointer",
-              display: "flex", alignItems: "center", justifyContent: "center",
-            }}>✕</button>
+          <button type="button" onClick={onFermer} aria-label="Fermer le scanner" style={boutonEntete}>✕</button>
         </div>
       </div>
 
-      {/* Taper l'image redemande le point : c'est le geste attendu quand la
-          scène reste floue, et le seul recours là où le focus continu n'est
-          pas exposé. */}
+      {/* Taper l'image redemande le point à l'endroit touché : c'est le geste
+          attendu quand la scène reste floue. */}
       <div style={{ flex: 1, position: "relative", overflow: "hidden" }} onClick={refaireLePoint}>
         {/* `playsInline` et `muted` sont indispensables sur iOS : sans eux
             Safari ouvre la vidéo en plein écran natif au lieu de l'incruster. */}
@@ -364,6 +482,27 @@ function PleinEcranCamera({ onCode, onFermer, continu, retour }: PropsCamera) {
           background: "linear-gradient(transparent, rgba(0,0,0,0.8))",
           color: "#fff", display: "flex", flexDirection: "column", gap: 10,
         }}>
+          {/* Netteté manuelle : seulement si l'appareil sait fixer une
+              distance. « Auto » rend la main à l'autofocus continu. */}
+          {etat === "lecture" && capacites?.focusDistance && capacites.focusMode?.includes("manual") && (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12, fontWeight: 700 }}
+              onClick={e => e.stopPropagation()}>
+              <span>Netteté</span>
+              <span style={{ opacity: 0.7, fontWeight: 500 }}>près</span>
+              <input type="range" style={{ flex: 1 }}
+                min={capacites.focusDistance.min} max={capacites.focusDistance.max}
+                step={capacites.focusDistance.step || 0.01}
+                value={nettete ?? capacites.focusDistance.min}
+                onChange={e => reglerNettete(Number(e.target.value))} />
+              <span style={{ opacity: 0.7, fontWeight: 500 }}>loin</span>
+              <button type="button" onClick={() => reglerNettete(null)}
+                style={{
+                  padding: "4px 10px", borderRadius: 6, border: "none", cursor: "pointer",
+                  background: nettete === null ? "var(--yellow)" : "rgba(255,255,255,0.2)",
+                  color: nettete === null ? "var(--ink)" : "#fff", fontWeight: 800, fontSize: 12,
+                }}>Auto</button>
+            </div>
+          )}
           {etat === "lecture" && capacites?.zoom && zoom !== null && (
             <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12, fontWeight: 700 }}
               onClick={e => e.stopPropagation()}>
@@ -375,12 +514,14 @@ function PleinEcranCamera({ onCode, onFermer, continu, retour }: PropsCamera) {
           )}
           <p style={{ textAlign: "center", fontWeight: 600, fontSize: 14, margin: 0 }}>
             {etat === "demarrage" && "Ouverture de la caméra…"}
-            {etat === "lecture" && "Recule un peu, cadre le code, puis tape l'écran pour refaire le point"}
+            {etat === "lecture" && (nettete === null
+              ? "Cadre le code, puis tape dessus pour refaire le point"
+              : "Netteté fixe : avance ou recule jusqu'à ce que le code soit net")}
             {etat === "erreur" && erreur}
           </p>
           {etat === "lecture" && diagnostic && (
             <p style={{ textAlign: "center", fontSize: 10, opacity: 0.55, margin: 0, fontFamily: "monospace" }}>
-              {diagnostic}
+              {diagnostic}{reglagesLus ? ` — ${reglagesLus}` : ""}
             </p>
           )}
         </div>
