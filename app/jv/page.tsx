@@ -258,11 +258,13 @@ function getFirstAvailableTime(
 
 function ModalJeu({
   jeu,
+  jeux,
   onClose,
   onSaved,
   onDeleted,
 }: {
   jeu: JvJeu | null;
+  jeux: JvJeu[];
   onClose: () => void;
   onSaved: (j: JvJeu) => void;
   onDeleted?: (id: string) => void;
@@ -289,8 +291,41 @@ function ModalJeu({
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [addingConsole, setAddingConsole] = useState<Console | null>(null);
 
   const set = (k: keyof JvJeu, v: any) => setForm(f => ({ ...f, [k]: v }));
+
+  // Un même titre peut exister sur plusieurs consoles : chaque version est une fiche à part
+  // (sélections, réservations et stats sont par console). On les relie par titre / igdb_id.
+  const autresVersions = jeu
+    ? jeux.filter(j => j.id !== jeu.id && (
+        (jeu.igdb_id && j.igdb_id === jeu.igdb_id) ||
+        j.titre.trim().toLowerCase() === jeu.titre.trim().toLowerCase()
+      ))
+    : [];
+  const consolesManquantes = jeu
+    ? CONSOLES.filter(c => c !== jeu.console && !autresVersions.some(j => j.console === c))
+    : [];
+
+  const addConsole = async (c: Console) => {
+    if (!jeu) return;
+    setAddingConsole(c);
+    const payload = {
+      titre: jeu.titre,
+      console: c,
+      genre: jeu.genre, annee: jeu.annee, editeur: jeu.editeur, description: jeu.description,
+      image_url: jeu.image_url, pegi: jeu.pegi, nb_joueurs: jeu.nb_joueurs,
+      statut: "disponible" as const, igdb_id: jeu.igdb_id, cote_syracuse: null,
+    };
+    const res = await fetch('/api/jv-jeux', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }).then(r => r.json() as Promise<any>).catch(() => ({ error: 'réseau' }));
+    setAddingConsole(null);
+    if (res.error) { alert("Erreur : " + res.error); return; }
+    onSaved({ ...payload, id: res.id, created_at: new Date().toISOString() } as JvJeu);
+  };
 
   const searchIgdb = async (titre: string, console: Console | string) => {
     if (!titre.trim()) return;
@@ -589,6 +624,33 @@ function ModalJeu({
                     placeholder="Action, RPG…" className="pop-input" style={{ width: '100%' }} />
                 </div>
               </div>
+
+              {!isNew && (
+                <div>
+                  <label style={Slabel}>Autres consoles</label>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+                    {autresVersions.map(v => (
+                      <span key={v.id} className="pop-sticker" title={`Fiche ${v.console} existante`}
+                        style={{ fontSize: 11, padding: '4px 10px', background: CONSOLE_BG_M[v.console] }}>
+                        ✓ {v.console}
+                      </span>
+                    ))}
+                    {consolesManquantes.map(c => (
+                      <button key={c} type="button" onClick={() => addConsole(c)} disabled={addingConsole !== null}
+                        title={`Créer une fiche ${c} avec les mêmes infos`}
+                        style={{ fontSize: 11, fontWeight: 800, padding: '4px 10px', borderRadius: 999, cursor: 'pointer', background: 'transparent', border: '2px dashed var(--ink)', opacity: addingConsole !== null ? 0.5 : 1 }}>
+                        {addingConsole === c ? "Ajout…" : `+ ${c}`}
+                      </button>
+                    ))}
+                    {autresVersions.length === 0 && consolesManquantes.length === 0 && (
+                      <span style={{ fontSize: 11, color: 'rgba(0,0,0,0.3)', fontStyle: 'italic' }}>—</span>
+                    )}
+                  </div>
+                  <p style={{ fontSize: 10, color: 'rgba(0,0,0,0.35)', fontWeight: 600, marginTop: 4 }}>
+                    Chaque console a sa propre fiche (sélections, réservations et stats sont par console).
+                  </p>
+                </div>
+              )}
 
               <div style={{ display: 'grid', gridTemplateColumns: isMobileX ? 'repeat(2, minmax(0, 1fr))' : '1fr 1fr 1fr', gap: 12 }}>
                 <div>
@@ -4494,6 +4556,7 @@ export default function JvPage() {
       {modalJeu.open && (
         <ModalJeu
           jeu={modalJeu.jeu}
+          jeux={jeux}
           onClose={() => setModalJeu({ open: false, jeu: null })}
           onSaved={handleJeuSaved}
           onDeleted={handleJeuDeleted}
