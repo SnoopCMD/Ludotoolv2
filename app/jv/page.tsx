@@ -140,12 +140,6 @@ const SLOT_LABEL: Record<SelectionSlot, string> = {
   Switch_Solo: "Switch Solo",
   PC: "PC",
 };
-const SLOT_HAS_PERMANENT: Record<SelectionSlot, boolean> = {
-  PS5: true,
-  Switch_Multi: false,
-  Switch_Solo: false,
-  PC: true,
-};
 const ROTATION_ORDER: SelectionSlot[] = ["PS5", "Switch_Multi", "Switch_Solo", "PC"];
 
 // Une couleur par slot : Switch Multi / Solo doivent rester distinguables d'un coup d'œil
@@ -2586,9 +2580,7 @@ function TabSelections({
         {ROTATION_ORDER.map(slot => {
           const consoleName = SLOT_CONSOLE[slot];
           const actifSels = selections.filter(s => s.slot === slot && s.statut === "actif" && !s.permanent);
-          const permanentSels = SLOT_HAS_PERMANENT[slot]
-            ? selections.filter(s => s.slot === slot && s.permanent)
-            : [];
+          const permanentSels = selections.filter(s => s.slot === slot && s.permanent);
 
           const planifiesSorted = selections
             .filter(s => s.slot === slot && s.statut === "planifie")
@@ -2635,12 +2627,13 @@ function TabSelections({
 
               <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
 
-                {/* Permanents */}
-                {SLOT_HAS_PERMANENT[slot] && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    <span style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.07em', color: 'var(--orange)' }}>
-                      Permanents ({permanentSels.length})
-                    </span>
+                {/* Permanents — repliés par défaut, ils prennent vite de la place */}
+                <details className="jv-perm">
+                  <summary style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.07em', color: 'var(--orange)', cursor: 'pointer', userSelect: 'none', listStyle: 'none', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span className="jv-perm-chevron" style={{ display: 'inline-block', transition: 'transform .15s' }}>▸</span>
+                    Permanents ({permanentSels.length})
+                  </summary>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6 }}>
                     {permanentSels.map(pSel => {
                       const pJeu = jeux.find(j => j.id === pSel.jeu_id);
                       if (!pJeu) return null;
@@ -2663,11 +2656,10 @@ function TabSelections({
                       className="pop-input"
                       style={{ border: '2px dashed var(--ink)', background: 'transparent', cursor: 'pointer', fontSize: 12, color: 'rgba(0,0,0,0.4)', padding: '6px 8px' }}>
                       <option value="">+ Ajouter un permanent…</option>
-                      {jeux.filter(j => j.console === consoleName && j.statut !== "retire" && !usedIds.has(j.id))
-                        .map(j => <option key={j.id} value={j.id}>{j.titre}</option>)}
+                      {disponibles.map(j => <option key={j.id} value={j.id}>{j.titre}</option>)}
                     </select>
                   </div>
-                )}
+                </details>
 
                 {/* Sélection en cours */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -4401,6 +4393,8 @@ export default function JvPage() {
         .custom-scroll::-webkit-scrollbar{width:4px}
         .custom-scroll::-webkit-scrollbar-track{background:transparent}
         .custom-scroll::-webkit-scrollbar-thumb{background:rgba(0,0,0,0.15);border-radius:999px}
+        .jv-perm summary::-webkit-details-marker{display:none}
+        .jv-perm[open] .jv-perm-chevron{transform:rotate(90deg)}
       `}</style>
 
       <NavBar current="jv" />
