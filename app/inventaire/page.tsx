@@ -365,6 +365,8 @@ export default function InventairePage() {
   const [isEditingFiche, setIsEditingFiche] = useState(false);
   const [editedFiche, setEditedFiche] = useState<FicheJeuData | null>(null);
   const [ficheAlertes, setFicheAlertes] = useState<Alerte[]>([]);
+  const [isVerifContenu, setIsVerifContenu] = useState(false);
+  const [verifCoches, setVerifCoches] = useState<Record<number, boolean>>({});
   const [newNoteText, setNewNoteText] = useState("");
   const [newNoteRappel, setNewNoteRappel] = useState(false);
 
@@ -1150,6 +1152,8 @@ export default function InventairePage() {
     setIsLoadingFiche(true);
     setIsEditingFiche(false);
     setFicheAlertes([]);
+    setIsVerifContenu(false);
+    setVerifCoches({});
     setNewNoteText("");
     setNewNoteRappel(false);
 
@@ -2653,17 +2657,53 @@ export default function InventairePage() {
                 )}
 
                 {/* Contenu de la boîte */}
-                <div className="pop-card" style={{ padding: "16px 18px", maxHeight: 240, display: "flex", flexDirection: "column", borderTop: "4px solid var(--purple)" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexShrink: 0 }}>
+                {(() => {
+                  const lignesContenu = (ficheJeu.contenu_boite || "").split('\n').map(l => l.replace(/^\s*-\s*/, '').trim()).filter(Boolean);
+                  const nbCoches = lignesContenu.filter((_, i) => verifCoches[i]).length;
+                  const toutCoche = lignesContenu.length > 0 && nbCoches === lignesContenu.length;
+                  return (
+                <div className="pop-card" style={{ padding: "16px 18px", maxHeight: isVerifContenu ? 420 : 240, display: "flex", flexDirection: "column", borderTop: `4px solid ${isVerifContenu ? (toutCoche ? "var(--vert)" : "var(--yellow)") : "var(--purple)"}` }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexShrink: 0, gap: 8, flexWrap: "wrap" }}>
                     <p className="bc" style={{ fontSize: 16, letterSpacing: "0.04em", margin: 0 }}>Contenu de la boîte</p>
-                    <Link href="/contenu" className="pop-btn" style={{ padding: "4px 10px", fontSize: 12, background: "var(--cream2)" }}>Modifier</Link>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      {lignesContenu.length > 0 && (
+                        <button className="pop-btn" onClick={() => { setIsVerifContenu(v => !v); setVerifCoches({}); }}
+                          style={{ padding: "4px 10px", fontSize: 12, background: isVerifContenu ? "var(--yellow)" : "var(--cream2)" }}>
+                          {isVerifContenu ? "✕ Quitter" : "☑ Vérifier"}
+                        </button>
+                      )}
+                      <Link href="/contenu" className="pop-btn" style={{ padding: "4px 10px", fontSize: 12, background: "var(--cream2)" }}>Modifier</Link>
+                    </div>
                   </div>
+                  {isVerifContenu && (
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexShrink: 0, gap: 8 }}>
+                      <span style={{ fontSize: 12, fontWeight: 800, color: toutCoche ? "var(--vert)" : "rgba(0,0,0,0.55)" }}>
+                        {toutCoche ? "✅ Boîte complète" : `${nbCoches} / ${lignesContenu.length} vérifié${nbCoches > 1 ? "s" : ""}`}
+                      </span>
+                      <button onClick={() => setVerifCoches(toutCoche ? {} : Object.fromEntries(lignesContenu.map((_, i) => [i, true])))}
+                        style={{ background: "none", border: "none", cursor: "pointer", fontSize: 12, fontWeight: 700, textDecoration: "underline", color: "rgba(0,0,0,0.55)", padding: 0 }}>
+                        {toutCoche ? "Tout décocher" : "Tout cocher"}
+                      </button>
+                    </div>
+                  )}
                   <div style={{ overflowY: "auto", flex: 1, background: "var(--cream2)", border: "1.5px solid var(--ink)", borderRadius: 8, padding: "10px 12px" }}>
                     {isLoadingFiche ? <p style={{ fontSize: 13, color: "rgba(0,0,0,0.35)", fontWeight: 700 }}>Chargement…</p>
+                    : isVerifContenu ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                        {lignesContenu.map((ligne, i) => (
+                          <label key={i} style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer", padding: "6px 8px", borderRadius: 6, background: verifCoches[i] ? "rgba(0,0,0,0.05)" : "var(--white)", border: "1px solid rgba(0,0,0,0.12)" }}>
+                            <input type="checkbox" checked={!!verifCoches[i]} onChange={e => setVerifCoches(prev => ({ ...prev, [i]: e.target.checked }))} style={{ width: 18, height: 18, marginTop: 1, cursor: "pointer", accentColor: "var(--vert)", flexShrink: 0 }} />
+                            <span style={{ fontFamily: "monospace", fontSize: 12, lineHeight: 1.5, textDecoration: verifCoches[i] ? "line-through" : "none", color: verifCoches[i] ? "rgba(0,0,0,0.4)" : "var(--ink)" }}>{ligne}</span>
+                          </label>
+                        ))}
+                      </div>
+                    )
                     : ficheJeu.contenu_boite ? <p style={{ fontFamily: "monospace", fontSize: 12, whiteSpace: "pre-wrap", lineHeight: 1.8, margin: 0 }}>{ficheJeu.contenu_boite}</p>
                     : <p style={{ fontSize: 13, color: "rgba(0,0,0,0.35)", fontStyle: "italic" }}>Aucun contenu renseigné.</p>}
                   </div>
                 </div>
+                  );
+                })()}
 
                 {/* Localisation */}
                 <div className="pop-card" style={{ padding: "16px 18px", borderTop: "4px solid var(--vert)" }}>
