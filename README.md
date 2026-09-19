@@ -132,7 +132,9 @@ nouvelle requête bâtie sur une liste doit faire pareil.
 
 ## Base de données
 
-Base D1 `ludotool-db` (binding `DB`).
+Base D1 `ludotool-db` (binding `DB`). Les PDF des règles de jeux sont dans le
+bucket R2 `ludotool-regles` (binding `REGLES`), un objet `regles/<ean>.pdf` par
+jeu, servi par `/api/regles/[ean]` ; `catalogue.pdf_url` pointe vers cette route.
 
 | Table | Contenu |
 | --- | --- |
@@ -364,7 +366,7 @@ Déploiement manuel :
 npm run deploy
 ```
 
-Configuration dans `wrangler.jsonc` : nom du Worker `ludotool`, binding D1 `DB`,
+Configuration dans `wrangler.jsonc` : nom du Worker `ludotool`, binding D1 `DB`, bucket R2 `REGLES`,
 binding images, et auto-référence `WORKER_SELF_REFERENCE` requise par OpenNext
 pour le cache.
 

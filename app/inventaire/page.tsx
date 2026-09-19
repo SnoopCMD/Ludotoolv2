@@ -364,6 +364,8 @@ export default function InventairePage() {
   const [isLoadingFiche, setIsLoadingFiche] = useState(false);
   const [isEditingFiche, setIsEditingFiche] = useState(false);
   const [editedFiche, setEditedFiche] = useState<FicheJeuData | null>(null);
+  const [isUploadingRegle, setIsUploadingRegle] = useState(false);
+  const regleInputRef = useRef<HTMLInputElement>(null);
   const [ficheAlertes, setFicheAlertes] = useState<Alerte[]>([]);
   const [isVerifContenu, setIsVerifContenu] = useState(false);
   const [verifCoches, setVerifCoches] = useState<Record<number, boolean>>({});
@@ -1199,6 +1201,38 @@ export default function InventairePage() {
     if (!ficheJeu) return;
     setEditedFiche({ ...ficheJeu });
     setIsEditingFiche(true);
+  };
+
+  // L'envoi du PDF est immédiat (il ne passe pas par « Sauvegarder ») : le
+  // fichier part sur R2 et la route enregistre elle-même pdf_url en base.
+  const televerserRegle = async (fichier: File) => {
+    if (!editedFiche) return;
+    setIsUploadingRegle(true);
+    try {
+      const form = new FormData();
+      form.append('fichier', fichier);
+      form.append('nom', editedFiche.nom);
+      const res = await fetch(`/api/regles/${encodeURIComponent(editedFiche.ean)}`, { method: 'POST', body: form })
+        .then(r => r.json() as Promise<any>).catch(e => ({ error: e.message }));
+      if (res.error || !res.pdf_url) {
+        alert(`Envoi du PDF impossible : ${res.error || 'erreur inconnue'}`);
+        return;
+      }
+      setEditedFiche(prev => prev ? { ...prev, pdf_url: res.pdf_url } : prev);
+      setFicheJeu(prev => prev ? { ...prev, pdf_url: res.pdf_url } : prev);
+    } finally {
+      setIsUploadingRegle(false);
+      if (regleInputRef.current) regleInputRef.current.value = '';
+    }
+  };
+
+  const supprimerRegle = async () => {
+    if (!editedFiche || !confirm("Retirer le PDF des règles de cette fiche ?")) return;
+    const res = await fetch(`/api/regles/${encodeURIComponent(editedFiche.ean)}`, { method: 'DELETE' })
+      .then(r => r.json() as Promise<any>).catch(e => ({ error: e.message }));
+    if (res.error) { alert(`Suppression impossible : ${res.error}`); return; }
+    setEditedFiche(prev => prev ? { ...prev, pdf_url: '' } : prev);
+    setFicheJeu(prev => prev ? { ...prev, pdf_url: '' } : prev);
   };
 
   const changerExemplaire = (index: number) => {
@@ -2558,7 +2592,21 @@ export default function InventairePage() {
                     </div>
                   )}
                 </div>
-                <button onClick={() => alert("PDF bientôt disponible")} className="pop-btn" style={{ width: "100%", justifyContent: "center", background: "var(--white)" }}>📖 Règles (PDF)</button>
+                {isEditingFiche && editedFiche ? (
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <input ref={regleInputRef} type="file" accept="application/pdf,.pdf" style={{ display: "none" }} onChange={e => { const f = e.target.files?.[0]; if (f) televerserRegle(f); }} />
+                    <button onClick={() => regleInputRef.current?.click()} disabled={isUploadingRegle} className="pop-btn" style={{ flex: 1, justifyContent: "center", background: "var(--white)", opacity: isUploadingRegle ? 0.6 : 1 }}>
+                      {isUploadingRegle ? "⏳ Envoi…" : editedFiche.pdf_url ? "🔄 Remplacer le PDF" : "📤 Ajouter les règles (PDF)"}
+                    </button>
+                    {editedFiche.pdf_url && !isUploadingRegle && (
+                      <button onClick={supprimerRegle} title="Retirer le PDF" className="pop-btn" style={{ padding: "0 12px", background: "var(--white)", color: "var(--rouge)" }}>✕</button>
+                    )}
+                  </div>
+                ) : ficheJeu.pdf_url ? (
+                  <a href={ficheJeu.pdf_url} target="_blank" rel="noopener noreferrer" className="pop-btn" style={{ width: "100%", justifyContent: "center", background: "var(--white)", textDecoration: "none", boxSizing: "border-box" }}>📖 Règles (PDF)</a>
+                ) : (
+                  <button disabled className="pop-btn" style={{ width: "100%", justifyContent: "center", background: "var(--cream2)", opacity: 0.5, cursor: "default" }}>📖 Pas de règles (PDF)</button>
+                )}
               </div>
 
               {/* Colonne droite : infos */}
