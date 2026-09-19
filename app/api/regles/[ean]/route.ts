@@ -1,13 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getCloudflareContext } from '@opennextjs/cloudflare';
+import { TAILLE_MAX, cleR2, urlRegle } from '../commun';
 
 export const dynamic = 'force-dynamic';
-
-// Les règles sont volumineuses (scans, 20-30 Mo courants) : trop pour D1,
-// d'où le bucket R2 dédié. Un seul PDF par EAN, écrasé à chaque envoi.
-const TAILLE_MAX = 50 * 1024 * 1024;
-
-const cleR2 = (ean: string) => `regles/${ean}.pdf`;
 
 async function getEnv() {
   const ctx = await getCloudflareContext({ async: true });
@@ -41,7 +36,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ ean
     if (!(fichier instanceof File)) return NextResponse.json({ error: 'Fichier manquant' }, { status: 400 });
     const estPdf = fichier.type === 'application/pdf' || fichier.name.toLowerCase().endsWith('.pdf');
     if (!estPdf) return NextResponse.json({ error: 'Seul le format PDF est accepté' }, { status: 400 });
-    if (fichier.size > TAILLE_MAX) return NextResponse.json({ error: 'PDF trop lourd (50 Mo maximum)' }, { status: 413 });
+    if (fichier.size > TAILLE_MAX) return NextResponse.json({ error: 'PDF trop lourd (80 Mo maximum)' }, { status: 413 });
 
     // R2 refuse un flux de longueur inconnue : on passe le contenu entier (taille connue).
     await env.REGLES.put(cleR2(ean), await fichier.arrayBuffer(), {
@@ -49,8 +44,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ ean
       customMetadata: { nom_origine: fichier.name },
     });
 
-    // L'URL enregistrée est celle de cette route : le bucket reste privé.
-    const pdf_url = `/api/regles/${encodeURIComponent(ean)}`;
+    const pdf_url = urlRegle(ean);
     await env.DB.prepare(
       `INSERT INTO catalogue (ean, nom, pdf_url) VALUES (?, ?, ?) ON CONFLICT(ean) DO UPDATE SET pdf_url = excluded.pdf_url`
     ).bind(ean, String(form.get('nom') || ean), pdf_url).run();

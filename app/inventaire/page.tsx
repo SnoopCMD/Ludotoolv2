@@ -1226,6 +1226,25 @@ export default function InventairePage() {
     }
   };
 
+  const chercherReglePhilibert = async () => {
+    if (!editedFiche) return;
+    setIsUploadingRegle(true);
+    try {
+      const res = await fetch('/api/regles/philibert', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ean: editedFiche.ean, nom: editedFiche.nom, ecraser: true }),
+      }).then(r => r.json() as Promise<any>).catch(e => ({ error: e.message }));
+      if (res.error) { alert(`Recherche impossible : ${res.error}`); return; }
+      if (res.statut === 'introuvable') { alert("Philibert n'a pas de règle pour ce code-barres. Vous pouvez envoyer le PDF à la main."); return; }
+      if (res.statut !== 'importe') { alert("Règle trouvée chez Philibert mais téléchargement impossible (fichier trop lourd ou indisponible)."); return; }
+      setEditedFiche(prev => prev ? { ...prev, pdf_url: res.pdf_url } : prev);
+      setFicheJeu(prev => prev ? { ...prev, pdf_url: res.pdf_url } : prev);
+    } finally {
+      setIsUploadingRegle(false);
+    }
+  };
+
   const supprimerRegle = async () => {
     if (!editedFiche || !confirm("Retirer le PDF des règles de cette fiche ?")) return;
     const res = await fetch(`/api/regles/${encodeURIComponent(editedFiche.ean)}`, { method: 'DELETE' })
@@ -2593,14 +2612,19 @@ export default function InventairePage() {
                   )}
                 </div>
                 {isEditingFiche && editedFiche ? (
-                  <div style={{ display: "flex", gap: 6 }}>
-                    <input ref={regleInputRef} type="file" accept="application/pdf,.pdf" style={{ display: "none" }} onChange={e => { const f = e.target.files?.[0]; if (f) televerserRegle(f); }} />
-                    <button onClick={() => regleInputRef.current?.click()} disabled={isUploadingRegle} className="pop-btn" style={{ flex: 1, justifyContent: "center", background: "var(--white)", opacity: isUploadingRegle ? 0.6 : 1 }}>
-                      {isUploadingRegle ? "⏳ Envoi…" : editedFiche.pdf_url ? "🔄 Remplacer le PDF" : "📤 Ajouter les règles (PDF)"}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <input ref={regleInputRef} type="file" accept="application/pdf,.pdf" style={{ display: "none" }} onChange={e => { const f = e.target.files?.[0]; if (f) televerserRegle(f); }} />
+                      <button onClick={() => regleInputRef.current?.click()} disabled={isUploadingRegle} className="pop-btn" style={{ flex: 1, justifyContent: "center", background: "var(--white)", opacity: isUploadingRegle ? 0.6 : 1 }}>
+                        {isUploadingRegle ? "⏳ Envoi…" : editedFiche.pdf_url ? "🔄 Remplacer le PDF" : "📤 Ajouter les règles (PDF)"}
+                      </button>
+                      {editedFiche.pdf_url && !isUploadingRegle && (
+                        <button onClick={supprimerRegle} title="Retirer le PDF" className="pop-btn" style={{ padding: "0 12px", background: "var(--white)", color: "var(--rouge)" }}>✕</button>
+                      )}
+                    </div>
+                    <button onClick={chercherReglePhilibert} disabled={isUploadingRegle} title="Cherche la fiche Philibert de ce code-barres et importe son PDF de règles" className="pop-btn" style={{ width: "100%", justifyContent: "center", background: "var(--cream2)", fontSize: 12, opacity: isUploadingRegle ? 0.6 : 1 }}>
+                      🔍 Chercher chez Philibert
                     </button>
-                    {editedFiche.pdf_url && !isUploadingRegle && (
-                      <button onClick={supprimerRegle} title="Retirer le PDF" className="pop-btn" style={{ padding: "0 12px", background: "var(--white)", color: "var(--rouge)" }}>✕</button>
-                    )}
                   </div>
                 ) : ficheJeu.pdf_url ? (
                   <a href={ficheJeu.pdf_url} target="_blank" rel="noopener noreferrer" className="pop-btn" style={{ width: "100%", justifyContent: "center", background: "var(--white)", textDecoration: "none", boxSizing: "border-box" }}>📖 Règles (PDF)</a>

@@ -276,6 +276,21 @@ ou bloquer l'accès du jour au lendemain**.
 | IGDB (via Twitch) | Fiches de jeux vidéo | `/api/jv/igdb` |
 | PlayStation Store, Nintendo, Steam | Recherche de jeux par console | `/api/jv/search` |
 | UPCitemdb, OpenLibrary | Résolution de codes-barres | `/api/jv/barcode` |
+| Philibert | PDF des règles de jeux (fichiers joints des fiches produit, retrouvées par EAN) | `/api/regles/philibert` |
+
+### Les PDF de règles
+
+Dans la fiche jeu (`/inventaire`), le bouton « Règles (PDF) » ouvre le PDF ; en
+mode édition il permet d'envoyer un fichier, ou de le **chercher chez Philibert** :
+la fiche produit est retrouvée par EAN (correspondance exacte, aucun rapprochement
+par nom) et son fichier joint libellé « règles », de préférence en français, est
+copié dans R2. La copie est volontaire : les liens des boutiques cassent.
+
+Pour remplir le catalogue en lot (environ un jeu sur trois a sa règle chez eux) :
+
+```bash
+node scripts/importer_regles_philibert.mjs            # ~1 s par jeu, relançable
+```
 
 ### La recherche du store
 
