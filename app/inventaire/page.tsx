@@ -500,16 +500,21 @@ export default function InventairePage() {
     const item = vignettesQueue[vignettesIdx];
     if (!item || !vignettesManualUrl.trim()) return;
     const url = vignettesManualUrl.trim();
+    if (!item.ean?.trim()) {
+      alert(`« ${item.nom} » n'a pas d'EAN : renseignez-le dans la fiche du jeu avant d'ajouter une vignette.`);
+      return;
+    }
     const resUpdate = await fetch(`/api/catalogue/${encodeURIComponent(item.ean)}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ image_url: url }),
     }).then(r => r.json() as Promise<any>).catch(() => ({ error: 'réseau' }));
-    if (resUpdate.error) {
+    // Jeu absent du catalogue (UPDATE sans effet) : on crée la fiche, nom obligatoire
+    if (resUpdate.error || resUpdate.changes === 0) {
       const resInsert = await fetch('/api/catalogue', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ean: item.ean, image_url: url }),
+        body: JSON.stringify({ ean: item.ean, nom: item.nom, image_url: url }),
       }).then(r => r.json() as Promise<any>).catch(() => ({ error: 'réseau' }));
       if (resInsert.error) {
         alert(`Erreur lors de l'enregistrement : ${resInsert.error}`);

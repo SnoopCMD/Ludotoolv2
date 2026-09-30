@@ -33,8 +33,8 @@ export async function PUT(request: Request, { params }: { params: Promise<{ ean:
     if (!keys.length) return NextResponse.json({ error: 'no fields' }, { status: 400 });
     const sets = keys.map(k => `${k} = ?`).join(', ');
     const values = keys.map(k => body[k]);
-    await db.prepare(`UPDATE catalogue SET ${sets} WHERE ean = ?`).bind(...values, ean).run();
-    return NextResponse.json({ success: true });
+    const res = await db.prepare(`UPDATE catalogue SET ${sets} WHERE ean = ?`).bind(...values, ean).run();
+    return NextResponse.json({ success: true, changes: res.meta?.changes ?? null });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
