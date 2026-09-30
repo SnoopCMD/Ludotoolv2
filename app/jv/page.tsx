@@ -1593,14 +1593,18 @@ function ModalReservation({
     [posResas, plage]
   );
 
-  // Initialise l'heure de début quand date/poste change
+  // Initialise l'heure de début quand date/poste change.
+  // Aujourd'hui : quart d'heure le plus proche de maintenant, sinon le prochain libre
+  // (jamais une heure déjà passée, même si on arrive depuis le début du créneau).
   useEffect(() => {
     if (!plage) return;
-    if (preHeureDebut && availableStartTimes.includes(preHeureDebut)) {
-      setHeureDebut(preHeureDebut);
-    } else {
-      setHeureDebut(availableStartTimes[0] ?? "");
+    let minStart = preHeureDebut ? parseTime(preHeureDebut) : 0;
+    if (date === format(new Date(), "yyyy-MM-dd")) {
+      const now = new Date();
+      const nowQuart = Math.round((now.getHours() * 60 + now.getMinutes()) / 15) * 15;
+      minStart = Math.max(minStart, nowQuart);
     }
+    setHeureDebut(availableStartTimes.find(t => parseTime(t) >= minStart) ?? availableStartTimes[0] ?? "");
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date, posteId]);
 
