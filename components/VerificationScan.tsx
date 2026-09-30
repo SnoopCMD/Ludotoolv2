@@ -373,7 +373,7 @@ export default function VerificationScan({ jeux, onFermer, onModifie }: {
     const c = COULEUR[ton];
     const sansCode = b.copies.filter(x => !x.code_syracuse);
     return (
-      <div key={b.id} className="pop-card" style={{ overflow: "hidden", background: c.fond, borderColor: c.vif, opacity: b.enCours ? 0.6 : 1 }}>
+      <div key={b.id} className="pop-card" style={{ overflow: "hidden", background: c.fond, borderColor: c.vif, opacity: b.enCours ? 0.6 : 1, flexShrink: 0 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "10px 16px", borderBottom: "1.5px solid rgba(0,0,0,0.12)" }}>
           <div style={{ minWidth: 0 }}>
             <p style={{ fontWeight: 800, fontSize: 15, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nomBoite(b)}</p>

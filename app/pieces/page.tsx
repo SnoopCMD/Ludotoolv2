@@ -971,7 +971,7 @@ export default function PiecesPage() {
                   const tcBg: Record<string, string> = { formulaire: "var(--bleu)", email: "var(--purple)", inconnu: "var(--cream2)", impossible: "var(--rouge)" };
                   const tcColor: Record<string, string> = { formulaire: "var(--white)", email: "var(--white)", inconnu: "var(--ink)", impossible: "var(--white)" };
                   return (
-                    <div key={idx} style={{ border: `2px solid ${toutCommande ? "var(--cream2)" : "var(--ink)"}`, borderRadius: 12, overflow: "hidden", opacity: toutCommande ? 0.6 : 1, boxShadow: toutCommande ? "none" : "3px 3px 0 var(--ink)" }}>
+                    <div key={idx} style={{ border: `2px solid ${toutCommande ? "var(--cream2)" : "var(--ink)"}`, borderRadius: 12, overflow: "hidden", flexShrink: 0, opacity: toutCommande ? 0.6 : 1, boxShadow: toutCommande ? "none" : "3px 3px 0 var(--ink)" }}>
                       {/* En-tête groupe */}
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 16px", background: "var(--cream2)", borderBottom: "1.5px solid var(--ink)" }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>

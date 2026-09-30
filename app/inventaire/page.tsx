@@ -2046,7 +2046,7 @@ export default function InventairePage() {
               ) : doublonGroupes.map(groupe => {
                 const tousSupprimes = groupe.exemplaires.every(ex => doublonsSelectionnes.includes(ex.id));
                 return (
-                  <div key={groupe.ean} className="pop-card" style={{ overflow: "hidden" }}>
+                  <div key={groupe.ean} className="pop-card" style={{ overflow: "hidden", flexShrink: 0 }}>
                     <div style={{ padding: "10px 16px", borderBottom: "2px solid var(--ink)", background: "var(--cream2)" }}>
                       <p style={{ fontWeight: 800, fontSize: 15, margin: 0 }}>{groupe.nom}</p>
                       <p style={{ fontSize: 11, color: "rgba(0,0,0,0.4)", margin: "2px 0 0" }}>{groupe.exemplaires.length} exemplaires · EAN {groupe.ean}</p>
@@ -2124,7 +2124,7 @@ export default function InventairePage() {
                   <p style={{ fontWeight: 700, fontSize: 18 }}>Aucun EAN temporaire !</p>
                 </div>
               ) : tempEanItems.map(item => (
-                <div key={item.tempEan} className="pop-card" style={{ opacity: item.status !== "pending" ? 0.45 : 1, overflow: "hidden" }}>
+                <div key={item.tempEan} className="pop-card" style={{ opacity: item.status !== "pending" ? 0.45 : 1, overflow: "hidden", flexShrink: 0 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 16px", borderBottom: "2px solid var(--ink)", background: "var(--cream2)" }}>
                     <div>
                       <p style={{ fontWeight: 800, fontSize: 15, margin: 0 }}>{item.nom}</p>
