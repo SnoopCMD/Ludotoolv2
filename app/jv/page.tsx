@@ -1809,13 +1809,18 @@ function ModalReservation({
           <div>
             <label style={Slabel}>Nb joueurs (max {poste.maxJoueurs})</label>
             <div style={{ display: 'flex', gap: 8 }}>
-              {Array.from({ length: poste.maxJoueurs }, (_, i) => i + 1).map(n => (
+              {Array.from({ length: Math.max(nbJoueurs, poste.maxJoueurs) }, (_, i) => i + 1).map(n => (
                 <button key={n} onClick={() => setNbJoueurs(n)}
                   className={nbJoueurs === n ? "pop-btn pop-btn-dark" : "pop-btn pop-btn-outline"}
-                  style={{ flex: 1, justifyContent: 'center' }}>
+                  style={{ flex: 1, justifyContent: 'center', ...(n > poste.maxJoueurs ? { borderStyle: 'dashed', opacity: 0.7 } : {}) }}>
                   {n}
                 </button>
               ))}
+              <button onClick={() => setNbJoueurs(n => n + 1)} title="Ajouter un joueur (hors norme)"
+                className="pop-btn pop-btn-outline"
+                style={{ padding: '6px 10px', borderStyle: 'dashed', opacity: 0.6 }}>
+                +
+              </button>
             </div>
           </div>
 
