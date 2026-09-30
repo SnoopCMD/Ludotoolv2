@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDB } from '../../../lib/db';
+import { eanOuCustom } from '../../../lib/eanCustom';
 
 // D1 accepte au maximum 100 paramètres liés par requête.
 const EAN_CHUNK = 80;
@@ -61,8 +62,9 @@ export async function POST(request: Request) {
   try {
     const db = await getDB();
     const body = await request.json() as any;
+    const ean = eanOuCustom(body.ean);
     const {
-      ean, statut = 'En préparation', nom = '',
+      statut = 'En préparation', nom = '',
       etape_notice = 0, etape_plastifier = 0, etape_contenu = 0,
       etape_etiquette = 0, etape_equiper = 0, etape_encoder = 0,
       etape_nouveaute = 0, is_double = 0, code_syracuse = null,
@@ -76,7 +78,7 @@ export async function POST(request: Request) {
     ).bind(ean, statut, nom, etape_notice, etape_plastifier, etape_contenu,
       etape_etiquette, etape_equiper, etape_encoder, etape_nouveaute, is_double,
       code_syracuse, date_entree, date_sortie, notes, notes_rappel).run();
-    return NextResponse.json({ id: result.meta.last_row_id });
+    return NextResponse.json({ id: result.meta.last_row_id, ean });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }

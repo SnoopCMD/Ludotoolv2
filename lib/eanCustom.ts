@@ -16,6 +16,12 @@ export function genererEanCustom(): string {
   return `${EAN_CUSTOM_PREFIX}${temps}-${alea}`;
 }
 
+// Garde-fou côté serveur : un EAN vide ou l'ancien 'Manuel' devient un EAN custom.
+export function eanOuCustom(ean: unknown): string {
+  const e = typeof ean === 'string' ? ean.trim() : '';
+  return e && e !== 'Manuel' ? e : genererEanCustom();
+}
+
 export function estEanCustom(ean: string | null | undefined): boolean {
   return !!ean && ean.startsWith(EAN_CUSTOM_PREFIX);
 }

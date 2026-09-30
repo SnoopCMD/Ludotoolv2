@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server';
 import { getDB } from '../../../../lib/db';
+import { eanOuCustom } from '../../../../lib/eanCustom';
 
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const db = await getDB();
     const { id } = await params;
     const body = await request.json() as any;
+    if ('ean' in body) body.ean = eanOuCustom(body.ean);
     const keys = Object.keys(body);
     if (!keys.length) return NextResponse.json({ error: 'no fields' }, { status: 400 });
     const sets = keys.map(k => `${k} = ?`).join(', ');
