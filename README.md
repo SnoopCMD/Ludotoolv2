@@ -69,6 +69,7 @@ En production, ce sont des secrets Cloudflare (`wrangler secret put …`).
 | `/inventaire` | Parc de jeux : recherche, fiches, statuts, doubles |
 | `/atelier` | Jeux en préparation et étapes (plastification, contenu, étiquette, équipement, encodage, notice), réceptions de commandes |
 | `/agenda` | Planning de l'équipe : horaires, absences, événements, échanges de jours, PDF |
+| `/reunion` | Vie de l'équipe : événements à venir, points à aborder, missions priorisées, préparation d'événements, réunions et comptes rendus |
 | `/store` | Paniers d'achat (jeux de société, jeux vidéo, jouets), commandes communes, devis PDF |
 | `/catalogage` | Attribution des codes Syracuse |
 | `/jv` | Jeux vidéo : catalogue, sélections par console, rotations, réservations de postes, stats, notes |
@@ -152,6 +153,7 @@ jeu, servi par `/api/regles/[ean]` ; `catalogue.pdf_url` pointe vers cette route
 | `alertes`, `suggestions`, `selections` | Alertes, boîte à idées, sélections thématiques |
 | `utilisateurs`, `utilisateur_sessions` | Comptes (un par membre de `equipe`) et sessions ouvertes |
 | `utilisateur_preferences` | Modules choisis sur le tableau de bord, par compte |
+| `reunion_fiches`, `reunion_evenements`, `reunion_seances` | Page Réunion : points et missions, événements en préparation, séances et comptes rendus |
 
 Les migrations de `migrations/` sont appliquées manuellement :
 
@@ -211,6 +213,35 @@ npx wrangler d1 execute ludotool-db --remote --command   "UPDATE utilisateurs SE
 
 Si plus aucun compte n'est au mot de passe par défaut, reprendre l'empreinte
 littérale depuis `migrations/0008_utilisateurs.sql`.
+
+---
+
+## La page Réunion
+
+Trois objets, trois tables :
+
+- **Les fiches** (`reunion_fiches`) : un seul modèle pour les *points à aborder*
+  et les *missions*, distingués par `genre`. Un point abordé en réunion devient
+  souvent une mission : la conversion change le genre sans rien perdre. Priorité
+  de 0 (basse) à 3 (urgente), deadline facultative, membres assignés. Les
+  missions sont triées : en retard d'abord, puis par priorité, puis par échéance.
+- **Les événements en préparation** (`reunion_evenements`) : volontairement
+  distincts de `evenements` (l'agenda). Un projet peut exister sans date, porter
+  ses missions de préparation, et n'apparaît au planning que quand on clique
+  « Ajouter à l'agenda » ; `agenda_id` garde alors le lien pour les mises à jour
+  (recréé si la copie a été supprimée côté agenda). Les responsables y deviennent
+  les membres de l'événement : un créneau horaire compte donc dans leurs heures,
+  comme un événement saisi directement dans l'agenda.
+- **Les séances** (`reunion_seances`) : une seule en cours à la fois. Lancer une
+  réunion avec un ordre du jour vide propose des points tirés des données
+  (missions en retard, urgentes ou sans responsable, événements proches ou à
+  dater, bilans, missions terminées depuis la dernière séance). Les fiches
+  traitées en séance gardent `seance_id`, ce qui reconstitue le compte rendu
+  sans le recopier dans les notes libres.
+
+Les routes `/api/reunion/*` n'écrivent que les colonnes listées dans
+`lib/reunion.ts`, contrairement aux routes génériques plus anciennes qui
+reprennent telles quelles les clés du corps de la requête.
 
 ---
 

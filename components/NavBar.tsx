@@ -4,13 +4,14 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import CompteMenu from "./CompteMenu";
 
-type Page = "accueil" | "inventaire" | "atelier" | "agenda" | "store" | "catalogage" | "jv" | "suggestions";
+type Page = "accueil" | "inventaire" | "atelier" | "agenda" | "reunion" | "store" | "catalogage" | "jv" | "suggestions";
 
 const NAV_ITEMS: { href: string; label: string; page: Page; color: string }[] = [
   { href: "/",             label: "Accueil",      page: "accueil",     color: "#facc15" },
   { href: "/inventaire",   label: "Inventaire",   page: "inventaire",  color: "#60a5fa" },
   { href: "/atelier",      label: "Atelier",      page: "atelier",     color: "#a8e063" },
   { href: "/agenda",       label: "Agenda",       page: "agenda",      color: "#c084fc" },
+  { href: "/reunion",      label: "Réunion",      page: "reunion",     color: "#2dd4bf" },
   { href: "/store",        label: "Store",        page: "store",       color: "#f472b6" },
   { href: "/catalogage",   label: "Catalogage",   page: "catalogage",  color: "#fb923c" },
   { href: "/jv",           label: "Jeux Vidéo",   page: "jv",          color: "#f87171" },
