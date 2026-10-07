@@ -47,3 +47,6 @@ next-env.d.ts
 .wrangler
 .dev.vars*
 !.dev.vars.example
+
+# Réglages Claude Code personnels
+.claude/settings.local.json

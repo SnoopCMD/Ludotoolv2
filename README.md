@@ -164,7 +164,8 @@ npx wrangler d1 execute ludotool-db --remote --file ./migrations/0007_suggestion
 ## Les comptes
 
 Chaque membre de `equipe` a un compte dans `utilisateurs`, identifié par son
-prénom sans accent (`bernard`, `elisabeth`, `lea`, `pierre`, `timothe`). La
+prénom sans accent (`bernard`, `elisabeth`, `lea`, `pierre`, `timothe`, plus
+`nouveau` pour le membre ajouté par `0014_nouveau_membre.sql`). La
 saisie est tolérante : « Léa » et « lea » ouvrent le même compte.
 
 **La connexion est facultative.** Aucune page n'est protégée : l'outil s'utilise
