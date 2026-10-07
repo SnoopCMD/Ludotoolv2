@@ -1,4 +1,13 @@
+import { NextResponse } from 'next/server';
 import { getDB } from './db';
+
+/**
+ * Créer (fiche, événement, séance, copie dans l'agenda) demande d'être
+ * connecté : on veut savoir qui a lancé quoi. Modifier reste ouvert, pour
+ * qu'une réunion puisse avancer depuis n'importe quel poste.
+ */
+export const refusAnonyme = () =>
+  NextResponse.json({ error: 'Connecte-toi pour créer.' }, { status: 401 });
 
 /**
  * Accès aux tables de la page Réunion. Les colonnes modifiables sont listées

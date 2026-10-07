@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getDB } from '../../../../lib/db';
 import { compteCourant } from '../../../../lib/auth';
-import { EVENEMENTS, inserer, lireLigne } from '../../../../lib/reunion';
+import { EVENEMENTS, inserer, lireLigne, refusAnonyme } from '../../../../lib/reunion';
 
 export async function GET() {
   try {
@@ -18,10 +18,11 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    const compte = await compteCourant();
+    if (!compte) return refusAnonyme();
     const body = await request.json() as any;
     if (!String(body.titre ?? '').trim()) return NextResponse.json({ error: 'Titre obligatoire.' }, { status: 400 });
-    const compte = await compteCourant();
-    return NextResponse.json(await inserer(EVENEMENTS, body, compte?.equipe_id ?? null));
+    return NextResponse.json(await inserer(EVENEMENTS, body, compte.equipe_id));
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }

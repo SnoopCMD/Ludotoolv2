@@ -118,6 +118,59 @@ const comparerFiches = (a: Fiche, b: Fiche) =>
   || (a.deadline ?? "9999").localeCompare(b.deadline ?? "9999")
   || instant(a.cree_le) - instant(b.cree_le);
 
+// ─── Compte rendu structuré ───────────────────────────────────────────────────
+
+/**
+ * Le compte rendu est stocké en JSON : une suite de titres de section et de
+ * paragraphes. Un texte qui n'est pas ce JSON (notes saisies avant les
+ * sections) se lit comme un paragraphe unique : rien n'est perdu.
+ */
+type BlocCR = { t: "section" | "p"; texte: string };
+
+function lireCR(brut: string | null): BlocCR[] {
+  if (!brut?.trim()) return [];
+  try {
+    const v = JSON.parse(brut);
+    if (Array.isArray(v)) return v.filter(b => b && (b.t === "section" || b.t === "p") && typeof b.texte === "string");
+  } catch { /* texte libre historique */ }
+  return [{ t: "p", texte: brut }];
+}
+const ecrireCR = (blocs: BlocCR[]) => JSON.stringify(blocs);
+const sectionsCR = (blocs: BlocCR[]) => blocs.filter(b => b.t === "section" && b.texte.trim()).map(b => b.texte.trim());
+
+// ─── Recherche ────────────────────────────────────────────────────────────────
+
+/** Casse, accents et espaces multiples ignorés : « reunion » trouve « Réunion ». */
+const normaliser = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+
+/** Met en évidence les occurrences de `q` dans `texte`, accents compris. */
+function Surligne({ texte, q }: { texte: string; q: string }) {
+  const nq = normaliser(q.trim());
+  if (!nq) return <>{texte}</>;
+  // Chaque caractère normalisé garde l'indice de son caractère d'origine :
+  // « é » devient « e » mais le surlignage porte bien sur « é ».
+  let norm = "";
+  const origine: number[] = [];
+  for (let i = 0; i < texte.length; i++) {
+    const n = normaliser(texte[i]);
+    for (const c of n) { norm += c; origine.push(i); }
+  }
+  const morceaux: React.ReactNode[] = [];
+  let curseur = 0, depuis = 0, k = 0;
+  while ((curseur = norm.indexOf(nq, curseur)) !== -1) {
+    const debut = origine[curseur];
+    const fin = origine[curseur + nq.length - 1] + 1;
+    if (debut >= depuis) {
+      morceaux.push(texte.slice(depuis, debut));
+      morceaux.push(<mark key={k++} style={{ background: "var(--yellow)", color: "inherit", borderRadius: 3, padding: "0 1px" }}>{texte.slice(debut, fin)}</mark>);
+      depuis = fin;
+    }
+    curseur += nq.length;
+  }
+  morceaux.push(texte.slice(depuis));
+  return <>{morceaux}</>;
+}
+
 // ─── Appels API ───────────────────────────────────────────────────────────────
 
 async function envoyer<T>(url: string, method: string, body?: unknown): Promise<T | null> {
@@ -378,6 +431,90 @@ function Vide({ children }: { children: React.ReactNode }) {
   );
 }
 
+// ─── Éditeur du compte rendu ──────────────────────────────────────────────────
+
+/** Zone de texte qui grandit avec son contenu : un paragraphe reste lisible d'un bloc. */
+function TexteAuto({ value, onChange, placeholder, style }: { value: string; onChange: (v: string) => void; placeholder?: string; style?: React.CSSProperties }) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight + 4}px`;
+  }, [value]);
+  return <textarea ref={ref} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} rows={2}
+    style={{ ...inp, resize: "none", overflow: "hidden", lineHeight: 1.5, ...style }} />;
+}
+
+function EditeurCR({ blocs, onChange }: { blocs: BlocCR[]; onChange: (b: BlocCR[]) => void }) {
+  const majBloc = (i: number, texte: string) => onChange(blocs.map((b, j) => j === i ? { ...b, texte } : b));
+  const deplacer = (i: number, d: number) => {
+    const j = i + d;
+    if (j < 0 || j >= blocs.length) return;
+    const n = [...blocs];
+    [n[i], n[j]] = [n[j], n[i]];
+    onChange(n);
+  };
+  const retirer = (i: number) => {
+    if (blocs[i].texte.trim() && !confirm("Supprimer ce bloc et son texte ?")) return;
+    onChange(blocs.filter((_, j) => j !== i));
+  };
+  const ajouter = (t: BlocCR["t"]) => onChange([...blocs, { t, texte: "" }]);
+
+  const outil: React.CSSProperties = {
+    width: 26, height: 26, borderRadius: 6, border: "1.5px solid rgba(0,0,0,0.25)", background: "var(--white)",
+    cursor: "pointer", fontSize: 12, padding: 0, fontFamily: "inherit", flexShrink: 0,
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {blocs.length === 0 && (
+        <Vide>Commence par une section (« Planning », « Animations »…) ou un paragraphe.</Vide>
+      )}
+      {blocs.map((b, i) => (
+        <div key={i} style={{ display: "flex", gap: 6, alignItems: "flex-start", marginTop: b.t === "section" && i ? 8 : 0 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {b.t === "section" ? (
+              <input value={b.texte} onChange={e => majBloc(i, e.target.value)} placeholder="Titre de la section"
+                style={{ ...inp, fontWeight: 900, fontSize: 16, background: "var(--cream2)", textTransform: "uppercase", letterSpacing: "0.03em" }} />
+            ) : (
+              <TexteAuto value={b.texte} onChange={v => majBloc(i, v)} placeholder="Paragraphe…" />
+            )}
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+            <div style={{ display: "flex", gap: 3 }}>
+              <button type="button" style={outil} title="Monter" onClick={() => deplacer(i, -1)} disabled={i === 0}>↑</button>
+              <button type="button" style={outil} title="Descendre" onClick={() => deplacer(i, 1)} disabled={i === blocs.length - 1}>↓</button>
+            </div>
+            <button type="button" style={{ ...outil, width: "100%" }} title="Supprimer" onClick={() => retirer(i)}>✕</button>
+          </div>
+        </div>
+      ))}
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        <button type="button" className="pop-btn pop-btn-outline" style={{ padding: "4px 12px", fontSize: 13 }} onClick={() => ajouter("section")}>+ Section</button>
+        <button type="button" className="pop-btn pop-btn-outline" style={{ padding: "4px 12px", fontSize: 13 }} onClick={() => ajouter("p")}>+ Paragraphe</button>
+      </div>
+    </div>
+  );
+}
+
+/** Lecture du compte rendu : sections en titres, paragraphes en texte, recherche surlignée. */
+function LectureCR({ blocs, q }: { blocs: BlocCR[]; q: string }) {
+  const visibles = blocs.filter(b => b.texte.trim());
+  if (!visibles.length) return <div style={{ fontSize: 14, opacity: 0.5 }}>Pas de notes.</div>;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {visibles.map((b, i) => b.t === "section" ? (
+        <h3 key={i} className="bc" style={{ margin: i ? "10px 0 0" : 0, fontSize: 17, borderBottom: "2px solid var(--ink)", paddingBottom: 2 }}>
+          <Surligne texte={b.texte} q={q} />
+        </h3>
+      ) : (
+        <p key={i} style={{ margin: 0, fontSize: 14, whiteSpace: "pre-wrap", lineHeight: 1.55 }}><Surligne texte={b.texte} q={q} /></p>
+      ))}
+    </div>
+  );
+}
+
 // ─── Carte d'une fiche (point ou mission) ─────────────────────────────────────
 
 function CarteFiche({ f, equipe, evenements, onOuvrir, onBasculer }: {
@@ -524,8 +661,8 @@ function ModalFiche({ initial, equipe, evenements, onFermer, onEnregistre, onSup
 
 // ─── Fenêtre d'un événement en préparation ────────────────────────────────────
 
-function ModalEvenement({ initial, equipe, evenements, fiches, onFermer, onEvenement, onEvSupprime, onFiche, onOuvrirFiche, onBasculerFiche }: {
-  initial: Partial<EvPrep>; equipe: Membre[]; evenements: EvPrep[]; fiches: Fiche[];
+function ModalEvenement({ initial, equipe, evenements, fiches, connecte, onFermer, onEvenement, onEvSupprime, onFiche, onOuvrirFiche, onBasculerFiche }: {
+  initial: Partial<EvPrep>; equipe: Membre[]; evenements: EvPrep[]; fiches: Fiche[]; connecte: boolean;
   onFermer: () => void; onEvenement: (e: EvPrep) => void; onEvSupprime: (id: string) => void;
   onFiche: (f: Fiche) => void; onOuvrirFiche: (f: Partial<Fiche>) => void; onBasculerFiche: (f: Fiche) => void;
 }) {
@@ -617,7 +754,7 @@ function ModalEvenement({ initial, equipe, evenements, fiches, onFermer, onEvene
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
         {ev.id && <button className="pop-btn pop-btn-outline" onClick={supprimer} style={{ color: "#b91c1c" }}>Supprimer</button>}
         <span style={{ flex: 1 }} />
-        {ev.id && (
+        {ev.id && connecte && (
           <button className="pop-btn pop-btn-outline" onClick={versAgenda} disabled={!ev.date_debut}
             title={ev.date_debut ? "Les responsables y figurent comme participants" : "Il faut une date"}>
             📅 {ev.agenda_id ? "Mettre à jour l'agenda" : "Ajouter à l'agenda"}
@@ -630,18 +767,18 @@ function ModalEvenement({ initial, equipe, evenements, fiches, onFermer, onEvene
 
       {ev.id && (
         <Section titre={`Missions de préparation${missions.length ? ` · ${faites}/${missions.length}` : ""}`}
-          droite={<button className="pop-btn pop-btn-outline" style={{ padding: "3px 10px", fontSize: 13 }}
+          droite={connecte && <button className="pop-btn pop-btn-outline" style={{ padding: "3px 10px", fontSize: 13 }}
             onClick={() => onOuvrirFiche({ genre: "mission", evenement_id: ev.id })}>+ Détaillée</button>}>
           {missions.length > 0 && (
             <div style={{ height: 8, borderRadius: 4, border: "1.5px solid var(--ink)", background: "var(--white)", overflow: "hidden" }}>
               <div style={{ height: "100%", width: `${(faites / missions.length) * 100}%`, background: "var(--vert)" }} />
             </div>
           )}
-          <div style={{ display: "flex", gap: 6 }}>
+          {connecte && <div style={{ display: "flex", gap: 6 }}>
             <input value={nouvelle} onChange={e => setNouvelle(e.target.value)} onKeyDown={e => { if (e.key === "Enter") ajouterMission(); }}
               placeholder="Ajouter une mission (Entrée)…" style={inp} />
             <button className="pop-btn pop-btn-yellow" onClick={ajouterMission} disabled={!nouvelle.trim()}>+</button>
-          </div>
+          </div>}
           {missions.map(m => (
             <CarteFiche key={m.id} f={m} equipe={equipe} evenements={evenements}
               onOuvrir={() => onOuvrirFiche(m)} onBasculer={() => onBasculerFiche(m)} />
@@ -821,13 +958,14 @@ function PointEnSeance({ p, equipe, seanceId, onMaj, onOuvrir }: {
 
 // ─── Vue « réunion en cours » ─────────────────────────────────────────────────
 
-function VueSeance({ seance, equipe, fiches, evenements, onSeance, onFiche, onOuvrirFiche, onBasculerFiche, onQuitter }: {
-  seance: Seance; equipe: Membre[]; fiches: Fiche[]; evenements: EvPrep[];
+function VueSeance({ seance, equipe, fiches, evenements, connecte, onSeance, onFiche, onOuvrirFiche, onBasculerFiche, onQuitter }: {
+  seance: Seance; equipe: Membre[]; fiches: Fiche[]; evenements: EvPrep[]; connecte: boolean;
   onSeance: (s: Seance) => void; onFiche: (f: Fiche) => void;
   onOuvrirFiche: (f: Partial<Fiche>) => void; onBasculerFiche: (f: Fiche) => void; onQuitter: () => void;
 }) {
-  const [cr, setCr] = useState(seance.compte_rendu ?? "");
-  const [envoye, setEnvoye] = useState(seance.compte_rendu ?? "");
+  const [blocs, setBlocs] = useState<BlocCR[]>(() => lireCR(seance.compte_rendu));
+  const cr = ecrireCR(blocs);
+  const [envoye, setEnvoye] = useState(() => ecrireCR(lireCR(seance.compte_rendu)));
   const [envoi, setEnvoi] = useState(false);
   const [saisie, setSaisie] = useState("");
   const etat = envoi ? "envoi" : cr === envoye ? "ok" : "attente";
@@ -886,10 +1024,12 @@ function VueSeance({ seance, equipe, fiches, evenements, onSeance, onFiche, onOu
 
       <div className="pop-grid-2" style={{ alignItems: "start", gap: 20 }}>
         <Section titre={`Ordre du jour · ${aTraiter.length}`}>
-          <div style={{ display: "flex", gap: 6 }}>
-            <input value={saisie} onChange={e => setSaisie(e.target.value)} onKeyDown={e => { if (e.key === "Enter") ajouterPoint(); }} placeholder="Ajouter un point (Entrée)…" style={inp} />
-            <button className="pop-btn pop-btn-yellow" onClick={ajouterPoint} disabled={!saisie.trim()}>+</button>
-          </div>
+          {connecte && (
+            <div style={{ display: "flex", gap: 6 }}>
+              <input value={saisie} onChange={e => setSaisie(e.target.value)} onKeyDown={e => { if (e.key === "Enter") ajouterPoint(); }} placeholder="Ajouter un point (Entrée)…" style={inp} />
+              <button className="pop-btn pop-btn-yellow" onClick={ajouterPoint} disabled={!saisie.trim()}>+</button>
+            </div>
+          )}
           {aTraiter.length === 0 && <Vide>Tous les points ont été abordés 🎉</Vide>}
           {aTraiter.map(p => (
             <PointEnSeance key={p.id} p={p} equipe={equipe} seanceId={seance.id} onMaj={onFiche} onOuvrir={() => onOuvrirFiche(p)} />
@@ -909,12 +1049,13 @@ function VueSeance({ seance, equipe, fiches, evenements, onSeance, onFiche, onOu
             <span style={{ fontSize: 12, opacity: 0.6, whiteSpace: "nowrap" }}>
               {etat === "ok" ? "Enregistré ✓" : etat === "envoi" ? "Enregistrement…" : "Modifié"}
             </span>}>
-            <textarea value={cr} onChange={e => setCr(e.target.value)} rows={12}
-              placeholder="Notes libres de la réunion. Les points abordés, décisions et missions créées s'ajoutent d'eux-mêmes au compte rendu."
-              style={{ ...inp, resize: "vertical", fontSize: 14, lineHeight: 1.5, minHeight: 220 }} />
+            <div style={{ fontSize: 12, opacity: 0.6, marginTop: -4 }}>
+              Les points abordés, décisions et missions créées s’ajoutent d’eux-mêmes au compte rendu : ici, les notes libres.
+            </div>
+            <EditeurCR blocs={blocs} onChange={setBlocs} />
           </Section>
 
-          <Section titre={`Missions à prioriser · ${missions.length}`} droite={
+          <Section titre={`Missions à prioriser · ${missions.length}`} droite={connecte &&
             <button className="pop-btn pop-btn-outline" style={{ padding: "3px 10px", fontSize: 13 }}
               onClick={() => onOuvrirFiche({ genre: "mission", seance_id: seance.id })}>+ Mission</button>}>
             {missions.length === 0 && <Vide>Aucune mission en cours.</Vide>}
@@ -938,18 +1079,32 @@ function VueSeance({ seance, equipe, fiches, evenements, onSeance, onFiche, onOu
 
 // ─── Compte rendu archivé ─────────────────────────────────────────────────────
 
-function CarteCompteRendu({ s, equipe, fiches, onMaj, onSupprime }: {
-  s: Seance; equipe: Membre[]; fiches: Fiche[]; onMaj: (s: Seance) => void; onSupprime: (id: string) => void;
+/** Tout le texte d'un compte rendu, pour la recherche : titre, présents, notes, points et missions. */
+function texteCompteRendu(s: Seance, fiches: Fiche[], nomDe: (id: string) => string) {
+  const liees = fiches.filter(f => f.seance_id === s.id);
+  return [
+    s.titre ?? "", dateLongue(s.date), ...s.participants.map(nomDe),
+    ...lireCR(s.compte_rendu).map(b => b.texte),
+    ...liees.flatMap(f => [f.titre, f.description ?? "", f.decision ?? "", ...f.assignes.map(nomDe)]),
+  ].join("\n");
+}
+
+function CarteCompteRendu({ s, equipe, fiches, q, onMaj, onSupprime }: {
+  s: Seance; equipe: Membre[]; fiches: Fiche[]; q: string; onMaj: (s: Seance) => void; onSupprime: (id: string) => void;
 }) {
-  const [ouvert, setOuvert] = useState(false);
+  // null : ouverture automatique pendant une recherche, sinon fermé.
+  const [ouvertManuel, setOuvertManuel] = useState<boolean | null>(null);
+  const ouvert = ouvertManuel ?? !!q.trim();
   const [edition, setEdition] = useState(false);
-  const [texte, setTexte] = useState(s.compte_rendu ?? "");
+  const [blocs, setBlocs] = useState<BlocCR[]>(() => lireCR(s.compte_rendu));
   const nomDe = (id: string) => equipe.find(m => m.id === id)?.nom ?? "?";
   const points = fiches.filter(f => f.seance_id === s.id && f.genre === "point");
   const missions = fiches.filter(f => f.seance_id === s.id && f.genre === "mission");
+  const enregistres = lireCR(s.compte_rendu);
+  const sections = sectionsCR(enregistres);
 
   const sauver = async () => {
-    const res = await envoyer<Seance>(`/api/reunion/seances/${s.id}`, "PUT", { compte_rendu: texte });
+    const res = await envoyer<Seance>(`/api/reunion/seances/${s.id}`, "PUT", { compte_rendu: ecrireCR(blocs) });
     if (res) { onMaj(res); setEdition(false); }
   };
   const supprimer = async () => {
@@ -959,28 +1114,41 @@ function CarteCompteRendu({ s, equipe, fiches, onMaj, onSupprime }: {
 
   return (
     <div className="pop-card" style={{ padding: 0, background: "var(--white)", overflow: "hidden", flexShrink: 0 }}>
-      <button onClick={() => setOuvert(o => !o)} style={{
-        width: "100%", textAlign: "left", display: "flex", gap: 10, alignItems: "center", padding: "12px 14px",
-        background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", color: "inherit", flexWrap: "wrap",
+      <button onClick={() => setOuvertManuel(!ouvert)} style={{
+        width: "100%", textAlign: "left", display: "flex", flexDirection: "column", gap: 8, padding: "12px 14px",
+        background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", color: "inherit",
       }}>
-        <span style={{ fontSize: 18 }}>{ouvert ? "▾" : "▸"}</span>
-        <span style={{ fontWeight: 800, fontSize: 15, flex: 1, minWidth: 160 }}>
-          {s.titre || "Réunion"} <span style={{ fontWeight: 500, opacity: 0.6 }}>· {dateLongue(s.date)}</span>
-        </span>
-        <span style={{ fontSize: 12, opacity: 0.65 }}>{points.length} point{points.length > 1 ? "s" : ""} · {missions.length} mission{missions.length > 1 ? "s" : ""}</span>
-        <span style={{ display: "inline-flex" }}>
-          {s.participants.map((id, i) => <span key={id} style={{ marginLeft: i ? -6 : 0 }}><Avatar m={equipe.find(m => m.id === id)} taille={22} /></span>)}
-        </span>
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", width: "100%" }}>
+          <span style={{ fontSize: 18 }}>{ouvert ? "▾" : "▸"}</span>
+          <span style={{ fontWeight: 800, fontSize: 15, flex: 1, minWidth: 160 }}>
+            <Surligne texte={s.titre || "Réunion"} q={q} /> <span style={{ fontWeight: 500, opacity: 0.6 }}>· <Surligne texte={dateLongue(s.date)} q={q} /></span>
+          </span>
+          <span style={{ fontSize: 12, opacity: 0.65 }}>{points.length} point{points.length > 1 ? "s" : ""} · {missions.length} mission{missions.length > 1 ? "s" : ""}</span>
+          <span style={{ display: "inline-flex" }}>
+            {s.participants.map((id, i) => <span key={id} style={{ marginLeft: i ? -6 : 0 }}><Avatar m={equipe.find(m => m.id === id)} taille={22} /></span>)}
+          </span>
+        </div>
+        {/* Aperçu : seulement le sommaire, le texte est dans la vue détaillée. */}
+        {sections.length > 0 && (
+          <div style={{ display: "flex", gap: 5, flexWrap: "wrap", paddingLeft: 28 }}>
+            {sections.map((t, i) => (
+              <span key={i} style={{
+                fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.03em",
+                padding: "2px 8px", borderRadius: 5, background: "var(--cream2)", border: "1.5px solid var(--ink)",
+              }}><Surligne texte={t} q={q} /></span>
+            ))}
+          </div>
+        )}
       </button>
       {ouvert && (
-        <div style={{ padding: "0 14px 14px", display: "flex", flexDirection: "column", gap: 12, borderTop: "2px solid var(--cream2)" }}>
-          {s.participants.length > 0 && <div style={{ fontSize: 13, marginTop: 10 }}><b>Présents :</b> {s.participants.map(nomDe).join(", ")}</div>}
+        <div style={{ padding: "0 14px 14px", display: "flex", flexDirection: "column", gap: 14, borderTop: "2px solid var(--cream2)" }}>
+          {s.participants.length > 0 && <div style={{ fontSize: 13, marginTop: 10 }}><b>Présents :</b> <Surligne texte={s.participants.map(nomDe).join(", ")} q={q} /></div>}
           {points.length > 0 && (
             <div>
               <div style={etiquette}>Points abordés</div>
               {points.map(p => (
                 <div key={p.id} style={{ fontSize: 14, marginBottom: 4 }}>
-                  • <b>{p.titre}</b>{p.decision && <span style={{ opacity: 0.75 }}> — {p.decision}</span>}
+                  • <b><Surligne texte={p.titre} q={q} /></b>{p.decision && <span style={{ opacity: 0.75 }}> — <Surligne texte={p.decision} q={q} /></span>}
                 </div>
               ))}
             </div>
@@ -990,28 +1158,24 @@ function CarteCompteRendu({ s, equipe, fiches, onMaj, onSupprime }: {
               <div style={etiquette}>Missions décidées</div>
               {missions.map(m => (
                 <div key={m.id} style={{ fontSize: 14, marginBottom: 4, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-                  <span>{m.statut === "fait" ? "✅" : "🎯"} <b>{m.titre}</b></span>
-                  {m.assignes.length > 0 && <span style={{ opacity: 0.7 }}>→ {m.assignes.map(nomDe).join(", ")}</span>}
+                  <span>{m.statut === "fait" ? "✅" : "🎯"} <b><Surligne texte={m.titre} q={q} /></b></span>
+                  {m.assignes.length > 0 && <span style={{ opacity: 0.7 }}>→ <Surligne texte={m.assignes.map(nomDe).join(", ")} q={q} /></span>}
                   {m.deadline && <span style={{ opacity: 0.7 }}>· avant le {dateCourte(m.deadline)}</span>}
-                  {m.decision && <span style={{ opacity: 0.6, width: "100%", paddingLeft: 20, fontSize: 13 }}>{m.decision}</span>}
+                  {m.decision && <span style={{ opacity: 0.6, width: "100%", paddingLeft: 20, fontSize: 13 }}><Surligne texte={m.decision} q={q} /></span>}
                 </div>
               ))}
             </div>
           )}
           <div>
             <div style={etiquette}>Notes</div>
-            {edition ? (
-              <textarea value={texte} onChange={e => setTexte(e.target.value)} rows={8} style={{ ...inp, resize: "vertical" }} />
-            ) : (
-              <div style={{ fontSize: 14, whiteSpace: "pre-wrap", lineHeight: 1.5, opacity: s.compte_rendu ? 1 : 0.5 }}>{s.compte_rendu || "Pas de notes."}</div>
-            )}
+            {edition ? <EditeurCR blocs={blocs} onChange={setBlocs} /> : <LectureCR blocs={enregistres} q={q} />}
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button className="pop-btn pop-btn-outline" onClick={supprimer} style={{ color: "#b91c1c", marginRight: "auto" }}>Supprimer</button>
             {edition
-              ? <><button className="pop-btn pop-btn-outline" onClick={() => { setTexte(s.compte_rendu ?? ""); setEdition(false); }}>Annuler</button>
+              ? <><button className="pop-btn pop-btn-outline" onClick={() => { setBlocs(lireCR(s.compte_rendu)); setEdition(false); }}>Annuler</button>
                   <button className="pop-btn pop-btn-dark" onClick={sauver}>Enregistrer</button></>
-              : <button className="pop-btn pop-btn-outline" onClick={() => setEdition(true)}>✏️ Modifier les notes</button>}
+              : <button className="pop-btn pop-btn-outline" onClick={() => { setBlocs(lireCR(s.compte_rendu)); setEdition(true); }}>✏️ Modifier les notes</button>}
           </div>
         </div>
       )}
@@ -1073,7 +1237,8 @@ function ApercuEvenements({ items, onOuvrir }: { items: ItemAVenir[]; onOuvrir: 
 type Onglet = "taches" | "evenements" | "comptes-rendus";
 
 export default function ReunionPage() {
-  const { compte } = useCompte();
+  const { compte, chargement: chargementCompte } = useCompte();
+  const connecte = !!compte;
   const moi = compte?.equipe_id ?? null;
 
   const [equipe, setEquipe] = useState<Membre[]>([]);
@@ -1087,6 +1252,7 @@ export default function ReunionPage() {
   const [filtreMembre, setFiltreMembre] = useState<string>("tous");
   const [voirFaites, setVoirFaites] = useState(false);
   const [voirArchives, setVoirArchives] = useState(false);
+  const [rechercheCR, setRechercheCR] = useState("");
   const [vueSeance, setVueSeance] = useState(true);
 
   const [ficheEditee, setFicheEditee] = useState<Partial<Fiche> | null>(null);
@@ -1165,6 +1331,13 @@ export default function ReunionPage() {
 
   const evsAffiches = evenements.filter(e => voirArchives || !EV_ARCHIVE.includes(e.statut));
   const comptesRendus = seances.filter(s => s.statut === "terminee");
+  const crTrouves = useMemo(() => {
+    const q = normaliser(rechercheCR.trim());
+    if (!q) return comptesRendus;
+    const nomDe = (id: string) => equipe.find(m => m.id === id)?.nom ?? "";
+    return comptesRendus.filter(s => normaliser(texteCompteRendu(s, fiches, nomDe)).includes(q));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seances, fiches, equipe, rechercheCR]);
 
   // ── Lancement d'une réunion
   const lancer = async ({ titre, participants, retenues, ajouts }: { titre: string; participants: string[]; retenues: Suggestion[]; ajouts: string[] }) => {
@@ -1213,7 +1386,7 @@ export default function ReunionPage() {
       <div className="pop-page" style={{ display: "flex", flexDirection: "column", gap: 22 }}>
 
         {seanceEnCours && vueSeance ? (
-          <VueSeance key={seanceEnCours.id} seance={seanceEnCours} equipe={equipe} fiches={fiches} evenements={evenements}
+          <VueSeance key={seanceEnCours.id} seance={seanceEnCours} equipe={equipe} fiches={fiches} evenements={evenements} connecte={connecte}
             onSeance={majSeance} onFiche={majFiche} onOuvrirFiche={setFicheEditee} onBasculerFiche={basculerFiche}
             onQuitter={() => setVueSeance(false)} />
         ) : (
@@ -1225,14 +1398,22 @@ export default function ReunionPage() {
                 <div style={{ fontSize: 14, opacity: 0.6, marginTop: 4 }}>L’équipe, ses missions et ses événements en un coup d’œil</div>
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <button className="pop-btn pop-btn-outline" onClick={() => setFicheEditee({ genre: "point" })}>+ Point</button>
-                <button className="pop-btn pop-btn-outline" onClick={() => setFicheEditee({ genre: "mission", assignes: moi ? [moi] : [] })}>+ Mission</button>
-                <button className="pop-btn pop-btn-outline" onClick={() => setEvOuvert({})}>+ Événement</button>
+                {connecte && <>
+                  <button className="pop-btn pop-btn-outline" onClick={() => setFicheEditee({ genre: "point" })}>+ Point</button>
+                  <button className="pop-btn pop-btn-outline" onClick={() => setFicheEditee({ genre: "mission", assignes: moi ? [moi] : [] })}>+ Mission</button>
+                  <button className="pop-btn pop-btn-outline" onClick={() => setEvOuvert({})}>+ Événement</button>
+                </>}
                 {seanceEnCours
                   ? <button className="pop-btn pop-btn-dark" onClick={() => setVueSeance(true)}>● Reprendre la réunion</button>
-                  : <button className="pop-btn pop-btn-dark" onClick={() => setLancement(true)} disabled={!charge}>▶ Lancer une réunion</button>}
+                  : connecte && <button className="pop-btn pop-btn-dark" onClick={() => setLancement(true)} disabled={!charge}>▶ Lancer une réunion</button>}
               </div>
             </div>
+
+            {!connecte && !chargementCompte && (
+              <div style={{ fontSize: 14, padding: "8px 12px", borderRadius: 8, border: "2px dashed var(--ink)", background: "var(--white)" }}>
+                🔒 Consultation libre. Pour créer un point, une mission, un événement ou lancer une réunion, connecte-toi avec « Se connecter » en haut à droite.
+              </div>
+            )}
 
             {seanceEnCours && (
               <button onClick={() => setVueSeance(true)} className="pop-card" style={{
@@ -1287,14 +1468,14 @@ export default function ReunionPage() {
                 </div>
                 <div className="pop-grid-2" style={{ alignItems: "start", gap: 20 }}>
                   <Section titre={`💬 Points à aborder · ${points.filter(p => p.statut !== "fait").length}`}
-                    droite={<button className="pop-btn pop-btn-outline" style={{ padding: "3px 10px", fontSize: 13 }} onClick={() => setFicheEditee({ genre: "point" })}>+</button>}>
+                    droite={connecte && <button className="pop-btn pop-btn-outline" style={{ padding: "3px 10px", fontSize: 13 }} onClick={() => setFicheEditee({ genre: "point" })}>+</button>}>
                     {points.length === 0 && <Vide>Rien à l’ordre du jour. Une idée, un souci ? Ajoute un point.</Vide>}
                     {points.map(f => (
                       <CarteFiche key={f.id} f={f} equipe={equipe} evenements={evenements} onOuvrir={() => setFicheEditee(f)} onBasculer={() => basculerFiche(f)} />
                     ))}
                   </Section>
                   <Section titre={`🎯 Missions à prioriser · ${missions.filter(p => p.statut !== "fait").length}`}
-                    droite={<button className="pop-btn pop-btn-outline" style={{ padding: "3px 10px", fontSize: 13 }} onClick={() => setFicheEditee({ genre: "mission", assignes: moi ? [moi] : [] })}>+</button>}>
+                    droite={connecte && <button className="pop-btn pop-btn-outline" style={{ padding: "3px 10px", fontSize: 13 }} onClick={() => setFicheEditee({ genre: "mission", assignes: moi ? [moi] : [] })}>+</button>}>
                     {missions.length === 0 && <Vide>Aucune mission{filtreMembre !== "tous" ? " pour ce filtre" : ""}.</Vide>}
                     {missions.map(f => (
                       <CarteFiche key={f.id} f={f} equipe={equipe} evenements={evenements} onOuvrir={() => setFicheEditee(f)} onBasculer={() => basculerFiche(f)} />
@@ -1307,7 +1488,7 @@ export default function ReunionPage() {
             {onglet === "evenements" && (
               <>
                 <div className="pop-toolbar">
-                  <button className="pop-btn pop-btn-yellow" onClick={() => setEvOuvert({})}>+ Nouvel événement</button>
+                  {connecte && <button className="pop-btn pop-btn-yellow" onClick={() => setEvOuvert({})}>+ Nouvel événement</button>}
                   <label style={{ display: "inline-flex", gap: 6, alignItems: "center", fontSize: 13, cursor: "pointer", marginLeft: "auto" }}>
                     <input type="checkbox" checked={voirArchives} onChange={e => setVoirArchives(e.target.checked)} /> Afficher terminés et annulés
                   </label>
@@ -1358,9 +1539,24 @@ export default function ReunionPage() {
 
             {onglet === "comptes-rendus" && (
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {comptesRendus.length > 0 && (
+                  <div style={{ position: "relative" }}>
+                    <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", opacity: 0.5, pointerEvents: "none" }}>🔍</span>
+                    <input type="search" value={rechercheCR} onChange={e => setRechercheCR(e.target.value)}
+                      placeholder="Rechercher dans les comptes rendus : un mot, un nom, une décision…"
+                      style={{ ...inp, paddingLeft: 36 }} />
+                  </div>
+                )}
+                {rechercheCR.trim() && (
+                  <div style={{ fontSize: 13, opacity: 0.65 }}>
+                    {crTrouves.length
+                      ? `${crTrouves.length} compte${crTrouves.length > 1 ? "s" : ""} rendu${crTrouves.length > 1 ? "s" : ""} sur ${comptesRendus.length}`
+                      : "Aucun compte rendu ne contient ce texte."}
+                  </div>
+                )}
                 {comptesRendus.length === 0 && <Vide>Pas encore de compte rendu. Lance une réunion pour en créer un.</Vide>}
-                {comptesRendus.map(s => (
-                  <CarteCompteRendu key={s.id} s={s} equipe={equipe} fiches={fiches} onMaj={majSeance}
+                {crTrouves.map(s => (
+                  <CarteCompteRendu key={s.id} s={s} equipe={equipe} fiches={fiches} q={rechercheCR} onMaj={majSeance}
                     onSupprime={id => setSeances(prev => prev.filter(x => x.id !== id))} />
                 ))}
               </div>
@@ -1376,7 +1572,7 @@ export default function ReunionPage() {
       )}
 
       {evOuvert && (
-        <ModalEvenement key={evOuvert.id ?? "nouveau"} initial={evOuvert} equipe={equipe} evenements={evenements} fiches={fiches}
+        <ModalEvenement key={evOuvert.id ?? "nouveau"} initial={evOuvert} equipe={equipe} evenements={evenements} fiches={fiches} connecte={connecte}
           onFermer={() => setEvOuvert(null)}
           onEvenement={e => { majEvenement(e); if (!evOuvert.id) setEvOuvert(e); }}
           onEvSupprime={id => { setEvenements(prev => prev.filter(x => x.id !== id)); setFiches(prev => prev.filter(f => f.evenement_id !== id)); setEvOuvert(null); }}

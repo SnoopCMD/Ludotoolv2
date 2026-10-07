@@ -239,6 +239,18 @@ Trois objets, trois tables :
   traitées en séance gardent `seance_id`, ce qui reconstitue le compte rendu
   sans le recopier dans les notes libres.
 
+**Créer demande d'être connecté** (fiches, événements, séances, copie dans
+l'agenda : les `POST` répondent 401 sinon) ; consulter et modifier restent
+ouverts, pour qu'une réunion avance depuis n'importe quel poste. C'est une
+exception assumée au principe « connexion facultative » des comptes.
+
+**Le compte rendu** (`reunion_seances.compte_rendu`) est un tableau JSON de
+blocs `{ "t": "section" | "p", "texte": … }`. La liste des comptes rendus n'en
+montre que les titres de section ; le détail affiche tout. Un texte qui n'est
+pas ce JSON (notes saisies avant les sections) se lit comme un paragraphe
+unique. La recherche se fait côté client, sur les notes, le titre, les présents
+et les points et missions rattachés, sans tenir compte des accents ni de la casse.
+
 Les routes `/api/reunion/*` n'écrivent que les colonnes listées dans
 `lib/reunion.ts`, contrairement aux routes génériques plus anciennes qui
 reprennent telles quelles les clés du corps de la requête.

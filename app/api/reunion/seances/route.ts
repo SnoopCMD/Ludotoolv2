@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getDB } from '../../../../lib/db';
 import { compteCourant } from '../../../../lib/auth';
-import { SEANCES, inserer, lireLigne } from '../../../../lib/reunion';
+import { SEANCES, inserer, lireLigne, refusAnonyme } from '../../../../lib/reunion';
 
 export async function GET() {
   try {
@@ -16,18 +16,19 @@ export async function GET() {
 /** Lance une séance. S'il y en a déjà une en cours, on la renvoie plutôt que d'en ouvrir une seconde. */
 export async function POST(request: Request) {
   try {
+    const compte = await compteCourant();
+    if (!compte) return refusAnonyme();
     const db = await getDB();
     const enCours = await db.prepare("SELECT * FROM reunion_seances WHERE statut = 'en_cours' LIMIT 1").first<any>();
     if (enCours) return NextResponse.json(lireLigne(SEANCES, enCours));
     const body = await request.json() as any;
-    const compte = await compteCourant();
     return NextResponse.json(await inserer(SEANCES, {
       date: body.date || new Date().toISOString().slice(0, 10),
       titre: body.titre ?? null,
       participants: body.participants ?? [],
       compte_rendu: body.compte_rendu ?? '',
       statut: 'en_cours',
-    }, compte?.equipe_id ?? null));
+    }, compte.equipe_id));
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }

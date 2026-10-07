@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getDB } from '../../../../../../lib/db';
-import { EVENEMENTS, lireLigne } from '../../../../../../lib/reunion';
+import { compteCourant } from '../../../../../../lib/auth';
+import { EVENEMENTS, lireLigne, refusAnonyme } from '../../../../../../lib/reunion';
 
 // Types que l'agenda sait colorer et classer. Les autres y deviennent « Autre » :
 // surtout pas un type d'absence, qui retirerait des heures au planning.
@@ -12,6 +13,7 @@ const TYPES_AGENDA = ['Réunion', 'Animation', 'Soirée Jeux'];
  */
 export async function POST(_: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
+    if (!(await compteCourant())) return refusAnonyme();
     const db = await getDB();
     const { id } = await params;
     const brut = await db.prepare('SELECT * FROM reunion_evenements WHERE id = ?').bind(id).first<any>();
