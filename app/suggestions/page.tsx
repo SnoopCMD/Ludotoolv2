@@ -1,9 +1,11 @@
 "use client";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import NavBar from "../../components/NavBar";
 import { useIsMobile } from "../../lib/useIsMobile";
+import { useCompte } from "../../components/AuthProvider";
+import { suitLesSuggestions } from "../../lib/suggestions";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -14,6 +16,8 @@ type Suggestion = {
   couleur: string;
   tags: string | null;
   done: number; // 0 ou 1
+  auteur_nom?: string | null;
+  vue?: number; // 0 tant que Timothé ne l'a pas vue
   created_at: string;
   updated_at: string;
 };
@@ -209,7 +213,7 @@ function ListBlockView({ block }: { block: NoteListBlock }) {
 
 // ─── StickyNote ───────────────────────────────────────────────────────────────
 
-function StickyNote({ note, rotation, onClick, onToggleDone }: { note: Suggestion; rotation: number; onClick: () => void; onToggleDone: (e: React.MouseEvent) => void }) {
+function StickyNote({ note, rotation, nouvelle, onClick, onToggleDone }: { note: Suggestion; rotation: number; nouvelle?: boolean; onClick: () => void; onToggleDone: (e: React.MouseEvent) => void }) {
   const isMobile = useIsMobile();
   const [hovered, setHovered] = useState(false);
   const col = NOTE_COLORS[note.couleur] ?? NOTE_COLORS.yellow;
@@ -242,6 +246,11 @@ function StickyNote({ note, rotation, onClick, onToggleDone }: { note: Suggestio
         style={{ position: 'absolute', top: 8, right: 8, width: 22, height: 22, borderRadius: '50%', border: `2px solid ${isDone ? '#6b7280' : col.border}`, background: isDone ? '#6b7280' : 'rgba(255,255,255,0.6)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: isDone ? 'white' : 'rgba(0,0,0,0.3)', fontWeight: 900, transition: 'all 0.15s', zIndex: 20 }}>
         ✓
       </button>
+      {nouvelle && (
+        <span style={{ position: 'absolute', top: -8, left: -8, background: '#f87171', color: '#fff', fontSize: 9, fontWeight: 900, letterSpacing: '.06em', borderRadius: 10, padding: '2px 7px', border: '1.5px solid var(--ink)', boxShadow: '1px 1px 0 var(--ink)', zIndex: 20 }}>
+          NOUVEAU
+        </span>
+      )}
       <div style={{ fontWeight: 800, fontSize: 13, lineHeight: 1.3, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const, color: isDone ? '#6b7280' : '#1a1a1a', textDecoration: isDone ? 'line-through' : 'none' }}>
         {note.titre || 'Sans titre'}
       </div>
@@ -286,7 +295,10 @@ function StickyNote({ note, rotation, onClick, onToggleDone }: { note: Suggestio
           </>
         );
       })()}
-      <div style={{ marginTop: 'auto', paddingTop: 6, fontSize: 10, color: 'rgba(0,0,0,0.35)', fontWeight: 600, letterSpacing: '.04em' }}>{dateStr}</div>
+      <div style={{ marginTop: 'auto', paddingTop: 6, fontSize: 10, color: 'rgba(0,0,0,0.35)', fontWeight: 600, letterSpacing: '.04em', display: 'flex', justifyContent: 'space-between', gap: 6 }}>
+        <span>{dateStr}</span>
+        {note.auteur_nom && <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>par {note.auteur_nom}</span>}
+      </div>
     </div>
   );
 }
@@ -322,6 +334,7 @@ function ModalSuggestion({ note, onClose, onSaved, onDeleted }: {
   onDeleted?: (id: string) => void;
 }) {
   const isNew = note === null;
+  const { compte } = useCompte();
   const [titre, setTitre] = useState(note?.titre ?? '');
   const [blocks, setBlocks] = useState<ContentBlock[]>(() => parseBlocks(note?.contenu ?? null));
   const [tags, setTags] = useState<string[]>(() => parseTags(note?.tags ?? null));
@@ -358,7 +371,7 @@ function ModalSuggestion({ note, onClose, onSaved, onDeleted }: {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, titre: titre.trim(), contenu, couleur, tags: tagsJson, done: 0, created_at: now, updated_at: now }),
       });
-      onSaved({ id, titre: titre.trim(), contenu, couleur, tags: tagsJson, done: 0, created_at: now, updated_at: now });
+      onSaved({ id, titre: titre.trim(), contenu, couleur, tags: tagsJson, done: 0, created_at: now, updated_at: now, auteur_nom: compte?.nom ?? null });
     } else {
       await fetch(`/api/suggestions/${note!.id}`, {
         method: 'PUT',
@@ -497,6 +510,7 @@ function ModalSuggestion({ note, onClose, onSaved, onDeleted }: {
         {note && (
           <div style={{ marginTop: 10, fontSize: 11, color: 'rgba(0,0,0,0.35)', fontWeight: 600 }}>
             Modifiée le {(() => { try { return format(new Date(note.updated_at), "dd MMM yyyy 'à' HH:mm", { locale: fr }); } catch { return ''; } })()}
+            {note.auteur_nom && <> · proposée par {note.auteur_nom}</>}
           </div>
         )}
 
@@ -541,6 +555,11 @@ export default function SuggestionsPage() {
   const [recherche, setRecherche] = useState('');
   const [activeTags, setActiveTags] = useState<string[]>([]);
   const [filtreStatut, setFiltreStatut] = useState<'tout' | 'todo' | 'done'>('tout');
+  const { compte } = useCompte();
+  const suitSuggestions = suitLesSuggestions(compte);
+  // Suggestions non vues au chargement : le badge « NOUVEAU » reste affiché
+  // pendant toute la visite, même une fois marquées comme vues en base.
+  const [nouvelles, setNouvelles] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     fetch('/api/suggestions')
@@ -548,6 +567,23 @@ export default function SuggestionsPage() {
       .then(d => { setSuggestions(Array.isArray(d) ? d : []); setIsLoading(false); })
       .catch(() => setIsLoading(false));
   }, []);
+
+  // Timothé ouvre la page : les nouvelles suggestions passent en « vues » et
+  // la pastille de la barre de navigation s'efface.
+  const dejaMarquees = useRef(false);
+  useEffect(() => {
+    if (!suitSuggestions || isLoading || dejaMarquees.current) return;
+    const nonVues = suggestions.filter(s => s.vue === 0).map(s => s.id);
+    if (nonVues.length === 0) return;
+    dejaMarquees.current = true;
+    fetch('/api/suggestions/non-vues', { method: 'POST' })
+      .then(() => window.dispatchEvent(new Event('suggestions-vues')))
+      .catch(() => {})
+      .finally(() => {
+        setNouvelles(new Set(nonVues));
+        setSuggestions(prev => prev.map(s => s.vue === 0 ? { ...s, vue: 1 } : s));
+      });
+  }, [suitSuggestions, isLoading, suggestions]);
 
   const toggleDone = async (s: Suggestion, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -655,7 +691,7 @@ export default function SuggestionsPage() {
                 <p style={{ fontWeight: 600, color: 'rgba(0,0,0,0.3)' }}>{suggestions.length === 0 ? 'Aucune suggestion pour l\'instant.' : 'Aucune suggestion trouvée.'}</p>
               </div>
             ) : filtered.map((s, i) => (
-              <StickyNote key={s.id} note={s} rotation={NOTE_ROTATIONS[i % NOTE_ROTATIONS.length]} onClick={() => setModal(s)} onToggleDone={e => toggleDone(s, e)} />
+              <StickyNote key={s.id} note={s} rotation={NOTE_ROTATIONS[i % NOTE_ROTATIONS.length]} nouvelle={nouvelles.has(s.id)} onClick={() => setModal(s)} onToggleDone={e => toggleDone(s, e)} />
             ))}
           </div>
         )}

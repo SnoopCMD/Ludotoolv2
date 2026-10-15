@@ -73,7 +73,7 @@ En production, ce sont des secrets Cloudflare (`wrangler secret put …`).
 | `/store` | Paniers d'achat (jeux de société, jeux vidéo, jouets), commandes communes, devis PDF |
 | `/catalogage` | Attribution des codes Syracuse |
 | `/jv` | Jeux vidéo : catalogue, sélections par console, rotations, réservations de postes, stats, notes |
-| `/suggestions` | Boîte à idées interne |
+| `/suggestions` | Boîte à idées interne — auteur affiché si posté connecté, pastille des nouvelles suggestions pour Timothé seul (`lib/suggestions.ts`) |
 | `/connexion` | Connexion à son compte (facultative, voir *Les comptes*) |
 | `/contenu`, `/etiquettes` | Génération des fiches de contenu et des étiquettes (PDF) |
 | `/pieces`, `/reparations` | Pièces manquantes ou retrouvées, réparations |

@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server';
 import { getDB } from '../../../../lib/db';
+import { sansChampsServeur } from '../../../../lib/suggestions';
 
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const db = await getDB();
     const { id } = await params;
-    const body = await request.json() as any;
+    // Auteur et statut « vue » ne se modifient pas depuis le client.
+    const body = sansChampsServeur(await request.json()) as any;
     const keys = Object.keys(body);
     const sets = keys.map(k => `${k} = ?`).join(', ');
     await db.prepare(`UPDATE suggestions SET ${sets} WHERE id = ?`).bind(...keys.map(k => body[k]), id).run();

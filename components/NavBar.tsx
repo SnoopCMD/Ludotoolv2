@@ -3,6 +3,8 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import CompteMenu from "./CompteMenu";
+import { useCompte } from "./AuthProvider";
+import { suitLesSuggestions } from "../lib/suggestions";
 
 type Page = "accueil" | "inventaire" | "atelier" | "agenda" | "reunion" | "store" | "catalogage" | "jv" | "suggestions";
 
@@ -21,7 +23,9 @@ const SUGG_ITEM = { href: "/suggestions", label: "💡 Suggestions", page: "sugg
 
 export default function NavBar({ current }: { current?: Page }) {
   const pathname = usePathname();
+  const { compte } = useCompte();
   const [alertCount, setAlertCount] = useState(0);
+  const [suggCount, setSuggCount] = useState(0);
   const [hoveredPage, setHoveredPage] = useState<Page | null>(null);
   const [menuOuvert, setMenuOuvert] = useState(false);
 
@@ -38,6 +42,22 @@ export default function NavBar({ current }: { current?: Page }) {
     };
     fetchCount();
   }, []);
+
+  // Nouvelles suggestions : pastille réservée à Timothé. La page Suggestions
+  // émet « suggestions-vues » une fois qu'elle les a marquées comme vues.
+  const suitSuggestions = suitLesSuggestions(compte);
+  useEffect(() => {
+    if (!suitSuggestions) return;
+    const fetchSugg = () => fetch('/api/suggestions/non-vues', { cache: 'no-store' })
+      .then(r => r.json() as Promise<{ count?: number }>)
+      .then(d => setSuggCount(d.count ?? 0))
+      .catch(() => setSuggCount(0));
+    fetchSugg();
+    window.addEventListener('suggestions-vues', fetchSugg);
+    return () => window.removeEventListener('suggestions-vues', fetchSugg);
+  }, [suitSuggestions]);
+  // Après une déconnexion, l'ancien compteur ne doit plus s'afficher.
+  const suggVisibles = suitSuggestions ? suggCount : 0;
 
   // Tiroir ouvert : on bloque le défilement du fond, sinon le doigt fait
   // glisser la page derrière le panneau.
@@ -145,6 +165,7 @@ export default function NavBar({ current }: { current?: Page }) {
                 whiteSpace: "nowrap", fontFamily: "inherit", flexShrink: 0,
               }}>
               {item.label}
+              {suggVisibles > 0 && <Pastille n={suggVisibles} />}
             </Link>
           );
         })()}
@@ -179,14 +200,14 @@ export default function NavBar({ current }: { current?: Page }) {
           ))}
         </span>
         {/* La pastille d'alertes doit rester visible même menu fermé. */}
-        {!menuOuvert && alertCount > 0 && (
+        {!menuOuvert && alertCount + suggVisibles > 0 && (
           <span style={{ position: "absolute", top: -7, right: -7, display: "flex" }}>
-            <Pastille n={alertCount} />
+            <Pastille n={alertCount + suggVisibles} />
           </span>
         )}
       </button>
 
-      {menuOuvert && <TiroirMobile activePage={activePage} alertCount={alertCount} onFermer={() => setMenuOuvert(false)} />}
+      {menuOuvert && <TiroirMobile activePage={activePage} alertCount={alertCount} suggCount={suggVisibles} onFermer={() => setMenuOuvert(false)} />}
 
       {/* Rainbow strip */}
       <div style={{
@@ -201,7 +222,7 @@ export default function NavBar({ current }: { current?: Page }) {
   );
 }
 
-/** Compteur d'alertes rouge, partagé entre l'onglet Accueil et le burger. */
+/** Compteur rouge, partagé entre l'onglet Accueil, Suggestions et le burger. */
 function Pastille({ n }: { n: number }) {
   return (
     <span style={{
@@ -215,8 +236,8 @@ function Pastille({ n }: { n: number }) {
 }
 
 /** Panneau de navigation plein écran, sous la barre, sur téléphone. */
-function TiroirMobile({ activePage, alertCount, onFermer }: {
-  activePage: Page; alertCount: number; onFermer: () => void;
+function TiroirMobile({ activePage, alertCount, suggCount, onFermer }: {
+  activePage: Page; alertCount: number; suggCount: number; onFermer: () => void;
 }) {
   const items = [...NAV_ITEMS, SUGG_ITEM];
   return (
@@ -262,6 +283,7 @@ function TiroirMobile({ activePage, alertCount, onFermer }: {
               }} />
               {item.label}
               {item.page === "accueil" && alertCount > 0 && <Pastille n={alertCount} />}
+              {item.page === "suggestions" && suggCount > 0 && <Pastille n={suggCount} />}
             </Link>
           );
         })}
