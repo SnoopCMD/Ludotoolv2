@@ -290,6 +290,17 @@ function Avatar({ m, taille = 24 }: { m?: Membre; taille?: number }) {
   );
 }
 
+/** « Proposé par » : qui a ajouté le point à l'ordre du jour. */
+function Auteur({ id, equipe }: { id: string | null; equipe: Membre[] }) {
+  const m = id ? equipe.find(x => x.id === id) : undefined;
+  if (!m) return null;
+  return (
+    <span title={`Proposé par ${m.nom}`} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, opacity: 0.75 }}>
+      par <Avatar m={m} taille={16} /> <b>{m.nom}</b>
+    </span>
+  );
+}
+
 function Pastille({ texte, fond, titre }: { texte: string; fond: string; titre?: string }) {
   return (
     <span title={titre} style={{
@@ -551,6 +562,7 @@ function CarteFiche({ f, equipe, evenements, onOuvrir, onBasculer }: {
           {f.statut === "en_cours" && <Pastille texte="▶ En cours" fond="var(--bleu)" />}
           <BadgeDeadline f={f} />
           {ev && <Pastille texte={`${typeEv(ev.type).icone} ${ev.titre}`} fond="var(--cream)" />}
+          {f.genre === "point" && <Auteur id={f.cree_par} equipe={equipe} />}
           {f.assignes.length > 0 && (
             <span style={{ display: "inline-flex", marginLeft: "auto" }}>
               {f.assignes.map((id, i) => (
@@ -903,6 +915,7 @@ function PointEnSeance({ p, equipe, seanceId, onMaj, onOuvrir }: {
             {p.genre === "mission" ? "🎯 " : traite ? "✓ " : ""}{p.titre}
           </div>
           {p.description && <div style={{ fontSize: 13, opacity: 0.7, whiteSpace: "pre-wrap", marginTop: 2 }}>{p.description}</div>}
+          <div style={{ marginTop: 4 }}><Auteur id={p.cree_par} equipe={equipe} /></div>
         </div>
         <button onClick={onOuvrir} title="Modifier" style={{ border: "none", background: "none", cursor: "pointer", fontSize: 15, flexShrink: 0 }}>✏️</button>
       </div>
@@ -1394,7 +1407,7 @@ export default function ReunionPage() {
             {/* En-tête */}
             <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
               <div style={{ flex: "1 1 240px", minWidth: 0 }}>
-                <h1 className="bc" style={{ margin: 0, fontSize: 34, lineHeight: 1 }}>Réunion</h1>
+                <h1 className="bc" style={{ margin: 0, fontSize: 34, lineHeight: 1 }}>Bureau</h1>
                 <div style={{ fontSize: 14, opacity: 0.6, marginTop: 4 }}>L’équipe, ses missions et ses événements en un coup d’œil</div>
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>

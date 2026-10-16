@@ -12,7 +12,7 @@ const NAV_ITEMS: { href: string; label: string; page: Page; color: string }[] = 
   { href: "/inventaire",   label: "Inventaire",   page: "inventaire",  color: "#60a5fa" },
   { href: "/atelier",      label: "Atelier",      page: "atelier",     color: "#a8e063" },
   { href: "/agenda",       label: "Agenda",       page: "agenda",      color: "#c084fc" },
-  { href: "/reunion",      label: "Réunion",      page: "reunion",     color: "#2dd4bf" },
+  { href: "/reunion",      label: "Bureau",       page: "reunion",     color: "#2dd4bf" },
   { href: "/store",        label: "Store",        page: "store",       color: "#f472b6" },
   { href: "/catalogage",   label: "Catalogage",   page: "catalogage",  color: "#fb923c" },
   { href: "/jv",           label: "Jeux Vidéo",   page: "jv",          color: "#f87171" },

@@ -1,5 +1,5 @@
 export const metadata = {
-  title: 'LudoTool - Réunion',
+  title: 'LudoTool - Bureau',
   description: "Points à aborder, missions et préparation d'événements",
 };
 
