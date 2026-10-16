@@ -46,6 +46,8 @@ type SearchResult = {
   url?: string | null;
   /** Trader Games : titre sans plateforme ni état, pour retrouver la fiche jeuxvideo.com. */
   titre_jeu?: string;
+  /** Trader Games : libellé d'origine de l'article (plateforme, état, langues). */
+  titre_brut?: string;
   etat?: string | null;
 };
 
@@ -74,7 +76,8 @@ async function rechercherJeux(q: string, console: Console | ""): Promise<{ resul
     ...vide, external_id: `jvc:${x.url}`, titre: x.titre, image_url: x.image_url, console: null, source: "jvc", url: x.url,
   }));
   const tg: SearchResult[] = (fr?.tradergames?.resultats ?? []).map((x: any) => ({
-    ...vide, external_id: `tg:${x.url ?? x.titre}`, titre: x.titre, image_url: x.image_url, console: x.console,
+    // Titre lisible (« Moving Out 2 ») ; le libellé brut de la boutique reste en info-bulle.
+    ...vide, external_id: `tg:${x.url ?? x.titre}`, titre: x.titre_jeu || x.titre, titre_brut: x.titre, image_url: x.image_url, console: x.console,
     source: "tg", url: x.url, titre_jeu: x.titre_jeu, etat: x.etat,
   }));
   const ig: SearchResult[] = (Array.isArray(igdb) ? igdb as SearchResult[] : []).map(x => ({ ...x, source: "igdb" as const }));
@@ -685,7 +688,7 @@ function ModalJeu({
             {searchResults.length > 0 && (
               <div className="custom-scroll" style={{ overflowY: 'auto', padding: '0 20px 10px', flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
                 {searchResults.map(r => (
-                  <button key={r.external_id} onClick={() => selectSearchResult(r)}
+                  <button key={r.external_id} onClick={() => selectSearchResult(r)} title={r.titre_brut}
                     className="pop-card pop-card-hover"
                     style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: 'var(--white)', cursor: 'pointer', width: '100%', textAlign: 'left' }}>
                     <div style={{ width: 36, height: 48, borderRadius: 6, overflow: 'hidden', background: 'var(--cream2)', border: '2px solid var(--ink)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -737,7 +740,7 @@ function ModalJeu({
             </div>
             <div className="custom-scroll" style={{ flex: 1, overflowY: 'auto', padding: '0 20px 16px', display: 'flex', flexDirection: 'column', gap: 6 }}>
               {searchResults.map(r => (
-                <button key={r.external_id} onClick={() => selectSearchResult(r)}
+                <button key={r.external_id} onClick={() => selectSearchResult(r)} title={r.titre_brut}
                   className="pop-card pop-card-hover"
                   style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 12, background: 'var(--white)', cursor: 'pointer', width: '100%', textAlign: 'left' }}>
                   <div style={{ width: 48, height: 64, borderRadius: 8, overflow: 'hidden', background: 'var(--cream2)', border: '2px solid var(--ink)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

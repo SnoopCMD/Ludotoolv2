@@ -11,6 +11,7 @@ import { chercherIgdb, type ResultatIgdb } from './igdb';
 import { completerDepuisJvc, type FicheJvc } from './jeuxvideo';
 import { chercherBoutiques, type GameResult } from './boutiquesJv';
 import { choisirConsole, type ConsoleJv } from './consolesJv';
+import { casseTitre } from './casseTitre';
 
 export type ChampFiche = 'titre' | 'console' | 'description' | 'image_url' | 'annee' | 'editeur' | 'genre' | 'pegi' | 'nb_joueurs';
 
@@ -76,12 +77,6 @@ const GENRES_FR: Record<string, string> = {
   'Visual Novel': 'Visual novel',
 };
 const genresEnFrancais = (genres: string[]) => [...new Set(genres.map(g => GENRES_FR[g] ?? g))];
-
-/** Titre en capitales (Trader Games) → casse de titre lisible. */
-function casseTitre(t: string): string {
-  if (t !== t.toUpperCase()) return t;
-  return t.toLowerCase().replace(/(^|[\s:\-'(])(\p{L})/gu, (_, a, b) => a + b.toUpperCase());
-}
 
 const premier = <T>(...valeurs: [T | null | undefined, string][]): [T, string] | null => {
   for (const [v, src] of valeurs) if (v !== null && v !== undefined && v !== '') return [v, src];

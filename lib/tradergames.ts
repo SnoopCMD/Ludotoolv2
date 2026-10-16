@@ -1,6 +1,8 @@
 // Recherche chez Trader Games (jeux vidéo), partagée par le Store (paniers)
 // et l'ajout de jeux de la page Jeux Vidéo.
 
+import { casseTitre } from './casseTitre';
+
 const TIMEOUT_MS = 10000;
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
@@ -177,7 +179,7 @@ export async function chercherTraderGames(nom: string): Promise<{ resultats: Jeu
   return { resultats: [...jeux, ...autres].slice(0, 10), bloque: false };
 }
 
-/** Titre sans plateforme ni état (« ZELDA BOTW SWITCH OCCASION » → « ZELDA BOTW »),
+/** Titre sans plateforme ni état, en casse de titre (« ZELDA BOTW SWITCH OCCASION » → « Zelda Botw »),
  *  pour retrouver le jeu ailleurs (jeuxvideo.com). */
 export function titreSansPlateforme(nom: string): string {
   // La boutique tronque parfois ses titres en pleine parenthèse
@@ -191,7 +193,8 @@ export function titreSansPlateforme(nom: string): string {
     // « … NINTENDO SWITCH » : la marque reste une fois la console retirée.
     .replace(/\s+(NINTENDO|SONY|PLAYSTATION)$/i, '')
     .replace(/\s*[-–|/]+$/, '')
-    .trim();
+    .trim()
+    .replace(/^.*$/, casseTitre);
 }
 
 /** Jeu vendu par Trader Games sous cet EAN, s'il est retrouvable par la
