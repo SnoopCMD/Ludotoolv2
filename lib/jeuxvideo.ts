@@ -5,9 +5,9 @@
 // - les liens internes sont masqués (« JvCare ») : une classe `JvCare <hex>`
 //   porte l'URL encodée dans un alphabet hexadécimal mélangé ;
 // - le site est derrière une protection Cloudflare qui refuse les clients
-//   non-navigateurs (403 « Just a moment… »). Comme pour Trader Games, le
-//   Worker déployé est censé passer, pas un poste de développement : en cas de
-//   refus, on renvoie `bloque: true` plutôt qu'une erreur.
+//   non-navigateurs (403 « Just a moment… »), y compris le Worker déployé
+//   (constaté le 16/10/2026, comme pour Trader Games). En cas de refus, on
+//   renvoie `bloque: true` plutôt qu'une erreur et l'interface se rabat sur IGDB.
 
 const JVC_BASE = 'https://www.jeuxvideo.com';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36';

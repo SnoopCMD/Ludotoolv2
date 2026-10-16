@@ -360,15 +360,16 @@ Le type de panier détermine la source, via un seul endpoint
   chez le fournisseur : on retrouve la fiche, mais le prix est à saisir à la main.
 
 > ⚠️ **Trader Games est protégé par un challenge Cloudflare** qui refuse les
-> clients non-navigateurs. Le Worker déployé passe — vérifié en production le
-> 08/09/2026 — mais pas un poste de développement : **en local, la recherche JV
-> renvoie systématiquement `bloque: true`, ce n'est pas un bug**. Pour la tester,
-> viser la production.
+> clients non-navigateurs. Le Worker déployé passait le 08/09/2026, mais **depuis
+> au moins le 16/10/2026 il est refusé lui aussi** : le jeton de la boutique est
+> introuvable (`/api/store/recherche?type=JV&debug=true` →
+> `"tradergames:token": "introuvable"`) et la recherche JV renvoie
+> `bloque: true`, en production comme en local.
 >
 > Quand la boutique refuse, la recherche retombe automatiquement sur le catalogue
 > jeux vidéo interne (titres et jaquettes, sans prix) et propose un lien vers la
-> recherche sur leur site. Ça peut cesser de fonctionner à tout moment, sans
-> prévenir : la solution durable serait de leur demander un accès catalogue (flux
+> recherche sur leur site. Le code reste en place au cas où l'accès se rouvre,
+> mais la solution durable est de leur demander un accès catalogue (flux
 > CSV/XML), comme le proposent beaucoup de boutiques pro. Leur `robots.txt`
 > décourage par ailleurs l'exploration des pages de recherche.
 
@@ -388,8 +389,11 @@ caméra) ou un titre :
 
 jeuxvideo.com masque ses liens internes (« JvCare » : URL en hexadécimal sur
 l'alphabet `0A12B34C56D78E9F`) et, comme Trader Games, refuse les clients
-non-navigateurs : **en local, ces deux sources répondent `bloque: true`** et
-seuls les résultats IGDB s'affichent. En production, le Worker est censé passer.
+non-navigateurs : **en local comme en production (constaté le 16/10/2026), ces
+deux sources répondent `bloque: true`** et seuls les résultats IGDB s'affichent,
+avec un message signalant le refus. Le code est gardé au cas où l'accès se
+rouvre ; la description française vient alors, comme avant, des boutiques
+plateformes (PlayStation Store, Nintendo eShop, Steam) via `/api/jv/search`.
 
 ### Les jeux PC et la wishlist Steam
 
