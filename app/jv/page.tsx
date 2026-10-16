@@ -248,6 +248,41 @@ function nextOpenDay(): string {
 const normalizeStr = (s: string) =>
   s?.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]/g, "") ?? "";
 
+// ─── Genres ───────────────────────────────────────────────────────────────────
+// Le champ est libre : plusieurs genres s'écrivent séparés par des virgules
+// (« RPG, Action / Aventure »). Le « / » fait partie du nom (« Action / Aventure »
+// est un seul genre). Deux écritures du même genre (« Couch game » / « Couch
+// Game », « Monde-ouvert » / « Monde Ouvert ») sont rapprochées par leur clé.
+
+const cleGenre = (g: string) => normalizeStr(g);
+
+function genresDe(genre: string | null | undefined): string[] {
+  const vus = new Map<string, string>();
+  for (const brut of (genre ?? "").split(/[,;]/)) {
+    const g = brut.trim();
+    if (g && !vus.has(cleGenre(g))) vus.set(cleGenre(g), g);
+  }
+  return [...vus.values()];
+}
+
+const aLeGenre = (jeu: { genre: string | null }, genre: string) =>
+  genresDe(jeu.genre).some(g => cleGenre(g) === cleGenre(genre));
+
+/** Genres présents dans une liste de jeux, une entrée par genre (l'écriture la
+ *  plus fréquente), triés par ordre alphabétique. */
+function genresPresents(jeux: { genre: string | null }[]): string[] {
+  const parCle = new Map<string, Map<string, number>>();
+  for (const j of jeux) for (const g of genresDe(j.genre)) {
+    const k = cleGenre(g);
+    const variantes = parCle.get(k) ?? new Map<string, number>();
+    variantes.set(g, (variantes.get(g) ?? 0) + 1);
+    parCle.set(k, variantes);
+  }
+  return [...parCle.values()]
+    .map(v => [...v.entries()].sort((a, b) => b[1] - a[1])[0][0])
+    .sort((a, b) => a.localeCompare(b, "fr"));
+}
+
 // ─── Helpers horaires ─────────────────────────────────────────────────────────
 
 function parseTime(t: string): number {
@@ -1107,9 +1142,7 @@ function ModalRotation({
 
   // Genres proposés au filtre (le champ est libre et parfois multi-valué)
   const genresDispo = useMemo(() => {
-    const set = new Set<string>();
-    disponibles.forEach(j => (j.genre ?? "").split(/[,/]/).map(g => g.trim()).filter(Boolean).forEach(g => set.add(g)));
-    return [...set].sort((a, b) => a.localeCompare(b));
+    return genresPresents(disponibles);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jeux, selections, slot]);
 
@@ -1134,7 +1167,7 @@ function ModalRotation({
         const pop = popularityRank[j.id];
         if (!pop || (resaCounts[j.id] || 0) === 0 || pop.rank / pop.total > 0.2) return false;
       }
-      if (fGenre && !normalizeStr(j.genre ?? "").includes(normalizeStr(fGenre))) return false;
+      if (fGenre && !aLeGenre(j, fGenre)) return false;
       return true;
     });
 
@@ -1994,7 +2027,9 @@ function ModalReservation({
                       <p style={{ fontWeight: 700, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', margin: 0 }}>{j.titre}</p>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 3 }}>
                         {j.nb_joueurs && <span style={{ fontSize: 10, color: 'rgba(0,0,0,0.45)' }}>👥 {j.nb_joueurs}</span>}
-                        {j.genre && <span style={{ fontSize: 10, color: 'rgba(0,0,0,0.45)' }}>{j.genre}</span>}
+                        {genresDe(j.genre).map(g => (
+                          <span key={g} style={{ fontSize: 10, color: 'rgba(0,0,0,0.5)', background: 'var(--cream2)', borderRadius: 20, padding: '0 6px' }}>{g}</span>
+                        ))}
                         {sel.permanent && (
                           <span style={{ fontSize: 10, background: 'var(--orange)', border: '1.5px solid var(--ink)', borderRadius: 5, padding: '1px 5px', fontWeight: 700 }}>Permanent</span>
                         )}
@@ -2519,6 +2554,13 @@ function TabCatalogue({
   const [recherche, setRecherche] = useState("");
   const [filtreConsole, setFiltreConsole] = useState<Console | "Toutes">("Toutes");
   const [filtreStatut, setFiltreStatut] = useState<string>("tous");
+  const [filtreGenre, setFiltreGenre] = useState<string>("");
+
+  // Genres proposés : ceux des jeux de la console affichée.
+  const genresCatalogue = useMemo(
+    () => genresPresents(filtreConsole === "Toutes" ? jeux : jeux.filter(j => j.console === filtreConsole)),
+    [jeux, filtreConsole]
+  );
 
   const counts = useMemo(() =>
     CONSOLES.reduce((acc, c) => ({ ...acc, [c]: jeux.filter(j => j.console === c).length }), {} as Record<Console, number>),
@@ -2530,10 +2572,11 @@ function TabCatalogue({
     return jeux.filter(j => {
       if (filtreConsole !== "Toutes" && j.console !== filtreConsole) return false;
       if (filtreStatut !== "tous" && j.statut !== filtreStatut) return false;
+      if (filtreGenre && !aLeGenre(j, filtreGenre)) return false;
       if (q && !normalizeStr(j.titre).includes(q) && !normalizeStr(j.editeur ?? "").includes(q)) return false;
       return true;
     });
-  }, [jeux, recherche, filtreConsole, filtreStatut]);
+  }, [jeux, recherche, filtreConsole, filtreStatut, filtreGenre]);
 
   const CONSOLE_BG: Record<Console, string> = { PS5: 'var(--bleu)', Switch: 'var(--rouge)', PC: 'var(--cream2)' };
   const STATUS_BG: Record<string, string> = {
@@ -2576,6 +2619,15 @@ function TabCatalogue({
           <option value="maintenance">Maintenance</option>
           <option value="retire">Retiré</option>
         </select>
+        {genresCatalogue.length > 0 && (
+          <select value={filtreGenre} onChange={e => setFiltreGenre(e.target.value)}
+            className="pop-input" style={{ cursor: 'pointer', maxWidth: 200 }}>
+            <option value="">Tous genres</option>
+            {/* Un genre choisi qui n'existe plus sur la console reste sélectionnable. */}
+            {filtreGenre && !genresCatalogue.some(g => cleGenre(g) === cleGenre(filtreGenre)) && <option value={filtreGenre}>{filtreGenre}</option>}
+            {genresCatalogue.map(g => <option key={g} value={g}>{g}</option>)}
+          </select>
+        )}
         <span className="pop-sticker" style={{ background: 'var(--cream2)' }}>
           {filtered.length} jeu{filtered.length > 1 ? "x" : ""}
         </span>
@@ -2604,7 +2656,9 @@ function TabCatalogue({
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
                 <span style={{ fontWeight: 700, fontSize: 15 }}>{jeu.titre}</span>
                 <span style={{ background: CONSOLE_BG[jeu.console], border: '2px solid var(--ink)', borderRadius: 6, padding: '2px 8px', fontSize: 12, fontWeight: 700, boxShadow: '2px 2px 0 var(--ink)', whiteSpace: 'nowrap' }}>{jeu.console}</span>
-                {jeu.genre && <span style={{ background: 'var(--cream2)', border: '1.5px solid rgba(0,0,0,0.15)', borderRadius: 20, padding: '1px 8px', fontSize: 11, fontWeight: 600 }}>{jeu.genre}</span>}
+                {genresDe(jeu.genre).map(g => (
+                  <span key={g} style={{ background: 'var(--cream2)', border: '1.5px solid rgba(0,0,0,0.15)', borderRadius: 20, padding: '1px 8px', fontSize: 11, fontWeight: 600 }}>{g}</span>
+                ))}
               </div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                 {jeu.editeur && <span style={{ fontSize: 12, color: 'rgba(0,0,0,0.4)' }}>{jeu.editeur}</span>}
