@@ -180,10 +180,12 @@ export async function chercherTraderGames(nom: string): Promise<{ resultats: Jeu
 /** Titre sans plateforme ni état (« ZELDA BOTW SWITCH OCCASION » → « ZELDA BOTW »),
  *  pour retrouver le jeu ailleurs (jeuxvideo.com). */
 export function titreSansPlateforme(nom: string): string {
-  let t = nettoyerTitre(nom);
+  // La boutique tronque parfois ses titres en pleine parenthèse
+  // (« (GAME IN ENGLISH/ /DE/ES… ») : tout ce qui suit la première est du détail.
+  let t = nettoyerTitre(nom).replace(/\s*\(.*$/, '');
   for (const [re] of PLATEFORMES) t = t.replace(new RegExp(re.source, 'gi'), ' ');
   return t
-    .replace(/\b(OCCASION|NEUF|NEW|EDITION STANDARD|VERSION FRAN[CÇ]AISE|FR|EUR|PAL|JAP|US)\b/gi, ' ')
+    .replace(/\b(OCCASION|NEUF|NEW|EDITION STANDARD|VERSION FRAN[CÇ]AISE|FR|UK|EU|EUR|PAL|JAP|JP|US|USA|ASIA|ASIE)\b/gi, ' ')
     .replace(/\s{2,}/g, ' ')
     .trim()
     // « … NINTENDO SWITCH » : la marque reste une fois la console retirée.

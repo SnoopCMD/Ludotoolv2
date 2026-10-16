@@ -383,9 +383,22 @@ caméra) ou un titre :
   seulement si la référence correspond ou s'il n'y a qu'un jeu), à défaut la
   console devinée par le préfixe. Le titre trouvé lance la recherche.
 - **Titre** (`/api/jv/sources?q=`) : jeuxvideo.com, Trader Games (nos consoles
-  seulement) et IGDB en parallèle. Choisir un résultat jeuxvideo.com ou Trader
-  Games remplit la fiche depuis la fiche jeuxvideo.com (`lib/jeuxvideo.ts`) ;
-  « ↻ Compléter depuis jeuxvideo.com » remplit les champs vides d'une fiche.
+  seulement) et IGDB en parallèle.
+- **Fiche** (`/api/jv/fiche`, `lib/ficheJv.ts`) : quel que soit le résultat
+  choisi (ou l'EAN reconnu, qui y mène directement), la fiche est assemblée
+  depuis toutes les sources, champ par champ :
+
+  | Champ | Priorité |
+  | --- | --- |
+  | Titre, éditeur, année, joueurs, jaquette | IGDB → jeuxvideo.com → (titre Trader Games remis en casse) |
+  | Console | boîte scannée / article Trader Games / filtre choisi → jeuxvideo.com → IGDB |
+  | Description | jeuxvideo.com → boutique de la console (PS Store, eShop, Steam) → IGDB (anglais) |
+  | Genre | jeuxvideo.com → IGDB traduit en français |
+  | PEGI | boutique de la console → jeuxvideo.com → IGDB |
+
+  Le jeu IGDB retenu est le plus proche du titre (les « Bundle », DLC et
+  éditions sont pénalisés). La fiche affiche la source de chaque champ ;
+  « ↻ Compléter les champs vides » relance l'assemblage sans rien écraser.
 
 jeuxvideo.com masque ses liens internes (« JvCare » : URL en hexadécimal sur
 l'alphabet `0A12B34C56D78E9F`) et, comme Trader Games, refuse les clients

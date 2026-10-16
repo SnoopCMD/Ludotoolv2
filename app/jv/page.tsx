@@ -52,10 +52,12 @@ type SearchResult = {
 type SourceJv = "igdb" | "jvc" | "tg";
 const LIBELLE_SOURCE: Record<SourceJv, string> = { igdb: "IGDB", jvc: "jeuxvideo.com", tg: "Trader Games" };
 
-/** Champs renvoyés par /api/jv/sources pour pré-remplir une fiche. */
+/** Fiche assemblée par /api/jv/fiche depuis toutes les sources (lib/ficheJv.ts). */
 type FicheSource = {
-  titre: string; description: string | null; image_url: string | null; annee: number | null;
-  editeur: string | null; genre: string | null; pegi: number | null; console: Console | null; url_source: string;
+  titre: string; console: Console | null; description: string | null; image_url: string | null;
+  annee: number | null; editeur: string | null; genre: string | null; pegi: number | null;
+  nb_joueurs: string | null; igdb_id: number | null;
+  sources: Partial<Record<string, string>>; indisponibles: string[];
 };
 
 /** Recherche simultanée sur jeuxvideo.com, Trader Games et IGDB. Les sources
@@ -327,6 +329,8 @@ function ModalJeu({
   const [isFetchingDesc, setIsFetchingDesc] = useState(false);
   const [sourcesIndispo, setSourcesIndispo] = useState<string[]>([]);
   const [completion, setCompletion] = useState<{ enCours: boolean; message: string | null }>({ enCours: false, message: null });
+  // Source retenue pour chaque champ de la dernière fiche assemblée.
+  const [sourcesFiche, setSourcesFiche] = useState<Partial<Record<string, string>>>({});
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Code-barres : saisi (douchette ou clavier) ou scanné, il suit le jeu
@@ -425,12 +429,18 @@ function ModalJeu({
     setEanEnCours(true);
     try {
       const d = await fetch(`/api/jv/barcode?ean=${encodeURIComponent(ean)}`)
-        .then(r => r.json() as Promise<{ console?: Console | null; titre?: string | null; source?: string | null }>);
+        .then(r => r.json() as Promise<{ console?: Console | null; titre?: string | null; source?: string | null; image_url?: string | null }>);
       if (d.console) setConsoleRecherche(d.console);
-      if (d.titre) {
-        // Le titre trouvé déclenche la recherche en direct.
+      if (d.titre && existants.length === 0) {
+        // Jeu identifié par son code-barres : on passe directement à la fiche,
+        // assemblée depuis toutes les sources, avec la console de la boîte.
+        await selectSearchResult({
+          external_id: `ean:${ean}`, titre: d.titre, titre_jeu: d.titre, source: "tg",
+          console: d.console ?? null, image_url: d.image_url ?? null,
+          description: null, annee: null, editeur: null, genre: null, pegi: null, nb_joueurs: null,
+        });
+      } else if (d.titre) {
         setTitreRecherche(d.titre);
-        if (d.source === "tradergames") setEanInfo({ texte: `Trouvé chez Trader Games : ${d.titre}`, ton: "ok" });
       } else if (existants.length === 0) {
         setEanInfo({
           texte: d.console ? `Console détectée : ${d.console}. Tape le titre pour lancer la recherche.` : "Code non reconnu : tape le titre, l'EAN sera enregistré avec le jeu.",
@@ -446,100 +456,80 @@ function ModalJeu({
 
   // ── Étape 2 : sélection du résultat ──────────────────────────────────────
 
-  /** Complète le formulaire avec une fiche jeuxvideo.com, sans écraser ce qui
-   *  est déjà rempli (sauf `ecraser`, pour les champs d'une fiche choisie). */
+  /** Applique une fiche assemblée (/api/jv/fiche). `ecraser` : les champs de la
+   *  fiche remplacent ceux du formulaire ; sinon ils ne remplissent que les vides. */
   const appliquerFiche = (f: FicheSource, ecraser: boolean) => {
     setForm(prev => {
-      const garde = <K extends keyof JvJeu>(k: K, v: JvJeu[K] | null | undefined) =>
+      const prendre = <K extends keyof JvJeu>(k: K, v: JvJeu[K] | null | undefined) =>
         (ecraser ? (v ?? prev[k]) : (prev[k] ?? v)) ?? null;
       return {
         ...prev,
         titre: ecraser ? f.titre : (prev.titre || f.titre),
-        description: garde("description", f.description),
-        image_url: garde("image_url", f.image_url),
-        annee: garde("annee", f.annee),
-        editeur: garde("editeur", f.editeur),
-        genre: garde("genre", f.genre),
-        pegi: garde("pegi", f.pegi as JvJeu["pegi"]),
         console: (ecraser && f.console) ? f.console : (prev.console ?? f.console ?? "PS5"),
+        description: prendre("description", f.description),
+        image_url: prendre("image_url", f.image_url),
+        annee: prendre("annee", f.annee),
+        editeur: prendre("editeur", f.editeur),
+        genre: prendre("genre", f.genre),
+        pegi: prendre("pegi", f.pegi as JvJeu["pegi"]),
+        nb_joueurs: prendre("nb_joueurs", f.nb_joueurs),
+        igdb_id: prendre("igdb_id", f.igdb_id),
       };
     });
   };
 
-  const chargerFiche = async (params: Record<string, string>): Promise<FicheSource | null> => {
-    const d = await fetch(`/api/jv/sources?${new URLSearchParams(params)}`)
-      .then(r => r.json() as Promise<{ fiche?: FicheSource | null }>).catch(() => null);
-    return d?.fiche ?? null;
+  /** Interroge toutes les sources et assemble la fiche côté serveur. */
+  const remplirDepuisSources = async (
+    demande: { titre: string; console?: Console | null; igdbId?: number | null; image?: string | null },
+    ecraser: boolean,
+  ): Promise<FicheSource | null> => {
+    const params = new URLSearchParams({ titre: demande.titre });
+    if (demande.console) params.set("console", demande.console);
+    if (demande.igdbId) params.set("igdb_id", String(demande.igdbId));
+    if (demande.image) params.set("image", demande.image);
+    const f = await fetch(`/api/jv/fiche?${params}`)
+      .then(r => r.json() as Promise<FicheSource & { error?: string }>).catch(() => null);
+    if (!f || f.error) return null;
+    appliquerFiche(f, ecraser);
+    setSourcesFiche(f.sources ?? {});
+    return f;
   };
 
-  /** Bouton « Compléter » de la fiche : cherche le titre sur jeuxvideo.com. */
+  /** Bouton « Compléter » : remplit les champs vides depuis toutes les sources. */
   const completerFiche = async () => {
     if (!form.titre?.trim()) return;
     setCompletion({ enCours: true, message: null });
-    const f = await chargerFiche({ completer: form.titre.trim(), ...(form.console ? { console: form.console } : {}) });
-    if (f) appliquerFiche(f, false);
-    setCompletion({ enCours: false, message: f ? `Complété depuis « ${f.titre} » (jeuxvideo.com) — vérifie les champs.` : "Rien trouvé sur jeuxvideo.com pour ce titre." });
+    const f = await remplirDepuisSources({ titre: form.titre.trim(), console: form.console ?? null, igdbId: form.igdb_id }, false);
+    setCompletion({ enCours: false, message: f ? "Champs vides complétés — vérifie avant d'enregistrer." : "Aucune source n'a répondu pour ce titre." });
   };
 
   const selectSearchResult = async (r: SearchResult) => {
-    if (r.source === "jvc" || r.source === "tg") {
-      const consoleChoisie = (r.console ?? (consoleRecherche || null)) as Console | null;
-      setForm({
-        titre: r.source === "tg" ? (r.titre_jeu || r.titre) : r.titre,
-        console: consoleChoisie ?? "PS5",
-        image_url: r.image_url,
-        statut: "disponible",
-        igdb_id: null,
-        ean: eanSaisi || null,
-      });
-      setStep(3);
-      setIsFetchingDesc(true);
-      try {
-        const opts: Record<string, string> = consoleChoisie ? { console: consoleChoisie } : {};
-        const f = r.source === "jvc" && r.url
-          ? await chargerFiche({ fiche: r.url, ...opts })
-          : await chargerFiche({ completer: r.titre_jeu || r.titre, ...opts });
-        // Fiche choisie sur jeuxvideo.com : elle fait foi. Depuis Trader Games,
-        // on garde la console et la jaquette de l'article.
-        if (f) appliquerFiche(r.source === "tg" ? { ...f, console: consoleChoisie, image_url: r.image_url ?? f.image_url } : f, true);
-      } finally {
-        setIsFetchingDesc(false);
-      }
-      return;
-    }
-    const console_used = (r.console ?? (consoleRecherche || "PS5")) as Console;
+    // Console : celle de l'article Trader Games ou de la boîte scannée, sinon le
+    // filtre choisi ; IGDB ne propose qu'une console parmi d'autres.
+    const consoleImposee = ((r.source === "tg" ? r.console : null) ?? (consoleRecherche || null)) as Console | null;
+    const titre = r.source === "tg" ? (r.titre_jeu || r.titre) : r.titre;
     setForm({
-      titre: r.titre,
-      console: console_used,
-      description: r.description,
+      titre,
+      console: consoleImposee ?? r.console ?? "PS5",
       image_url: r.image_url,
-      annee: r.annee,
-      editeur: r.editeur,
-      genre: r.genre,
-      pegi: r.pegi,
-      nb_joueurs: r.nb_joueurs,
+      description: r.description, annee: r.annee, editeur: r.editeur, genre: r.genre, pegi: r.pegi, nb_joueurs: r.nb_joueurs,
       statut: "disponible",
       igdb_id: r.igdb_id ?? null,
       ean: eanSaisi || null,
     });
+    setSourcesFiche({});
     setStep(3);
-
-    // Récupération description FR + PEGI depuis la source plateforme
     setIsFetchingDesc(true);
     try {
-      const params = new URLSearchParams({ q: r.titre, platform: console_used });
-      const res = await fetch(`/api/jv/search?${params}`);
-      const data = await res.json() as any;
-      if (Array.isArray(data) && data[0]) {
-        const src = data[0];
-        setForm(f => ({
-          ...f,
-          ...(src.description ? { description: src.description } : {}),
-          ...(src.pegi && !f.pegi ? { pegi: src.pegi } : {}),
-        }));
-      }
-    } catch {}
-    finally { setIsFetchingDesc(false); }
+      await remplirDepuisSources({
+        titre,
+        console: consoleImposee,
+        igdbId: r.source === "igdb" ? r.igdb_id ?? null : null,
+        image: r.source === "tg" ? r.image_url : null,
+      }, true);
+    } finally {
+      setIsFetchingDesc(false);
+    }
   };
 
   // ── Étape 3 : sauvegarde ──────────────────────────────────────────────────
@@ -782,9 +772,9 @@ function ModalJeu({
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
                   <label style={{ ...Slabel, marginBottom: 0 }}>Titre *</label>
                   <button type="button" onClick={completerFiche} disabled={completion.enCours || !form.titre?.trim()}
-                    title="Remplir les champs vides depuis la fiche jeuxvideo.com de ce titre"
+                    title="Remplir les champs vides depuis IGDB, jeuxvideo.com et la boutique de la console"
                     style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 800, padding: '3px 10px', borderRadius: 999, cursor: 'pointer', background: 'var(--white)', border: '2px solid var(--ink)', opacity: completion.enCours || !form.titre?.trim() ? 0.5 : 1 }}>
-                    {completion.enCours ? "Recherche…" : "↻ Compléter depuis jeuxvideo.com"}
+                    {completion.enCours ? "Recherche…" : "↻ Compléter les champs vides"}
                   </button>
                 </div>
                 <input type="text" value={form.titre ?? ""} onChange={e => set("titre", e.target.value)}
@@ -899,7 +889,7 @@ function ModalJeu({
                   {isFetchingDesc && (
                     <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10, fontWeight: 700, color: 'rgba(0,0,0,0.35)' }}>
                       <span className="spin" style={{ width: 10, height: 10, border: '1.5px solid var(--cream2)', borderTopColor: 'var(--ink)', borderRadius: '50%', display: 'inline-block' }} />
-                      Récupération FR…
+                      Recherche dans toutes les sources…
                     </span>
                   )}
                 </div>
@@ -925,6 +915,18 @@ function ModalJeu({
                   ))}
                 </div>
               </div>
+
+              {Object.keys(sourcesFiche).length > 0 && (() => {
+                // « IGDB : titre, éditeur · PlayStation Store : description, PEGI »
+                const LIBELLES: Record<string, string> = { titre: "titre", console: "console", description: "description", image_url: "jaquette", annee: "année", editeur: "éditeur", genre: "genre", pegi: "PEGI", nb_joueurs: "joueurs" };
+                const parSource: Record<string, string[]> = {};
+                for (const [champ, src] of Object.entries(sourcesFiche)) if (src) (parSource[src] ??= []).push(LIBELLES[champ] ?? champ);
+                return (
+                  <p style={{ fontSize: 10.5, color: 'rgba(0,0,0,0.4)', fontWeight: 600, lineHeight: 1.5 }}>
+                    Sources — {Object.entries(parSource).map(([src, champs]) => `${src} : ${champs.join(", ")}`).join(" · ")}
+                  </p>
+                );
+              })()}
 
               {form.igdb_id && (
                 <p style={{ fontSize: 10, color: 'rgba(0,0,0,0.25)', fontWeight: 600 }}>IGDB #{form.igdb_id}</p>
