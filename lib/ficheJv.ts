@@ -70,7 +70,7 @@ const GENRES_FR: Record<string, string> = {
   'Adventure': 'Aventure', 'Arcade': 'Arcade', 'Card & Board Game': 'Jeu de cartes / plateau',
   'Fighting': 'Combat', "Hack and slash/Beat 'em up": "Beat'em all", 'Indie': 'Indépendant',
   'MOBA': 'MOBA', 'Music': 'Musique', 'Pinball': 'Flipper', 'Platform': 'Plateforme',
-  'Point-and-click': 'Point & click', 'Puzzle': 'Réflexion', 'Quiz/Trivia': 'Quiz',
+  'Point-and-click': 'Point & click', 'Puzzle': 'Puzzle', 'Quiz/Trivia': 'Quiz',
   'Racing': 'Course', 'Real Time Strategy (RTS)': 'Stratégie temps réel', 'Role-playing (RPG)': 'RPG',
   'Shooter': 'Tir', 'Simulator': 'Simulation', 'Sport': 'Sport', 'Strategy': 'Stratégie',
   'Tactical': 'Tactique', 'Turn-based strategy (TBS)': 'Stratégie tour par tour',
