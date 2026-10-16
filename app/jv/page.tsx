@@ -40,7 +40,48 @@ type SearchResult = {
   pegi: number | null;
   nb_joueurs: string | null;
   console: Console | null;
+  /** Provenance : IGDB (défaut), jeuxvideo.com ou Trader Games. */
+  source?: SourceJv;
+  /** Fiche jeuxvideo.com ou page produit Trader Games. */
+  url?: string | null;
+  /** Trader Games : titre sans plateforme ni état, pour retrouver la fiche jeuxvideo.com. */
+  titre_jeu?: string;
+  etat?: string | null;
 };
+
+type SourceJv = "igdb" | "jvc" | "tg";
+const LIBELLE_SOURCE: Record<SourceJv, string> = { igdb: "IGDB", jvc: "jeuxvideo.com", tg: "Trader Games" };
+
+/** Champs renvoyés par /api/jv/sources pour pré-remplir une fiche. */
+type FicheSource = {
+  titre: string; description: string | null; image_url: string | null; annee: number | null;
+  editeur: string | null; genre: string | null; pegi: number | null; console: Console | null; url_source: string;
+};
+
+/** Recherche simultanée sur jeuxvideo.com, Trader Games et IGDB. Les sources
+ *  françaises passent devant ; IGDB reste le filet quand elles refusent. */
+async function rechercherJeux(q: string, console: Console | ""): Promise<{ resultats: SearchResult[]; indisponibles: string[] }> {
+  const params = new URLSearchParams({ q, platform: console });
+  const sp = new URLSearchParams({ q, ...(console ? { console } : {}) });
+  const [igdb, fr] = await Promise.all([
+    fetch(`/api/jv/igdb?${params}`).then(r => r.json() as Promise<unknown>).catch(() => []),
+    fetch(`/api/jv/sources?${sp}`).then(r => r.json() as Promise<any>).catch(() => null),
+  ]);
+  const vide = { titre: "", description: null, image_url: null, annee: null, editeur: null, genre: null, pegi: null, nb_joueurs: null };
+  const jvc: SearchResult[] = (fr?.jeuxvideo?.resultats ?? []).map((x: any) => ({
+    ...vide, external_id: `jvc:${x.url}`, titre: x.titre, image_url: x.image_url, console: null, source: "jvc", url: x.url,
+  }));
+  const tg: SearchResult[] = (fr?.tradergames?.resultats ?? []).map((x: any) => ({
+    ...vide, external_id: `tg:${x.url ?? x.titre}`, titre: x.titre, image_url: x.image_url, console: x.console,
+    source: "tg", url: x.url, titre_jeu: x.titre_jeu, etat: x.etat,
+  }));
+  const ig: SearchResult[] = (Array.isArray(igdb) ? igdb as SearchResult[] : []).map(x => ({ ...x, source: "igdb" as const }));
+  const indisponibles = [
+    ...(fr?.jeuxvideo?.bloque ? ["jeuxvideo.com"] : []),
+    ...(fr?.tradergames?.bloque ? ["Trader Games"] : []),
+  ];
+  return { resultats: [...jvc, ...tg, ...ig], indisponibles };
+}
 
 type SelectionSlot = "PS5" | "Switch_Multi" | "Switch_Solo" | "PC";
 
@@ -284,6 +325,8 @@ function ModalJeu({
   const [searchError, setSearchError] = useState<string | null>(null);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isFetchingDesc, setIsFetchingDesc] = useState(false);
+  const [sourcesIndispo, setSourcesIndispo] = useState<string[]>([]);
+  const [completion, setCompletion] = useState<{ enCours: boolean; message: string | null }>({ enCours: false, message: null });
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Code-barres : saisi (douchette ou clavier) ou scanné, il suit le jeu
@@ -339,12 +382,10 @@ function ModalJeu({
     if (!titre.trim()) return;
     setIsSearching(true); setSearchError(null); setSearchResults([]);
     try {
-      const params = new URLSearchParams({ q: titre, platform: console });
-      const res = await fetch(`/api/jv/igdb?${params}`);
-      const data = await res.json() as any;
-      if (data.error) { setSearchError(data.error); return; }
-      if (!data.length) { setSearchError("Aucun résultat — vérifiez le titre ou changez de console"); return; }
-      setSearchResults(data as SearchResult[]);
+      const { resultats, indisponibles } = await rechercherJeux(titre.trim(), console as Console | "");
+      setSourcesIndispo(indisponibles);
+      if (!resultats.length) { setSearchError("Aucun résultat — vérifiez le titre ou changez de console"); return; }
+      setSearchResults(resultats);
       setStep(2);
     } catch {
       setSearchError("Erreur de connexion");
@@ -360,10 +401,9 @@ function ModalJeu({
     debounceRef.current = setTimeout(async () => {
       setIsSearching(true);
       try {
-        const params = new URLSearchParams({ q: titreRecherche.trim(), platform: consoleRecherche });
-        const res = await fetch(`/api/jv/igdb?${params}`);
-        const data = await res.json() as any;
-        if (!data.error && data.length) setSearchResults(data as SearchResult[]);
+        const { resultats, indisponibles } = await rechercherJeux(titreRecherche.trim(), consoleRecherche);
+        setSourcesIndispo(indisponibles);
+        if (resultats.length) setSearchResults(resultats);
       } catch {}
       finally { setIsSearching(false); }
     }, 400);
@@ -385,11 +425,12 @@ function ModalJeu({
     setEanEnCours(true);
     try {
       const d = await fetch(`/api/jv/barcode?ean=${encodeURIComponent(ean)}`)
-        .then(r => r.json() as Promise<{ console?: Console | null; titre?: string | null }>);
+        .then(r => r.json() as Promise<{ console?: Console | null; titre?: string | null; source?: string | null }>);
       if (d.console) setConsoleRecherche(d.console);
       if (d.titre) {
         // Le titre trouvé déclenche la recherche en direct.
         setTitreRecherche(d.titre);
+        if (d.source === "tradergames") setEanInfo({ texte: `Trouvé chez Trader Games : ${d.titre}`, ton: "ok" });
       } else if (existants.length === 0) {
         setEanInfo({
           texte: d.console ? `Console détectée : ${d.console}. Tape le titre pour lancer la recherche.` : "Code non reconnu : tape le titre, l'EAN sera enregistré avec le jeu.",
@@ -405,7 +446,67 @@ function ModalJeu({
 
   // ── Étape 2 : sélection du résultat ──────────────────────────────────────
 
+  /** Complète le formulaire avec une fiche jeuxvideo.com, sans écraser ce qui
+   *  est déjà rempli (sauf `ecraser`, pour les champs d'une fiche choisie). */
+  const appliquerFiche = (f: FicheSource, ecraser: boolean) => {
+    setForm(prev => {
+      const garde = <K extends keyof JvJeu>(k: K, v: JvJeu[K] | null | undefined) =>
+        (ecraser ? (v ?? prev[k]) : (prev[k] ?? v)) ?? null;
+      return {
+        ...prev,
+        titre: ecraser ? f.titre : (prev.titre || f.titre),
+        description: garde("description", f.description),
+        image_url: garde("image_url", f.image_url),
+        annee: garde("annee", f.annee),
+        editeur: garde("editeur", f.editeur),
+        genre: garde("genre", f.genre),
+        pegi: garde("pegi", f.pegi as JvJeu["pegi"]),
+        console: (ecraser && f.console) ? f.console : (prev.console ?? f.console ?? "PS5"),
+      };
+    });
+  };
+
+  const chargerFiche = async (params: Record<string, string>): Promise<FicheSource | null> => {
+    const d = await fetch(`/api/jv/sources?${new URLSearchParams(params)}`)
+      .then(r => r.json() as Promise<{ fiche?: FicheSource | null }>).catch(() => null);
+    return d?.fiche ?? null;
+  };
+
+  /** Bouton « Compléter » de la fiche : cherche le titre sur jeuxvideo.com. */
+  const completerFiche = async () => {
+    if (!form.titre?.trim()) return;
+    setCompletion({ enCours: true, message: null });
+    const f = await chargerFiche({ completer: form.titre.trim(), ...(form.console ? { console: form.console } : {}) });
+    if (f) appliquerFiche(f, false);
+    setCompletion({ enCours: false, message: f ? `Complété depuis « ${f.titre} » (jeuxvideo.com) — vérifie les champs.` : "Rien trouvé sur jeuxvideo.com pour ce titre." });
+  };
+
   const selectSearchResult = async (r: SearchResult) => {
+    if (r.source === "jvc" || r.source === "tg") {
+      const consoleChoisie = (r.console ?? (consoleRecherche || null)) as Console | null;
+      setForm({
+        titre: r.source === "tg" ? (r.titre_jeu || r.titre) : r.titre,
+        console: consoleChoisie ?? "PS5",
+        image_url: r.image_url,
+        statut: "disponible",
+        igdb_id: null,
+        ean: eanSaisi || null,
+      });
+      setStep(3);
+      setIsFetchingDesc(true);
+      try {
+        const opts: Record<string, string> = consoleChoisie ? { console: consoleChoisie } : {};
+        const f = r.source === "jvc" && r.url
+          ? await chargerFiche({ fiche: r.url, ...opts })
+          : await chargerFiche({ completer: r.titre_jeu || r.titre, ...opts });
+        // Fiche choisie sur jeuxvideo.com : elle fait foi. Depuis Trader Games,
+        // on garde la console et la jaquette de l'article.
+        if (f) appliquerFiche(r.source === "tg" ? { ...f, console: consoleChoisie, image_url: r.image_url ?? f.image_url } : f, true);
+      } finally {
+        setIsFetchingDesc(false);
+      }
+      return;
+    }
     const console_used = (r.console ?? (consoleRecherche || "PS5")) as Console;
     setForm({
       titre: r.titre,
@@ -606,12 +707,20 @@ function ModalJeu({
                         {r.annee && <span style={{ fontSize: 11, color: 'rgba(0,0,0,0.4)' }}>{r.annee}</span>}
                         {r.editeur && <span style={{ fontSize: 11, color: 'rgba(0,0,0,0.4)', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', maxWidth: 120 }}>{r.editeur}</span>}
                         {r.console && <span style={{ background: CONSOLE_BG_M[r.console], border: '1.5px solid var(--ink)', borderRadius: 4, padding: '1px 6px', fontSize: 11, fontWeight: 700 }}>{r.console}</span>}
+                        {r.etat && <span style={{ fontSize: 11, color: 'rgba(0,0,0,0.4)' }}>{r.etat}</span>}
+                        <span style={{ fontSize: 10, fontWeight: 700, color: 'rgba(0,0,0,0.35)', marginLeft: 'auto' }}>{LIBELLE_SOURCE[r.source ?? "igdb"]}</span>
                       </div>
                     </div>
                     <span style={{ color: 'rgba(0,0,0,0.25)', fontSize: 18, flexShrink: 0 }}>›</span>
                   </button>
                 ))}
               </div>
+            )}
+
+            {sourcesIndispo.length > 0 && (
+              <p style={{ margin: '0 20px 8px', fontSize: 11, fontWeight: 600, color: 'rgba(0,0,0,0.4)' }}>
+                {sourcesIndispo.join(" et ")} {sourcesIndispo.length > 1 ? "ont" : "a"} refusé la recherche automatique — résultats IGDB seulement.
+              </p>
             )}
 
             {searchError && (
@@ -652,6 +761,8 @@ function ModalJeu({
                       {r.genre && <span style={{ background: 'var(--cream2)', border: '1.5px solid rgba(0,0,0,0.15)', borderRadius: 20, padding: '1px 7px', fontSize: 11, fontWeight: 600 }}>{r.genre}</span>}
                       {r.pegi && <span style={{ background: 'var(--yellow)', border: '1.5px solid var(--ink)', borderRadius: 4, padding: '1px 6px', fontSize: 11, fontWeight: 700 }}>PEGI {r.pegi}</span>}
                       {r.console && <span style={{ background: CONSOLE_BG_M[r.console], border: '1.5px solid var(--ink)', borderRadius: 4, padding: '1px 6px', fontSize: 11, fontWeight: 700 }}>{r.console}</span>}
+                      {r.etat && <span style={{ fontSize: 11, color: 'rgba(0,0,0,0.4)' }}>{r.etat}</span>}
+                      <span style={{ fontSize: 10, fontWeight: 700, color: 'rgba(0,0,0,0.35)', marginLeft: 'auto' }}>{LIBELLE_SOURCE[r.source ?? "igdb"]}</span>
                     </div>
                     {r.description && <p style={{ fontSize: 11, color: 'rgba(0,0,0,0.4)', marginTop: 4, overflow: 'hidden', maxHeight: '2.4em', lineHeight: '1.2em' }}>{r.description}</p>}
                   </div>
@@ -668,9 +779,19 @@ function ModalJeu({
             <div className="custom-scroll" style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
 
               <div>
-                <label style={Slabel}>Titre *</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
+                  <label style={{ ...Slabel, marginBottom: 0 }}>Titre *</label>
+                  <button type="button" onClick={completerFiche} disabled={completion.enCours || !form.titre?.trim()}
+                    title="Remplir les champs vides depuis la fiche jeuxvideo.com de ce titre"
+                    style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 800, padding: '3px 10px', borderRadius: 999, cursor: 'pointer', background: 'var(--white)', border: '2px solid var(--ink)', opacity: completion.enCours || !form.titre?.trim() ? 0.5 : 1 }}>
+                    {completion.enCours ? "Recherche…" : "↻ Compléter depuis jeuxvideo.com"}
+                  </button>
+                </div>
                 <input type="text" value={form.titre ?? ""} onChange={e => set("titre", e.target.value)}
                   placeholder="Nom du jeu…" className="pop-input" style={{ width: '100%' }} />
+                {completion.message && (
+                  <p style={{ fontSize: 11, fontWeight: 600, color: 'rgba(0,0,0,0.45)', marginTop: 4 }}>{completion.message}</p>
+                )}
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: isMobileX ? 'minmax(0, 1fr)' : '1fr 1fr', gap: 12 }}>

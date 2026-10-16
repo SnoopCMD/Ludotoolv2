@@ -318,6 +318,7 @@ ou bloquer l'accès du jour au lendemain**.
 | Esprit Jeu | Enrichissement des fiches (contenu, mécaniques) | `/api/enrichir`, `/api/espritjeu` |
 | Ludifolie | Recherche de jeux de société pour les paniers, **avec prix et stock** | `/api/store/recherche?type=JdS` |
 | Trader Games | Recherche de jeux vidéo pour les paniers, avec prix | `/api/store/recherche?type=JV` |
+| Trader Games (EAN) + jeuxvideo.com | Ajout d'un jeu vidéo : EAN → titre, puis fiche FR (synopsis, genres, éditeur, sortie, PEGI) | `/api/jv/barcode`, `/api/jv/sources` |
 | IGDB (via Twitch) | Fiches de jeux vidéo | `/api/jv/igdb` |
 | PlayStation Store, Nintendo, Steam | Recherche de jeux par console | `/api/jv/search` |
 | UPCitemdb, OpenLibrary | Résolution de codes-barres | `/api/jv/barcode` |
@@ -370,6 +371,25 @@ Le type de panier détermine la source, via un seul endpoint
 > prévenir : la solution durable serait de leur demander un accès catalogue (flux
 > CSV/XML), comme le proposent beaucoup de boutiques pro. Leur `robots.txt`
 > décourage par ailleurs l'exploration des pages de recherche.
+
+### L'ajout d'un jeu vidéo
+
+La fenêtre d'ajout de `/jv` accepte un **EAN** (douchette, saisie + Entrée ou
+caméra) ou un titre :
+
+- **EAN** (`/api/jv/barcode`) : d'abord un exemplaire déjà catalogué
+  (`jv_jeux.ean`), puis Trader Games (recherche de la boutique par l'EAN, retenue
+  seulement si la référence correspond ou s'il n'y a qu'un jeu), à défaut la
+  console devinée par le préfixe. Le titre trouvé lance la recherche.
+- **Titre** (`/api/jv/sources?q=`) : jeuxvideo.com, Trader Games (nos consoles
+  seulement) et IGDB en parallèle. Choisir un résultat jeuxvideo.com ou Trader
+  Games remplit la fiche depuis la fiche jeuxvideo.com (`lib/jeuxvideo.ts`) ;
+  « ↻ Compléter depuis jeuxvideo.com » remplit les champs vides d'une fiche.
+
+jeuxvideo.com masque ses liens internes (« JvCare » : URL en hexadécimal sur
+l'alphabet `0A12B34C56D78E9F`) et, comme Trader Games, refuse les clients
+non-navigateurs : **en local, ces deux sources répondent `bloque: true`** et
+seuls les résultats IGDB s'affichent. En production, le Worker est censé passer.
 
 ### Les jeux PC et la wishlist Steam
 

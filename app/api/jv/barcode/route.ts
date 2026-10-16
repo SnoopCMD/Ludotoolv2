@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDB } from "../../../../lib/db";
+import { chercherTraderGamesParEan, titreSansPlateforme } from "../../../../lib/tradergames";
+import { consoleDepuisPlateforme } from "../../../../lib/consolesJv";
 
 // Préfixes EAN13 des principaux éditeurs de jeux vidéo
 // Permet de détecter la console sans API externe
@@ -46,11 +48,21 @@ export async function GET(req: NextRequest) {
       .bind(ean).first<{ titre: string; console: string }>();
   } catch {}
 
-  // Sinon, le préfixe EAN donne au moins la console — suffisant pour
+  if (connu) return NextResponse.json({ ean, console: connu.console, titre: connu.titre, source: "catalogue" });
+
+  // Sinon Trader Games, qui référence ses jeux par EAN.
+  const tg = await chercherTraderGamesParEan(ean);
+  if (tg.jeu) {
+    return NextResponse.json({
+      ean,
+      console: consoleDepuisPlateforme(tg.jeu.plateforme) ?? detectConsole(ean),
+      titre: titreSansPlateforme(tg.jeu.nom) || tg.jeu.nom,
+      image_url: tg.jeu.image_url,
+      source: "tradergames",
+    });
+  }
+
+  // À défaut, le préfixe EAN donne au moins la console — suffisant pour
   // pré-filtrer la recherche par titre.
-  return NextResponse.json({
-    ean,
-    console: connu?.console ?? detectConsole(ean),
-    titre: connu?.titre ?? null,
-  });
+  return NextResponse.json({ ean, console: detectConsole(ean), titre: null, source: null, bloque: tg.bloque });
 }
