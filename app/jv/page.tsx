@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useRef, useMemo, useCallback, Fragment } from "react";
 import NavBar from "../../components/NavBar";
+import BoutonScan from "../../components/ScanCodeBarre";
 import { useIsMobile } from "../../lib/useIsMobile";
 import { format, addDays, startOfWeek, eachDayOfInterval, isToday, parseISO, getDay, differenceInCalendarWeeks } from "date-fns";
 import { fr } from "date-fns/locale";
@@ -22,6 +23,7 @@ type JvJeu = {
   nb_joueurs: string | null;
   statut: "disponible" | "selection" | "maintenance" | "retire";
   igdb_id: number | null;
+  ean: string | null;
   cote_syracuse: string | null;
   created_at: string;
 };
@@ -284,6 +286,12 @@ function ModalJeu({
   const [isFetchingDesc, setIsFetchingDesc] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Code-barres : saisi (douchette ou clavier) ou scanné, il suit le jeu
+  // jusqu'à la fiche. Un EAN déjà au catalogue est signalé avant la recherche.
+  const [eanSaisi, setEanSaisi] = useState("");
+  const [eanEnCours, setEanEnCours] = useState(false);
+  const [eanInfo, setEanInfo] = useState<{ texte: string; ton: "ok" | "alerte" } | null>(null);
+
   // Formulaire
   const [form, setForm] = useState<Partial<JvJeu>>(
     jeu ?? { statut: "disponible", console: "PS5" }
@@ -315,7 +323,7 @@ function ModalJeu({
       console: c,
       genre: jeu.genre, annee: jeu.annee, editeur: jeu.editeur, description: jeu.description,
       image_url: jeu.image_url, pegi: jeu.pegi, nb_joueurs: jeu.nb_joueurs,
-      statut: "disponible" as const, igdb_id: jeu.igdb_id, cote_syracuse: null,
+      statut: "disponible" as const, igdb_id: jeu.igdb_id, ean: null, cote_syracuse: null,
     };
     const res = await fetch('/api/jv-jeux', {
       method: 'POST',
@@ -362,6 +370,39 @@ function ModalJeu({
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [titreRecherche, consoleRecherche]);
 
+  const chercherEan = async (brut: string) => {
+    const ean = brut.replace(/\D/g, "");
+    setEanSaisi(ean);
+    setEanInfo(null);
+    if (ean.length !== 8 && ean.length !== 13) {
+      setEanInfo({ texte: "Un EAN fait 8 ou 13 chiffres.", ton: "alerte" });
+      return;
+    }
+    const existants = jeux.filter(j => j.ean === ean);
+    if (existants.length > 0) {
+      setEanInfo({ texte: `Déjà au catalogue : ${existants.map(j => `${j.titre} (${j.console})`).join(", ")}`, ton: "alerte" });
+    }
+    setEanEnCours(true);
+    try {
+      const d = await fetch(`/api/jv/barcode?ean=${encodeURIComponent(ean)}`)
+        .then(r => r.json() as Promise<{ console?: Console | null; titre?: string | null }>);
+      if (d.console) setConsoleRecherche(d.console);
+      if (d.titre) {
+        // Le titre trouvé déclenche la recherche en direct.
+        setTitreRecherche(d.titre);
+      } else if (existants.length === 0) {
+        setEanInfo({
+          texte: d.console ? `Console détectée : ${d.console}. Tape le titre pour lancer la recherche.` : "Code non reconnu : tape le titre, l'EAN sera enregistré avec le jeu.",
+          ton: "ok",
+        });
+      }
+    } catch {
+      // Sans réponse, on garde simplement l'EAN pour la fiche.
+    } finally {
+      setEanEnCours(false);
+    }
+  };
+
   // ── Étape 2 : sélection du résultat ──────────────────────────────────────
 
   const selectSearchResult = async (r: SearchResult) => {
@@ -378,6 +419,7 @@ function ModalJeu({
       nb_joueurs: r.nb_joueurs,
       statut: "disponible",
       igdb_id: r.igdb_id ?? null,
+      ean: eanSaisi || null,
     });
     setStep(3);
 
@@ -416,6 +458,7 @@ function ModalJeu({
       nb_joueurs: form.nb_joueurs ?? null,
       statut: form.statut ?? "disponible",
       igdb_id: form.igdb_id ?? null,
+      ean: form.ean?.replace(/\D/g, "") || null,
       cote_syracuse: form.cote_syracuse ?? null,
     };
     let savedJeu: JvJeu;
@@ -498,7 +541,27 @@ function ModalJeu({
         {/* ── Step 1 : Recherche ─────────────────────────────────────────────── */}
         {step === 1 && (
           <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
-            <div style={{ display: 'flex', gap: 8, padding: '16px 20px 10px', flexShrink: 0 }}>
+            <div style={{ display: 'flex', gap: 8, padding: '16px 20px 0', flexShrink: 0, alignItems: 'center' }}>
+              <div style={{ position: 'relative', flex: 1 }}>
+                <input
+                  type="text" inputMode="numeric"
+                  value={eanSaisi}
+                  onChange={e => { setEanSaisi(e.target.value); setEanInfo(null); }}
+                  onKeyDown={e => { if (e.key === "Enter" && eanSaisi.trim()) chercherEan(eanSaisi); }}
+                  placeholder="Code-barres EAN (douchette ou saisie + Entrée)…"
+                  className="pop-input" style={{ width: '100%' }} />
+                {eanEnCours && (
+                  <span className="spin" style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', width: 14, height: 14, border: '2px solid var(--cream2)', borderTopColor: 'var(--ink)', borderRadius: '50%', display: 'inline-block' }} />
+                )}
+              </div>
+              <BoutonScan titre="Scanner le code-barres du jeu" onScan={code => chercherEan(code)} />
+            </div>
+            {eanInfo && (
+              <p style={{ margin: '6px 20px 0', fontSize: 12, fontWeight: 700, color: eanInfo.ton === 'alerte' ? '#c2410c' : 'rgba(0,0,0,0.5)' }}>
+                {eanInfo.ton === 'alerte' ? '⚠ ' : ''}{eanInfo.texte}
+              </p>
+            )}
+            <div style={{ display: 'flex', gap: 8, padding: '10px 20px 10px', flexShrink: 0 }}>
               <div style={{ position: 'relative', flex: 1 }}>
                 <input
                   type="text"
@@ -508,7 +571,7 @@ function ModalJeu({
                     if (e.key === "Enter") searchIgdb(titreRecherche, consoleRecherche);
                     if (e.key === "Escape") setSearchResults([]);
                   }}
-                  placeholder="Titre du jeu (3 lettres suffisent)…"
+                  placeholder="…ou titre du jeu (3 lettres suffisent)"
                   autoFocus
                   className="pop-input" style={{ width: '100%' }} />
                 {isSearching && (
@@ -559,7 +622,7 @@ function ModalJeu({
             )}
 
             <div style={{ padding: '10px 20px 14px', borderTop: '2px solid var(--cream2)', marginTop: 'auto', flexShrink: 0 }}>
-              <button onClick={() => { setForm({ statut: "disponible", console: (consoleRecherche || "PS5") as Console }); setStep(3); }}
+              <button onClick={() => { setForm({ statut: "disponible", console: (consoleRecherche || "PS5") as Console, ean: eanSaisi.replace(/\D/g, "") || null }); setStep(3); }}
                 style={{ fontSize: 12, fontWeight: 700, color: 'rgba(0,0,0,0.4)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>
                 Saisir manuellement sans recherche →
               </button>
@@ -683,6 +746,15 @@ function ModalJeu({
                   <label style={Slabel}>Cote Syracuse</label>
                   <input type="text" value={form.cote_syracuse ?? ""} onChange={e => set("cote_syracuse", e.target.value || null)}
                     placeholder="ex. JV-PS5-042" className="pop-input" style={{ width: '100%' }} />
+                </div>
+              </div>
+
+              <div>
+                <label style={Slabel}>EAN</label>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <input type="text" inputMode="numeric" value={form.ean ?? ""} onChange={e => set("ean", e.target.value || null)}
+                    placeholder="Code-barres de la boîte" className="pop-input" style={{ flex: 1 }} />
+                  <BoutonScan titre="Scanner le code-barres du jeu" onScan={code => set("ean", code.replace(/\D/g, ""))} />
                 </div>
               </div>
 

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getDB } from "../../../../lib/db";
 
 // Préfixes EAN13 des principaux éditeurs de jeux vidéo
 // Permet de détecter la console sans API externe
@@ -34,17 +35,22 @@ function detectConsole(ean: string): string | null {
 }
 
 export async function GET(req: NextRequest) {
-  const ean = req.nextUrl.searchParams.get("ean")?.trim();
+  const ean = req.nextUrl.searchParams.get("ean")?.replace(/\D/g, "");
   if (!ean) return NextResponse.json({ error: "EAN manquant" }, { status: 400 });
 
-  const console_detected = detectConsole(ean);
+  // Déjà catalogué (autre exemplaire) : on connaît le titre exact.
+  let connu: { titre: string; console: string } | null = null;
+  try {
+    const db = await getDB();
+    connu = await db.prepare("SELECT titre, console FROM jv_jeux WHERE ean = ? LIMIT 1")
+      .bind(ean).first<{ titre: string; console: string }>();
+  } catch {}
 
-  // Pas d'API externe fiable pour les EAN de JV côté serveur cloud.
-  // On retourne la console détectée depuis le préfixe EAN — suffisant pour
-  // pré-filtrer la recherche et accélérer le catalogage.
+  // Sinon, le préfixe EAN donne au moins la console — suffisant pour
+  // pré-filtrer la recherche par titre.
   return NextResponse.json({
     ean,
-    console: console_detected,
-    // notFound reste false : on a au moins le préfixe, l'EAN sera stocké
+    console: connu?.console ?? detectConsole(ean),
+    titre: connu?.titre ?? null,
   });
 }
