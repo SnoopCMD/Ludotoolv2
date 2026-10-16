@@ -13,5 +13,7 @@ export function sansChampsServeur(body: unknown): Record<string, unknown> {
   delete copie.auteur_id;
   delete copie.vue;
   delete copie.auteur_nom;
+  delete copie.nb_commentaires;
+  delete copie.nb_non_lus;
   return copie;
 }

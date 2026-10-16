@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import NavBar from "../../components/NavBar";
@@ -16,11 +16,16 @@ type Suggestion = {
   couleur: string;
   tags: string | null;
   done: number; // 0 ou 1
+  auteur_id?: string | null;
   auteur_nom?: string | null;
+  nb_commentaires?: number;
+  nb_non_lus?: number; // commentaires non lus par l'auteur connecté
   vue?: number; // 0 tant que Timothé ne l'a pas vue
   created_at: string;
   updated_at: string;
 };
+
+type Commentaire = { id: string; utilisateur_id: string; nom: string; texte: string; cree_le: string };
 
 type NoteTextBlock  = { type: 'text';  value: string };
 type NoteTableBlock = { type: 'table'; headers: string[]; rows: string[][] };
@@ -296,7 +301,14 @@ function StickyNote({ note, rotation, nouvelle, onClick, onToggleDone }: { note:
         );
       })()}
       <div style={{ marginTop: 'auto', paddingTop: 6, fontSize: 10, color: 'rgba(0,0,0,0.35)', fontWeight: 600, letterSpacing: '.04em', display: 'flex', justifyContent: 'space-between', gap: 6 }}>
-        <span>{dateStr}</span>
+        <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
+          {dateStr}
+          {(note.nb_non_lus ?? 0) > 0 ? (
+            <span title="Nouveaux commentaires" style={{ background: '#f87171', color: '#fff', borderRadius: 10, padding: '0 6px', border: '1.5px solid var(--ink)', fontWeight: 900, letterSpacing: 0 }}>💬 {note.nb_non_lus}</span>
+          ) : (note.nb_commentaires ?? 0) > 0 && (
+            <span title="Commentaires" style={{ letterSpacing: 0 }}>💬 {note.nb_commentaires}</span>
+          )}
+        </span>
         {note.auteur_nom && <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>par {note.auteur_nom}</span>}
       </div>
     </div>
@@ -327,11 +339,13 @@ function StickyNoteNew({ onClick }: { onClick: () => void }) {
 
 // ─── Modal ────────────────────────────────────────────────────────────────────
 
-function ModalSuggestion({ note, onClose, onSaved, onDeleted }: {
+function ModalSuggestion({ note, onClose, onSaved, onDeleted, onMaj }: {
   note: Suggestion | null;
   onClose: () => void;
   onSaved: (note: Suggestion) => void;
   onDeleted?: (id: string) => void;
+  /** Mise à jour sans fermer la fenêtre (compteurs de commentaires). */
+  onMaj?: (id: string, champs: Partial<Suggestion>) => void;
 }) {
   const isNew = note === null;
   const { compte } = useCompte();
@@ -514,6 +528,9 @@ function ModalSuggestion({ note, onClose, onSaved, onDeleted }: {
           </div>
         )}
 
+        {/* Commentaires */}
+        {note && <FilCommentaires note={note} borderColor={col.border} onMaj={onMaj} />}
+
         {/* Actions */}
         <div style={{ display: 'flex', gap: 10, marginTop: 16, justifyContent: 'flex-end', alignItems: 'center' }}>
           {!isNew && !confirmDelete && (
@@ -541,6 +558,122 @@ function ModalSuggestion({ note, onClose, onSaved, onDeleted }: {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ─── Commentaires ─────────────────────────────────────────────────────────────
+
+/** Fil de réponses d'une suggestion. Lecture ouverte à tous, écriture aux
+ *  comptes. Ouvert par l'auteur, il marque ses commentaires non lus comme lus. */
+function FilCommentaires({ note, borderColor, onMaj }: {
+  note: Suggestion;
+  borderColor: string;
+  onMaj?: (id: string, champs: Partial<Suggestion>) => void;
+}) {
+  const { compte } = useCompte();
+  const [commentaires, setCommentaires] = useState<Commentaire[] | null>(null);
+  const [texte, setTexte] = useState('');
+  const [envoi, setEnvoi] = useState(false);
+  const [erreur, setErreur] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch(`/api/suggestions/${note.id}/commentaires`, { cache: 'no-store' })
+      .then(r => r.json() as Promise<unknown>)
+      .then(d => setCommentaires(Array.isArray(d) ? d as Commentaire[] : []))
+      .catch(() => setCommentaires([]));
+  }, [note.id]);
+
+  // L'auteur lit ses nouveaux commentaires : on efface sa notification.
+  const nonLus = note.nb_non_lus ?? 0;
+  const estAuteur = !!compte && compte.id === note.auteur_id;
+  useEffect(() => {
+    if (!estAuteur || nonLus === 0) return;
+    fetch(`/api/suggestions/${note.id}/commentaires/lus`, { method: 'POST' })
+      .then(() => {
+        onMaj?.(note.id, { nb_non_lus: 0 });
+        window.dispatchEvent(new Event('suggestions-vues'));
+      })
+      .catch(() => {});
+  }, [estAuteur, nonLus, note.id, onMaj]);
+
+  const envoyer = async () => {
+    const contenu = texte.trim();
+    if (!contenu || envoi) return;
+    setEnvoi(true); setErreur(null);
+    try {
+      const res = await fetch(`/api/suggestions/${note.id}/commentaires`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ texte: contenu }),
+      });
+      const d = await res.json() as Commentaire & { error?: string };
+      if (!res.ok) throw new Error(d.error || 'Envoi impossible.');
+      const liste = [...(commentaires ?? []), d];
+      setCommentaires(liste);
+      onMaj?.(note.id, { nb_commentaires: liste.length });
+      setTexte('');
+    } catch (e) {
+      setErreur(e instanceof Error ? e.message : 'Envoi impossible.');
+    } finally {
+      setEnvoi(false);
+    }
+  };
+
+  const supprimer = async (c: Commentaire) => {
+    const res = await fetch(`/api/suggestions/${note.id}/commentaires/${c.id}`, { method: 'DELETE' });
+    if (!res.ok) return;
+    const liste = (commentaires ?? []).filter(x => x.id !== c.id);
+    setCommentaires(liste);
+    onMaj?.(note.id, { nb_commentaires: liste.length });
+  };
+
+  const dateCom = (iso: string) => {
+    // SQLite renvoie « AAAA-MM-JJ HH:MM:SS » en UTC, sans fuseau.
+    try { return format(new Date(iso.includes('T') ? iso : iso.replace(' ', 'T') + 'Z'), "dd MMM 'à' HH:mm", { locale: fr }); } catch { return ''; }
+  };
+
+  return (
+    <div style={{ marginTop: 18, paddingTop: 14, borderTop: `2px dashed ${borderColor}`, display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: 'rgba(0,0,0,0.4)' }}>
+        💬 Réponses{commentaires && commentaires.length > 0 ? ` (${commentaires.length})` : ''}
+      </span>
+      {commentaires === null ? (
+        <span style={{ fontSize: 12, color: 'rgba(0,0,0,0.35)', fontWeight: 600 }}>Chargement…</span>
+      ) : commentaires.length === 0 ? (
+        <span style={{ fontSize: 12, color: 'rgba(0,0,0,0.35)', fontWeight: 600, fontStyle: 'italic' }}>Pas encore de réponse.</span>
+      ) : (
+        <div className="custom-scroll" style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: '30vh', overflowY: 'auto' }}>
+          {commentaires.map(c => (
+            <div key={c.id} style={{ background: 'rgba(255,255,255,0.6)', border: `1.5px solid ${borderColor}`, borderRadius: 6, padding: '7px 10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                <span style={{ fontWeight: 800, fontSize: 12 }}>{c.nom}</span>
+                {c.utilisateur_id === note.auteur_id && <span style={{ fontSize: 9, fontWeight: 800, background: 'rgba(0,0,0,0.08)', borderRadius: 8, padding: '1px 5px', color: 'rgba(0,0,0,0.5)' }}>AUTEUR</span>}
+                <span style={{ fontSize: 10.5, color: 'rgba(0,0,0,0.35)', fontWeight: 600 }}>{dateCom(c.cree_le)}</span>
+                {compte?.id === c.utilisateur_id && (
+                  <button onClick={() => supprimer(c)} title="Supprimer ma réponse"
+                    style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'rgba(0,0,0,0.35)', fontFamily: 'inherit' }}>✕</button>
+                )}
+              </div>
+              <div style={{ fontSize: 13, lineHeight: 1.45, whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: 'rgba(0,0,0,0.75)' }}>{c.texte}</div>
+            </div>
+          ))}
+        </div>
+      )}
+      {compte ? (
+        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+          <textarea value={texte} onChange={e => setTexte(e.target.value)} rows={2}
+            placeholder={estAuteur ? 'Répondre…' : `Répondre à ${note.auteur_nom ?? 'cette suggestion'}…`}
+            onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) envoyer(); }}
+            className="pop-input"
+            style={{ flex: 1, resize: 'vertical', fontFamily: 'inherit', fontSize: 13, background: 'rgba(255,255,255,0.6)', border: `2px solid ${borderColor}` }} />
+          <button onClick={envoyer} disabled={envoi || !texte.trim()} className="pop-btn pop-btn-dark"
+            style={{ fontSize: 13, padding: '8px 14px', opacity: envoi || !texte.trim() ? 0.5 : 1 }}>
+            {envoi ? '…' : 'Envoyer'}
+          </button>
+        </div>
+      ) : (
+        <span style={{ fontSize: 12, fontWeight: 700, color: 'rgba(0,0,0,0.45)' }}>Connecte-toi pour répondre.</span>
+      )}
+      {erreur && <span style={{ fontSize: 12, fontWeight: 700, color: '#dc2626' }}>{erreur}</span>}
     </div>
   );
 }
@@ -625,6 +758,11 @@ export default function SuggestionsPage() {
 
   const handleDeleted = (id: string) => setSuggestions(prev => prev.filter(s => s.id !== id));
 
+  const handleMaj = useCallback((id: string, champs: Partial<Suggestion>) => {
+    setSuggestions(prev => prev.map(s => s.id === id ? { ...s, ...champs } : s));
+    setModal(m => m && m.id === id ? { ...m, ...champs } : m);
+  }, []);
+
   return (
     <div style={{ minHeight: '100dvh', background: 'var(--cream)' }}>
       <NavBar current="suggestions" />
@@ -703,6 +841,7 @@ export default function SuggestionsPage() {
           onClose={() => setModal(undefined)}
           onSaved={s => { handleSaved(s); setModal(undefined); }}
           onDeleted={handleDeleted}
+          onMaj={handleMaj}
         />
       )}
     </div>

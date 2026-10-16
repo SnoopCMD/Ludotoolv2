@@ -6,13 +6,20 @@ import { sansChampsServeur, suitLesSuggestions } from '../../../lib/suggestions'
 export async function GET() {
   try {
     const db = await getDB();
+    const compte = await compteCourant();
+    // `nb_non_lus` : commentaires que l'auteur connecté n'a pas encore lus sur
+    // ses propres suggestions (0 pour les autres).
     const result = await db.prepare(
-      `SELECT s.*, e.nom AS auteur_nom
+      `SELECT s.*, e.nom AS auteur_nom,
+              (SELECT COUNT(*) FROM suggestions_commentaires c WHERE c.suggestion_id = s.id) AS nb_commentaires,
+              CASE WHEN s.auteur_id = ?1
+                   THEN (SELECT COUNT(*) FROM suggestions_commentaires c WHERE c.suggestion_id = s.id AND c.lu_par_auteur = 0)
+                   ELSE 0 END AS nb_non_lus
          FROM suggestions s
          LEFT JOIN utilisateurs u ON u.id = s.auteur_id
          LEFT JOIN equipe e       ON e.id = u.equipe_id
         ORDER BY s.updated_at DESC`
-    ).all();
+    ).bind(compte?.id ?? '').all();
     return NextResponse.json(result.results);
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });

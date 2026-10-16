@@ -4,7 +4,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import CompteMenu from "./CompteMenu";
 import { useCompte } from "./AuthProvider";
-import { suitLesSuggestions } from "../lib/suggestions";
 
 type Page = "accueil" | "inventaire" | "atelier" | "agenda" | "reunion" | "store" | "catalogage" | "jv" | "suggestions";
 
@@ -43,11 +42,12 @@ export default function NavBar({ current }: { current?: Page }) {
     fetchCount();
   }, []);
 
-  // Nouvelles suggestions : pastille réservée à Timothé. La page Suggestions
-  // émet « suggestions-vues » une fois qu'elle les a marquées comme vues.
-  const suitSuggestions = suitLesSuggestions(compte);
+  // Pastille Suggestions : nouvelles suggestions (Timothé seul) et commentaires
+  // non lus sur ses propres suggestions. La page Suggestions émet
+  // « suggestions-vues » quand elle a marqué quelque chose comme vu.
+  const compteId = compte?.id ?? null;
   useEffect(() => {
-    if (!suitSuggestions) return;
+    if (!compteId) return;
     const fetchSugg = () => fetch('/api/suggestions/non-vues', { cache: 'no-store' })
       .then(r => r.json() as Promise<{ count?: number }>)
       .then(d => setSuggCount(d.count ?? 0))
@@ -55,18 +55,9 @@ export default function NavBar({ current }: { current?: Page }) {
     fetchSugg();
     window.addEventListener('suggestions-vues', fetchSugg);
     return () => window.removeEventListener('suggestions-vues', fetchSugg);
-  }, [suitSuggestions]);
+  }, [compteId]);
   // Après une déconnexion, l'ancien compteur ne doit plus s'afficher.
-  const suggVisibles = suitSuggestions ? suggCount : 0;
-
-  // Tiroir ouvert : on bloque le défilement du fond, sinon le doigt fait
-  // glisser la page derrière le panneau.
-  useEffect(() => {
-    if (!menuOuvert) return;
-    const precedent = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => { document.body.style.overflow = precedent; };
-  }, [menuOuvert]);
+  const suggVisibles = compteId ? suggCount : 0;
 
   return (
     <nav

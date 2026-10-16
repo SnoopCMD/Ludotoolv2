@@ -73,7 +73,7 @@ En production, ce sont des secrets Cloudflare (`wrangler secret put …`).
 | `/store` | Paniers d'achat (jeux de société, jeux vidéo, jouets), commandes communes, devis PDF |
 | `/catalogage` | Attribution des codes Syracuse |
 | `/jv` | Jeux vidéo : catalogue, sélections par console, rotations, réservations de postes, stats, notes |
-| `/suggestions` | Boîte à idées interne — auteur affiché si posté connecté, pastille des nouvelles suggestions pour Timothé seul (`lib/suggestions.ts`) |
+| `/suggestions` | Boîte à idées interne — auteur affiché si posté connecté, pastille des nouvelles suggestions pour Timothé seul (`lib/suggestions.ts`), réponses des comptes connectés avec notification de l'auteur |
 | `/connexion` | Connexion à son compte (facultative, voir *Les comptes*) |
 | `/contenu`, `/etiquettes` | Génération des fiches de contenu et des étiquettes (PDF) |
 | `/pieces`, `/reparations` | Pièces manquantes ou retrouvées, réparations |
@@ -153,6 +153,7 @@ jeu, servi par `/api/regles/[ean]` ; `catalogue.pdf_url` pointe vers cette route
 | `alertes`, `suggestions`, `selections` | Alertes, boîte à idées, sélections thématiques |
 | `utilisateurs`, `utilisateur_sessions` | Comptes (un par membre de `equipe`) et sessions ouvertes |
 | `utilisateur_preferences` | Modules choisis sur le tableau de bord, par compte |
+| `suggestions_commentaires` | Réponses aux suggestions ; `lu_par_auteur` alimente la pastille de l'auteur |
 | `reunion_fiches`, `reunion_evenements`, `reunion_seances` | Page Réunion : points et missions, événements en préparation, séances et comptes rendus |
 
 Les migrations de `migrations/` sont appliquées manuellement :
