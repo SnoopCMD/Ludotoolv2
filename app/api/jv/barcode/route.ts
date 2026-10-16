@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDB } from "../../../../lib/db";
+import { normaliserEan, variantesEan } from "../../../../lib/ean";
 import { chercherTraderGamesParEan, titreSansPlateforme } from "../../../../lib/tradergames";
 import { consoleDepuisPlateforme } from "../../../../lib/consolesJv";
 
@@ -37,15 +38,17 @@ function detectConsole(ean: string): string | null {
 }
 
 export async function GET(req: NextRequest) {
-  const ean = req.nextUrl.searchParams.get("ean")?.replace(/\D/g, "");
+  const ean = normaliserEan(req.nextUrl.searchParams.get("ean"));
   if (!ean) return NextResponse.json({ error: "EAN manquant" }, { status: 400 });
 
   // Déjà catalogué (autre exemplaire) : on connaît le titre exact.
   let connu: { titre: string; console: string } | null = null;
   try {
     const db = await getDB();
-    connu = await db.prepare("SELECT titre, console FROM jv_jeux WHERE ean = ? LIMIT 1")
-      .bind(ean).first<{ titre: string; console: string }>();
+    // Un jeu saisi avant la normalisation peut avoir gardé son UPC à 12 chiffres.
+    const [ean13, upc] = variantesEan(ean);
+    connu = await db.prepare("SELECT titre, console FROM jv_jeux WHERE ean IN (?, ?) LIMIT 1")
+      .bind(ean13, upc ?? ean13).first<{ titre: string; console: string }>();
   } catch {}
 
   if (connu) return NextResponse.json({ ean, console: connu.console, titre: connu.titre, source: "catalogue" });

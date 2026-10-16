@@ -2,6 +2,7 @@
 // et l'ajout de jeux de la page Jeux Vidéo.
 
 import { casseTitre } from './casseTitre';
+import { variantesEan } from './ean';
 
 const TIMEOUT_MS = 10000;
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
@@ -201,9 +202,12 @@ export function titreSansPlateforme(nom: string): string {
  *  recherche de la boutique : on n'accepte qu'une référence identique à l'EAN,
  *  ou un résultat unique. */
 export async function chercherTraderGamesParEan(ean: string): Promise<{ jeu: JeuRecherche | null; bloque: boolean }> {
-  const { resultats, bloque } = await chercherTraderGames(ean);
+  // La boutique peut référencer un jeu Nintendo sous son UPC (12 chiffres).
+  const variantes = variantesEan(ean);
+  let { resultats, bloque } = await chercherTraderGames(ean);
+  if (!bloque && !resultats.length && variantes[1]) ({ resultats, bloque } = await chercherTraderGames(variantes[1]));
   if (bloque) return { jeu: null, bloque };
-  const exact = resultats.find(r => (r.reference ?? '').replace(/\D/g, '') === ean);
+  const exact = resultats.find(r => variantes.includes((r.reference ?? '').replace(/\D/g, '')));
   if (exact) return { jeu: exact, bloque: false };
   const jeux = resultats.filter(r => r.plateforme);
   return { jeu: jeux.length === 1 ? jeux[0] : null, bloque: false };
