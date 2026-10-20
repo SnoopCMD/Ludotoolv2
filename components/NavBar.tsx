@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import CompteMenu from "./CompteMenu";
 import { useCompte } from "./AuthProvider";
+import { useTempsReel } from "../lib/temps-reel";
 
 type Page = "accueil" | "inventaire" | "atelier" | "agenda" | "reunion" | "store" | "catalogage" | "jv" | "suggestions";
 
@@ -34,28 +35,31 @@ export default function NavBar({ current }: { current?: Page }) {
     (pathname === "/" ? "accueil" : "accueil")
   );
 
-  useEffect(() => {
-    const fetchCount = async () => {
-      const data = await fetch('/api/navbar-counts', { cache: 'no-store' }).then(r => r.json() as Promise<{ total: number }>).catch(() => ({ total: 0 }));
-      setAlertCount(data.total ?? 0);
-    };
-    fetchCount();
-  }, []);
+  const fetchCount = async () => {
+    const data = await fetch('/api/navbar-counts', { cache: 'no-store' }).then(r => r.json() as Promise<{ total: number }>).catch(() => ({ total: 0 }));
+    setAlertCount(data.total ?? 0);
+  };
+  useEffect(() => { fetchCount(); }, []);
+  useTempsReel("alertes", fetchCount);
 
   // Pastille Suggestions : nouvelles suggestions (Timothé seul) et commentaires
   // non lus sur ses propres suggestions. La page Suggestions émet
   // « suggestions-vues » quand elle a marqué quelque chose comme vu.
   const compteId = compte?.id ?? null;
-  useEffect(() => {
+  const fetchSugg = () => {
     if (!compteId) return;
-    const fetchSugg = () => fetch('/api/suggestions/non-vues', { cache: 'no-store' })
+    fetch('/api/suggestions/non-vues', { cache: 'no-store' })
       .then(r => r.json() as Promise<{ count?: number }>)
       .then(d => setSuggCount(d.count ?? 0))
       .catch(() => setSuggCount(0));
+  };
+  useEffect(() => {
+    if (!compteId) return;
     fetchSugg();
     window.addEventListener('suggestions-vues', fetchSugg);
     return () => window.removeEventListener('suggestions-vues', fetchSugg);
   }, [compteId]);
+  useTempsReel("suggestions", fetchSugg);
   // Après une déconnexion, l'ancien compteur ne doit plus s'afficher.
   const suggVisibles = compteId ? suggCount : 0;
 

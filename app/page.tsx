@@ -4,6 +4,7 @@ import NavBar from "../components/NavBar";
 import { useIsMobile } from "../lib/useIsMobile";
 import BoutonScan from "../components/ScanCodeBarre";
 import { useCompte } from "../components/AuthProvider";
+import { useTempsReel } from "../lib/temps-reel";
 import { ListeModules, ModalPersonnaliser, MODULES_PAR_DEFAUT, modulesValides, type Nouveaute } from "../components/ModulesAccueil";
 import {
   format, startOfWeek, endOfWeek, eachDayOfInterval,
@@ -302,6 +303,8 @@ export default function AccueilPage() {
 
   useEffect(() => { chargerAlertes(); chargerEquipe(); chargerNouveautes(); }, []);
   useEffect(() => { chargerEvenements(); }, [semaineRef]);
+  useTempsReel("alertes", () => { chargerAlertes(); chargerNouveautes(); });
+  useTempsReel("agenda", () => chargerEvenements());
   useEffect(() => {
     const key = format(startOfWeek(semaineRef, { weekStartsOn: 1 }), 'yyyy-MM-dd');
     fetch(`/api/planning-semaine?key=${key}`).then(r => r.json() as Promise<any>)

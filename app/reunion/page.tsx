@@ -5,6 +5,7 @@ import { format, parseISO, differenceInCalendarDays, addDays } from "date-fns";
 import { fr } from "date-fns/locale";
 import NavBar from "../../components/NavBar";
 import { useCompte } from "../../components/AuthProvider";
+import { useTempsReel } from "../../lib/temps-reel";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1281,6 +1282,12 @@ export default function ReunionPage() {
       lireListe<EvAgenda>("/api/evenements").then(setAgenda),
     ]).then(() => setCharge(true));
   }, []);
+  useTempsReel("reunion", () => {
+    lireListe<Fiche>("/api/reunion/fiches").then(setFiches);
+    lireListe<EvPrep>("/api/reunion/evenements").then(setEvenements);
+    lireListe<Seance>("/api/reunion/seances").then(setSeances);
+  });
+  useTempsReel("agenda", () => { lireListe<EvAgenda>("/api/evenements").then(setAgenda); });
 
   const nomDe = (id: string) => equipe.find(m => m.id === id)?.nom ?? "?";
   const seanceEnCours = seances.find(s => s.statut === "en_cours") ?? null;

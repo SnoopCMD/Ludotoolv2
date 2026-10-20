@@ -2,6 +2,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import NavBar from "../../components/NavBar";
+import { useTempsReel } from "../../lib/temps-reel";
 import { useIsMobile } from "../../lib/useIsMobile";
 import { format, addMonths, subMonths, addWeeks, subWeeks, startOfWeek, endOfWeek, eachDayOfInterval, startOfMonth, endOfMonth, isSameMonth, isToday, subDays, setMonth, setYear, getISOWeek, getYear, addDays } from "date-fns";
 import { fr } from "date-fns/locale";
@@ -855,6 +856,9 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
     const data = await fetch('/api/evenements').then(r => r.json() as Promise<any>).then(d => Array.isArray(d) ? d : []).catch(() => []);
     setEvenements(data);
   };
+
+  // Pendant un brouillon, les modifications locales ne doivent pas être écrasées.
+  useTempsReel("agenda", () => { if (!isDraftMode) chargerEvenements(); });
 
   useEffect(() => {
     chargerEquipe(); 

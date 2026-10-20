@@ -6,6 +6,7 @@ import NavBar from "../../components/NavBar";
 import { useIsMobile } from "../../lib/useIsMobile";
 import { useCompte } from "../../components/AuthProvider";
 import { suitLesSuggestions } from "../../lib/suggestions";
+import { useTempsReel } from "../../lib/temps-reel";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -577,12 +578,12 @@ function FilCommentaires({ note, borderColor, onMaj }: {
   const [envoi, setEnvoi] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetch(`/api/suggestions/${note.id}/commentaires`, { cache: 'no-store' })
-      .then(r => r.json() as Promise<unknown>)
-      .then(d => setCommentaires(Array.isArray(d) ? d as Commentaire[] : []))
-      .catch(() => setCommentaires([]));
-  }, [note.id]);
+  const chargerCommentaires = () => fetch(`/api/suggestions/${note.id}/commentaires`, { cache: 'no-store' })
+    .then(r => r.json() as Promise<unknown>)
+    .then(d => setCommentaires(Array.isArray(d) ? d as Commentaire[] : []))
+    .catch(() => setCommentaires(prev => prev ?? []));
+  useEffect(() => { chargerCommentaires(); }, [note.id]);
+  useTempsReel("suggestions", chargerCommentaires);
 
   // L'auteur lit ses nouveaux commentaires : on efface sa notification.
   const nonLus = note.nb_non_lus ?? 0;
@@ -694,12 +695,11 @@ export default function SuggestionsPage() {
   // pendant toute la visite, même une fois marquées comme vues en base.
   const [nouvelles, setNouvelles] = useState<Set<string>>(new Set());
 
-  useEffect(() => {
-    fetch('/api/suggestions')
-      .then(r => r.json() as Promise<any>)
-      .then(d => { setSuggestions(Array.isArray(d) ? d : []); setIsLoading(false); })
-      .catch(() => setIsLoading(false));
-  }, []);
+  const chargerSuggestions = () => fetch('/api/suggestions', { cache: 'no-store' })
+    .then(r => r.json() as Promise<any>)
+    .then(d => { if (Array.isArray(d)) setSuggestions(d); setIsLoading(false); })
+    .catch(() => setIsLoading(false));
+  useEffect(() => { chargerSuggestions(); }, []);
 
   // Timothé ouvre la page : les nouvelles suggestions passent en « vues » et
   // la pastille de la barre de navigation s'efface.
@@ -713,10 +713,14 @@ export default function SuggestionsPage() {
       .then(() => window.dispatchEvent(new Event('suggestions-vues')))
       .catch(() => {})
       .finally(() => {
-        setNouvelles(new Set(nonVues));
+        setNouvelles(prev => new Set([...prev, ...nonVues]));
         setSuggestions(prev => prev.map(s => s.vue === 0 ? { ...s, vue: 1 } : s));
       });
   }, [suitSuggestions, isLoading, suggestions]);
+
+  // Une suggestion ou un commentaire arrive depuis un autre poste : on recharge,
+  // et les nouvelles suggestions de Timothé seront marquées vues à leur tour.
+  useTempsReel("suggestions", () => { dejaMarquees.current = false; chargerSuggestions(); });
 
   const toggleDone = async (s: Suggestion, e: React.MouseEvent) => {
     e.stopPropagation();

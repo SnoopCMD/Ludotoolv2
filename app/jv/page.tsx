@@ -4,6 +4,7 @@ import NavBar from "../../components/NavBar";
 import BoutonScan from "../../components/ScanCodeBarre";
 import { estEanValide, normaliserEan } from "../../lib/ean";
 import { useIsMobile } from "../../lib/useIsMobile";
+import { useTempsReel } from "../../lib/temps-reel";
 import { format, addDays, startOfWeek, eachDayOfInterval, isToday, parseISO, getDay, differenceInCalendarWeeks } from "date-fns";
 import { fr } from "date-fns/locale";
 
@@ -4505,9 +4506,19 @@ export default function JvPage() {
   const [modalCorrection, setModalCorrection] = useState<SelectionSlot | null>(null);
   const [modalNote, setModalNote] = useState<{ open: boolean; note: JvNote | null }>({ open: false, note: null });
 
+  // Réservations déjà connues de cet onglet : une réservation inconnue arrivée
+  // par le temps réel vient d'un autre poste et mérite un bandeau.
+  const resasConnues = useRef<Set<string> | null>(null);
+  const [nouvellesResas, setNouvellesResas] = useState<JvReservation[]>([]);
   useEffect(() => {
-    const load = async () => {
-      setIsLoading(true);
+    if (!nouvellesResas.length) return;
+    const t = setTimeout(() => setNouvellesResas([]), 8000);
+    return () => clearTimeout(t);
+  }, [nouvellesResas]);
+  useEffect(() => { resasConnues.current = new Set(reservations.map(r => r.id)); }, [reservations]);
+
+  const load = async (silencieux = false) => {
+      if (!silencieux) setIsLoading(true);
       const toArr = (d: any) => Array.isArray(d) ? d : [];
       const [j, s, r, cfg, n] = await Promise.all([
         fetch('/api/jv-jeux').then(res => res.json()).then(toArr).catch(() => []),
@@ -4518,16 +4529,22 @@ export default function JvPage() {
       ]);
       setJeux(j as JvJeu[]);
       setSelections((s as any[]).map(sel => ({ ...sel, permanent: !!sel.permanent })) as JvSelection[]);
-      setReservations((r as any[]).map(res => ({
+      const resas = (r as any[]).map(res => ({
         ...res,
         joueurs_details: typeof res.joueurs_details === 'string' && res.joueurs_details ? JSON.parse(res.joueurs_details) : (res.joueurs_details ?? null),
-      })) as JvReservation[]);
+      })) as JvReservation[];
+      const connues = resasConnues.current;
+      if (silencieux && connues) {
+        const arrivees = resas.filter(x => !connues.has(x.id) && x.statut !== "annulee");
+        if (arrivees.length) setNouvellesResas(prev => [...prev, ...arrivees]);
+      }
+      setReservations(resas);
       if (cfg && Number.isInteger((cfg as any).current_slot_index)) setRotationConfig(cfg as JvRotationConfig);
       setNotes(n as JvNote[]);
       setIsLoading(false);
-    };
-    load();
-  }, []);
+  };
+  useEffect(() => { load(); }, []);
+  useTempsReel("jv", () => load(true));
 
   // ── Handlers catalogue ────────────────────────────────────────────────────
 
@@ -4722,6 +4739,18 @@ export default function JvPage() {
       `}</style>
 
       <NavBar current="jv" />
+
+      {nouvellesResas.length > 0 && (
+        <div role="status" onClick={() => { setOnglet("reservations"); setNouvellesResas([]); }} style={{
+          position: 'fixed', bottom: 20, left: '50%', transform: 'translateX(-50%)', zIndex: 1000, cursor: 'pointer',
+          background: 'var(--ink)', color: 'var(--cream)', borderRadius: 12, padding: '10px 16px', maxWidth: 'calc(100vw - 32px)',
+          fontWeight: 700, fontSize: 14, boxShadow: '4px 4px 0 rgba(0,0,0,0.25)',
+        }}>
+          🎮 {nouvellesResas.length === 1
+            ? `Nouvelle réservation : ${nouvellesResas[0].adherent_nom || "sans nom"}, ${format(parseISO(nouvellesResas[0].date_creneau), "EEEE d MMM", { locale: fr })}${nouvellesResas[0].heure_debut ? ` à ${nouvellesResas[0].heure_debut}` : ""}`
+            : `${nouvellesResas.length} nouvelles réservations`}
+        </div>
+      )}
 
       <div className="pop-page">
 
