@@ -5,7 +5,7 @@ import BoutonScan from "../../components/ScanCodeBarre";
 import { estEanValide, normaliserEan } from "../../lib/ean";
 import { useIsMobile } from "../../lib/useIsMobile";
 import { useTempsReel } from "../../lib/temps-reel";
-import { BlocJoueur, TabProfils, enregistrerProfils, joueurVide, type JoueurDetail } from "../../components/ProfilsJv";
+import { BlocJoueur, PastillesProfils, TabProfils, enregistrerProfils, etatProfils, joueurVide, type JoueurDetail } from "../../components/ProfilsJv";
 import { format, addDays, startOfWeek, eachDayOfInterval, isToday, parseISO, getDay, differenceInCalendarWeeks } from "date-fns";
 import { fr } from "date-fns/locale";
 
@@ -2145,14 +2145,17 @@ function ModalReservationDetail({
   onClose,
   onSaved,
   onCancelled,
+  bandeau,
 }: {
   reservation: JvReservation;
   jeux: JvJeu[];
   selections: JvSelection[];
   reservations: JvReservation[];
-  onClose: () => void;
+  /** `enregistree` : fermée après un enregistrement (le mode « Compléter » enchaîne alors). */
+  onClose: (enregistree: boolean) => void;
   onSaved: (r: JvReservation) => void;
   onCancelled: (id: string) => void;
+  bandeau?: React.ReactNode;
 }) {
   const [nbJoueurs, setNbJoueurs] = useState(reservation.nb_joueurs);
   const [joueurs, setJoueurs] = useState<JoueurDetail[]>(() => {
@@ -2219,6 +2222,8 @@ function ModalReservationDetail({
 
   const updateJoueur = (i: number, patch: Partial<JoueurDetail>) =>
     setJoueurs(prev => prev.map((j, idx) => idx === i ? { ...j, ...patch } : j));
+  // Calculé à l'ouverture seulement : la recherche ouverte ne doit pas sauter d'un joueur à l'autre.
+  const [premierSansProfil] = useState(() => joueurs.findIndex(j => !j.profil_id));
 
   const poste = POSTES.find(p => p.id === reservation.poste)!;
   const slot = POSTE_SLOT[reservation.poste] ?? "PS5";
@@ -2256,7 +2261,7 @@ function ModalReservationDetail({
       heure_fin: patch.heure_fin ?? reservation.heure_fin,
     } as JvReservation);
     setIsSaving(false);
-    onClose();
+    onClose(true);
   };
 
   const cancel = async () => {
@@ -2266,7 +2271,7 @@ function ModalReservationDetail({
       body: JSON.stringify({ statut: "annulee" }),
     });
     onCancelled(reservation.id);
-    onClose();
+    onClose(true);
   };
 
   const SlabelD: React.CSSProperties = { fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: 'rgba(0,0,0,0.4)', marginBottom: 5, display: 'block' };
@@ -2274,9 +2279,10 @@ function ModalReservationDetail({
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 50, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 'calc(var(--nav-h) + 12px) 12px 12px', overflowY: 'auto' }}
-      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      onClick={e => { if (e.target === e.currentTarget) onClose(false); }}>
       <div className="pop-card" style={{ background: 'var(--cream)', width: '100%', maxWidth: 480, display: 'flex', flexDirection: 'column', maxHeight: 'calc(100dvh - var(--nav-h) - 36px)', overflow: 'hidden', marginBottom: 32 }}>
 
+        {bandeau}
         {/* Header */}
         <div style={{ background: DS_BG[displayStatus], padding: '20px 24px', display: 'flex', alignItems: 'center', gap: 12, borderBottom: '2.5px solid var(--ink)', flexShrink: 0 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -2294,7 +2300,7 @@ function ModalReservationDetail({
               </span>
             </div>
           </div>
-          <button onClick={onClose} style={{ width: 36, height: 36, border: '2.5px solid var(--ink)', borderRadius: 8, background: 'var(--white)', fontWeight: 900, fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>✕</button>
+          <button onClick={() => onClose(false)} style={{ width: 36, height: 36, border: '2.5px solid var(--ink)', borderRadius: 8, background: 'var(--white)', fontWeight: 900, fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>✕</button>
         </div>
 
         <div className="custom-scroll" style={{ flex: 1, overflowY: 'auto', padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -2398,6 +2404,7 @@ function ModalReservationDetail({
             <label style={{ ...SlabelD, marginBottom: 0 }}>Adhérent{nbJoueurs > 1 ? "s" : ""}</label>
             {joueurs.map((jj, i) => (
               <BlocJoueur key={i} joueur={jj} index={i} padding={12} radius={10} existant
+                ouvrirRecherche={!!bandeau && i === premierSansProfil}
                 exclus={joueurs.filter((_, k) => k !== i).map(x => x.profil_id).filter((x): x is string => !!x)}
                 onChange={patch => updateJoueur(i, patch)} />
             ))}
@@ -2469,7 +2476,7 @@ function ModalReservationDetail({
               Confirmer annulation
             </button>
           )}
-          <button onClick={onClose} className="pop-btn pop-btn-outline" style={{ flex: 1, justifyContent: 'center' }}>
+          <button onClick={() => onClose(false)} className="pop-btn pop-btn-outline" style={{ flex: 1, justifyContent: 'center' }}>
             Fermer
           </button>
           {reservation.statut !== "annulee" && (
@@ -3024,11 +3031,13 @@ function TabReservations({
   reservations,
   onNouvelle,
   onOpenDetail,
+  onRattrapage,
 }: {
   jeux: JvJeu[];
   reservations: JvReservation[];
   onNouvelle: (date?: string, heureDebut?: string, poste?: string) => void;
   onOpenDetail: (r: JvReservation) => void;
+  onRattrapage: () => void;
 }) {
   const isMobileX = useIsMobile();
   const [semaine, setSemaine] = useState(new Date());
@@ -3068,6 +3077,19 @@ function TabReservations({
       );
   }, [reservations]);
 
+  // Avancement du rattachement des profils, sur les créneaux déjà commencés.
+  const avancement = useMemo(() => {
+    const today = format(new Date(), "yyyy-MM-dd");
+    let lies = 0, total = 0, incompletes = 0;
+    for (const r of reservations) {
+      if (r.statut === "annulee" || r.date_creneau > today) continue;
+      const e = etatProfils(r);
+      lies += e.lies; total += e.total;
+      if (e.lies < e.total) incompletes++;
+    }
+    return { lies, total, incompletes };
+  }, [reservations]);
+
   const enCoursResas = sidebarResas.filter(r => getDisplayStatus(r) === "en_cours");
   const aVenirResas  = sidebarResas.filter(r => getDisplayStatus(r) === "a_venir");
 
@@ -3095,6 +3117,30 @@ function TabReservations({
           <p style={{ fontSize: 11, fontWeight: 700, color: 'rgba(0,0,0,0.4)', margin: 0, marginTop: 2 }}>Passées</p>
         </div>
       </div>
+
+      {/* Avancement des profils */}
+      {avancement.total > 0 && (
+        <div className="pop-card" style={{ background: 'var(--cream)', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+          <div style={{ flex: '1 1 240px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+              <span style={{ fontWeight: 900, fontSize: 14 }}>Profils rattachés</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: 'rgba(0,0,0,0.55)' }}>
+                {avancement.lies}/{avancement.total} participations · {Math.round((avancement.lies / avancement.total) * 100)}%
+              </span>
+            </div>
+            <div style={{ height: 10, borderRadius: 99, background: '#fecaca', border: '1.5px solid var(--ink)', overflow: 'hidden' }}>
+              <div style={{ height: '100%', width: `${(avancement.lies / avancement.total) * 100}%`, background: '#22c55e', transition: 'width .3s' }} />
+            </div>
+          </div>
+          {avancement.incompletes > 0 ? (
+            <button onClick={onRattrapage} className="pop-btn pop-btn-dark" style={{ fontSize: 12, padding: '7px 14px' }}>
+              🔗 Compléter ({avancement.incompletes} créneau{avancement.incompletes > 1 ? "x" : ""})
+            </button>
+          ) : (
+            <span style={{ fontSize: 12, fontWeight: 800 }}>✓ Tout est rattaché</span>
+          )}
+        </div>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 20 }} className="xl:grid-cols-3">
 
@@ -3232,8 +3278,11 @@ function TabReservations({
                                   <span style={{ fontSize: 8, fontWeight: 700, opacity: 0.7, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.2 }}>
                                     {jeu2 ? `${jeu?.titre ?? "?"} → ${jeu2.titre}` : (jeu?.titre ?? "?")}
                                   </span>
-                                  <span style={{ fontSize: 8, opacity: 0.55, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.2 }}>
-                                    {resa.heure_debut ? `${heureLabel(resa.heure_debut)}-${heureLabel(resa.heure_fin)}` : (resa.creneau ?? "")} · {resa.nb_joueurs}J
+                                  <span style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0, lineHeight: 1.2 }}>
+                                    <span style={{ fontSize: 8, opacity: 0.55, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                      {resa.heure_debut ? `${heureLabel(resa.heure_debut)}-${heureLabel(resa.heure_fin)}` : (resa.creneau ?? "")}
+                                    </span>
+                                    <PastillesProfils resa={resa} taille={6} />
                                   </span>
                                 </button>
                               );
@@ -3316,6 +3365,7 @@ function TabReservations({
                         <p style={{ fontSize: 12, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', margin: 0 }}>{jeu?.titre ?? "?"}</p>
                         <p style={{ fontSize: 10, color: 'rgba(0,0,0,0.5)', margin: 0 }}>{r.adherent_nom} · {r.nb_joueurs}J · {poste?.label ?? r.poste}</p>
                       </div>
+                      <PastillesProfils resa={r} />
                     </button>
                   );
                 })}
@@ -3344,6 +3394,7 @@ function TabReservations({
                       <p style={{ fontSize: 12, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', margin: 0 }}>{jeu?.titre ?? "?"}</p>
                       <p style={{ fontSize: 10, color: 'rgba(0,0,0,0.4)', margin: 0 }}>{r.adherent_nom} · {r.nb_joueurs}J · {poste?.label ?? r.poste}</p>
                     </div>
+                    <PastillesProfils resa={r} />
                   </button>
                 );
               })}
@@ -4611,6 +4662,9 @@ export default function JvPage() {
   const [modalPlanning, setModalPlanning] = useState(false);
   const [modalResa, setModalResa] = useState<{ open: boolean; date?: string; heureDebut?: string; poste?: string }>({ open: false });
   const [modalResaDetail, setModalResaDetail] = useState<JvReservation | null>(null);
+  // Mode « Compléter » : enchaîne les créneaux passés dont des joueurs n'ont pas
+  // de profil, du plus récent au plus ancien. `passes` : ceux déjà vus.
+  const [rattrapage, setRattrapage] = useState<{ passes: string[]; fait: number } | null>(null);
   const [modalCorrection, setModalCorrection] = useState<SelectionSlot | null>(null);
   const [modalNote, setModalNote] = useState<{ open: boolean; note: JvNote | null }>({ open: false, note: null });
 
@@ -4817,6 +4871,42 @@ export default function JvPage() {
     setReservations(prev => prev.map(x => x.id === r.id ? r : x));
   }, []);
 
+  const aCompleter = useMemo(() => {
+    const today = format(new Date(), "yyyy-MM-dd");
+    return reservations
+      .filter(r => r.statut !== "annulee" && r.date_creneau <= today && (() => { const e = etatProfils(r); return e.lies < e.total; })())
+      .sort((a, b) => b.date_creneau.localeCompare(a.date_creneau) || (b.heure_debut ?? "").localeCompare(a.heure_debut ?? ""));
+  }, [reservations]);
+
+  const suivanteRattrapage = (passes: string[], exclure?: string) =>
+    aCompleter.find(r => !passes.includes(r.id) && r.id !== exclure) ?? null;
+
+  const demarrerRattrapage = () => {
+    const premiere = suivanteRattrapage([]);
+    if (!premiere) return;
+    setRattrapage({ passes: [], fait: 0 });
+    setModalResaDetail(premiere);
+  };
+
+  /** Passe au créneau suivant du mode « Compléter » (ou en sort s'il n'y en a plus). */
+  const avancerRattrapage = (enregistree: boolean) => {
+    if (!rattrapage || !modalResaDetail) return;
+    const courante = modalResaDetail.id;
+    // Vu une fois suffit, même à moitié complété : on ne le repropose pas.
+    const r = { passes: [...rattrapage.passes, courante], fait: rattrapage.fait + (enregistree ? 1 : 0) };
+    const suivante = suivanteRattrapage(r.passes, courante);
+    setRattrapage(suivante ? r : null);
+    setModalResaDetail(suivante);
+  };
+
+  /** Fermeture de la fiche : après un enregistrement en mode « Compléter », on
+   *  enchaîne ; fermer sans enregistrer (✕, Fermer) sort du mode. */
+  const fermerFicheResa = (enregistree: boolean) => {
+    if (rattrapage && enregistree) { avancerRattrapage(true); return; }
+    setRattrapage(null);
+    setModalResaDetail(null);
+  };
+
   const handleResaCancelled = useCallback((id: string) => {
     setReservations(prev => prev.map(r => r.id === id ? { ...r, statut: "annulee" } : r));
   }, []);
@@ -4944,10 +5034,14 @@ export default function JvPage() {
                 jeux={jeux}
                 reservations={reservations}
                 onNouvelle={(date, heureDebut, poste) => setModalResa({ open: true, date, heureDebut, poste })}
-                onOpenDetail={r => setModalResaDetail(r)}
+                onOpenDetail={r => { setRattrapage(null); setModalResaDetail(r); }}
+                onRattrapage={demarrerRattrapage}
               />
             )}
-            {onglet === "profils" && <TabProfils venues={venuesParProfil} />}
+            {onglet === "profils" && (
+              <TabProfils venues={venuesParProfil} reservations={reservations}
+                onReservationMaj={r => setReservations(prev => prev.map(x => x.id === r.id ? { ...x, joueurs_details: r.joueurs_details } : x))} />
+            )}
             {onglet === "stats" && (
               <TabStats reservations={reservations} jeux={jeux} />
             )}
@@ -5018,12 +5112,22 @@ export default function JvPage() {
       )}
       {modalResaDetail && (
         <ModalReservationDetail
+          key={modalResaDetail.id}
           reservation={modalResaDetail}
           jeux={jeux}
           selections={selections}
           reservations={reservations}
-          onClose={() => setModalResaDetail(null)}
+          onClose={fermerFicheResa}
           onSaved={handleResaUpdated}
+          bandeau={rattrapage && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 16px', background: 'var(--ink)', color: 'var(--cream)', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
+              <span style={{ flex: 1 }}>
+                🔗 Compléter les profils · {aCompleter.filter(r => !rattrapage.passes.includes(r.id)).length} créneau(x) restant(s){rattrapage.fait > 0 && ` · ${rattrapage.fait} fait${rattrapage.fait > 1 ? "s" : ""}`}
+              </span>
+              <button onClick={() => avancerRattrapage(false)} style={{ border: '1.5px solid var(--cream)', background: 'none', color: 'var(--cream)', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontWeight: 800, fontSize: 11, fontFamily: 'inherit' }}>Passer ›</button>
+              <button onClick={() => { setRattrapage(null); setModalResaDetail(null); }} style={{ border: 'none', background: 'none', color: 'var(--cream)', cursor: 'pointer', fontWeight: 800, fontSize: 11, textDecoration: 'underline', fontFamily: 'inherit' }}>Arrêter</button>
+            </div>
+          )}
           onCancelled={handleResaCancelled}
         />
       )}

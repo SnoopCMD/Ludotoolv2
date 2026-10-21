@@ -87,6 +87,48 @@ export async function enregistrerProfils(joueurs: JoueurDetail[], { venue = true
   }));
 }
 
+// ─── Avancement du rattachement ───────────────────────────────────────────────
+
+/** Ce qu'il faut d'une réservation pour savoir où en sont ses profils. */
+export type ResaProfils = {
+  id: string;
+  date_creneau: string;
+  statut: string;
+  nb_joueurs: number;
+  adherent_nom: string;
+  joueurs_details: JoueurDetail[] | null;
+};
+
+/** Les joueurs d'une réservation ; les anciennes n'ont que `nb_joueurs` et le nom du premier. */
+export function joueursDe(r: ResaProfils): JoueurDetail[] {
+  const det = r.joueurs_details ?? [];
+  if (det.length >= r.nb_joueurs) return det;
+  return [...det, ...Array.from({ length: r.nb_joueurs - det.length }, (_, i) =>
+    ({ ...joueurVide(), nom: det.length + i === 0 ? r.adherent_nom ?? "" : "" }))];
+}
+
+export function etatProfils(r: ResaProfils) {
+  const joueurs = joueursDe(r);
+  return { lies: joueurs.filter(j => j.profil_id).length, total: joueurs.length };
+}
+
+/** Une pastille par joueur : verte s'il est rattaché à un profil, rouge sinon. */
+export function PastillesProfils({ resa, taille = 7 }: { resa: ResaProfils; taille?: number }) {
+  const joueurs = joueursDe(resa);
+  const { lies, total } = etatProfils(resa);
+  return (
+    <span title={lies === total ? "Tous les joueurs ont un profil" : `${lies}/${total} profil${total > 1 ? "s" : ""} rattaché${lies > 1 ? "s" : ""}`}
+      style={{ display: "inline-flex", gap: Math.max(2, taille / 3), alignItems: "center", flexShrink: 0 }}>
+      {joueurs.map((j, i) => (
+        <span key={i} style={{
+          width: taille, height: taille, borderRadius: "50%", display: "inline-block",
+          background: j.profil_id ? "#22c55e" : "#ef4444", border: "1px solid var(--ink)",
+        }} />
+      ))}
+    </span>
+  );
+}
+
 // ─── Recherche / scan d'un profil ─────────────────────────────────────────────
 
 function RechercheProfil({ autoFocus, exclus, onProfil, onCarteInconnue }: {
@@ -163,7 +205,7 @@ function RechercheProfil({ autoFocus, exclus, onProfil, onCarteInconnue }: {
 
 // ─── Bloc joueur d'une réservation ────────────────────────────────────────────
 
-export function BlocJoueur({ joueur, index, autoFocus, exclus, onChange, radius = 12, padding = 14, existant = false }: {
+export function BlocJoueur({ joueur, index, autoFocus, exclus, onChange, radius = 12, padding = 14, existant = false, ouvrirRecherche = false }: {
   joueur: JoueurDetail;
   index: number;
   autoFocus?: boolean;
@@ -174,9 +216,11 @@ export function BlocJoueur({ joueur, index, autoFocus, exclus, onChange, radius 
   /** Joueur d'une réservation déjà enregistrée : la recherche reste repliée
    *  derrière un bouton, et lier une carte garde ce qui a été saisi à l'époque. */
   existant?: boolean;
+  /** Recherche dépliée et prête à scanner dès l'ouverture (mode « Compléter »). */
+  ouvrirRecherche?: boolean;
 }) {
   const lie = !!joueur.profil_id;
-  const [rechercheOuverte, setRechercheOuverte] = useState(!existant || !joueur.nom.trim());
+  const [rechercheOuverte, setRechercheOuverte] = useState(!existant || !joueur.nom.trim() || ouvrirRecherche);
   const detacher = () => existant
     ? onChange({ profil_id: null, carte: null })
     : onChange(joueurVide());
@@ -245,13 +289,176 @@ export function BlocJoueur({ joueur, index, autoFocus, exclus, onChange, radius 
   );
 }
 
-// ─── Onglet Profils ───────────────────────────────────────────────────────────
-
 const sansAccents = (s: string) => s.toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, "");
 
-export function TabProfils({ venues }: {
+// ─── Rattachement par prénom ──────────────────────────────────────────────────
+
+type Occurrence = { resa: ResaProfils; index: number; joueur: JoueurDetail };
+type Groupe = { cle: string; nom: string; occurrences: Occurrence[] };
+
+/**
+ * Participations sans profil regroupées par prénom : « Malik » venu 12 fois
+ * se rattache en une fois, en scannant sa carte. Les homonymes se décochent.
+ */
+function RattachementParPrenom({ reservations, onReservationMaj, onRattache }: {
+  reservations: ResaProfils[];
+  onReservationMaj: (r: ResaProfils) => void;
+  /** Un rattachement a eu lieu : la liste des profils peut avoir changé. */
+  onRattache: () => void;
+}) {
+  const [ouvert, setOuvert] = useState<string | null>(null);
+  const [tout, setTout] = useState(false);
+
+  const groupes = useMemo(() => {
+    const map = new Map<string, Groupe>();
+    for (const r of reservations) {
+      if (r.statut === "annulee") continue;
+      joueursDe(r).forEach((joueur, index) => {
+        const cle = sansAccents(joueur.nom.trim());
+        if (joueur.profil_id || !cle) return;
+        const g = map.get(cle) ?? { cle, nom: joueur.nom.trim(), occurrences: [] };
+        g.occurrences.push({ resa: r, index, joueur });
+        map.set(cle, g);
+      });
+    }
+    return [...map.values()]
+      .map(g => ({ ...g, occurrences: g.occurrences.sort((a, b) => b.resa.date_creneau.localeCompare(a.resa.date_creneau)) }))
+      .sort((a, b) => b.occurrences.length - a.occurrences.length || a.nom.localeCompare(b.nom));
+  }, [reservations]);
+
+  if (groupes.length === 0) return null;
+  const visibles = tout ? groupes : groupes.slice(0, 12);
+
+  return (
+    <div className="pop-card" style={{ background: "var(--cream)", padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+        <span className="bc" style={{ fontSize: 18 }}>À rattacher</span>
+        <span style={{ fontSize: 11, color: "rgba(0,0,0,0.5)", fontWeight: 600 }}>
+          Prénoms des participations sans profil, les plus fréquents d’abord : un scan rattache toutes leurs venues.
+        </span>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {visibles.map(g => (
+          <div key={g.cle} style={{ background: "var(--white)", border: "2px solid var(--ink)", borderRadius: 10, overflow: "visible" }}>
+            <button type="button" onClick={() => setOuvert(o => o === g.cle ? null : g.cle)} style={{
+              display: "flex", width: "100%", alignItems: "center", gap: 10, padding: "8px 12px", border: "none",
+              background: "none", cursor: "pointer", fontFamily: "inherit", textAlign: "left",
+            }}>
+              <span style={{ fontWeight: 800, fontSize: 14, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.nom}</span>
+              <span style={{ fontSize: 11, color: "rgba(0,0,0,0.5)", whiteSpace: "nowrap" }}>
+                ×{g.occurrences.length} · dernière le {format(parseISO(g.occurrences[0].resa.date_creneau), "d MMM yyyy", { locale: fr })}
+              </span>
+              <span style={{ fontSize: 12, fontWeight: 800 }}>{ouvert === g.cle ? "▴" : "🔗"}</span>
+            </button>
+            {ouvert === g.cle && (
+              <PanneauRattachement key={g.cle} groupe={g} onReservationMaj={onReservationMaj}
+                onFini={fait => { setOuvert(null); if (fait) onRattache(); }} />
+            )}
+          </div>
+        ))}
+      </div>
+      {groupes.length > 12 && (
+        <button type="button" onClick={() => setTout(t => !t)} className="pop-btn pop-btn-outline" style={{ alignSelf: "flex-start", fontSize: 12, padding: "5px 12px" }}>
+          {tout ? "Réduire" : `Voir les ${groupes.length} prénoms`}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function PanneauRattachement({ groupe, onFini, onReservationMaj }: {
+  groupe: Groupe;
+  onFini: (fait: boolean) => void;
+  onReservationMaj: (r: ResaProfils) => void;
+}) {
+  const recent = groupe.occurrences[0].joueur;
+  const [profil, setProfil] = useState<ProfilJv | null>(null);
+  // Carte inconnue : le profil est créé avec le prénom, le sexe et l'âge de la venue la plus récente.
+  const [nouveau, setNouveau] = useState<{ carte: string; prenom: string; sexe: Sexe | null; age: TrancheAge | null } | null>(null);
+  const [coches, setCoches] = useState<Set<number>>(() => new Set(groupe.occurrences.map((_, i) => i)));
+  const [envoi, setEnvoi] = useState(false);
+  const [erreur, setErreur] = useState<string | null>(null);
+
+  const basculer = (i: number) => setCoches(prev => { const n = new Set(prev); if (n.has(i)) n.delete(i); else n.add(i); return n; });
+
+  const lier = async () => {
+    if (envoi || coches.size === 0 || (!profil && !nouveau?.prenom.trim())) return;
+    setEnvoi(true); setErreur(null);
+    let cible = profil;
+    if (!cible && nouveau) {
+      cible = await envoyer("/api/jv-profils", "POST", { prenom: nouveau.prenom, numero_carte: nouveau.carte, sexe: nouveau.sexe, age: nouveau.age });
+      if (!cible) { setErreur("Création du profil impossible (carte déjà utilisée ?)."); setEnvoi(false); return; }
+    }
+    // Plusieurs occurrences peuvent tomber dans la même réservation : on les applique ensemble.
+    const parResa = new Map<string, { resa: ResaProfils; index: number[] }>();
+    groupe.occurrences.forEach((o, i) => {
+      if (!coches.has(i)) return;
+      const e = parResa.get(o.resa.id) ?? { resa: o.resa, index: [] };
+      e.index.push(o.index);
+      parResa.set(o.resa.id, e);
+    });
+    for (const { resa, index } of parResa.values()) {
+      const joueurs = joueursDe(resa).map((j, k) => index.includes(k) ? { ...j, profil_id: cible!.id, carte: cible!.numero_carte } : j);
+      const ok = await fetch(`/api/jv-reservations/${resa.id}`, {
+        method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ joueurs_details: JSON.stringify(joueurs) }),
+      }).then(r => r.ok).catch(() => false);
+      if (ok) onReservationMaj({ ...resa, joueurs_details: joueurs });
+    }
+    setEnvoi(false);
+    onFini(true);
+  };
+
+  return (
+    <div style={{ padding: "4px 12px 12px", display: "flex", flexDirection: "column", gap: 10, borderTop: "1.5px solid var(--cream2)" }}>
+      {!profil && !nouveau && (
+        <RechercheProfil autoFocus exclus={[]} onProfil={setProfil}
+          onCarteInconnue={carte => setNouveau({ carte, prenom: groupe.nom, sexe: recent.sexe, age: recent.age })} />
+      )}
+      {profil && (
+        <div style={{ fontSize: 12, fontWeight: 700 }}>
+          👤 Vers le profil <b>{profil.prenom}</b>{profil.numero_carte && ` · n° ${profil.numero_carte}`}{" "}
+          <button type="button" onClick={() => setProfil(null)} style={{ border: "none", background: "none", cursor: "pointer", textDecoration: "underline", fontSize: 11, fontFamily: "inherit" }}>changer</button>
+        </div>
+      )}
+      {nouveau && (
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", fontSize: 12, fontWeight: 700 }}>
+          <span>＋ Nouveau profil · n° {nouveau.carte}</span>
+          <input value={nouveau.prenom} onChange={e => setNouveau({ ...nouveau, prenom: e.target.value })} className="pop-input" style={{ flex: "1 1 140px", padding: "4px 8px", fontSize: 13 }} />
+          <span style={{ color: "rgba(0,0,0,0.5)" }}>{[nouveau.sexe, nouveau.age === "parent" ? "Parent" : nouveau.age].filter(Boolean).join(" · ")}</span>
+          <button type="button" onClick={() => setNouveau(null)} style={{ border: "none", background: "none", cursor: "pointer", textDecoration: "underline", fontSize: 11, fontFamily: "inherit" }}>changer</button>
+        </div>
+      )}
+      <div style={{ display: "flex", flexDirection: "column", gap: 2, maxHeight: 220, overflowY: "auto" }}>
+        <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", color: "rgba(0,0,0,0.45)" }}>
+          Venues à rattacher — décoche les homonymes
+        </span>
+        {groupe.occurrences.map((o, i) => (
+          <label key={`${o.resa.id}-${o.index}`} style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 12, cursor: "pointer", padding: "2px 0" }}>
+            <input type="checkbox" checked={coches.has(i)} onChange={() => basculer(i)} />
+            <span style={{ fontWeight: 700, width: 110 }}>{format(parseISO(o.resa.date_creneau), "EEE d MMM yyyy", { locale: fr })}</span>
+            <span style={{ color: "rgba(0,0,0,0.55)" }}>{[o.joueur.sexe, o.joueur.age === "parent" ? "Parent" : o.joueur.age].filter(Boolean).join(" · ") || "sexe et âge non renseignés"}</span>
+          </label>
+        ))}
+      </div>
+      {erreur && <p style={{ color: "var(--rouge)", fontWeight: 700, fontSize: 12, margin: 0 }}>{erreur}</p>}
+      <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+        <button type="button" onClick={() => onFini(false)} className="pop-btn pop-btn-outline" style={{ fontSize: 12, padding: "5px 12px" }}>Annuler</button>
+        <button type="button" onClick={lier} disabled={envoi || coches.size === 0 || (!profil && !nouveau?.prenom.trim())}
+          className="pop-btn pop-btn-dark" style={{ fontSize: 12, padding: "5px 12px", opacity: envoi || coches.size === 0 || (!profil && !nouveau) ? 0.4 : 1 }}>
+          {envoi ? "…" : `Rattacher ${coches.size} venue${coches.size > 1 ? "s" : ""}`}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Onglet Profils ───────────────────────────────────────────────────────────
+
+export function TabProfils({ venues, reservations, onReservationMaj }: {
   /** Nombre de réservations par profil, tiré des réservations déjà chargées. */
   venues: Record<string, number>;
+  reservations: ResaProfils[];
+  onReservationMaj: (r: ResaProfils) => void;
 }) {
   const [profils, setProfils] = useState<ProfilJv[] | null>(null);
   const [q, setQ] = useState("");
@@ -279,6 +486,7 @@ export function TabProfils({ venues }: {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <RattachementParPrenom reservations={reservations} onReservationMaj={onReservationMaj} onRattache={charger} />
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
         <div style={{ display: "flex", gap: 6, flex: "1 1 260px", minWidth: 0 }}>
           <input type="search" value={q} onChange={e => setQ(e.target.value)}
