@@ -5,6 +5,7 @@ import BoutonScan from "../../components/ScanCodeBarre";
 import { estEanValide, normaliserEan } from "../../lib/ean";
 import { useIsMobile } from "../../lib/useIsMobile";
 import { useTempsReel } from "../../lib/temps-reel";
+import { BlocJoueur, TabProfils, enregistrerProfils, joueurVide, type JoueurDetail } from "../../components/ProfilsJv";
 import { format, addDays, startOfWeek, eachDayOfInterval, isToday, parseISO, getDay, differenceInCalendarWeeks } from "date-fns";
 import { fr } from "date-fns/locale";
 
@@ -110,12 +111,6 @@ type JvRotationConfig = {
   id: string;
   current_slot_index: number;
   week_start: string;
-};
-
-type JoueurDetail = {
-  nom: string;
-  sexe: "H" | "F" | "N" | null;
-  age: "11-16" | "16-18" | "18+" | "parent" | null;
 };
 
 type JvReservation = {
@@ -1804,7 +1799,7 @@ function ModalReservation({
   const [durationMins, setDurationMins] = useState(60);
   const [jeuId, setJeuId] = useState("");
   const [nbJoueurs, setNbJoueurs] = useState(1);
-  const [joueurs, setJoueurs] = useState<JoueurDetail[]>([{ nom: "", sexe: null, age: null }]);
+  const [joueurs, setJoueurs] = useState<JoueurDetail[]>([joueurVide()]);
   const [notes, setNotes] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
@@ -1873,12 +1868,12 @@ function ModalReservation({
     .filter((x): x is { sel: JvSelection; jeu: JvJeu } => !!x.jeu)
     .filter(x => slot !== "Switch_Multi" || (x.jeu.nb_joueurs && x.jeu.nb_joueurs !== "1"));
 
-  useEffect(() => { setJeuId(""); setNbJoueurs(1); setJoueurs([{ nom: "", sexe: null, age: null }]); }, [posteId]);
+  useEffect(() => { setJeuId(""); setNbJoueurs(1); setJoueurs([joueurVide()]); }, [posteId]);
 
   useEffect(() => {
     setJoueurs(prev => {
       if (nbJoueurs > prev.length)
-        return [...prev, ...Array.from({ length: nbJoueurs - prev.length }, () => ({ nom: "", sexe: null, age: null } as JoueurDetail))];
+        return [...prev, ...Array.from({ length: nbJoueurs - prev.length }, joueurVide)];
       return prev.slice(0, nbJoueurs);
     });
   }, [nbJoueurs]);
@@ -1892,12 +1887,13 @@ function ModalReservation({
     if (!canSave) return;
     setIsSaving(true);
     const nomPrincipal = joueurs[0].nom.trim();
+    const joueursProfils = await enregistrerProfils(joueurs);
     const payload = {
       jeu_id: jeuId, poste: posteId, date_creneau: date,
       heure_debut: heureDebut, heure_fin: heureFin,
       creneau: `${heureLabel(heureDebut)}-${heureLabel(heureFin)}`,
       adherent_nom: nomPrincipal, nb_joueurs: nbJoueurs,
-      joueurs_details: JSON.stringify(joueurs),
+      joueurs_details: JSON.stringify(joueursProfils),
       notes: notes.trim() || null, statut: "confirmee",
     };
     const res = await fetch('/api/jv-reservations', {
@@ -1906,7 +1902,7 @@ function ModalReservation({
       body: JSON.stringify(payload),
     }).then(r => r.json() as Promise<any>).catch(() => ({ error: 'réseau' }));
     if (res.error) { alert("Erreur : " + res.error); setIsSaving(false); return; }
-    onSaved({ ...payload, id: res.id, jeu2_id: null, joueurs_details: joueurs, created_at: new Date().toISOString() } as JvReservation);
+    onSaved({ ...payload, id: res.id, jeu2_id: null, joueurs_details: joueursProfils, created_at: new Date().toISOString() } as JvReservation);
     setIsSaving(false);
     onClose();
   };
@@ -2067,37 +2063,9 @@ function ModalReservation({
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <label style={Slabel}>Adhérent{nbJoueurs > 1 ? "s" : ""} *</label>
             {joueurs.map((jj, i) => (
-              <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 14, background: 'var(--cream2)', border: '2px solid var(--ink)', borderRadius: 12 }}>
-                <p style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.07em', color: 'rgba(0,0,0,0.45)', margin: 0 }}>
-                  {i === 0 ? "1er joueur" : `${i + 1}e joueur`}
-                </p>
-                <input type="text" value={jj.nom} onChange={e => updateJoueur(i, { nom: e.target.value })}
-                  placeholder="Prénom NOM…" autoFocus={i === 0}
-                  className="pop-input" style={{ width: '100%', background: 'var(--white)' }} />
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: 10, fontWeight: 700, color: 'rgba(0,0,0,0.4)', width: 30, flexShrink: 0 }}>Sexe</span>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    {(["H", "F", "N"] as const).map(s => (
-                      <button key={s} onClick={() => updateJoueur(i, { sexe: jj.sexe === s ? null : s })}
-                        className={jj.sexe === s ? "pop-btn pop-btn-dark" : "pop-btn pop-btn-outline"}
-                        style={{ fontSize: 11, padding: '4px 12px' }}>{s}</button>
-                    ))}
-                  </div>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: 10, fontWeight: 700, color: 'rgba(0,0,0,0.4)', width: 30, flexShrink: 0 }}>Âge</span>
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    {([
-                      { val: "11-16", label: "11-16" }, { val: "16-18", label: "16-18" },
-                      { val: "18+", label: "18+" }, { val: "parent", label: "Parent" },
-                    ] as const).map(({ val, label }) => (
-                      <button key={val} onClick={() => updateJoueur(i, { age: jj.age === val ? null : val })}
-                        className={jj.age === val ? "pop-btn pop-btn-dark" : "pop-btn pop-btn-outline"}
-                        style={{ fontSize: 11, padding: '4px 10px' }}>{label}</button>
-                    ))}
-                  </div>
-                </div>
-              </div>
+              <BlocJoueur key={i} joueur={jj} index={i} padding={14} radius={12} autoFocus={i === 0}
+                exclus={joueurs.filter((_, k) => k !== i).map(x => x.profil_id).filter((x): x is string => !!x)}
+                onChange={patch => updateJoueur(i, patch)} />
             ))}
           </div>
 
@@ -2241,7 +2209,7 @@ function ModalReservationDetail({
   useEffect(() => {
     setJoueurs(prev => {
       if (nbJoueurs > prev.length)
-        return [...prev, ...Array.from({ length: nbJoueurs - prev.length }, () => ({ nom: "", sexe: null, age: null } as JoueurDetail))];
+        return [...prev, ...Array.from({ length: nbJoueurs - prev.length }, joueurVide)];
       return prev.slice(0, nbJoueurs);
     });
   }, [nbJoueurs]);
@@ -2266,9 +2234,10 @@ function ModalReservationDetail({
     const nomPrincipal = joueurs[0]?.nom.trim() ?? "";
     if (!nomPrincipal) return;
     setIsSaving(true);
+    const joueursProfils = await enregistrerProfils(joueurs);
     const patch: Record<string, any> = {
       adherent_nom: nomPrincipal, nb_joueurs: nbJoueurs,
-      joueurs_details: JSON.stringify(joueurs), notes: notes.trim() || null,
+      joueurs_details: JSON.stringify(joueursProfils), notes: notes.trim() || null,
       jeu_id: jeuId, jeu2_id: jeu2Id,
     };
     if (heureDebut && heureDebut !== reservation.heure_debut) patch.heure_debut = heureDebut;
@@ -2279,7 +2248,7 @@ function ModalReservationDetail({
       body: JSON.stringify(patch),
     }).then(r => r.json() as Promise<any>).catch(() => ({ error: 'réseau' }));
     if (res.error) { alert("Erreur : " + res.error); setIsSaving(false); return; }
-    onSaved({ ...reservation, ...patch, joueurs_details: joueurs,
+    onSaved({ ...reservation, ...patch, joueurs_details: joueursProfils,
       heure_debut: patch.heure_debut ?? reservation.heure_debut,
       heure_fin: patch.heure_fin ?? reservation.heure_fin,
     } as JvReservation);
@@ -2425,37 +2394,9 @@ function ModalReservationDetail({
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <label style={{ ...SlabelD, marginBottom: 0 }}>Adhérent{nbJoueurs > 1 ? "s" : ""}</label>
             {joueurs.map((jj, i) => (
-              <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 12, background: 'var(--cream2)', border: '2px solid var(--ink)', borderRadius: 10 }}>
-                <p style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.07em', color: 'rgba(0,0,0,0.45)', margin: 0 }}>
-                  {i === 0 ? "1er joueur" : `${i + 1}e joueur`}
-                </p>
-                <input type="text" value={jj.nom} onChange={e => updateJoueur(i, { nom: e.target.value })}
-                  placeholder="Prénom NOM…"
-                  className="pop-input" style={{ width: '100%', background: 'var(--white)' }} />
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: 10, fontWeight: 700, color: 'rgba(0,0,0,0.4)', width: 30, flexShrink: 0 }}>Sexe</span>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    {(["H", "F", "N"] as const).map(s => (
-                      <button key={s} onClick={() => updateJoueur(i, { sexe: jj.sexe === s ? null : s })}
-                        className={jj.sexe === s ? "pop-btn pop-btn-dark" : "pop-btn pop-btn-outline"}
-                        style={{ fontSize: 11, padding: '4px 12px' }}>{s}</button>
-                    ))}
-                  </div>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: 10, fontWeight: 700, color: 'rgba(0,0,0,0.4)', width: 30, flexShrink: 0 }}>Âge</span>
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    {([
-                      { val: "11-16", label: "11-16" }, { val: "16-18", label: "16-18" },
-                      { val: "18+", label: "18+" }, { val: "parent", label: "Parent" },
-                    ] as const).map(({ val, label }) => (
-                      <button key={val} onClick={() => updateJoueur(i, { age: jj.age === val ? null : val })}
-                        className={jj.age === val ? "pop-btn pop-btn-dark" : "pop-btn pop-btn-outline"}
-                        style={{ fontSize: 11, padding: '4px 10px' }}>{label}</button>
-                    ))}
-                  </div>
-                </div>
-              </div>
+              <BlocJoueur key={i} joueur={jj} index={i} padding={12} radius={10}
+                exclus={joueurs.filter((_, k) => k !== i).map(x => x.profil_id).filter((x): x is string => !!x)}
+                onChange={patch => updateJoueur(i, patch)} />
             ))}
           </div>
 
@@ -4488,7 +4429,7 @@ function TabNotes({
 
 export default function JvPage() {
   const isMobile = useIsMobile();
-  const [onglet, setOnglet] = useState<"catalogue" | "selections" | "reservations" | "stats" | "notes">("catalogue");
+  const [onglet, setOnglet] = useState<"catalogue" | "selections" | "reservations" | "profils" | "stats" | "notes">("catalogue");
   const [jeux, setJeux] = useState<JvJeu[]>([]);
   const [selections, setSelections] = useState<JvSelection[]>([]);
   const [reservations, setReservations] = useState<JvReservation[]>([]);
@@ -4544,6 +4485,15 @@ export default function JvPage() {
       setIsLoading(false);
   };
   useEffect(() => { load(); }, []);
+
+  const venuesParProfil = useMemo(() => {
+    const n: Record<string, number> = {};
+    for (const r of reservations) {
+      if (r.statut === "annulee") continue;
+      for (const j of r.joueurs_details ?? []) if (j.profil_id) n[j.profil_id] = (n[j.profil_id] ?? 0) + 1;
+    }
+    return n;
+  }, [reservations]);
   useTempsReel("jv", () => load(true));
 
   // ── Handlers catalogue ────────────────────────────────────────────────────
@@ -4784,6 +4734,7 @@ export default function JvPage() {
             { key: "catalogue", label: "Catalogue" },
             { key: "selections", label: "Sélections" },
             { key: "reservations", label: "Réservations" },
+            { key: "profils", label: "Profils" },
             { key: "stats", label: "Stats" },
             { key: "notes", label: " Notes" },
           ] as const).map(t => (
@@ -4829,6 +4780,7 @@ export default function JvPage() {
                 onOpenDetail={r => setModalResaDetail(r)}
               />
             )}
+            {onglet === "profils" && <TabProfils venues={venuesParProfil} />}
             {onglet === "stats" && (
               <TabStats reservations={reservations} jeux={jeux} />
             )}
