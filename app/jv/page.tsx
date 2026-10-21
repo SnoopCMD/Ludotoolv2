@@ -3359,12 +3359,55 @@ function TabReservations({
 
 const MOIS_LABELS = ["Jan", "Fév", "Mar", "Avr", "Mai", "Jun", "Jul", "Aoû", "Sep", "Oct", "Nov", "Déc"];
 
+const SEXE_LABELS: Record<string, string> = { H: "Homme (H)", F: "Femme (F)", N: "Non-binaire (N)" };
+const AGE_LABELS: Record<string, string> = { "11-16": "11 – 16 ans", "16-18": "16 – 18 ans", "18+": "18 ans +", parent: "Parent / Adulte" };
+const SEXE_COULEURS: Record<string, string> = { H: "var(--bleu)", F: "var(--rose)", N: "var(--purple)" };
+const AGE_COULEURS: Record<string, string> = { "11-16": "var(--vert)", "16-18": "var(--yellow)", "18+": "var(--orange)", parent: "var(--rouge)" };
+/** Tranches de fidélité : nombre de venues d'un usager sur la période. */
+const PALIERS_VENUES = [
+  { label: "1 venue", min: 1, max: 1 },
+  { label: "2 – 3 venues", min: 2, max: 3 },
+  { label: "4 – 9 venues", min: 4, max: 9 },
+  { label: "10 venues et +", min: 10, max: Infinity },
+];
+
+type Usager = { id: string; prenom: string; sexe: string | null; age: string | null; venues: number; premiere: string; derniere: string };
+
+/**
+ * Usagers uniques, d'après les joueurs rattachés à un profil. Une réservation
+ * compte pour une venue ; sexe et âge sont ceux de la venue la plus récente
+ * (un ado peut changer de tranche). `premieres` donne la toute première venue
+ * de chaque profil, toutes périodes confondues, pour repérer les nouveaux.
+ */
+function usagersDe(resas: JvReservation[]) {
+  const map = new Map<string, Usager>();
+  for (const r of [...resas].sort((a, b) => a.date_creneau.localeCompare(b.date_creneau))) {
+    const vus = new Set<string>();
+    for (const j of r.joueurs_details ?? []) {
+      if (!j.profil_id || vus.has(j.profil_id)) continue;
+      vus.add(j.profil_id);
+      const u = map.get(j.profil_id);
+      if (u) Object.assign(u, { venues: u.venues + 1, derniere: r.date_creneau, prenom: j.nom || u.prenom, sexe: j.sexe ?? u.sexe, age: j.age ?? u.age });
+      else map.set(j.profil_id, { id: j.profil_id, prenom: j.nom, sexe: j.sexe, age: j.age, venues: 1, premiere: r.date_creneau, derniere: r.date_creneau });
+    }
+  }
+  return [...map.values()];
+}
+
 function TabStats({ reservations, jeux }: { reservations: JvReservation[]; jeux: JvJeu[] }) {
-  const actives = reservations.filter(r => r.statut !== "annulee");
+  const toutesActives = useMemo(() => reservations.filter(r => r.statut !== "annulee"), [reservations]);
 
   const currentYear = new Date().getFullYear();
   const [selectedYear, setSelectedYear] = useState(currentYear);
   const [chronoView, setChronoView] = useState<"mois" | "annee">("mois");
+  // Période des chiffres hors « Activité » (qui a son propre sélecteur d'année).
+  const [periode, setPeriode] = useState<"tout" | number>("tout");
+  const [baseDemo, setBaseDemo] = useState<"usagers" | "participations">("usagers");
+
+  const actives = useMemo(
+    () => periode === "tout" ? toutesActives : toutesActives.filter(r => r.date_creneau.startsWith(String(periode))),
+    [toutesActives, periode]
+  );
 
   const allJoueurs = actives.flatMap(r =>
     r.joueurs_details && r.joueurs_details.length > 0
@@ -3376,13 +3419,13 @@ function TabStats({ reservations, jeux }: { reservations: JvReservation[]; jeux:
   const totalResas   = actives.length;
 
   const years = useMemo(() => {
-    const ys = new Set(actives.map(r => parseInt(r.date_creneau.slice(0, 4))));
+    const ys = new Set(toutesActives.map(r => parseInt(r.date_creneau.slice(0, 4))));
     return [...ys].sort();
-  }, [actives]);
+  }, [toutesActives]);
 
   const monthlyData = useMemo(() => {
     const data = Array.from({ length: 12 }, (_, i) => ({ mois: i, resas: 0, joueurs: 0 }));
-    actives
+    toutesActives
       .filter(r => parseInt(r.date_creneau.slice(0, 4)) === selectedYear)
       .forEach(r => {
         const m = parseInt(r.date_creneau.slice(5, 7)) - 1;
@@ -3390,27 +3433,56 @@ function TabStats({ reservations, jeux }: { reservations: JvReservation[]; jeux:
         data[m].joueurs += r.joueurs_details?.length || r.nb_joueurs;
       });
     return data;
-  }, [actives, selectedYear]);
+  }, [toutesActives, selectedYear]);
 
   const yearlyData = useMemo(() => {
     const map: Record<number, { resas: number; joueurs: number }> = {};
-    actives.forEach(r => {
+    toutesActives.forEach(r => {
       const y = parseInt(r.date_creneau.slice(0, 4));
       if (!map[y]) map[y] = { resas: 0, joueurs: 0 };
       map[y].resas++;
       map[y].joueurs += r.joueurs_details?.length || r.nb_joueurs;
     });
     return Object.entries(map).map(([y, v]) => ({ annee: parseInt(y), ...v })).sort((a, b) => a.annee - b.annee);
-  }, [actives]);
+  }, [toutesActives]);
 
+  // ── Usagers uniques (joueurs rattachés à un profil)
+  const usagers = useMemo(() => usagersDe(actives), [actives]);
+  const premieresVenues = useMemo(() => new Map(usagersDe(toutesActives).map(u => [u.id, u.premiere])), [toutesActives]);
+  const usagersAnnee = useMemo(
+    () => usagersDe(toutesActives.filter(r => r.date_creneau.startsWith(String(selectedYear)))),
+    [toutesActives, selectedYear]
+  );
+  const nouveauxAnnee = usagersAnnee.filter(u => premieresVenues.get(u.id)?.startsWith(String(selectedYear))).length;
+  const nbUsagers = usagers.length;
+  const joueursLies = allJoueurs.filter(j => j.profil_id).length;
+  const nouveaux = periode === "tout" ? nbUsagers : usagers.filter(u => premieresVenues.get(u.id)?.startsWith(String(periode))).length;
+  const venuesTotal = usagers.reduce((s, u) => s + u.venues, 0);
+  const revenus = usagers.filter(u => u.venues >= 2).length;
+  const pct = (n: number, total: number) => total > 0 ? `${Math.round((n / total) * 100)}%` : "—";
+
+  /** Une ligne du tableau de récurrence pour un sous-groupe d'usagers. */
+  const segment = (label: string, couleur: string, groupe: Usager[]) => {
+    const v = groupe.reduce((s, u) => s + u.venues, 0);
+    return { label, couleur, usagers: groupe.length, moyenne: groupe.length ? v / groupe.length : 0, revenus: groupe.filter(u => u.venues >= 2).length };
+  };
+  const segmentsSexe = [...["H", "F", "N"].map(k => segment(SEXE_LABELS[k], SEXE_COULEURS[k], usagers.filter(u => u.sexe === k))),
+    segment("Non renseigné", "var(--cream2)", usagers.filter(u => !u.sexe))];
+  const segmentsAge = [...Object.keys(AGE_LABELS).map(k => segment(AGE_LABELS[k], AGE_COULEURS[k], usagers.filter(u => u.age === k))),
+    segment("Non renseigné", "var(--cream2)", usagers.filter(u => !u.age))];
+  const habitues = [...usagers].sort((a, b) => b.venues - a.venues || b.derniere.localeCompare(a.derniere)).slice(0, 10);
+
+  const baseUsagers = baseDemo === "usagers";
+  const populationDemo: { sexe: string | null; age: string | null }[] = baseUsagers ? usagers : allJoueurs;
+  const totalDemo = populationDemo.length;
   const sexeCounts = { H: 0, F: 0, N: 0, "?": 0 };
-  allJoueurs.forEach(j => {
+  populationDemo.forEach(j => {
     if (j.sexe === "H" || j.sexe === "F" || j.sexe === "N") sexeCounts[j.sexe]++;
     else sexeCounts["?"]++;
   });
 
   const ageCounts: Record<string, number> = { "11-16": 0, "16-18": 0, "18+": 0, parent: 0, "?": 0 };
-  allJoueurs.forEach(j => {
+  populationDemo.forEach(j => {
     if (j.age && ageCounts[j.age] !== undefined) ageCounts[j.age]++;
     else ageCounts["?"]++;
   });
@@ -3445,17 +3517,31 @@ function TabStats({ reservations, jeux }: { reservations: JvReservation[]; jeux:
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
+      {/* Période */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: 'rgba(0,0,0,0.4)', marginRight: 4 }}>Période</span>
+        {(["tout", ...years] as const).map(p => (
+          <button key={p} onClick={() => setPeriode(p)}
+            className={periode === p ? 'pop-btn pop-btn-dark' : 'pop-btn pop-btn-outline'}
+            style={{ fontSize: 12, padding: '5px 12px' }}>
+            {p === "tout" ? "Depuis le début" : p}
+          </button>
+        ))}
+      </div>
+
       {/* KPIs */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }} className="sm:grid-cols-4">
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 }}>
         {[
           { label: "Réservations", value: totalResas, bg: 'var(--cream2)' },
-          { label: "Joueurs total", value: totalJoueurs, bg: '#baff29' },
-          { label: "Avec profil", value: allJoueurs.filter(j => j.sexe || j.age).length, bg: 'var(--bleu)' },
+          { label: "Participations", value: totalJoueurs, bg: '#baff29' },
+          { label: "Usagers uniques", value: nbUsagers, bg: 'var(--bleu)', sous: `${pct(joueursLies, totalJoueurs)} des participations liées à un profil` },
+          { label: periode === "tout" ? "Venues moy. / usager" : "Nouveaux usagers", value: periode === "tout" ? (nbUsagers ? (venuesTotal / nbUsagers).toFixed(1) : "—") : nouveaux, bg: 'var(--yellow)' },
           { label: "Jeux distincts", value: Object.keys(jeuMap).length, bg: 'var(--purple)' },
         ].map(k => (
           <div key={k.label} className="pop-card" style={{ background: k.bg, padding: '16px 20px' }}>
             <p className="bc" style={{ fontSize: 44, lineHeight: 1, margin: 0 }}>{k.value}</p>
             <p style={{ fontSize: 11, fontWeight: 700, color: 'rgba(0,0,0,0.5)', margin: 0, marginTop: 2 }}>{k.label}</p>
+            {k.sous && <p style={{ fontSize: 10, fontWeight: 600, color: 'rgba(0,0,0,0.45)', margin: 0, marginTop: 4 }}>{k.sous}</p>}
           </div>
         ))}
       </div>
@@ -3505,10 +3591,12 @@ function TabStats({ reservations, jeux }: { reservations: JvReservation[]; jeux:
                   );
                 })}
               </div>
-              <div style={{ display: 'flex', gap: 20, paddingTop: 8, borderTop: '2px solid var(--cream2)' }}>
+              <div style={{ display: 'flex', gap: '8px 20px', flexWrap: 'wrap', paddingTop: 8, borderTop: '2px solid var(--cream2)' }}>
                 <div><span className="bc" style={{ fontSize: 22 }}>{totalAnnee}</span> <span style={{ fontSize: 11, color: 'rgba(0,0,0,0.4)', fontWeight: 600 }}>réservations</span></div>
                 <div><span className="bc" style={{ fontSize: 22 }}>{joueursTotalAnnee}</span> <span style={{ fontSize: 11, color: 'rgba(0,0,0,0.4)', fontWeight: 600 }}>joueurs</span></div>
                 <div><span className="bc" style={{ fontSize: 22 }}>{totalAnnee > 0 ? (joueursTotalAnnee / totalAnnee).toFixed(1) : "—"}</span> <span style={{ fontSize: 11, color: 'rgba(0,0,0,0.4)', fontWeight: 600 }}>moy./rés.</span></div>
+                <div><span className="bc" style={{ fontSize: 22 }}>{usagersAnnee.length}</span> <span style={{ fontSize: 11, color: 'rgba(0,0,0,0.4)', fontWeight: 600 }}>usagers uniques</span></div>
+                <div><span className="bc" style={{ fontSize: 22 }}>{nouveauxAnnee}</span> <span style={{ fontSize: 11, color: 'rgba(0,0,0,0.4)', fontWeight: 600 }}>nouveaux</span></div>
               </div>
             </div>
           );
@@ -3553,20 +3641,30 @@ function TabStats({ reservations, jeux }: { reservations: JvReservation[]; jeux:
 
         {/* Démographie */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: 2, padding: 3, background: 'var(--cream2)', border: '2px solid var(--ink)', borderRadius: 10 }}>
+              {(["usagers", "participations"] as const).map(v => (
+                <button key={v} onClick={() => setBaseDemo(v)}
+                  style={{ padding: '5px 12px', borderRadius: 7, fontSize: 11, fontWeight: 700, border: 'none', cursor: 'pointer', background: baseDemo === v ? 'var(--ink)' : 'transparent', color: baseDemo === v ? 'var(--white)' : 'rgba(0,0,0,0.5)' }}>
+                  {v === "usagers" ? "Par usager unique" : "Par participation"}
+                </button>
+              ))}
+            </div>
+            <span style={{ fontSize: 11, color: 'rgba(0,0,0,0.45)', fontWeight: 600 }}>
+              {baseUsagers
+                ? `${nbUsagers} usager${nbUsagers > 1 ? "s" : ""} avec profil, comptés une fois chacun`
+                : `${totalJoueurs} participations, un habitué compte à chaque venue`}
+            </span>
+          </div>
           <div className="pop-card" style={{ background: 'var(--cream)', padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
             <span className="bc" style={{ fontSize: 18 }}>Répartition par sexe</span>
-            <StatBar label="Homme (H)" count={sexeCounts.H} total={totalJoueurs} color="var(--bleu)" />
-            <StatBar label="Femme (F)" count={sexeCounts.F} total={totalJoueurs} color="var(--rose)" />
-            <StatBar label="Non-binaire (N)" count={sexeCounts.N} total={totalJoueurs} color="var(--purple)" />
-            <StatBar label="Non renseigné" count={sexeCounts["?"]} total={totalJoueurs} color="var(--cream2)" />
+            {(["H", "F", "N"] as const).map(k => <StatBar key={k} label={SEXE_LABELS[k]} count={sexeCounts[k]} total={totalDemo} color={SEXE_COULEURS[k]} />)}
+            <StatBar label="Non renseigné" count={sexeCounts["?"]} total={totalDemo} color="var(--cream2)" />
           </div>
           <div className="pop-card" style={{ background: 'var(--cream)', padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
             <span className="bc" style={{ fontSize: 18 }}>Tranche d&apos;âge</span>
-            <StatBar label="11 – 16 ans" count={ageCounts["11-16"]} total={totalJoueurs} color="var(--vert)" />
-            <StatBar label="16 – 18 ans" count={ageCounts["16-18"]} total={totalJoueurs} color="var(--yellow)" />
-            <StatBar label="18 ans +" count={ageCounts["18+"]} total={totalJoueurs} color="var(--orange)" />
-            <StatBar label="Parent / Adulte" count={ageCounts["parent"]} total={totalJoueurs} color="var(--rouge)" />
-            <StatBar label="Non renseigné" count={ageCounts["?"]} total={totalJoueurs} color="var(--cream2)" />
+            {Object.keys(AGE_LABELS).map(k => <StatBar key={k} label={AGE_LABELS[k]} count={ageCounts[k]} total={totalDemo} color={AGE_COULEURS[k]} />)}
+            <StatBar label="Non renseigné" count={ageCounts["?"]} total={totalDemo} color="var(--cream2)" />
           </div>
         </div>
 
@@ -3600,6 +3698,72 @@ function TabStats({ reservations, jeux }: { reservations: JvReservation[]; jeux:
             </div>
           )}
         </div>
+      </div>
+
+      {/* Récurrence */}
+      <div className="pop-card" style={{ background: 'var(--cream)', padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+          <span className="bc" style={{ fontSize: 18 }}>Récurrence</span>
+          <span style={{ fontSize: 11, color: 'rgba(0,0,0,0.45)', fontWeight: 600 }}>Venues par usager sur la période, d&apos;après les profils</span>
+        </div>
+        {nbUsagers === 0 ? (
+          <p style={{ fontSize: 13, color: 'rgba(0,0,0,0.4)', fontWeight: 600, margin: 0 }}>
+            Aucune réservation liée à un profil sur cette période. Scanne les cartes (ou « 🔗 Lier une carte » sur les anciennes réservations) pour alimenter ces chiffres.
+          </p>
+        ) : (
+          <>
+            <div style={{ display: 'flex', gap: '8px 24px', flexWrap: 'wrap' }}>
+              <div><span className="bc" style={{ fontSize: 26 }}>{(venuesTotal / nbUsagers).toFixed(1)}</span> <span style={{ fontSize: 11, color: 'rgba(0,0,0,0.45)', fontWeight: 600 }}>venues moy. / usager</span></div>
+              <div><span className="bc" style={{ fontSize: 26 }}>{pct(revenus, nbUsagers)}</span> <span style={{ fontSize: 11, color: 'rgba(0,0,0,0.45)', fontWeight: 600 }}>revenus au moins une fois ({revenus})</span></div>
+              <div><span className="bc" style={{ fontSize: 26 }}>{nouveaux}</span> <span style={{ fontSize: 11, color: 'rgba(0,0,0,0.45)', fontWeight: 600 }}>nouveaux usagers</span></div>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {PALIERS_VENUES.map(pv => (
+                <StatBar key={pv.label} label={pv.label} count={usagers.filter(u => u.venues >= pv.min && u.venues <= pv.max).length} total={nbUsagers} color="var(--ink)" />
+              ))}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
+              {([["Par sexe", segmentsSexe], ["Par tranche d'âge", segmentsAge]] as const).map(([titre, lignes]) => (
+                <div key={titre} style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                    <thead>
+                      <tr style={{ color: 'rgba(0,0,0,0.45)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '.05em' }}>
+                        <th style={{ textAlign: 'left', padding: '4px 6px 6px 0' }}>{titre}</th>
+                        <th style={{ textAlign: 'right', padding: '4px 6px 6px' }}>Usagers</th>
+                        <th style={{ textAlign: 'right', padding: '4px 6px 6px' }}>Venues moy.</th>
+                        <th style={{ textAlign: 'right', padding: '4px 0 6px 6px' }}>Revenus</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {lignes.filter(l => l.usagers > 0 || l.label !== "Non renseigné").map(l => (
+                        <tr key={l.label} style={{ borderTop: '1.5px solid var(--cream2)', opacity: l.usagers ? 1 : 0.4 }}>
+                          <td style={{ padding: '6px 6px 6px 0', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                            <span style={{ display: 'inline-block', width: 9, height: 9, borderRadius: 3, background: l.couleur, border: '1.5px solid var(--ink)', marginRight: 6, verticalAlign: -1 }} />
+                            {l.label}
+                          </td>
+                          <td style={{ padding: 6, textAlign: 'right', fontWeight: 900 }}>{l.usagers} <span style={{ fontWeight: 600, color: 'rgba(0,0,0,0.4)', fontSize: 10 }}>{pct(l.usagers, nbUsagers)}</span></td>
+                          <td style={{ padding: 6, textAlign: 'right', fontWeight: 700 }}>{l.usagers ? l.moyenne.toFixed(1) : "—"}</td>
+                          <td style={{ padding: '6px 0 6px 6px', textAlign: 'right', fontWeight: 700 }}>{pct(l.revenus, l.usagers)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: 'rgba(0,0,0,0.4)' }}>Habitués</span>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {habitues.map(u => (
+                  <span key={u.id} title={`Première venue le ${format(parseISO(u.premiere), "d MMM yyyy", { locale: fr })}, dernière le ${format(parseISO(u.derniere), "d MMM yyyy", { locale: fr })}`}
+                    style={{ fontSize: 12, fontWeight: 700, background: 'var(--white)', border: '2px solid var(--ink)', borderRadius: 8, padding: '4px 10px' }}>
+                    {u.prenom || "?"} <span style={{ color: 'rgba(0,0,0,0.45)', fontWeight: 600 }}>· {u.venues} venue{u.venues > 1 ? "s" : ""}</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
