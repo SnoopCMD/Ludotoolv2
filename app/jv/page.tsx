@@ -2185,9 +2185,12 @@ function ModalReservationDetail({
     return [...new Set([reservation.heure_debut, ...free].filter(Boolean))].sort() as string[];
   }, [posResas, plage, reservation.heure_debut]);
 
-  // Quand l'heure de début change, recaler heureFin sur la valeur par défaut (60 min)
+  // Quand l'heure de début change, recaler heureFin sur la valeur par défaut (60 min).
+  // Pas à l'ouverture : la fin enregistrée doit survivre à un simple « Enregistrer ».
+  const heureDebutInitiale = useRef(reservation.heure_debut);
   useEffect(() => {
-    if (!heureDebut) return;
+    if (!heureDebut || heureDebut === heureDebutInitiale.current) return;
+    heureDebutInitiale.current = "";
     const start = parseTime(heureDebut);
     const windowEnd = plage ? parseTime(plage.fin) : start + 60;
     const defaultFin = minsToTime(Math.min(start + 60, windowEnd));
@@ -2234,7 +2237,7 @@ function ModalReservationDetail({
     const nomPrincipal = joueurs[0]?.nom.trim() ?? "";
     if (!nomPrincipal) return;
     setIsSaving(true);
-    const joueursProfils = await enregistrerProfils(joueurs);
+    const joueursProfils = await enregistrerProfils(joueurs, { venue: reservation.date_creneau >= format(new Date(), "yyyy-MM-dd") });
     const patch: Record<string, any> = {
       adherent_nom: nomPrincipal, nb_joueurs: nbJoueurs,
       joueurs_details: JSON.stringify(joueursProfils), notes: notes.trim() || null,
@@ -2394,7 +2397,7 @@ function ModalReservationDetail({
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <label style={{ ...SlabelD, marginBottom: 0 }}>Adhérent{nbJoueurs > 1 ? "s" : ""}</label>
             {joueurs.map((jj, i) => (
-              <BlocJoueur key={i} joueur={jj} index={i} padding={12} radius={10}
+              <BlocJoueur key={i} joueur={jj} index={i} padding={12} radius={10} existant
                 exclus={joueurs.filter((_, k) => k !== i).map(x => x.profil_id).filter((x): x is string => !!x)}
                 onChange={patch => updateJoueur(i, patch)} />
             ))}

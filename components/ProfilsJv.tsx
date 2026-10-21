@@ -70,11 +70,13 @@ export const joueurDepuisProfil = (p: ProfilJv): JoueurDetail =>
  * met à jour ceux qu'on a retouchés. Un échec ne bloque pas la réservation :
  * le joueur reste simplement sans profil lié.
  */
-export async function enregistrerProfils(joueurs: JoueurDetail[]): Promise<JoueurDetail[]> {
+export async function enregistrerProfils(joueurs: JoueurDetail[], { venue = true } = {}): Promise<JoueurDetail[]> {
   return Promise.all(joueurs.map(async j => {
     const prenom = j.nom.trim();
     if (!prenom) return j;
-    const champs = { prenom, sexe: j.sexe, age: j.age, utilise: true, ...(j.carte ? { numero_carte: j.carte } : {}) };
+    // `venue` : faux quand on rattache une carte à une réservation passée, pour
+    // ne pas faire passer cette vieille venue pour la dernière en date.
+    const champs = { prenom, sexe: j.sexe, age: j.age, utilise: venue, ...(j.carte ? { numero_carte: j.carte } : {}) };
     if (j.profil_id) {
       const p = await envoyer(`/api/jv-profils/${j.profil_id}`, "PUT", champs);
       return p ? { ...j, carte: p.numero_carte } : j;
@@ -161,7 +163,7 @@ function RechercheProfil({ autoFocus, exclus, onProfil, onCarteInconnue }: {
 
 // ─── Bloc joueur d'une réservation ────────────────────────────────────────────
 
-export function BlocJoueur({ joueur, index, autoFocus, exclus, onChange, radius = 12, padding = 14 }: {
+export function BlocJoueur({ joueur, index, autoFocus, exclus, onChange, radius = 12, padding = 14, existant = false }: {
   joueur: JoueurDetail;
   index: number;
   autoFocus?: boolean;
@@ -169,8 +171,19 @@ export function BlocJoueur({ joueur, index, autoFocus, exclus, onChange, radius 
   onChange: (patch: Partial<JoueurDetail>) => void;
   radius?: number;
   padding?: number;
+  /** Joueur d'une réservation déjà enregistrée : la recherche reste repliée
+   *  derrière un bouton, et lier une carte garde ce qui a été saisi à l'époque. */
+  existant?: boolean;
 }) {
   const lie = !!joueur.profil_id;
+  const [rechercheOuverte, setRechercheOuverte] = useState(!existant || !joueur.nom.trim());
+  const detacher = () => existant
+    ? onChange({ profil_id: null, carte: null })
+    : onChange(joueurVide());
+  const lier = (p: ProfilJv) => existant
+    // Le profil complète la réservation sans écraser ce qu'elle disait déjà.
+    ? onChange({ profil_id: p.id, carte: p.numero_carte, nom: p.prenom, sexe: joueur.sexe ?? p.sexe, age: joueur.age ?? p.age })
+    : onChange(joueurDepuisProfil(p));
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8, padding, background: "var(--cream2)", border: "2px solid var(--ink)", borderRadius: radius }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -183,7 +196,7 @@ export function BlocJoueur({ joueur, index, autoFocus, exclus, onChange, radius 
           </span>
         )}
         {(lie || joueur.carte) && (
-          <button type="button" title="Détacher le profil" onClick={() => onChange(joueurVide())}
+          <button type="button" title="Détacher le profil" onClick={detacher}
             style={{ border: "none", background: "none", cursor: "pointer", fontSize: 12, fontWeight: 900, padding: 0 }}>✕</button>
         )}
       </div>
@@ -193,9 +206,15 @@ export function BlocJoueur({ joueur, index, autoFocus, exclus, onChange, radius 
           Carte inconnue : complète le prénom, le profil sera créé à la validation.
         </p>
       )}
-      {!lie && !joueur.carte && (
-        <RechercheProfil autoFocus={autoFocus} exclus={exclus}
-          onProfil={p => onChange(joueurDepuisProfil(p))}
+      {!lie && !joueur.carte && !rechercheOuverte && (
+        <button type="button" onClick={() => setRechercheOuverte(true)} className="pop-btn pop-btn-outline"
+          style={{ alignSelf: "flex-start", fontSize: 12, padding: "5px 12px", background: "var(--white)" }}>
+          🔗 Lier une carte
+        </button>
+      )}
+      {!lie && !joueur.carte && rechercheOuverte && (
+        <RechercheProfil autoFocus={autoFocus || existant} exclus={exclus}
+          onProfil={lier}
           onCarteInconnue={carte => onChange({ carte })} />
       )}
 
