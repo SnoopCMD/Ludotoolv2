@@ -38,6 +38,12 @@ export const SEANCES: Table = {
   json: ['participants'],
 };
 
+export const RETOURS: Table = {
+  nom: 'reunion_retours',
+  colonnes: ['frequentation', 'note', 'a_refaire', 'positif', 'ameliorer', 'idees'],
+  json: [],
+};
+
 /** Les tableaux JSON sortent de la base en texte : on les rend au client parsés. */
 export function lireLigne(t: Table, r: any) {
   const out = { ...r };
@@ -58,10 +64,11 @@ function valeursAutorisees(t: Table, body: any) {
   return champs;
 }
 
-export async function inserer(t: Table, body: any, creePar: string | null) {
+/** `fixes` : colonnes posées à la création seulement (ex. l'événement d'un retour), jamais modifiables ensuite. */
+export async function inserer(t: Table, body: any, creePar: string | null, fixes: Record<string, unknown> = {}) {
   const db = await getDB();
   const id = crypto.randomUUID();
-  const champs: Record<string, unknown> = { ...valeursAutorisees(t, body), id, cree_par: creePar };
+  const champs: Record<string, unknown> = { ...valeursAutorisees(t, body), ...fixes, id, cree_par: creePar };
   const cles = Object.keys(champs);
   await db.prepare(
     `INSERT INTO ${t.nom} (${cles.join(',')}) VALUES (${cles.map(() => '?').join(',')})`

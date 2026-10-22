@@ -69,7 +69,7 @@ En production, ce sont des secrets Cloudflare (`wrangler secret put …`).
 | `/inventaire` | Parc de jeux : recherche, fiches, statuts, doubles |
 | `/atelier` | Jeux en préparation et étapes (plastification, contenu, étiquette, équipement, encodage, notice), réceptions de commandes |
 | `/agenda` | Planning de l'équipe : horaires, absences, événements, échanges de jours, PDF |
-| `/reunion` | Vie de l'équipe : événements à venir, points à aborder, missions priorisées, préparation d'événements, réunions et comptes rendus |
+| `/reunion` | Vie de l'équipe (Bureau) : événements à venir, points à aborder, missions priorisées, événements (préparation, passés et retours), réunions et comptes rendus |
 | `/store` | Paniers d'achat (jeux de société, jeux vidéo, jouets), commandes communes, devis PDF |
 | `/catalogage` | Attribution des codes Syracuse |
 | `/jv` | Jeux vidéo : catalogue, sélections par console, rotations, réservations de postes, stats, notes |
@@ -154,7 +154,7 @@ jeu, servi par `/api/regles/[ean]` ; `catalogue.pdf_url` pointe vers cette route
 | `utilisateurs`, `utilisateur_sessions` | Comptes (un par membre de `equipe`) et sessions ouvertes |
 | `utilisateur_preferences` | Modules choisis sur le tableau de bord, par compte |
 | `suggestions_commentaires` | Réponses aux suggestions ; `lu_par_auteur` alimente la pastille de l'auteur |
-| `reunion_fiches`, `reunion_evenements`, `reunion_seances` | Page Réunion : points et missions, événements en préparation, séances et comptes rendus |
+| `reunion_fiches`, `reunion_evenements`, `reunion_seances`, `reunion_retours` | Page Réunion : points et missions, événements en préparation, séances et comptes rendus, retours sur événement |
 
 Les migrations de `migrations/` sont appliquées manuellement :
 
@@ -233,6 +233,16 @@ Trois objets, trois tables :
   (recréé si la copie a été supprimée côté agenda). Les responsables y deviennent
   les membres de l'événement : un créneau horaire compte donc dans leurs heures,
   comme un événement saisi directement dans l'agenda.
+- **Les retours sur événement** (`reunion_retours`) : un par événement passé
+  (ressenti sur 5, fréquentation, « à refaire ? », ce qui a marché, à
+  améliorer, idées pour la prochaine fois). L'onglet *Événements › Passés*
+  liste les événements du Bureau terminés, annulés ou dont la date est
+  dépassée, **et ceux de l'agenda sans fiche au Bureau** (hors réunions).
+  Écrire le retour d'un événement de l'agenda l'importe d'abord dans
+  `reunion_evenements` (statut `termine`, `agenda_id` renseigné) : un retour
+  porte toujours sur une ligne du Bureau. Écrire un retour passe aussi
+  l'événement à `termine`. Les événements passés depuis moins de deux mois et
+  sans retour sont proposés à l'ordre du jour des réunions.
 - **Les séances** (`reunion_seances`) : une seule en cours à la fois. Lancer une
   réunion avec un ordre du jour vide propose des points tirés des données
   (missions en retard, urgentes ou sans responsable, événements proches ou à

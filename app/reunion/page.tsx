@@ -56,6 +56,19 @@ type Seance = {
   terminee_le: string | null;
 };
 
+type Retour = {
+  id: string;
+  evenement_id: string;
+  frequentation: number | null;
+  note: number | null;
+  a_refaire: "oui" | "a_voir" | "non" | null;
+  positif: string | null;
+  ameliorer: string | null;
+  idees: string | null;
+  cree_par: string | null;
+  cree_le: string;
+};
+
 type EvAgenda = {
   id: string; parent_id?: string | null; titre: string; type: string;
   date_debut: string; date_fin: string; heure_debut?: string; heure_fin?: string; membres: string[];
@@ -90,6 +103,15 @@ const STATUTS_EV: { v: string; label: string; couleur: string }[] = [
 ];
 const statutEv = (v: string) => STATUTS_EV.find(s => s.v === v) ?? STATUTS_EV[0];
 const EV_ARCHIVE = ["termine", "annule"];
+
+/** Passé : clôturé à la main, ou dont la dernière date est derrière nous. */
+const evPasse = (e: EvPrep) => EV_ARCHIVE.includes(e.statut) || !!(e.date_fin || e.date_debut) && (e.date_fin || e.date_debut)! < aujourdhui();
+
+const A_REFAIRE: { v: "oui" | "a_voir" | "non"; label: string; couleur: string }[] = [
+  { v: "oui",    label: "👍 À refaire",   couleur: "var(--vert)" },
+  { v: "a_voir", label: "🤔 À revoir",    couleur: "var(--yellow)" },
+  { v: "non",    label: "👎 Pas à refaire", couleur: "var(--rose)" },
+];
 
 // Côté agenda, ces types sont des absences ou des heures, pas des événements à préparer.
 const estEvenementAgenda = (type: string) =>
@@ -196,7 +218,7 @@ type Suggestion = { cle: string; titre: string; description: string; priorite: n
  * ce qui dérape (retards, urgences, tâches sans responsable), ce qui approche
  * (événements à préparer) et ce qui mérite un bilan.
  */
-function suggererPoints(fiches: Fiche[], evs: EvPrep[], agenda: EvAgenda[], seances: Seance[], nomDe: (id: string) => string): Suggestion[] {
+function suggererPoints(fiches: Fiche[], evs: EvPrep[], retours: Retour[], agenda: EvAgenda[], seances: Seance[], nomDe: (id: string) => string): Suggestion[] {
   const out: Suggestion[] = [];
   const auj = aujourdhui();
   const missions = fiches.filter(f => f.genre === "mission" && f.statut !== "fait");
@@ -219,14 +241,21 @@ function suggererPoints(fiches: Fiche[], evs: EvPrep[], agenda: EvAgenda[], sean
     });
   }
 
+  // Retours à faire : événements passés depuis moins de deux mois, sans retour écrit.
+  const avecRetour = new Set(retours.map(r => r.evenement_id));
+  const recent = format(addDays(new Date(), -60), "yyyy-MM-dd");
   for (const ev of evs) {
-    if (EV_ARCHIVE.includes(ev.statut)) continue;
+    if (ev.statut === "annule") continue;
+    const fin = ev.date_fin || ev.date_debut;
+    if (evPasse(ev)) {
+      if (!avecRetour.has(ev.id) && (!fin || fin >= recent)) {
+        out.push({ cle: `bilan-${ev.id}`, titre: `Retour sur : ${ev.titre}`, priorite: 1, evenement_id: ev.id, description: "Ce qui a marché, ce qu'on change la prochaine fois — à noter ensuite dans Événements › Passés." });
+      }
+      continue;
+    }
     const liees = fiches.filter(f => f.evenement_id === ev.id && f.genre === "mission");
     const faites = liees.filter(f => f.statut === "fait").length;
-    const fin = ev.date_fin || ev.date_debut;
-    if (fin && fin < auj) {
-      out.push({ cle: `bilan-${ev.id}`, titre: `Bilan : ${ev.titre}`, priorite: 1, evenement_id: ev.id, description: "Ce qui a marché, ce qu'on change la prochaine fois." });
-    } else if (ev.date_debut && joursAvant(ev.date_debut) <= 30 && ev.statut !== "pret") {
+    if (ev.date_debut && joursAvant(ev.date_debut) <= 30 && ev.statut !== "pret") {
       const j = joursAvant(ev.date_debut);
       out.push({
         cle: `prep-${ev.id}`, evenement_id: ev.id, priorite: j <= 7 ? 2 : 1,
@@ -674,13 +703,22 @@ function ModalFiche({ initial, equipe, evenements, onFermer, onEnregistre, onSup
 
 // ─── Fenêtre d'un événement en préparation ────────────────────────────────────
 
-function ModalEvenement({ initial, equipe, evenements, fiches, connecte, onFermer, onEvenement, onEvSupprime, onFiche, onOuvrirFiche, onBasculerFiche }: {
-  initial: Partial<EvPrep>; equipe: Membre[]; evenements: EvPrep[]; fiches: Fiche[]; connecte: boolean;
+function ModalEvenement({ initial, equipe, evenements, fiches, retour, connecte, onFermer, onEvenement, onEvSupprime, onFiche, onOuvrirFiche, onBasculerFiche, onOuvrirRetour }: {
+  initial: Partial<EvPrep>; equipe: Membre[]; evenements: EvPrep[]; fiches: Fiche[]; retour?: Retour; connecte: boolean;
   onFermer: () => void; onEvenement: (e: EvPrep) => void; onEvSupprime: (id: string) => void;
   onFiche: (f: Fiche) => void; onOuvrirFiche: (f: Partial<Fiche>) => void; onBasculerFiche: (f: Fiche) => void;
+  onOuvrirRetour: (e: EvPrep) => void;
 }) {
   const [ev, setEv] = useState<Partial<EvPrep>>({ type: "Animation", statut: "idee", responsables: [], ...initial });
   const [modifie, setModifie] = useState(!initial.id);
+  // Tant qu'on n'a rien touché, la fenêtre suit la base : écrire le retour
+  // passe l'événement « terminé », un autre poste peut aussi l'avoir modifié.
+  const externe = ev.id ? evenements.find(x => x.id === ev.id) : undefined;
+  const [externeVu, setExterneVu] = useState(externe);
+  if (externe !== externeVu) {
+    setExterneVu(externe);
+    if (externe && !modifie) setEv(externe);
+  }
   const [envoi, setEnvoi] = useState(false);
   const [nouvelle, setNouvelle] = useState("");
   const maj = (c: Partial<EvPrep>) => { setEv(p => ({ ...p, ...c })); setModifie(true); };
@@ -778,6 +816,15 @@ function ModalEvenement({ initial, equipe, evenements, fiches, connecte, onFerme
         </button>
       </div>
 
+      {ev.id && ev.statut !== "annule" && evPasse(ev as EvPrep) && (
+        <Section titre="📝 Retour sur l'événement" droite={(retour || connecte) &&
+          <button className="pop-btn pop-btn-outline" style={{ padding: "3px 10px", fontSize: 13 }} onClick={() => onOuvrirRetour(ev as EvPrep)}>
+            {retour ? "✏️ Modifier" : "+ Faire le retour"}
+          </button>}>
+          {retour ? <ResumeRetour r={retour} equipe={equipe} complet /> : <Vide>Pas encore de retour. Ce qui a marché, ce qu’on change la prochaine fois ?</Vide>}
+        </Section>
+      )}
+
       {ev.id && (
         <Section titre={`Missions de préparation${missions.length ? ` · ${faites}/${missions.length}` : ""}`}
           droite={connecte && <button className="pop-btn pop-btn-outline" style={{ padding: "3px 10px", fontSize: 13 }}
@@ -798,6 +845,152 @@ function ModalEvenement({ initial, equipe, evenements, fiches, connecte, onFerme
           ))}
         </Section>
       )}
+    </Modal>
+  );
+}
+
+// ─── Retour sur événement ─────────────────────────────────────────────────────
+
+function Etoiles({ valeur, onChange, taille = 22 }: { valeur: number | null; onChange?: (v: number | null) => void; taille?: number }) {
+  return (
+    <span style={{ display: "inline-flex", gap: 2 }} title={valeur ? `${valeur}/5` : "Pas de note"}>
+      {[1, 2, 3, 4, 5].map(n => {
+        const plein = !!valeur && n <= valeur;
+        const style: React.CSSProperties = { fontSize: taille, lineHeight: 1, color: plein ? "#f59e0b" : "rgba(0,0,0,0.2)" };
+        return onChange
+          ? <button key={n} type="button" onClick={() => onChange(valeur === n ? null : n)} aria-label={`${n} sur 5`}
+              style={{ ...style, border: "none", background: "none", cursor: "pointer", padding: 0, fontFamily: "inherit" }}>★</button>
+          : <span key={n} style={style}>★</span>;
+      })}
+    </span>
+  );
+}
+
+/** Le retour en lecture : condensé sur les cartes, complet dans la fiche de l'événement. */
+function ResumeRetour({ r, equipe, complet }: { r: Retour; equipe: Membre[]; complet?: boolean }) {
+  const refaire = A_REFAIRE.find(a => a.v === r.a_refaire);
+  const rubriques = [
+    { titre: "👍 Ce qui a marché", texte: r.positif },
+    { titre: "🔧 À améliorer", texte: r.ameliorer },
+    { titre: "💡 Pour la prochaine fois", texte: r.idees },
+  ].filter(x => x.texte?.trim());
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        {r.note && <Etoiles valeur={r.note} taille={16} />}
+        {r.frequentation != null && <Pastille texte={`👥 ${r.frequentation} personne${r.frequentation > 1 ? "s" : ""}`} fond="var(--white)" />}
+        {refaire && <Pastille texte={refaire.label} fond={refaire.couleur} />}
+        {complet && <Auteur id={r.cree_par} equipe={equipe} />}
+      </div>
+      {complet
+        ? rubriques.map(x => (
+            <div key={x.titre}>
+              <div style={etiquette}>{x.titre}</div>
+              <div style={{ fontSize: 14, whiteSpace: "pre-wrap", lineHeight: 1.5 }}>{x.texte}</div>
+            </div>
+          ))
+        : rubriques[0] && (
+            <div style={{ fontSize: 13, opacity: 0.75, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", whiteSpace: "pre-wrap" }}>
+              {rubriques[0].texte}
+            </div>
+          )}
+    </div>
+  );
+}
+
+/** L'événement visé par un retour : un événement du Bureau, ou de l'agenda seul (importé à l'enregistrement). */
+type CibleRetour = { titre: string; type: string; date: string | null; date_fin?: string | null; evenement_id?: string; agenda_id?: string };
+
+function ModalRetour({ cible, initial, equipe, onFermer, onEnregistre, onSupprime }: {
+  cible: CibleRetour; initial?: Retour; equipe: Membre[];
+  onFermer: () => void; onEnregistre: (r: Retour, ev?: EvPrep) => void; onSupprime: (id: string) => void;
+}) {
+  const [r, setR] = useState<Partial<Retour>>(initial ?? {});
+  const [envoi, setEnvoi] = useState(false);
+  const maj = (c: Partial<Retour>) => setR(p => ({ ...p, ...c }));
+  const t = typeEv(cible.type);
+
+  const enregistrer = async () => {
+    if (envoi) return;
+    setEnvoi(true);
+    const corps = {
+      frequentation: r.frequentation ?? null, note: r.note ?? null, a_refaire: r.a_refaire ?? null,
+      positif: r.positif ?? "", ameliorer: r.ameliorer ?? "", idees: r.idees ?? "",
+    };
+    if (initial) {
+      const res = await envoyer<Retour>(`/api/reunion/retours/${initial.id}`, "PUT", corps);
+      if (res) onEnregistre(res);
+    } else {
+      const res = await envoyer<{ retour: Retour; evenement: EvPrep }>("/api/reunion/retours", "POST",
+        { ...corps, evenement_id: cible.evenement_id ?? null, agenda_id: cible.agenda_id ?? null });
+      if (res) onEnregistre(res.retour, res.evenement);
+    }
+    setEnvoi(false);
+  };
+
+  const supprimer = async () => {
+    if (!initial || !confirm("Supprimer ce retour ?")) return;
+    if (await envoyer(`/api/reunion/retours/${initial.id}`, "DELETE")) onSupprime(initial.id);
+  };
+
+  return (
+    <Modal titre={`📝 Retour · ${cible.titre}`} onFermer={onFermer} large>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", fontSize: 14 }}>
+        <Pastille texte={`${t.icone} ${cible.type}`} fond={t.couleur} />
+        {cible.date && <span style={{ fontWeight: 600 }}>
+          {dateLongue(cible.date)}{cible.date_fin && cible.date_fin !== cible.date ? ` → ${dateLongue(cible.date_fin)}` : ""}
+        </span>}
+        {initial && <span style={{ marginLeft: "auto" }}><Auteur id={initial.cree_par} equipe={equipe} /></span>}
+      </div>
+      {!initial && cible.agenda_id && !cible.evenement_id && (
+        <div style={{ fontSize: 13, opacity: 0.7 }}>
+          Cet événement vient de l’agenda : il rejoindra les événements du Bureau, marqué terminé.
+        </div>
+      )}
+      <div className="pop-grid-2" style={{ gap: 12 }}>
+        <div>
+          <label style={etiquette}>Ressenti global</label>
+          <Etoiles valeur={r.note ?? null} onChange={v => maj({ note: v })} taille={28} />
+        </div>
+        <div>
+          <label style={etiquette}>Fréquentation (personnes accueillies)</label>
+          <input type="number" min={0} inputMode="numeric" value={r.frequentation ?? ""} style={inp}
+            onChange={e => maj({ frequentation: e.target.value === "" ? null : Math.max(0, parseInt(e.target.value, 10) || 0) })} />
+        </div>
+      </div>
+      <div>
+        <label style={etiquette}>À refaire ?</label>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {A_REFAIRE.map(a => {
+            const actif = r.a_refaire === a.v;
+            return (
+              <button key={a.v} type="button" onClick={() => maj({ a_refaire: actif ? null : a.v })} style={{
+                fontFamily: "inherit", cursor: "pointer", fontSize: 13, padding: "5px 10px", borderRadius: 6,
+                fontWeight: actif ? 900 : 600, background: actif ? a.couleur : "var(--white)",
+                border: actif ? "2px solid var(--ink)" : "2px solid rgba(0,0,0,0.15)",
+                boxShadow: actif ? "2px 2px 0 var(--ink)" : "none",
+              }}>{a.label}</button>
+            );
+          })}
+        </div>
+      </div>
+      <div>
+        <label style={etiquette}>👍 Ce qui a marché</label>
+        <TexteAuto value={r.positif ?? ""} onChange={v => maj({ positif: v })} placeholder="Ambiance, jeux qui ont plu, organisation…" />
+      </div>
+      <div>
+        <label style={etiquette}>🔧 À améliorer</label>
+        <TexteAuto value={r.ameliorer ?? ""} onChange={v => maj({ ameliorer: v })} placeholder="Ce qui a coincé, ce qui a manqué…" />
+      </div>
+      <div>
+        <label style={etiquette}>💡 Idées pour la prochaine fois</label>
+        <TexteAuto value={r.idees ?? ""} onChange={v => maj({ idees: v })} placeholder="À garder en tête si on le refait" />
+      </div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+        {initial && <button className="pop-btn pop-btn-outline" onClick={supprimer} style={{ marginRight: "auto", color: "#b91c1c" }}>Supprimer</button>}
+        <button className="pop-btn pop-btn-outline" onClick={onFermer}>Annuler</button>
+        <button className="pop-btn pop-btn-dark" onClick={enregistrer} disabled={envoi}>{envoi ? "…" : "Enregistrer"}</button>
+      </div>
     </Modal>
   );
 }
@@ -1246,6 +1439,61 @@ function ApercuEvenements({ items, onOuvrir }: { items: ItemAVenir[]; onOuvrir: 
   );
 }
 
+// ─── Événements passés ────────────────────────────────────────────────────────
+
+type ItemPasse = CibleRetour & { cle: string; prep?: EvPrep; retour?: Retour; annule: boolean };
+
+function LignePasse({ it, equipe, connecte, onOuvrirEv, onRetour }: {
+  it: ItemPasse; equipe: Membre[]; connecte: boolean; onOuvrirEv: (e: EvPrep) => void; onRetour: (it: ItemPasse) => void;
+}) {
+  const t = typeEv(it.type);
+  const membres = it.prep?.responsables ?? [];
+  return (
+    <div className="pop-card" style={{ padding: 0, overflow: "hidden", display: "flex", background: "var(--white)", opacity: it.annule ? 0.6 : 1, flexShrink: 0 }}>
+      <div style={{
+        width: 64, flexShrink: 0, background: t.couleur, borderRight: "2px solid var(--ink)",
+        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "8px 4px",
+      }}>
+        {it.date ? <>
+          <span className="bc" style={{ fontSize: 24, lineHeight: 1 }}>{format(parseISO(it.date), "d")}</span>
+          <span style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase" }}>{format(parseISO(it.date), "MMM yy", { locale: fr })}</span>
+        </> : <span style={{ fontSize: 20 }}>{t.icone}</span>}
+      </div>
+      <div style={{ flex: 1, minWidth: 0, padding: "10px 12px", display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-start" }}>
+        <div style={{ flex: "1 1 220px", minWidth: 0, display: "flex", flexDirection: "column", gap: 5 }}>
+          <div style={{ fontWeight: 800, fontSize: 15, overflowWrap: "anywhere" }}>
+            {t.icone} {it.prep
+              ? <button onClick={() => onOuvrirEv(it.prep!)} style={{ border: "none", background: "none", padding: 0, font: "inherit", cursor: "pointer", textAlign: "left", textDecoration: "underline", textDecorationColor: "rgba(0,0,0,0.25)" }}>{it.titre}</button>
+              : it.titre}
+          </div>
+          <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center", fontSize: 12 }}>
+            {it.annule && <Pastille texte={statutEv("annule").label} fond={statutEv("annule").couleur} />}
+            {!it.prep && <span style={{ opacity: 0.6 }}>{it.type} · agenda</span>}
+            {it.date_fin && it.date && it.date_fin !== it.date && <span style={{ opacity: 0.6 }}>jusqu’au {dateCourte(it.date_fin)}</span>}
+            {membres.length > 0 && (
+              <span style={{ display: "inline-flex" }}>
+                {membres.map((id, i) => <span key={id} style={{ marginLeft: i ? -6 : 0 }}><Avatar m={equipe.find(m => m.id === id)} taille={20} /></span>)}
+              </span>
+            )}
+          </div>
+        </div>
+        {!it.annule && (it.retour ? (
+          <button onClick={() => onRetour(it)} title="Voir et modifier le retour" style={{
+            flex: "1 1 220px", minWidth: 0, textAlign: "left", cursor: "pointer", fontFamily: "inherit", color: "inherit",
+            border: "2px solid var(--cream2)", borderRadius: 8, background: "var(--cream)", padding: "6px 10px",
+          }}>
+            <ResumeRetour r={it.retour} equipe={equipe} />
+          </button>
+        ) : connecte ? (
+          <button className="pop-btn pop-btn-yellow" style={{ fontSize: 13, padding: "5px 12px", alignSelf: "center" }} onClick={() => onRetour(it)}>
+            📝 Faire le retour
+          </button>
+        ) : <span style={{ fontSize: 12, opacity: 0.5, alignSelf: "center" }}>Pas de retour</span>)}
+      </div>
+    </div>
+  );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 type Onglet = "taches" | "evenements" | "comptes-rendus";
@@ -1259,19 +1507,23 @@ export default function ReunionPage() {
   const [fiches, setFiches] = useState<Fiche[]>([]);
   const [evenements, setEvenements] = useState<EvPrep[]>([]);
   const [seances, setSeances] = useState<Seance[]>([]);
+  const [retours, setRetours] = useState<Retour[]>([]);
   const [agenda, setAgenda] = useState<EvAgenda[]>([]);
   const [charge, setCharge] = useState(false);
 
   const [onglet, setOnglet] = useState<Onglet>("taches");
   const [filtreMembre, setFiltreMembre] = useState<string>("tous");
   const [voirFaites, setVoirFaites] = useState(false);
-  const [voirArchives, setVoirArchives] = useState(false);
+  const [periodeEv, setPeriodeEv] = useState<"a-venir" | "passes">("a-venir");
+  const [filtreRetour, setFiltreRetour] = useState<"tous" | "a_faire" | "faits">("tous");
+  const [nbPasses, setNbPasses] = useState(30);
   const [rechercheCR, setRechercheCR] = useState("");
   const [vueSeance, setVueSeance] = useState(true);
 
   const [ficheEditee, setFicheEditee] = useState<Partial<Fiche> | null>(null);
   const [evOuvert, setEvOuvert] = useState<Partial<EvPrep> | null>(null);
   const [lancement, setLancement] = useState(false);
+  const [retourOuvert, setRetourOuvert] = useState<CibleRetour | null>(null);
 
   useEffect(() => {
     Promise.all([
@@ -1279,6 +1531,7 @@ export default function ReunionPage() {
       lireListe<Fiche>("/api/reunion/fiches").then(setFiches),
       lireListe<EvPrep>("/api/reunion/evenements").then(setEvenements),
       lireListe<Seance>("/api/reunion/seances").then(setSeances),
+      lireListe<Retour>("/api/reunion/retours").then(setRetours),
       lireListe<EvAgenda>("/api/evenements").then(setAgenda),
     ]).then(() => setCharge(true));
   }, []);
@@ -1286,6 +1539,7 @@ export default function ReunionPage() {
     lireListe<Fiche>("/api/reunion/fiches").then(setFiches);
     lireListe<EvPrep>("/api/reunion/evenements").then(setEvenements);
     lireListe<Seance>("/api/reunion/seances").then(setSeances);
+    lireListe<Retour>("/api/reunion/retours").then(setRetours);
   });
   useTempsReel("agenda", () => { lireListe<EvAgenda>("/api/evenements").then(setAgenda); });
 
@@ -1349,7 +1603,30 @@ export default function ReunionPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [evenements, agenda, fiches]);
 
-  const evsAffiches = evenements.filter(e => voirArchives || !EV_ARCHIVE.includes(e.statut));
+  const evsAffiches = evenements.filter(e => !evPasse(e));
+  const retourDe = (evId: string) => retours.find(r => r.evenement_id === evId);
+  const majRetour = (r: Retour) => setRetours(prev => prev.some(x => x.id === r.id) ? prev.map(x => x.id === r.id ? r : x) : [r, ...prev]);
+
+  // Passés : les événements du Bureau terminés, annulés ou dont la date est
+  // dépassée, et ceux de l'agenda qui n'y ont pas de fiche (hors réunions).
+  const passes = useMemo<ItemPasse[]>(() => {
+    const auj = aujourdhui();
+    const items: ItemPasse[] = evenements.filter(evPasse).map(e => ({
+      cle: `p-${e.id}`, titre: e.titre, type: e.type, date: e.date_debut, date_fin: e.date_fin,
+      evenement_id: e.id, prep: e, retour: retours.find(r => r.evenement_id === e.id), annule: e.statut === "annule",
+    }));
+    const suivis = new Set(evenements.map(e => e.agenda_id).filter(Boolean));
+    for (const a of agenda) {
+      if (!estEvenementAgenda(a.type) || a.type === "Réunion" || suivis.has(a.id) || (a.date_fin || a.date_debut) >= auj) continue;
+      items.push({ cle: `a-${a.id}`, titre: a.titre || a.type, type: a.type, date: a.date_debut, date_fin: a.date_fin, agenda_id: a.id, annule: false });
+    }
+    return items.sort((x, y) => (y.date ?? "").localeCompare(x.date ?? ""));
+  }, [evenements, agenda, retours]);
+  const retoursAFaire = passes.filter(p => !p.annule && !p.retour).length;
+  const passesAffiches = passes.filter(p =>
+    filtreRetour === "tous" || (filtreRetour === "faits" ? !!p.retour : !p.annule && !p.retour));
+
+  const ouvrirRetour = (c: CibleRetour) => setRetourOuvert(c);
   const comptesRendus = seances.filter(s => s.statut === "terminee");
   const crTrouves = useMemo(() => {
     const q = normaliser(rechercheCR.trim());
@@ -1376,7 +1653,7 @@ export default function ReunionPage() {
   const suggestions = useMemo(() => {
     if (!lancement) return [];
     const existants = new Set(fiches.filter(f => f.genre === "point" && f.statut !== "fait").map(f => f.titre.toLowerCase()));
-    return suggererPoints(fiches, evenements, agenda, seances, nomDe).filter(s => !existants.has(s.titre.toLowerCase()));
+    return suggererPoints(fiches, evenements, retours, agenda, seances, nomDe).filter(s => !existants.has(s.titre.toLowerCase()));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lancement]);
 
@@ -1470,7 +1747,7 @@ export default function ReunionPage() {
             {/* Onglets */}
             <div style={{ display: "flex", gap: 8, overflowX: "auto", padding: "2px 4px 4px 0" }}>
               {ongletBtn("taches", "Points & missions", kpi.points + kpi.missions)}
-              {ongletBtn("evenements", "Préparation d'événements", evenements.filter(e => !EV_ARCHIVE.includes(e.statut)).length)}
+              {ongletBtn("evenements", "Événements", evsAffiches.length)}
               {ongletBtn("comptes-rendus", "Comptes rendus", comptesRendus.length)}
             </div>
 
@@ -1508,13 +1785,40 @@ export default function ReunionPage() {
             {onglet === "evenements" && (
               <>
                 <div className="pop-toolbar">
-                  {connecte && <button className="pop-btn pop-btn-yellow" onClick={() => setEvOuvert({})}>+ Nouvel événement</button>}
-                  <label style={{ display: "inline-flex", gap: 6, alignItems: "center", fontSize: 13, cursor: "pointer", marginLeft: "auto" }}>
-                    <input type="checkbox" checked={voirArchives} onChange={e => setVoirArchives(e.target.checked)} /> Afficher terminés et annulés
-                  </label>
+                  <Segments<"a-venir" | "passes">
+                    options={[
+                      { v: "a-venir", label: `À venir · ${evsAffiches.length}` },
+                      { v: "passes", label: `Passés${retoursAFaire ? ` · ${retoursAFaire} retour${retoursAFaire > 1 ? "s" : ""} à faire` : ""}` },
+                    ]}
+                    valeur={periodeEv} onChange={setPeriodeEv} />
+                  {periodeEv === "a-venir" && connecte && <button className="pop-btn pop-btn-yellow" style={{ marginLeft: "auto" }} onClick={() => setEvOuvert({})}>+ Nouvel événement</button>}
+                  {periodeEv === "passes" && (
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginLeft: "auto" }}>
+                      {([["tous", "Tous"], ["a_faire", "Retour à faire"], ["faits", "Avec retour"]] as const).map(([v, label]) => (
+                        <button key={v} onClick={() => { setFiltreRetour(v); setNbPasses(30); }} style={{
+                          fontFamily: "inherit", cursor: "pointer", padding: "4px 10px", borderRadius: 20, fontSize: 13,
+                          fontWeight: filtreRetour === v ? 800 : 500, border: "2px solid var(--ink)",
+                          background: filtreRetour === v ? "var(--ink)" : "var(--white)", color: filtreRetour === v ? "var(--cream)" : "var(--ink)",
+                        }}>{label}</button>
+                      ))}
+                    </div>
+                  )}
                 </div>
-                {evsAffiches.length === 0 && <Vide>Aucun événement en préparation. Une animation, une soirée jeux, un partenariat ? Crée-le ici, prépare-le avec des missions, puis ajoute-le à l’agenda.</Vide>}
-                <div className="pop-grid-3">
+                {periodeEv === "passes" && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    {passesAffiches.length === 0 && <Vide>{filtreRetour === "a_faire" ? "Tous les retours sont faits 🎉" : "Aucun événement passé."}</Vide>}
+                    {passesAffiches.slice(0, nbPasses).map(it => (
+                      <LignePasse key={it.cle} it={it} equipe={equipe} connecte={connecte} onOuvrirEv={setEvOuvert} onRetour={ouvrirRetour} />
+                    ))}
+                    {passesAffiches.length > nbPasses && (
+                      <button className="pop-btn pop-btn-outline" style={{ alignSelf: "center" }} onClick={() => setNbPasses(n => n + 30)}>
+                        Afficher plus ({passesAffiches.length - nbPasses} restants)
+                      </button>
+                    )}
+                  </div>
+                )}
+                {periodeEv === "a-venir" && evsAffiches.length === 0 && <Vide>Aucun événement en préparation. Une animation, une soirée jeux, un partenariat ? Crée-le ici, prépare-le avec des missions, puis ajoute-le à l’agenda.</Vide>}
+                {periodeEv === "a-venir" && <div className="pop-grid-3">
                   {evsAffiches.map(e => {
                     const t = typeEv(e.type);
                     const [faites, total] = avancement(e.id);
@@ -1553,7 +1857,7 @@ export default function ReunionPage() {
                       </button>
                     );
                   })}
-                </div>
+                </div>}
               </>
             )}
 
@@ -1593,10 +1897,26 @@ export default function ReunionPage() {
 
       {evOuvert && (
         <ModalEvenement key={evOuvert.id ?? "nouveau"} initial={evOuvert} equipe={equipe} evenements={evenements} fiches={fiches} connecte={connecte}
+          retour={evOuvert.id ? retourDe(evOuvert.id) : undefined}
+          onOuvrirRetour={e => ouvrirRetour({ titre: e.titre, type: e.type, date: e.date_debut, date_fin: e.date_fin, evenement_id: e.id })}
           onFermer={() => setEvOuvert(null)}
           onEvenement={e => { majEvenement(e); if (!evOuvert.id) setEvOuvert(e); }}
-          onEvSupprime={id => { setEvenements(prev => prev.filter(x => x.id !== id)); setFiches(prev => prev.filter(f => f.evenement_id !== id)); setEvOuvert(null); }}
+          onEvSupprime={id => {
+            setEvenements(prev => prev.filter(x => x.id !== id));
+            setFiches(prev => prev.filter(f => f.evenement_id !== id));
+            setRetours(prev => prev.filter(r => r.evenement_id !== id));
+            setEvOuvert(null);
+          }}
           onFiche={majFiche} onOuvrirFiche={setFicheEditee} onBasculerFiche={basculerFiche} />
+      )}
+
+      {/* Après la fenêtre d'événement : le retour ouvert depuis elle s'affiche par-dessus. */}
+      {retourOuvert && (
+        <ModalRetour key={`retour-${retourOuvert.evenement_id ?? retourOuvert.agenda_id}`} cible={retourOuvert} equipe={equipe}
+          initial={retourOuvert.evenement_id ? retourDe(retourOuvert.evenement_id) : undefined}
+          onFermer={() => setRetourOuvert(null)}
+          onEnregistre={(r, ev) => { majRetour(r); if (ev) majEvenement(ev); setRetourOuvert(null); }}
+          onSupprime={id => { setRetours(prev => prev.filter(x => x.id !== id)); setRetourOuvert(null); }} />
       )}
 
       {/* Après la fenêtre d'événement : une mission ouverte depuis elle s'affiche par-dessus. */}

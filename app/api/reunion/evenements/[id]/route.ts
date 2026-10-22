@@ -14,8 +14,8 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 }
 
 /**
- * Supprimer un projet supprime aussi ses missions de préparation : détachées,
- * elles perdraient leur sens. La copie éventuelle dans l'agenda, elle, reste :
+ * Supprimer un projet supprime aussi ses missions de préparation et son retour :
+ * détachés, ils perdraient leur sens. La copie éventuelle dans l'agenda, elle, reste :
  * l'événement a pu être annoncé, c'est à l'agenda d'en décider.
  */
 export async function DELETE(_: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -24,6 +24,7 @@ export async function DELETE(_: Request, { params }: { params: Promise<{ id: str
     const { id } = await params;
     await db.batch([
       db.prepare('DELETE FROM reunion_fiches WHERE evenement_id = ?').bind(id),
+      db.prepare('DELETE FROM reunion_retours WHERE evenement_id = ?').bind(id),
       db.prepare('DELETE FROM reunion_evenements WHERE id = ?').bind(id),
     ]);
     return NextResponse.json({ success: true });
