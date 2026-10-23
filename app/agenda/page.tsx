@@ -523,7 +523,9 @@ useEffect(() => {
   const rbStartRef = useRef<{ x: number; y: number } | null>(null);
   const evenementsRef = useRef<Evenement[]>([]);
   const planningFeriesRef = useRef<Record<string, string>>({});
-  const openPlanningModal = () => { setPlanningDate(dateActuelle); setShowPlanningModal(true); };
+  // Rechargé à chaque ouverture : l'agenda a pu retirer des membres (heures supp. supprimées).
+  const [planningRecharge, setPlanningRecharge] = useState(0);
+  const openPlanningModal = () => { setPlanningDate(dateActuelle); setPlanningRecharge(n => n + 1); setShowPlanningModal(true); };
 
   // ── Heures supp. depuis le planning
   // Les écouteurs souris sont posés une fois pour toutes : ils lisent l'état par ces refs.
@@ -569,7 +571,8 @@ useEffect(() => {
     const url = (id: string) => `/api/evenements/${encodeURIComponent(id)}`;
     const json = { 'Content-Type': 'application/json' };
     const ecritures: Promise<unknown>[] = [];
-    existants.filter(e => !voulus.some(v => v.id === e.id)).forEach(e => ecritures.push(fetch(url(e.id!), { method: 'DELETE' })));
+    // `depuis=planning` : l'API ne doit pas retirer le membre du créneau en retour.
+    existants.filter(e => !voulus.some(v => v.id === e.id)).forEach(e => ecritures.push(fetch(`${url(e.id!)}?depuis=planning`, { method: 'DELETE' })));
     voulus.forEach(v => {
       const e = existants.find(x => x.id === v.id);
       if (!e) ecritures.push(fetch('/api/evenements', { method: 'POST', headers: json, body: JSON.stringify(v) }));
@@ -789,7 +792,8 @@ useEffect(() => {
     const key = format(startOfWeek(dateActuelle, { weekStartsOn: 1 }), 'yyyy-MM-dd');
     fetch(`/api/planning-semaine?key=${key}`).then(r => r.json() as Promise<{ slots?: PlanningSlot[] }>)
       .then(data => setViewPlanningSlots((data?.slots ?? []) as PlanningSlot[]));
-  }, [dateActuelle]);
+    // Suit aussi les événements : supprimer des heures supp. retire le membre du planning.
+  }, [dateActuelle, evenements]);
 
   const planningWeekKey = (d: Date) => format(startOfWeek(d, { weekStartsOn: 1 }), 'yyyy-MM-dd');
 
@@ -811,7 +815,7 @@ useEffect(() => {
       setPlanningSlots(slots);
       setVacataires(vacs);
     })();
-  }, [planningDate]);
+  }, [planningDate, planningRecharge]);
 
   useEffect(() => {
     const last = lastLoadedPlanningRef.current;

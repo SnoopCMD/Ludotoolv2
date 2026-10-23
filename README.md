@@ -284,7 +284,10 @@ L'éditeur de planning se pilote au glisser-déposer. Deux garde-fous s'applique
 Ces heures supp. ont pour identifiant `hs-<id du créneau>-<membre>-<n>` : c'est
 ce qui les relie au créneau sans table de liaison. Retirer le membre ou
 supprimer le créneau les supprime, redimensionner le créneau les ajuste (et
-redemande confirmation s'il déborde davantage). Une ⭐ sur l'initiale signale un
+redemande confirmation s'il déborde davantage). Dans l'autre sens, supprimer
+ces heures supp. depuis l'agenda retire le membre du créneau : c'est la route
+`DELETE /api/evenements/[id]` qui s'en charge, sauf quand l'appel vient du
+planning lui-même (`?depuis=planning`, quand il ajuste ses heures supp.). Une ⭐ sur l'initiale signale un
 membre placé en heures supp. La copie de créneaux vers une autre semaine ne
 crée pas d'heures supp. : à vérifier après coup.
 
