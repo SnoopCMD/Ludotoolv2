@@ -301,6 +301,12 @@ période facultative, et des horaires par jour. Le bloc « Jeux vidéo » (id `j
 est le premier modèle, créé par `0020_planning_blocs.sql` avec les horaires qui
 étaient codés en dur.
 
+Un bloc peut être **lié à un événement de l'agenda** (`evenement_id`, migration
+0021) : il suit alors ses dates et ses horaires (ou les siens si l'événement
+n'en a pas) au lieu de sa répétition, et se déplace avec lui. Pour une série
+récurrente, c'est son `parent_id` qui est retenu : l'agenda recrée les
+occurrences d'une série quand on la modifie, l'identifiant de série reste.
+
 Dans une semaine (`planning_semaine.slots`), un créneau de bloc a `room` = id du
 bloc et `id` = `<date>-bloc-<id du bloc>` (les anciens créneaux jeux vidéo gardent
 leur id `…-jv`). À l'ouverture d'une semaine **en cours, à venir ou jamais

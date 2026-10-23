@@ -43,6 +43,8 @@ type BlocSpecial = {
   id: string; nom: string; icone: string | null; couleur: string | null; nb_personnes: number;
   repetition: 'hebdo' | 'semaineA' | 'semaineB' | 'ponctuel';
   date_debut: string | null; date_fin: string | null; creneaux: CreneauBloc[]; ordre: number;
+  // Événement de l'agenda suivi (id, ou parent_id d'une série) : ses dates et horaires priment.
+  evenement_id: string | null;
 };
 type Vacataire = { id: string; nom: string; couleur: string };
 const VAC_COLORS = ['#fb923c', '#c084fc', '#f472b6', '#34d399', '#facc15'];
@@ -147,8 +149,22 @@ const teinte = (couleur: string | null | undefined, alpha: number) => {
 const estBloc = (s: PlanningSlot) => !!s.room && s.room !== 'principale';
 const slotsVisibles = (slots: PlanningSlot[]) => slots.filter(s => !s.masque);
 
-/** Le créneau d'un bloc ce jour-là, s'il y en a un (répétition et période comprises). */
-function creneauDuBloc(b: BlocSpecial, dk: string): CreneauBloc | null {
+/** Les occurrences de l'événement (ou de la série) auquel un bloc est lié. */
+const evenementsDuBloc = (b: BlocSpecial, evs: Evenement[]) =>
+  b.evenement_id ? evs.filter(e => e.id === b.evenement_id || e.parent_id === b.evenement_id) : [];
+
+/**
+ * Le créneau d'un bloc ce jour-là, s'il y en a un. Lié à un événement : les
+ * jours de l'événement, à ses horaires (ou à ceux du bloc s'il n'en a pas).
+ * Sinon : sa répétition et sa période.
+ */
+function creneauDuBloc(b: BlocSpecial, dk: string, evs: Evenement[]): CreneauBloc | null {
+  if (b.evenement_id) {
+    const ev = evenementsDuBloc(b, evs).find(e => e.date_debut <= dk && e.date_fin >= dk);
+    if (!ev) return null;
+    const h = ev.heure_debut && ev.heure_fin ? { debut: ev.heure_debut, fin: ev.heure_fin } : b.creneaux[0];
+    return h ? { jour: new Date(dk + 'T12:00:00').getDay(), debut: h.debut, fin: h.fin } : null;
+  }
   if (b.date_debut && dk < b.date_debut) return null;
   if (b.repetition === 'ponctuel') { if (dk !== b.date_debut) return null; }
   else if (b.date_fin && dk > b.date_fin) return null;
@@ -174,7 +190,7 @@ function infoBloc(s: PlanningSlot, blocs: BlocSpecial[]) {
  * qui n'ont plus lieu d'être s'ils sont vides. Les créneaux remplis ne sont
  * jamais supprimés. `blocs` à null (pas encore chargés) : rien ne bouge.
  */
-function fusionnerBlocs(slots: PlanningSlot[], days: Date[], blocs: BlocSpecial[] | null): PlanningSlot[] {
+function fusionnerBlocs(slots: PlanningSlot[], days: Date[], blocs: BlocSpecial[] | null, evs: Evenement[]): PlanningSlot[] {
   if (!blocs) return slots;
   const jours = new Set(days.map(d => format(d, 'yyyy-MM-dd')));
   let change = false;
@@ -182,7 +198,7 @@ function fusionnerBlocs(slots: PlanningSlot[], days: Date[], blocs: BlocSpecial[
   for (const s of slots) {
     if (!estBloc(s) || !jours.has(s.dateKey)) { out.push(s); continue; }
     const b = blocs.find(x => x.id === s.room);
-    const c = b ? creneauDuBloc(b, s.dateKey) : null;
+    const c = b ? creneauDuBloc(b, s.dateKey, evs) : null;
     if (!c) {
       if (s.membreIds.length === 0) { change = true; continue; }
       out.push(s); continue;
@@ -193,7 +209,7 @@ function fusionnerBlocs(slots: PlanningSlot[], days: Date[], blocs: BlocSpecial[
   }
   for (const dk of jours) {
     for (const b of blocs) {
-      const c = creneauDuBloc(b, dk);
+      const c = creneauDuBloc(b, dk, evs);
       if (!c || out.some(s => s.dateKey === dk && s.room === b.id)) continue;
       out.push({ id: `${dk}-bloc-${b.id}`, dateKey: dk, debut: c.debut, fin: c.fin, membreIds: [], room: b.id, bloc: instantaneBloc(b) });
       change = true;
@@ -412,7 +428,36 @@ const REPETITIONS_BLOC: { v: BlocSpecial['repetition']; label: string }[] = [
   { v: 'ponctuel', label: 'Une seule date' },
 ];
 
-function describeRepetition(b: BlocSpecial) {
+const dateCourteBloc = (d: string) => format(new Date(d + 'T12:00:00'), 'EEE d MMM', { locale: fr });
+const datesEvenement = (e: Evenement) =>
+  `${dateCourteBloc(e.date_debut)}${e.date_fin !== e.date_debut ? ` → ${dateCourteBloc(e.date_fin)}` : ''}${e.heure_debut && e.heure_fin ? ` · ${e.heure_debut}–${e.heure_fin}` : ''}`;
+
+/**
+ * Événements de l'agenda auxquels lier un bloc : ni absences ni heures
+ * exceptionnelles, en cours ou à venir. Une série n'apparaît qu'une fois
+ * (clé = son parent_id), avec sa prochaine date.
+ */
+function evenementsLiables(evs: Evenement[], dejaLie: string | null | undefined) {
+  const auj = format(new Date(), 'yyyy-MM-dd');
+  const parCle = new Map<string, { cle: string; ev: Evenement; nb: number }>();
+  for (const e of [...evs].sort((a, b) => a.date_debut.localeCompare(b.date_debut))) {
+    if (ABSENCE_TYPES.includes(e.type) || e.type === 'Heures Exceptionnelles') continue;
+    const cle = e.parent_id || e.id;
+    if (!cle || (e.date_fin < auj && cle !== dejaLie)) continue;
+    const deja = parCle.get(cle);
+    if (deja) deja.nb++; else parCle.set(cle, { cle, ev: e, nb: 1 });
+  }
+  return [...parCle.values()];
+}
+
+function describeRepetition(b: BlocSpecial, evs: Evenement[]) {
+  if (b.evenement_id) {
+    const lies = evenementsDuBloc(b, evs).sort((x, y) => x.date_debut.localeCompare(y.date_debut));
+    if (!lies.length) return '⚠ événement lié introuvable (supprimé de l’agenda ?)';
+    const auj = format(new Date(), 'yyyy-MM-dd');
+    const prochain = lies.find(e => e.date_fin >= auj) ?? lies[lies.length - 1];
+    return `🔗 ${prochain.titre || prochain.type} · ${datesEvenement(prochain)}${lies.length > 1 ? ` (série, ${lies.length} dates)` : ''}`;
+  }
   if (b.repetition === 'ponctuel') return b.date_debut ? `le ${format(new Date(b.date_debut + 'T12:00:00'), 'EEEE d MMMM', { locale: fr })}` : 'date à fixer';
   const jours = JOURS_BLOCS.filter(j => b.creneaux.some(c => c.jour === j.jour)).map(j => j.label.toLowerCase()).join(', ');
   const rythme = REPETITIONS_BLOC.find(r => r.v === b.repetition)?.label.toLowerCase();
@@ -422,7 +467,7 @@ function describeRepetition(b: BlocSpecial) {
   return `${rythme} · ${jours || 'aucun jour'}${periode}`;
 }
 
-function GestionBlocs({ blocs, onFermer, onMaj }: { blocs: BlocSpecial[]; onFermer: () => void; onMaj: () => void }) {
+function GestionBlocs({ blocs, evenements, onFermer, onMaj }: { blocs: BlocSpecial[]; evenements: Evenement[]; onFermer: () => void; onMaj: () => void }) {
   const [edite, setEdite] = useState<Partial<BlocSpecial> | null>(null);
   const [envoi, setEnvoi] = useState(false);
   const maj = (c: Partial<BlocSpecial>) => setEdite(p => ({ ...p, ...c }));
@@ -440,18 +485,43 @@ function GestionBlocs({ blocs, onFermer, onMaj }: { blocs: BlocSpecial[]; onFerm
   // Date unique : un seul créneau, celui du jour de la date choisie.
   const ponctuel = edite?.repetition === 'ponctuel';
   const horairePonctuel = creneaux[0] ?? { debut: '14:00', fin: '17:00' };
-  const valide = !!edite?.nom?.trim() && (ponctuel ? !!edite.date_debut && horairePonctuel.debut < horairePonctuel.fin : creneaux.length > 0 && creneaux.every(c => c.debut < c.fin));
+  // Lié à un événement : ses dates font foi ; ses horaires aussi, s'il en a.
+  const lies = edite?.evenement_id ? evenementsDuBloc(edite as BlocSpecial, evenements).sort((a, b) => a.date_debut.localeCompare(b.date_debut)) : [];
+  const lieAvecHoraires = lies.length > 0 && lies.every(e => e.heure_debut && e.heure_fin);
+  const valide = !!edite?.nom?.trim() && (
+    edite.evenement_id ? (lieAvecHoraires || horairePonctuel.debut < horairePonctuel.fin)
+    : ponctuel ? !!edite.date_debut && horairePonctuel.debut < horairePonctuel.fin
+    : creneaux.length > 0 && creneaux.every(c => c.debut < c.fin));
+  const liables = evenementsLiables(evenements, edite?.evenement_id);
+
+  const lier = (cle: string) => {
+    if (!cle) { maj({ evenement_id: null, creneaux: [] }); return; }
+    const ev = liables.find(l => l.cle === cle)?.ev;
+    if (!ev) return;
+    const icones: Record<string, string> = { 'Animation': '🎪', 'Soirée Jeux': '🌙', 'Réunion': '💬' };
+    maj({
+      evenement_id: cle,
+      nom: edite?.nom?.trim() ? edite.nom : (ev.titre || ev.type),
+      icone: icones[ev.type] ?? edite?.icone ?? '⭐',
+      // Horaires de repli, utilisés seulement si l'événement n'en a pas.
+      creneaux: [{ jour: -1, debut: ev.heure_debut || '14:00', fin: ev.heure_fin || '17:00' }],
+    });
+  };
 
   const enregistrer = async () => {
     if (!edite || !valide || envoi) return;
     setEnvoi(true);
-    const corps = {
+    const commun = {
       nom: edite.nom!.trim(), icone: edite.icone || null, couleur: edite.couleur || '#a8e063',
-      nb_personnes: edite.nb_personnes ?? 1, repetition: edite.repetition ?? 'hebdo',
-      date_debut: edite.date_debut || null, date_fin: ponctuel ? edite.date_debut : (edite.date_fin || null),
-      creneaux: ponctuel ? [{ jour: jourDate!, debut: horairePonctuel.debut, fin: horairePonctuel.fin }] : creneaux,
+      nb_personnes: edite.nb_personnes ?? 1,
       ordre: edite.ordre ?? (blocs.length ? Math.max(...blocs.map(b => b.ordre)) + 1 : 0),
     };
+    const corps = edite.evenement_id
+      ? { ...commun, evenement_id: edite.evenement_id, repetition: 'hebdo', date_debut: null, date_fin: null,
+          creneaux: [{ jour: -1, debut: horairePonctuel.debut, fin: horairePonctuel.fin }] }
+      : { ...commun, evenement_id: null, repetition: edite.repetition ?? 'hebdo',
+          date_debut: edite.date_debut || null, date_fin: ponctuel ? edite.date_debut : (edite.date_fin || null),
+          creneaux: ponctuel ? [{ jour: jourDate!, debut: horairePonctuel.debut, fin: horairePonctuel.fin }] : creneaux };
     const r = await fetch(edite.id ? `/api/planning-blocs/${edite.id}` : '/api/planning-blocs', {
       method: edite.id ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corps),
     }).catch(() => null);
@@ -493,14 +563,14 @@ function GestionBlocs({ blocs, onFermer, onMaj }: { blocs: BlocSpecial[]; onFerm
                   <span style={{ width: 34, height: 34, borderRadius: 8, background: teinte(b.couleur, 0.6), border: "2px solid var(--ink)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>{b.icone ?? '⭐'}</span>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 800, fontSize: 15 }}>{b.nom} <span style={{ fontWeight: 600, fontSize: 12, color: "rgba(0,0,0,0.5)" }}>· 👥 {b.nb_personnes}</span></div>
-                    <div style={{ fontSize: 12, color: "rgba(0,0,0,0.55)" }}>{describeRepetition(b)}</div>
+                    <div style={{ fontSize: 12, color: "rgba(0,0,0,0.55)" }}>{describeRepetition(b, evenements)}</div>
                   </div>
                   <button className="pop-btn pop-btn-outline" style={{ fontSize: 12, padding: "5px 10px" }} onClick={() => setEdite(b)}>Modifier</button>
                 </div>
               ))}
               {blocs.length === 0 && <div style={{ fontSize: 13, opacity: 0.6, textAlign: "center", padding: 12 }}>Aucun bloc spécial.</div>}
               <button className="pop-btn pop-btn-dark" style={{ alignSelf: "flex-start" }}
-                onClick={() => setEdite({ nom: '', icone: '🎪', couleur: '#fb923c', nb_personnes: 2, repetition: 'hebdo', creneaux: [], date_debut: null, date_fin: null })}>
+                onClick={() => setEdite({ nom: '', icone: '🎪', couleur: '#fb923c', nb_personnes: 2, repetition: 'hebdo', creneaux: [], date_debut: null, date_fin: null, evenement_id: null })}>
                 + Nouveau bloc
               </button>
             </>
@@ -523,11 +593,46 @@ function GestionBlocs({ blocs, onFermer, onMaj }: { blocs: BlocSpecial[]; onFerm
                 </div>
               </div>
               <div>
+                <label style={etiquette}>Événement de l’agenda (facultatif)</label>
+                <select value={edite.evenement_id ?? ''} onChange={e => lier(e.target.value)} className="pop-input" style={{ width: "100%" }}>
+                  <option value="">— Aucun : le bloc suit sa propre répétition —</option>
+                  {liables.map(({ cle, ev, nb }) => (
+                    <option key={cle} value={cle}>
+                      {getEventIcon(ev.type)} {ev.titre || ev.type} — {datesEvenement(ev)}{nb > 1 ? ` (série, ${nb} dates)` : ''}
+                    </option>
+                  ))}
+                  {edite.evenement_id && !liables.some(l => l.cle === edite.evenement_id) && <option value={edite.evenement_id}>⚠ Événement introuvable</option>}
+                </select>
+              </div>
+              <div>
                 <label style={etiquette}>Personnes nécessaires</label>
                 <div style={{ display: "flex", gap: 6 }}>
                   {[1, 2, 3, 4, 5].map(n => <button key={n} type="button" style={choix(edite.nb_personnes === n)} onClick={() => maj({ nb_personnes: n })}>{n}</button>)}
                 </div>
               </div>
+              {edite.evenement_id ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: "10px 12px", borderRadius: 8, border: "2px dashed var(--ink)", background: "var(--white)" }}>
+                  <div style={{ fontSize: 13 }}>
+                    <b>🔗 Suit l’événement de l’agenda.</b> Le bloc apparaît dans le planning aux dates de l’événement, et le suit s’il est déplacé.
+                  </div>
+                  {lies.length > 0 ? (
+                    <div style={{ fontSize: 13, display: "flex", flexDirection: "column", gap: 2 }}>
+                      {lies.slice(0, 6).map(e => <span key={e.id}>• {datesEvenement(e)}</span>)}
+                      {lies.length > 6 && <span style={{ opacity: 0.6 }}>… et {lies.length - 6} autres dates</span>}
+                    </div>
+                  ) : <div style={{ fontSize: 12, color: "#b91c1c", fontWeight: 700 }}>Cet événement n’est plus dans l’agenda : le bloc n’apparaîtra nulle part.</div>}
+                  {!lieAvecHoraires && (
+                    <div>
+                      <label style={etiquette}>Horaires du bloc (l’événement n’en a pas)</label>
+                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        <input type="time" step={1800} value={horairePonctuel.debut} onChange={e => maj({ creneaux: [{ jour: -1, debut: e.target.value, fin: horairePonctuel.fin }] })} className="pop-input" style={{ width: 120 }} />
+                        <span style={{ fontWeight: 700 }}>→</span>
+                        <input type="time" step={1800} value={horairePonctuel.fin} onChange={e => maj({ creneaux: [{ jour: -1, debut: horairePonctuel.debut, fin: e.target.value }] })} className="pop-input" style={{ width: 120 }} />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : <>
               <div>
                 <label style={etiquette}>Répétition <span style={{ textTransform: "none", fontWeight: 600 }}>(cette semaine : {semaineCourante})</span></label>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -586,6 +691,7 @@ function GestionBlocs({ blocs, onFermer, onMaj }: { blocs: BlocSpecial[]; onFerm
                   </div>
                 </>
               )}
+              </>}
 
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
                 {edite.id && <button className="pop-btn pop-btn-outline" style={{ color: "#b91c1c", marginRight: "auto" }} onClick={() => supprimer(edite as BlocSpecial)}>Supprimer</button>}
@@ -1130,19 +1236,23 @@ useEffect(() => {
       }
       fusionPermiseRef.current = !data?.slots?.length || key >= planningWeekKey(new Date());
       lastLoadedPlanningRef.current = { slots, vacataires: vacs };
-      setPlanningSlots(fusionPermiseRef.current ? fusionnerBlocs(slots, days, blocsRef.current) : slots);
+      setPlanningSlots(fusionPermiseRef.current ? fusionnerBlocs(slots, days, blocsRef.current, evenementsRef.current) : slots);
       setVacataires(vacs);
     })();
   }, [planningDate, planningRecharge]);
 
-  // Un modèle créé ou modifié s'applique aussitôt à la semaine ouverte.
+  // Ce qui, dans l'agenda, compte pour les blocs liés : déplacer l'événement déplace le bloc.
+  const cleEvenementsLies = useMemo(() => JSON.stringify((blocs ?? []).flatMap(b => evenementsDuBloc(b, evenements)
+    .map(e => [e.id, e.date_debut, e.date_fin, e.heure_debut, e.heure_fin]))), [blocs, evenements]);
+
+  // Un modèle créé ou modifié, ou un événement lié déplacé, s'applique aussitôt à la semaine ouverte.
   useEffect(() => {
     blocsRef.current = blocs;
     if (!fusionPermiseRef.current) return;
     const days = eachDayOfInterval({ start: startOfWeek(planningDate, { weekStartsOn: 1 }), end: endOfWeek(planningDate, { weekStartsOn: 1 }) });
-    setPlanningSlots(prev => fusionnerBlocs(prev, days, blocs));
+    setPlanningSlots(prev => fusionnerBlocs(prev, days, blocs, evenements));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [blocs]);
+  }, [blocs, cleEvenementsLies]);
 
   useEffect(() => {
     const last = lastLoadedPlanningRef.current;
@@ -3528,7 +3638,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
                               const alerte = !!manque && !isEmpty;
                               const selectionne = selectedSlotIds.has(slot.id);
                               return (
-                                <div key={slot.id} data-slot-id={slot.id} data-date-key={dk} title={alerte ? `Sous-effectif : ${manque!.message}` : undefined}
+                                <div key={slot.id} data-slot-id={slot.id} data-date-key={dk} title={[bloc && `${bloc.icone ?? '⭐'} ${bloc.nom} · ${slot.debut}–${slot.fin}`, alerte && `Sous-effectif : ${manque!.message}`].filter(Boolean).join('\n') || undefined}
                                   style={{ position: "absolute", left: leftVal, right: rightVal, top: `${top}%`, height: `${height}%`, borderRadius: 7, border: selectionne ? "2.5px solid var(--bleu)" : hovering ? "2.5px dashed var(--bleu)" : alerte ? "2.5px solid #ea580c" : isEmpty ? "2px dashed rgba(0,0,0,0.18)" : "2px solid var(--ink)", background: selectionne ? "rgba(96,165,250,0.18)" : hovering ? "rgba(96,165,250,0.08)" : alerte ? "repeating-linear-gradient(-45deg, rgba(251,146,60,0.16) 0 6px, rgba(251,146,60,0.06) 6px 12px), var(--white)" : bloc ? blocBg : isEmpty ? "rgba(0,0,0,0.015)" : "var(--white)", boxShadow: selectionne ? "2px 2px 0 var(--bleu)" : alerte ? "2px 2px 0 #ea580c" : isEmpty ? "none" : "2px 2px 0 var(--ink)", display: "flex", flexDirection: "column", overflow: "visible", transition: "border-color 0.1s, background 0.1s", zIndex: selectionne ? 20 : undefined }}>
                                   {alerte && (
                                     <span style={{ position: "absolute", bottom: 4, left: 4, right: 4, zIndex: 3, fontSize: 9, fontWeight: 900, color: "#fff", background: "#ea580c", border: "1.5px solid var(--ink)", borderRadius: 4, padding: "1px 5px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", width: "fit-content", maxWidth: "calc(100% - 8px)", pointerEvents: "none" }}>
@@ -3679,7 +3789,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
                         const joursCible = eachDayOfInterval({ start: targetWeekStart, end: addDays(targetWeekStart, 6) });
                         const existingSlots: PlanningSlot[] = fusionnerBlocs((data?.slots?.length > 0)
                           ? (data.slots as PlanningSlot[])
-                          : getDefaultPlanningSlots(joursCible), joursCible, blocs);
+                          : getDefaultPlanningSlots(joursCible), joursCible, blocs, evenements);
                         // Salle principale : un créneau par heure de début. Bloc : un seul par jour.
                         const cleSlot = (dk: string, debut: string, room: string) => room === 'principale' ? `${dk}|${debut}|principale` : `${dk}|bloc|${room}`;
                         const resultSlots: PlanningSlot[] = [...existingSlots];
@@ -4138,7 +4248,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
           </div>
         </div>
       )}
-      {showBlocs && blocs && <GestionBlocs blocs={blocs} onFermer={() => setShowBlocs(false)} onMaj={chargerBlocs} />}
+      {showBlocs && blocs && <GestionBlocs blocs={blocs} evenements={evenements} onFermer={() => setShowBlocs(false)} onMaj={chargerBlocs} />}
 
       {/* Confirmation des heures supp. : au-dessus de l'éditeur de planning. */}
       {confirmHS && (() => {

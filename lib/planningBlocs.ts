@@ -5,7 +5,7 @@ import { getDB } from './db';
  * écrites sont listées ici : les noms de colonnes ne viennent jamais du corps
  * de la requête.
  */
-const COLONNES = ['nom', 'icone', 'couleur', 'nb_personnes', 'repetition', 'date_debut', 'date_fin', 'creneaux', 'ordre'];
+const COLONNES = ['nom', 'icone', 'couleur', 'nb_personnes', 'repetition', 'date_debut', 'date_fin', 'creneaux', 'ordre', 'evenement_id'];
 const REPETITIONS = ['hebdo', 'semaineA', 'semaineB', 'ponctuel'];
 
 export function lireBloc(r: any) {
