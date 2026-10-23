@@ -143,7 +143,7 @@ jeu, servi par `/api/regles/[ean]` ; `catalogue.pdf_url` pointe vers cette route
 | `catalogue` | Fiche par EAN : nom, éditeur, image, couleur de pastille, mécanique, contenu… |
 | `editeurs` | Éditeurs |
 | `commandes` | Réceptions de commandes |
-| `equipe`, `evenements`, `planning_semaine` | Agenda : membres, horaires, absences, planning |
+| `equipe`, `evenements`, `planning_semaine`, `planning_blocs` | Agenda : membres, horaires, absences, planning, blocs spéciaux du planning |
 | `paniers`, `panier_lignes` | Paniers d'achat |
 | `paniers_communs_lignes` | Lignes des commandes communes (`votes` = cache du score) |
 | `paniers_communs_votes`, `paniers_communs_commentaires` | Votes nominatifs et commentaires sur ces lignes |
@@ -290,6 +290,34 @@ ces heures supp. depuis l'agenda retire le membre du créneau : c'est la route
 planning lui-même (`?depuis=planning`, quand il ajuste ses heures supp.). Une ⭐ sur l'initiale signale un
 membre placé en heures supp. La copie de créneaux vers une autre semaine ne
 crée pas d'heures supp. : à vérifier après coup.
+
+### Blocs spéciaux et sous-effectif
+
+À côté de la salle principale, le planning place des **blocs spéciaux**
+(jeux vidéo, animations…), décrits par des modèles dans `planning_blocs` et
+gérés depuis le bouton « Blocs » du planning : nom, icône, couleur, personnes
+nécessaires, répétition (chaque semaine, semaines A, semaines B ou date unique),
+période facultative, et des horaires par jour. Le bloc « Jeux vidéo » (id `jv`)
+est le premier modèle, créé par `0020_planning_blocs.sql` avec les horaires qui
+étaient codés en dur.
+
+Dans une semaine (`planning_semaine.slots`), un créneau de bloc a `room` = id du
+bloc et `id` = `<date>-bloc-<id du bloc>` (les anciens créneaux jeux vidéo gardent
+leur id `…-jv`). À l'ouverture d'une semaine **en cours, à venir ou jamais
+enregistrée**, les créneaux sont alignés sur les modèles (`fusionnerBlocs`) :
+ajout de ceux qui manquent, horaires recalés sauf s'ils ont été retouchés à la
+main (`horsModele`), retrait de ceux qui n'ont plus lieu d'être s'ils sont
+vides. Un créneau rempli n'est jamais supprimé, et les semaines passées ne
+bougent pas. Retirer un bloc d'une semaine le masque (`masque`) au lieu de le
+supprimer, sinon le modèle le recréerait. Chaque créneau garde un instantané
+du bloc (`bloc` : nom, icône, couleur, effectif) pour rester lisible si le
+modèle change ou disparaît.
+
+**Sous-effectif** : un créneau de la salle principale avec une seule personne en
+heures pleines (avant 12 h ou après 15 h, `HEURES_PLEINES`), ou un bloc avec
+moins que son effectif, est surligné en orange ; l'en-tête du planning compte
+ces créneaux. Le PDF a une colonne par bloc, seulement les semaines où ce bloc
+a quelqu'un.
 
 ## Les paniers communs : votes et vérification
 

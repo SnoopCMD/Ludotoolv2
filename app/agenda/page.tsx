@@ -25,7 +25,25 @@ type MembreEquipe = {
   horaires: any;
 };
 type Evenement = { id?: string; parent_id?: string; titre: string; type: string; date_debut: string; date_fin: string; heure_debut?: string; heure_fin?: string; membres: string[]; };
-type PlanningSlot = { id: string; dateKey: string; debut: string; fin: string; membreIds: string[]; room?: 'principale' | 'jv' };
+/**
+ * `room` : 'principale', ou l'id d'un bloc spécial (`planning_blocs`, 'jv' pour
+ * les jeux vidéo). `bloc` garde le nom, l'icône, la couleur et l'effectif du
+ * bloc au moment où le créneau a été posé : une semaine passée reste lisible
+ * même si le modèle a changé ou disparu. `masque` : bloc retiré de cette
+ * semaine-là (on le garde pour ne pas le recréer). `horsModele` : horaires
+ * retouchés à la main, que le modèle ne doit plus écraser.
+ */
+type PlanningSlot = {
+  id: string; dateKey: string; debut: string; fin: string; membreIds: string[]; room?: string;
+  bloc?: { nom: string; icone: string | null; couleur: string | null; nb: number };
+  masque?: boolean; horsModele?: boolean;
+};
+type CreneauBloc = { jour: number; debut: string; fin: string };
+type BlocSpecial = {
+  id: string; nom: string; icone: string | null; couleur: string | null; nb_personnes: number;
+  repetition: 'hebdo' | 'semaineA' | 'semaineB' | 'ponctuel';
+  date_debut: string | null; date_fin: string | null; creneaux: CreneauBloc[]; ordre: number;
+};
 type Vacataire = { id: string; nom: string; couleur: string };
 const VAC_COLORS = ['#fb923c', '#c084fc', '#f472b6', '#34d399', '#facc15'];
 
@@ -71,12 +89,6 @@ const PLANNING_SLOTS_MAP: Record<number, string[]> = {
   5: ['09:30|11:30', '13:00|16:00', '16:00|18:00', '18:00|20:00'],
   6: ['10:00|12:00', '12:00|13:00', '13:00|14:00', '14:00|18:00'],
 };
-const JV_SLOTS_MAP: Record<number, string[]> = {
-  2: ['16:00|18:00'],
-  3: ['15:00|17:00'],
-  4: ['15:00|17:00'],
-  5: ['16:00|18:00'],
-};
 function getEasterDate(year: number): Date {
   const a = year % 19, b = Math.floor(year / 100), c = year % 100;
   const d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25);
@@ -117,14 +129,107 @@ const getDefaultPlanningSlots = (days: Date[]): PlanningSlot[] => {
       const [d, f] = r.split('|');
       slots.push({ id: `${dk}-${d}`, dateKey: dk, debut: d, fin: f, membreIds: [], room: 'principale' });
     });
-    const jvRanges = JV_SLOTS_MAP[dow];
-    if (jvRanges) jvRanges.forEach(r => {
-      const [d, f] = r.split('|');
-      slots.push({ id: `${dk}-${d}-jv`, dateKey: dk, debut: d, fin: f, membreIds: [], room: 'jv' });
-    });
   });
   return slots;
 };
+
+// ─── Blocs spéciaux ────────────────────────────────────────────────────────────
+
+/** Heures pleines : avant midi et après 15 h, une seule personne en salle ne suffit pas. */
+const HEURES_PLEINES = { finMatin: 12 * 60, debutApresMidi: 15 * 60 };
+
+/** Couleur de bloc en fond translucide (#rrggbb attendu, sinon le vert des jeux vidéo). */
+const teinte = (couleur: string | null | undefined, alpha: number) => {
+  const hex = /^#[0-9a-f]{6}$/i.test(couleur ?? '') ? couleur! : '#a8e063';
+  return `${hex}${Math.round(alpha * 255).toString(16).padStart(2, '0')}`;
+};
+
+const estBloc = (s: PlanningSlot) => !!s.room && s.room !== 'principale';
+const slotsVisibles = (slots: PlanningSlot[]) => slots.filter(s => !s.masque);
+
+/** Le créneau d'un bloc ce jour-là, s'il y en a un (répétition et période comprises). */
+function creneauDuBloc(b: BlocSpecial, dk: string): CreneauBloc | null {
+  if (b.date_debut && dk < b.date_debut) return null;
+  if (b.repetition === 'ponctuel') { if (dk !== b.date_debut) return null; }
+  else if (b.date_fin && dk > b.date_fin) return null;
+  const d = new Date(dk + 'T12:00:00');
+  const semaineA = getISOWeek(d) % 2 !== 0;
+  if (b.repetition === 'semaineA' && !semaineA) return null;
+  if (b.repetition === 'semaineB' && semaineA) return null;
+  return b.creneaux.find(c => c.jour === d.getDay()) ?? null;
+}
+
+const instantaneBloc = (b: BlocSpecial) => ({ nom: b.nom, icone: b.icone, couleur: b.couleur, nb: b.nb_personnes });
+
+/** Ce qu'on affiche d'un créneau de bloc : le modèle s'il existe encore, sinon ce que le créneau en a gardé. */
+function infoBloc(s: PlanningSlot, blocs: BlocSpecial[]) {
+  const b = blocs.find(x => x.id === s.room);
+  if (b) return instantaneBloc(b);
+  return s.bloc ?? { nom: s.room === 'jv' ? 'Jeux vidéo' : 'Bloc', icone: s.room === 'jv' ? '🎮' : '⭐', couleur: '#a8e063', nb: 1 };
+}
+
+/**
+ * Aligne les créneaux de blocs d'une semaine sur les modèles : ajoute ceux qui
+ * manquent, recale les horaires de ceux qu'on n'a pas retouchés, retire ceux
+ * qui n'ont plus lieu d'être s'ils sont vides. Les créneaux remplis ne sont
+ * jamais supprimés. `blocs` à null (pas encore chargés) : rien ne bouge.
+ */
+function fusionnerBlocs(slots: PlanningSlot[], days: Date[], blocs: BlocSpecial[] | null): PlanningSlot[] {
+  if (!blocs) return slots;
+  const jours = new Set(days.map(d => format(d, 'yyyy-MM-dd')));
+  let change = false;
+  const out: PlanningSlot[] = [];
+  for (const s of slots) {
+    if (!estBloc(s) || !jours.has(s.dateKey)) { out.push(s); continue; }
+    const b = blocs.find(x => x.id === s.room);
+    const c = b ? creneauDuBloc(b, s.dateKey) : null;
+    if (!c) {
+      if (s.membreIds.length === 0) { change = true; continue; }
+      out.push(s); continue;
+    }
+    const maj = { ...s, bloc: instantaneBloc(b!), ...(s.horsModele ? {} : { debut: c.debut, fin: c.fin }) };
+    if (JSON.stringify(maj) !== JSON.stringify(s)) change = true;
+    out.push(maj);
+  }
+  for (const dk of jours) {
+    for (const b of blocs) {
+      const c = creneauDuBloc(b, dk);
+      if (!c || out.some(s => s.dateKey === dk && s.room === b.id)) continue;
+      out.push({ id: `${dk}-bloc-${b.id}`, dateKey: dk, debut: c.debut, fin: c.fin, membreIds: [], room: b.id, bloc: instantaneBloc(b) });
+      change = true;
+    }
+  }
+  return change ? out : slots;
+}
+
+/**
+ * Colonnes de chaque créneau dans la journée : la salle principale à gauche,
+ * puis un couloir par bloc qui le chevauche, dans l'ordre des modèles.
+ */
+function couloirs(daySlots: PlanningSlot[], blocs: BlocSpecial[]) {
+  const ordre = (room: string) => room === 'principale' ? -1 : (blocs.find(b => b.id === room)?.ordre ?? 999);
+  const res = new Map<string, { index: number; total: number }>();
+  for (const s of daySlots) {
+    const d = timeToMins(s.debut), f = timeToMins(s.fin, true);
+    const rooms = [...new Set(daySlots
+      .filter(o => timeToMins(o.debut) < f && timeToMins(o.fin, true) > d)
+      .map(o => o.room ?? 'principale'))]
+      .sort((a, b) => ordre(a) - ordre(b) || a.localeCompare(b));
+    res.set(s.id, { index: rooms.indexOf(s.room ?? 'principale'), total: rooms.length });
+  }
+  return res;
+}
+
+/** Sous-effectif : seul en salle en heures pleines, ou moins que l'effectif d'un bloc. */
+function sousEffectif(s: PlanningSlot, blocs: BlocSpecial[]): { requis: number; message: string } | null {
+  const n = s.membreIds.length;
+  if (estBloc(s)) {
+    const requis = infoBloc(s, blocs).nb;
+    return n < requis ? { requis, message: `${n}/${requis} pers.` } : null;
+  }
+  const pleines = timeToMins(s.debut) < HEURES_PLEINES.finMatin || timeToMins(s.fin, true) > HEURES_PLEINES.debutApresMidi;
+  return pleines && n === 1 ? { requis: 2, message: 'Seul·e en heures pleines' } : null;
+}
 
 const soustraireHeures = (debutA: string, finA: string, debutB: string, finB: string) => {
   const startA = timeToMins(debutA);
@@ -294,6 +399,207 @@ const getDailyMinutes = (membre: MembreEquipe, dateKey: string, nomJour: string,
 
   return { expected: Math.max(0, expected), actual: Math.max(0, actual), amplitude: Math.max(0, amplitude), hasSwap };
 };
+
+// ─── Gestion des blocs spéciaux ───────────────────────────────────────────────
+
+const JOURS_BLOCS = [
+  { jour: 2, label: 'Mar' }, { jour: 3, label: 'Mer' }, { jour: 4, label: 'Jeu' }, { jour: 5, label: 'Ven' }, { jour: 6, label: 'Sam' },
+];
+const REPETITIONS_BLOC: { v: BlocSpecial['repetition']; label: string }[] = [
+  { v: 'hebdo', label: 'Chaque semaine' },
+  { v: 'semaineA', label: 'Semaines A' },
+  { v: 'semaineB', label: 'Semaines B' },
+  { v: 'ponctuel', label: 'Une seule date' },
+];
+
+function describeRepetition(b: BlocSpecial) {
+  if (b.repetition === 'ponctuel') return b.date_debut ? `le ${format(new Date(b.date_debut + 'T12:00:00'), 'EEEE d MMMM', { locale: fr })}` : 'date à fixer';
+  const jours = JOURS_BLOCS.filter(j => b.creneaux.some(c => c.jour === j.jour)).map(j => j.label.toLowerCase()).join(', ');
+  const rythme = REPETITIONS_BLOC.find(r => r.v === b.repetition)?.label.toLowerCase();
+  const periode = b.date_debut || b.date_fin
+    ? ` · ${b.date_debut ? `du ${format(new Date(b.date_debut + 'T12:00:00'), 'd MMM', { locale: fr })}` : ''}${b.date_fin ? ` au ${format(new Date(b.date_fin + 'T12:00:00'), 'd MMM yyyy', { locale: fr })}` : ''}`
+    : '';
+  return `${rythme} · ${jours || 'aucun jour'}${periode}`;
+}
+
+function GestionBlocs({ blocs, onFermer, onMaj }: { blocs: BlocSpecial[]; onFermer: () => void; onMaj: () => void }) {
+  const [edite, setEdite] = useState<Partial<BlocSpecial> | null>(null);
+  const [envoi, setEnvoi] = useState(false);
+  const maj = (c: Partial<BlocSpecial>) => setEdite(p => ({ ...p, ...c }));
+  const semaineCourante = getISOWeek(new Date()) % 2 !== 0 ? 'A' : 'B';
+
+  const creneaux = edite?.creneaux ?? [];
+  const jourDate = edite?.date_debut ? new Date(edite.date_debut + 'T12:00:00').getDay() : null;
+  const basculerJour = (jour: number) => {
+    const existe = creneaux.find(c => c.jour === jour);
+    const modele = creneaux[0] ?? { debut: '14:00', fin: '17:00' };
+    maj({ creneaux: existe ? creneaux.filter(c => c.jour !== jour) : [...creneaux, { jour, debut: modele.debut, fin: modele.fin }].sort((a, b) => a.jour - b.jour) });
+  };
+  const majCreneau = (jour: number, c: Partial<CreneauBloc>) => maj({ creneaux: creneaux.map(x => x.jour === jour ? { ...x, ...c } : x) });
+
+  // Date unique : un seul créneau, celui du jour de la date choisie.
+  const ponctuel = edite?.repetition === 'ponctuel';
+  const horairePonctuel = creneaux[0] ?? { debut: '14:00', fin: '17:00' };
+  const valide = !!edite?.nom?.trim() && (ponctuel ? !!edite.date_debut && horairePonctuel.debut < horairePonctuel.fin : creneaux.length > 0 && creneaux.every(c => c.debut < c.fin));
+
+  const enregistrer = async () => {
+    if (!edite || !valide || envoi) return;
+    setEnvoi(true);
+    const corps = {
+      nom: edite.nom!.trim(), icone: edite.icone || null, couleur: edite.couleur || '#a8e063',
+      nb_personnes: edite.nb_personnes ?? 1, repetition: edite.repetition ?? 'hebdo',
+      date_debut: edite.date_debut || null, date_fin: ponctuel ? edite.date_debut : (edite.date_fin || null),
+      creneaux: ponctuel ? [{ jour: jourDate!, debut: horairePonctuel.debut, fin: horairePonctuel.fin }] : creneaux,
+      ordre: edite.ordre ?? (blocs.length ? Math.max(...blocs.map(b => b.ordre)) + 1 : 0),
+    };
+    const r = await fetch(edite.id ? `/api/planning-blocs/${edite.id}` : '/api/planning-blocs', {
+      method: edite.id ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corps),
+    }).catch(() => null);
+    setEnvoi(false);
+    if (!r?.ok) { alert("Impossible d'enregistrer le bloc."); return; }
+    setEdite(null);
+    onMaj();
+  };
+
+  const supprimer = async (b: BlocSpecial) => {
+    if (!confirm(`Supprimer le bloc « ${b.nom} » ?\n\nIl disparaît des semaines en cours et à venir là où personne n'y est placé ; les créneaux déjà remplis restent.`)) return;
+    await fetch(`/api/planning-blocs/${b.id}`, { method: 'DELETE' }).catch(() => null);
+    setEdite(null);
+    onMaj();
+  };
+
+  const etiquette: React.CSSProperties = { fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", color: "rgba(0,0,0,0.45)", display: "block", marginBottom: 4 };
+  const choix = (actif: boolean): React.CSSProperties => ({
+    fontFamily: "inherit", cursor: "pointer", fontSize: 12, fontWeight: actif ? 900 : 600, padding: "5px 10px", borderRadius: 6,
+    background: actif ? "var(--yellow)" : "var(--white)", border: actif ? "2px solid var(--ink)" : "2px solid rgba(0,0,0,0.15)",
+  });
+
+  return (
+    <div onMouseDown={e => { if (e.target === e.currentTarget) onFermer(); }}
+      style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 10000, display: "flex", justifyContent: "center", alignItems: "flex-start", padding: "max(4vh, 12px) 12px", overflowY: "auto" }}>
+      <div className="pop-card" style={{ width: "100%", maxWidth: 620, background: "var(--cream)", padding: 0, overflow: "hidden" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 18px", background: "var(--ink)", color: "var(--white)" }}>
+          <h2 className="bc" style={{ margin: 0, fontSize: 22, flex: 1 }}>Blocs spéciaux</h2>
+          <button onClick={onFermer} aria-label="Fermer" style={{ width: 30, height: 30, borderRadius: "50%", background: "rgba(255,255,255,0.12)", border: "none", cursor: "pointer", color: "var(--white)", fontSize: 15 }}>✕</button>
+        </div>
+        <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+          {!edite && (
+            <>
+              <div style={{ fontSize: 13, color: "rgba(0,0,0,0.6)" }}>
+                Ils se placent à côté de la salle principale dans le planning des semaines concernées, avec l’effectif attendu. Modifier un bloc met à jour les semaines en cours et à venir, pas les semaines passées.
+              </div>
+              {blocs.map(b => (
+                <div key={b.id} className="pop-card" style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", background: "var(--white)" }}>
+                  <span style={{ width: 34, height: 34, borderRadius: 8, background: teinte(b.couleur, 0.6), border: "2px solid var(--ink)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>{b.icone ?? '⭐'}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 800, fontSize: 15 }}>{b.nom} <span style={{ fontWeight: 600, fontSize: 12, color: "rgba(0,0,0,0.5)" }}>· 👥 {b.nb_personnes}</span></div>
+                    <div style={{ fontSize: 12, color: "rgba(0,0,0,0.55)" }}>{describeRepetition(b)}</div>
+                  </div>
+                  <button className="pop-btn pop-btn-outline" style={{ fontSize: 12, padding: "5px 10px" }} onClick={() => setEdite(b)}>Modifier</button>
+                </div>
+              ))}
+              {blocs.length === 0 && <div style={{ fontSize: 13, opacity: 0.6, textAlign: "center", padding: 12 }}>Aucun bloc spécial.</div>}
+              <button className="pop-btn pop-btn-dark" style={{ alignSelf: "flex-start" }}
+                onClick={() => setEdite({ nom: '', icone: '🎪', couleur: '#fb923c', nb_personnes: 2, repetition: 'hebdo', creneaux: [], date_debut: null, date_fin: null })}>
+                + Nouveau bloc
+              </button>
+            </>
+          )}
+
+          {edite && (
+            <>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 70px 70px", gap: 10 }}>
+                <div>
+                  <label style={etiquette}>Nom</label>
+                  <input autoFocus value={edite.nom ?? ''} onChange={e => maj({ nom: e.target.value })} placeholder="Ex. : Animation jeux géants" className="pop-input" style={{ width: "100%" }} />
+                </div>
+                <div>
+                  <label style={etiquette}>Icône</label>
+                  <input value={edite.icone ?? ''} onChange={e => maj({ icone: e.target.value })} maxLength={4} className="pop-input" style={{ width: "100%", textAlign: "center", fontSize: 18 }} />
+                </div>
+                <div>
+                  <label style={etiquette}>Couleur</label>
+                  <input type="color" value={edite.couleur ?? '#a8e063'} onChange={e => maj({ couleur: e.target.value })} style={{ width: "100%", height: 38, border: "2px solid var(--ink)", borderRadius: 6, padding: 2, background: "var(--white)", cursor: "pointer" }} />
+                </div>
+              </div>
+              <div>
+                <label style={etiquette}>Personnes nécessaires</label>
+                <div style={{ display: "flex", gap: 6 }}>
+                  {[1, 2, 3, 4, 5].map(n => <button key={n} type="button" style={choix(edite.nb_personnes === n)} onClick={() => maj({ nb_personnes: n })}>{n}</button>)}
+                </div>
+              </div>
+              <div>
+                <label style={etiquette}>Répétition <span style={{ textTransform: "none", fontWeight: 600 }}>(cette semaine : {semaineCourante})</span></label>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {REPETITIONS_BLOC.map(r => <button key={r.v} type="button" style={choix(edite.repetition === r.v)} onClick={() => maj({ repetition: r.v })}>{r.label}</button>)}
+                </div>
+              </div>
+
+              {ponctuel ? (
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+                  <div>
+                    <label style={etiquette}>Date</label>
+                    <input type="date" value={edite.date_debut ?? ''} onChange={e => maj({ date_debut: e.target.value || null })} className="pop-input" style={{ width: "100%" }} />
+                  </div>
+                  <div>
+                    <label style={etiquette}>De</label>
+                    <input type="time" step={1800} value={horairePonctuel.debut} onChange={e => maj({ creneaux: [{ jour: jourDate ?? 0, debut: e.target.value, fin: horairePonctuel.fin }] })} className="pop-input" style={{ width: "100%" }} />
+                  </div>
+                  <div>
+                    <label style={etiquette}>À</label>
+                    <input type="time" step={1800} value={horairePonctuel.fin} onChange={e => maj({ creneaux: [{ jour: jourDate ?? 0, debut: horairePonctuel.debut, fin: e.target.value }] })} className="pop-input" style={{ width: "100%" }} />
+                  </div>
+                  {jourDate !== null && !JOURS_BLOCS.some(j => j.jour === jourDate) && (
+                    <div style={{ gridColumn: "1 / -1", fontSize: 12, color: "#b91c1c", fontWeight: 700 }}>Le planning n’affiche que du mardi au samedi : ce bloc n’y apparaîtra pas.</div>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <div>
+                    <label style={etiquette}>Jours et horaires</label>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      {JOURS_BLOCS.map(j => {
+                        const c = creneaux.find(x => x.jour === j.jour);
+                        return (
+                          <div key={j.jour} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                            <button type="button" style={{ ...choix(!!c), width: 56 }} onClick={() => basculerJour(j.jour)}>{j.label}</button>
+                            {c ? <>
+                              <input type="time" step={1800} value={c.debut} onChange={e => majCreneau(j.jour, { debut: e.target.value })} className="pop-input" style={{ width: 110 }} />
+                              <span style={{ fontWeight: 700 }}>→</span>
+                              <input type="time" step={1800} value={c.fin} onChange={e => majCreneau(j.jour, { fin: e.target.value })} className="pop-input" style={{ width: 110 }} />
+                              {c.debut >= c.fin && <span style={{ fontSize: 11, color: "#b91c1c", fontWeight: 700 }}>horaires inversés</span>}
+                            </> : <span style={{ fontSize: 12, color: "rgba(0,0,0,0.35)" }}>—</span>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                    <div>
+                      <label style={etiquette}>À partir du (facultatif)</label>
+                      <input type="date" value={edite.date_debut ?? ''} onChange={e => maj({ date_debut: e.target.value || null })} className="pop-input" style={{ width: "100%" }} />
+                    </div>
+                    <div>
+                      <label style={etiquette}>Jusqu’au (facultatif)</label>
+                      <input type="date" min={edite.date_debut ?? undefined} value={edite.date_fin ?? ''} onChange={e => maj({ date_fin: e.target.value || null })} className="pop-input" style={{ width: "100%" }} />
+                    </div>
+                  </div>
+                </>
+              )}
+
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
+                {edite.id && <button className="pop-btn pop-btn-outline" style={{ color: "#b91c1c", marginRight: "auto" }} onClick={() => supprimer(edite as BlocSpecial)}>Supprimer</button>}
+                <span style={{ flex: edite.id ? 0 : 1 }} />
+                <button className="pop-btn pop-btn-outline" onClick={() => setEdite(null)}>Annuler</button>
+                <button className="pop-btn pop-btn-dark" disabled={!valide || envoi} onClick={enregistrer}>{envoi ? '…' : 'Enregistrer'}</button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ─── Planning : horaires de travail et heures supplémentaires ─────────────────
 
@@ -497,6 +803,16 @@ useEffect(() => {
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [planningDate, setPlanningDate] = useState(new Date());
   const [planningSlots, setPlanningSlots] = useState<PlanningSlot[]>([]);
+  // Blocs spéciaux : null tant qu'ils ne sont pas chargés (rien n'est alors retiré des semaines).
+  const [blocs, setBlocs] = useState<BlocSpecial[] | null>(null);
+  const blocsRef = useRef<BlocSpecial[] | null>(null);
+  // Les modèles ne retouchent que les semaines en cours et à venir, ou jamais enregistrées.
+  const fusionPermiseRef = useRef(false);
+  const [showBlocs, setShowBlocs] = useState(false);
+  const chargerBlocs = () => fetch('/api/planning-blocs', { cache: 'no-store' })
+    .then(r => r.ok ? r.json() as Promise<BlocSpecial[]> : Promise.reject())
+    .then(d => setBlocs(prev => JSON.stringify(prev) === JSON.stringify(d) ? prev : d))
+    .catch(() => { /* table absente : on garde les créneaux tels quels */ });
   const [dragSelectionIds, setDragSelectionIds] = useState<string[]>([]);
   const [hoveringSlotId, setHoveringSlotId] = useState<string | null>(null);
   const [dragAbsentDays, setDragAbsentDays] = useState<Set<string>>(new Set());
@@ -630,6 +946,7 @@ useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       if (confirmHS) { annulerHS(); return; }
+      if (showBlocs) { setShowBlocs(false); return; }
       if (selectedDay) { setSelectedDay(null); return; }
       if (quickEditEv) { setQuickEditEv(null); return; }
       if (showEventModal) { setShowEventModal(false); return; }
@@ -640,7 +957,7 @@ useEffect(() => {
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [quickEditEv, showEventModal, swapSession, showEquipePanel, showEventsListPanel, showPlanningModal, confirmHS]);
+  }, [quickEditEv, showEventModal, swapSession, showEquipePanel, showEventsListPanel, showPlanningModal, confirmHS, showBlocs]);
 
   // Keep memberDataRef in sync so ghost element can read colors without stale closures
   useEffect(() => {
@@ -676,11 +993,11 @@ useEffect(() => {
           if (edge === 'top') {
             const nd = timeToMins(origDebut) + deltaMins;
             if (nd < PLANNING_START * 60 || nd >= timeToMins(origFin) - 30) return s;
-            return { ...s, debut: minsToTimeStr(nd) };
+            return { ...s, debut: minsToTimeStr(nd), ...(estBloc(s) ? { horsModele: true } : {}) };
           } else {
             const nf = timeToMins(origFin) + deltaMins;
             if (nf <= timeToMins(origDebut) + 30 || nf > PLANNING_END * 60) return s;
-            return { ...s, fin: minsToTimeStr(nf) };
+            return { ...s, fin: minsToTimeStr(nf), ...(estBloc(s) ? { horsModele: true } : {}) };
           }
         }));
         return;
@@ -811,11 +1128,21 @@ useEffect(() => {
         slots = getDefaultPlanningSlots(days);
         vacs = [];
       }
+      fusionPermiseRef.current = !data?.slots?.length || key >= planningWeekKey(new Date());
       lastLoadedPlanningRef.current = { slots, vacataires: vacs };
-      setPlanningSlots(slots);
+      setPlanningSlots(fusionPermiseRef.current ? fusionnerBlocs(slots, days, blocsRef.current) : slots);
       setVacataires(vacs);
     })();
   }, [planningDate, planningRecharge]);
+
+  // Un modèle créé ou modifié s'applique aussitôt à la semaine ouverte.
+  useEffect(() => {
+    blocsRef.current = blocs;
+    if (!fusionPermiseRef.current) return;
+    const days = eachDayOfInterval({ start: startOfWeek(planningDate, { weekStartsOn: 1 }), end: endOfWeek(planningDate, { weekStartsOn: 1 }) });
+    setPlanningSlots(prev => fusionnerBlocs(prev, days, blocs));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [blocs]);
 
   useEffect(() => {
     const last = lastLoadedPlanningRef.current;
@@ -855,32 +1182,36 @@ useEffect(() => {
       const wEnd   = endOfWeek(semaine, { weekStartsOn: 1 });
       const days   = eachDayOfInterval({ start: wStart, end: wEnd }).filter(d => d.getDay() !== 0);
       const weekLabel = `Semaine S${getISOWeek(semaine)} · ${format(wStart, 'd', { locale: fr })} au ${format(wEnd, 'd MMMM yyyy', { locale: fr })}`;
+      // Une colonne par bloc, seulement s'il a quelqu'un cette semaine-là.
+      const remplis = slotsVisibles(slots).filter(s => s.membreIds.length > 0);
+      const colonnesBlocs = [...new Map(remplis.filter(estBloc).map(s => [s.room!, infoBloc(s, blocs ?? [])])).entries()]
+        .sort(([a], [b]) => ((blocs ?? []).find(x => x.id === a)?.ordre ?? 999) - ((blocs ?? []).find(x => x.id === b)?.ordre ?? 999));
 
       const daysHTML = days.map(day => {
         const dk = format(day, 'yyyy-MM-dd');
-        const daySlots = slots.filter(s => s.dateKey === dk && s.membreIds.length > 0);
+        const daySlots = remplis.filter(s => s.dateKey === dk);
         if (daySlots.length === 0) return '';
 
-        const timeMap = new Map<string, { principale: string[]; jv: string[] }>();
+        const timeMap = new Map<string, Record<string, string[]>>();
         daySlots.forEach(s => {
           const k = `${s.debut}|${s.fin}`;
-          if (!timeMap.has(k)) timeMap.set(k, { principale: [], jv: [] });
+          if (!timeMap.has(k)) timeMap.set(k, {});
           const entry = timeMap.get(k)!;
-          const names = s.membreIds.map(mid => getMemName(mid, vacs));
-          if (s.room === 'jv') entry.jv.push(...names); else entry.principale.push(...names);
+          const room = s.room ?? 'principale';
+          (entry[room] ??= []).push(...s.membreIds.map(mid => getMemName(mid, vacs)));
         });
 
         const sortedTimes = Array.from(timeMap.entries()).sort((a, b) => a[0].localeCompare(b[0]));
         const dayLabel = capitalize(format(day, 'EEEE d MMMM', { locale: fr }));
 
-        const rowsHTML = sortedTimes.map(([timeKey, { principale, jv }]) => {
+        const rowsHTML = sortedTimes.map(([timeKey, rooms]) => {
           const [debut, fin] = timeKey.split('|');
-          const total = principale.length + jv.length;
+          const total = Object.values(rooms).reduce((n, l) => n + l.length, 0);
           return `<tr>
             <td class="col-n">${total}</td>
             <td class="col-h">${debut} – ${fin}</td>
-            <td class="col-salle">${principale.join(', ') || '–'}</td>
-            <td class="col-jv">${jv.join(', ') || ''}</td>
+            <td class="col-salle">${(rooms.principale ?? []).join(', ') || '–'}</td>
+            ${colonnesBlocs.map(([room]) => `<td class="col-bloc">${(rooms[room] ?? []).join(', ')}</td>`).join('')}
           </tr>`;
         }).join('');
 
@@ -891,7 +1222,7 @@ useEffect(() => {
               <th class="col-n">N</th>
               <th class="col-h">Horaires</th>
               <th class="col-salle">Salle principale</th>
-              <th class="col-jv">Jeux vidéo</th>
+              ${colonnesBlocs.map(([, b]) => `<th class="col-bloc">${b.nom.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!))}</th>`).join('')}
             </tr></thead>
             <tbody>${rowsHTML}</tbody>
           </table>
@@ -922,7 +1253,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
 .col-n{width:24px;text-align:center;font-weight:700;color:#777;font-size:8pt}
 .col-h{width:110px;font-size:8.5pt;font-weight:600;color:#444;white-space:nowrap}
 .col-salle{font-weight:700;font-size:9pt}
-.col-jv{font-weight:600;font-size:9pt;color:#555;border-left:1.5px solid #ddd;width:110px}
+.col-bloc{font-weight:600;font-size:9pt;color:#555;border-left:1.5px solid #ddd;width:110px}
 @media print{
   .week-section{page-break-after:always}
   .week-section:last-child{page-break-after:auto}
@@ -1029,10 +1360,11 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
   };
 
   // Pendant un brouillon, les modifications locales ne doivent pas être écrasées.
-  useTempsReel("agenda", () => { if (!isDraftMode) chargerEvenements(); });
+  useTempsReel("agenda", () => { chargerBlocs(); if (!isDraftMode) chargerEvenements(); });
 
   useEffect(() => {
     chargerEquipe(); 
+    chargerBlocs();
     chargerEvenements();
     
     fetch(`https://calendrier.api.gouv.fr/jours-feries/metropole/${dateActuelle.getFullYear()}.json`)
@@ -2157,13 +2489,13 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
 
                       {/* Planning blocks overlay */}
                       {(() => {
-                        const dayPlanSlots = viewPlanningSlots.filter(s => s.dateKey === dateKey && s.membreIds.length > 0);
-                        const byTime = new Map<string, { main: PlanningSlot | null; jv: PlanningSlot | null }>();
+                        const dayPlanSlots = slotsVisibles(viewPlanningSlots).filter(s => s.dateKey === dateKey && s.membreIds.length > 0);
+                        const byTime = new Map<string, { main: PlanningSlot | null; speciaux: PlanningSlot[] }>();
                         dayPlanSlots.forEach(s => {
                           const k = `${s.debut}|${s.fin}`;
-                          if (!byTime.has(k)) byTime.set(k, { main: null, jv: null });
+                          if (!byTime.has(k)) byTime.set(k, { main: null, speciaux: [] });
                           const e = byTime.get(k)!;
-                          if (s.room === 'jv') e.jv = s; else e.main = s;
+                          if (estBloc(s)) e.speciaux.push(s); else e.main = s;
                         });
                         const getMembers = (slot: PlanningSlot | null) => slot ? slot.membreIds.flatMap(mid => {
                           const eq = activeEquipe.find(m => m.id === mid);
@@ -2173,12 +2505,11 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
                           const col = vac ? vac.couleur : getMemberColor({ groupe: eq?.groupe, couleur: eq?.horaires?.couleur });
                           return [{ nom, col }];
                         }) : [];
-                        return Array.from(byTime.entries()).map(([k, { main, jv }]) => {
-                          const ref = main ?? jv!;
+                        return Array.from(byTime.entries()).map(([k, { main, speciaux }]) => {
+                          const ref = main ?? speciaux[0];
                           const top = calculerPositionTop(ref.debut);
                           const height = Math.max(calculerPositionTop(ref.fin, true) - top, 1);
                           const mainMembers = getMembers(main);
-                          const jvMembers = getMembers(jv);
                           return (
                             <div key={`pl-${k}`} style={{ position: "absolute", left: 9, right: 9, top: `${top}%`, height: `${height}%`, zIndex: 30, pointerEvents: "none", overflow: "visible", background: "repeating-linear-gradient(45deg, transparent, transparent 5px, rgba(248,113,113,0.13) 5px, rgba(248,113,113,0.13) 8px)", borderTop: "3px solid var(--rouge)", borderBottom: "3px solid var(--rouge)", display: "flex", alignItems: "center", justifyContent: "center", flexWrap: "wrap", gap: 6, padding: "4px 8px" }}>
                               {mainMembers.map((m, mi) => {
@@ -2191,8 +2522,12 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
                                   </span>
                                 );
                               })}
-                              {jvMembers.length > 0 && (
-                                <div style={{ position: "absolute", top: "50%", right: 2, width: 52, height: 52, display: "flex", alignItems: "center", justifyContent: "center", transform: "translateY(-50%) rotate(-9deg)", zIndex: 3 }}>
+                              {/* Un macaron par bloc spécial (jeux vidéo, animation…), empilés à droite. */}
+                              {speciaux.map((sp, si) => {
+                                const jvMembers = getMembers(sp);
+                                const info = infoBloc(sp, blocs ?? []);
+                                return (
+                                <div key={sp.id} title={info.nom} style={{ position: "absolute", top: `calc(50% + ${(si - (speciaux.length - 1) / 2) * 54}px)`, right: 2, width: 52, height: 52, display: "flex", alignItems: "center", justifyContent: "center", transform: "translateY(-50%) rotate(-9deg)", zIndex: 3 }}>
                                   <svg width={52} height={52} viewBox="0 0 100 100" style={{ position: "absolute", inset: 0 }}>
                                     {(() => {
                                       const n = 20, cx = 50, cy = 50, R = 47, r = 37;
@@ -2210,7 +2545,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
                                     })()}
                                   </svg>
                                   <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "center", gap: 2 }}>
-                                    <span className="bc" style={{ fontSize: 14, lineHeight: 1 }}>🎮</span>
+                                    <span className="bc" style={{ fontSize: 14, lineHeight: 1 }}>{info.icone ?? '⭐'}</span>
                                     {jvMembers.map((m, mi) => {
                                       const seed = m.nom.charCodeAt(0) + mi * 19;
                                       const tilt = ((seed % 14) - 7) * 1.2;
@@ -2222,7 +2557,8 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
                                     })}
                                   </div>
                                 </div>
-                              )}
+                                );
+                              })}
                             </div>
                           );
                         });
@@ -2973,6 +3309,16 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
                 <button onClick={() => setPlanningDate(addWeeks(planningDate, 1))} className="pop-btn" style={{ padding: "6px 10px", background: "rgba(255,255,255,0.1)", color: "var(--white)", border: "1.5px solid rgba(255,255,255,0.2)" }}>▶</button>
                 <button onClick={() => setPlanningDate(new Date())} className="pop-btn" style={{ fontSize: 11, padding: "6px 10px", background: "rgba(255,255,255,0.1)", color: "var(--white)", border: "1.5px solid rgba(255,255,255,0.2)" }}>Auj.</button>
                 <button onClick={savePlanningWeek} disabled={savingPlanning} className="pop-btn" style={{ fontSize: 12, padding: "6px 16px", background: savingPlanning ? "rgba(168,224,99,0.3)" : "var(--vert)", color: "var(--ink)", border: "2px solid rgba(255,255,255,0.4)", fontWeight: 900, marginLeft: 8 }}>{savingPlanning ? '…' : '✓ Enregistrer'}</button>
+                {(() => {
+                  // Combien de créneaux de la semaine manquent de monde (blocs vides compris).
+                  const n = slotsVisibles(planningSlots).filter(s => planningDays.some(j => format(j, 'yyyy-MM-dd') === s.dateKey) && !planningJoursFeries[s.dateKey] && s.membreIds.length > 0 && sousEffectif(s, blocs ?? [])).length;
+                  return n > 0 && (
+                    <span title="Créneaux entamés mais en sous-effectif" style={{ fontSize: 11, fontWeight: 900, padding: "5px 9px", borderRadius: 6, background: "#ea580c", color: "#fff", border: "1.5px solid rgba(255,255,255,0.4)", whiteSpace: "nowrap" }}>
+                      ⚠ {n} en sous-effectif
+                    </span>
+                  );
+                })()}
+                <button onClick={() => setShowBlocs(true)} disabled={!blocs} className="pop-btn" style={{ fontSize: 12, padding: "6px 14px", background: "rgba(255,255,255,0.1)", color: "var(--white)", border: "1.5px solid rgba(255,255,255,0.3)" }}>Blocs</button>
                 <button onClick={() => { setPdfSemaines([planningDate]); setPdfNavDate(planningDate); setShowPdfSelector(true); }} className="pop-btn" style={{ fontSize: 12, padding: "6px 14px", background: "rgba(255,255,255,0.1)", color: "var(--white)", border: "1.5px solid rgba(255,255,255,0.3)" }}>PDF</button>
                 <button onClick={() => { setSelectionMode(prev => !prev); setSelectedSlotIds(new Set()); setShowPasteCalendar(false); }} className="pop-btn" style={{ fontSize: 12, padding: "6px 14px", background: selectionMode ? "var(--yellow)" : "rgba(255,255,255,0.1)", color: selectionMode ? "var(--ink)" : "var(--white)", border: selectionMode ? "2px solid rgba(0,0,0,0.3)" : "1.5px solid rgba(255,255,255,0.3)" }}>Sélect.</button>
                 <button onClick={() => setShowPlanningModal(false)} style={{ width: 30, height: 30, borderRadius: "50%", background: "rgba(255,255,255,0.12)", border: "none", cursor: "pointer", color: "var(--white)", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
@@ -3117,11 +3463,13 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
                       {planningDays.map(jour => {
                         const dk = format(jour, 'yyyy-MM-dd');
                         const ferie = planningJoursFeries[dk];
-                        const daySlots = planningSlots.filter(s => s.dateKey === dk);
-                        const jvTimes = new Set(daySlots.filter(s => s.room === 'jv').map(s => `${s.debut}|${s.fin}`));
+                        const daySlots = slotsVisibles(planningSlots).filter(s => s.dateKey === dk);
+                        const lanes = couloirs(daySlots, blocs ?? []);
                         const today = isToday(jour);
-                        const allDebuts = daySlots.map(s => timeToMins(s.debut));
-                        const allFins = daySlots.map(s => timeToMins(s.fin));
+                        // Les « + » prolongent la salle principale : les blocs n'entrent pas dans le calcul.
+                        const principaux = daySlots.filter(s => !estBloc(s));
+                        const allDebuts = principaux.map(s => timeToMins(s.debut));
+                        const allFins = principaux.map(s => timeToMins(s.fin));
                         const earliestDebut = allDebuts.length ? Math.min(...allDebuts) : -1;
                         const latestFin = allFins.length ? Math.max(...allFins) : -1;
                         const addSlotToDay = (dMins: number, fMins: number) => {
@@ -3170,25 +3518,42 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
                               const height = planningHPct(slot.debut, slot.fin);
                               const isEmpty = slot.membreIds.length === 0;
                               const hovering = hoveringSlotId === slot.id;
-                              const isJV = slot.room === 'jv';
-                              const hasJVSibling = !isJV && jvTimes.has(`${slot.debut}|${slot.fin}`);
-                              const leftVal = isJV ? "50%" : 4;
-                              const rightVal = (!isJV && hasJVSibling) ? "50%" : 4;
-                              const jvBg = isEmpty ? "rgba(168,224,99,0.07)" : "rgba(168,224,99,0.18)";
+                              const bloc = estBloc(slot) ? infoBloc(slot, blocs ?? []) : null;
+                              const lane = lanes.get(slot.id) ?? { index: 0, total: 1 };
+                              const leftVal = lane.index === 0 ? "4px" : `${(lane.index / lane.total) * 100}%`;
+                              const rightVal = lane.index === lane.total - 1 ? "4px" : `${(1 - (lane.index + 1) / lane.total) * 100}%`;
+                              const blocBg = bloc ? teinte(bloc.couleur, isEmpty ? 0.08 : 0.2) : undefined;
+                              const manque = sousEffectif(slot, blocs ?? []);
+                              // Un bloc vide est signalé discrètement ; un créneau entamé mais incomplet, franchement.
+                              const alerte = !!manque && !isEmpty;
+                              const selectionne = selectedSlotIds.has(slot.id);
                               return (
-                                <div key={slot.id} data-slot-id={slot.id} data-date-key={dk}
-                                  style={{ position: "absolute", left: leftVal, right: rightVal, top: `${top}%`, height: `${height}%`, borderRadius: 7, border: selectedSlotIds.has(slot.id) ? "2.5px solid var(--bleu)" : hovering ? "2.5px dashed var(--bleu)" : isEmpty ? "2px dashed rgba(0,0,0,0.18)" : "2px solid var(--ink)", background: selectedSlotIds.has(slot.id) ? "rgba(96,165,250,0.18)" : hovering ? "rgba(96,165,250,0.08)" : isJV ? jvBg : isEmpty ? "rgba(0,0,0,0.015)" : "var(--white)", boxShadow: selectedSlotIds.has(slot.id) ? "2px 2px 0 var(--bleu)" : isEmpty ? "none" : "2px 2px 0 var(--ink)", display: "flex", flexDirection: "column", overflow: "visible", transition: "border-color 0.1s, background 0.1s", zIndex: selectedSlotIds.has(slot.id) ? 20 : undefined }}>
+                                <div key={slot.id} data-slot-id={slot.id} data-date-key={dk} title={alerte ? `Sous-effectif : ${manque!.message}` : undefined}
+                                  style={{ position: "absolute", left: leftVal, right: rightVal, top: `${top}%`, height: `${height}%`, borderRadius: 7, border: selectionne ? "2.5px solid var(--bleu)" : hovering ? "2.5px dashed var(--bleu)" : alerte ? "2.5px solid #ea580c" : isEmpty ? "2px dashed rgba(0,0,0,0.18)" : "2px solid var(--ink)", background: selectionne ? "rgba(96,165,250,0.18)" : hovering ? "rgba(96,165,250,0.08)" : alerte ? "repeating-linear-gradient(-45deg, rgba(251,146,60,0.16) 0 6px, rgba(251,146,60,0.06) 6px 12px), var(--white)" : bloc ? blocBg : isEmpty ? "rgba(0,0,0,0.015)" : "var(--white)", boxShadow: selectionne ? "2px 2px 0 var(--bleu)" : alerte ? "2px 2px 0 #ea580c" : isEmpty ? "none" : "2px 2px 0 var(--ink)", display: "flex", flexDirection: "column", overflow: "visible", transition: "border-color 0.1s, background 0.1s", zIndex: selectionne ? 20 : undefined }}>
+                                  {alerte && (
+                                    <span style={{ position: "absolute", bottom: 4, left: 4, right: 4, zIndex: 3, fontSize: 9, fontWeight: 900, color: "#fff", background: "#ea580c", border: "1.5px solid var(--ink)", borderRadius: 4, padding: "1px 5px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", width: "fit-content", maxWidth: "calc(100% - 8px)", pointerEvents: "none" }}>
+                                      ⚠ {manque!.message}
+                                    </span>
+                                  )}
                                   {/* Top resize handle */}
                                   <div onMouseDown={e => { e.preventDefault(); resizingRef.current = { slotId: slot.id, edge: 'top', startY: e.clientY, origDebut: slot.debut, origFin: slot.fin }; }}
                                     style={{ position: "absolute", top: 0, left: 0, right: 0, height: 8, cursor: "n-resize", borderRadius: "7px 7px 0 0", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2 }}>
                                     <div style={{ width: 18, height: 2, borderRadius: 1, background: "rgba(0,0,0,0.2)" }} />
                                   </div>
                                   {/* Delete button */}
-                                  <button onClick={e => { e.stopPropagation(); setPlanningSlots(prev => prev.filter(s => s.id !== slot.id)); appliquerHS(slot.id, null, []); }}
+                                  <button title={bloc ? "Retirer ce bloc de cette semaine" : "Supprimer le créneau"} onClick={e => {
+                                    e.stopPropagation();
+                                    // Un bloc est masqué plutôt que supprimé : sinon son modèle le recréerait.
+                                    setPlanningSlots(prev => bloc ? prev.map(s => s.id === slot.id ? { ...s, membreIds: [], masque: true } : s) : prev.filter(s => s.id !== slot.id));
+                                    appliquerHS(slot.id, null, []);
+                                  }}
                                     style={{ position: "absolute", top: 3, right: 3, width: 14, height: 14, borderRadius: "50%", background: "rgba(0,0,0,0.1)", color: "rgba(0,0,0,0.35)", border: "none", cursor: "pointer", fontSize: 8, display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1, zIndex: 5 }}>✕</button>
                                   {/* Content */}
                                   <div style={{ flex: 1, padding: "10px 6px 6px", display: "flex", flexDirection: "column", gap: 4, overflow: "hidden" }}>
-                                    <span style={{ fontSize: 9, fontWeight: 800, color: "rgba(0,0,0,0.35)", lineHeight: 1, letterSpacing: "0.04em" }}>{isJV ? 'JV · ' : ''}{slot.debut}–{slot.fin}</span>
+                                    <span style={{ fontSize: 9, fontWeight: 800, color: "rgba(0,0,0,0.35)", lineHeight: 1.15, letterSpacing: "0.04em", paddingRight: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                      {bloc && <span style={{ color: "var(--ink)" }}>{bloc.icone ?? '⭐'} {bloc.nom} · </span>}{slot.debut}–{slot.fin}
+                                      {bloc && <span style={{ marginLeft: 4, color: manque ? "#ea580c" : "rgba(0,0,0,0.45)" }}>👥 {slot.membreIds.length}/{bloc.nb}</span>}
+                                    </span>
                                     {slot.membreIds.length > 0 && (
                                       <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "flex-end" }}>
                                         {slot.membreIds.map(mid => {
@@ -3235,7 +3600,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
                                 style={{ position: "absolute", top: `${planningTopPct(minsToTimeStr(latestFin))}%`, left: "50%", transform: "translate(-50%, 10%)", zIndex: 10, width: 16, height: 16, borderRadius: "50%", background: "rgba(0,0,0,0.18)", color: "var(--white)", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1 }}>+</button>
                             )}
                             {/* + to start if empty day */}
-                            {!ferie && daySlots.length === 0 && (
+                            {!ferie && principaux.length === 0 && (
                               <button onClick={() => addSlotToDay(13 * 60, 14 * 60)}
                                 style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", zIndex: 10, width: 22, height: 22, borderRadius: "50%", background: "rgba(0,0,0,0.12)", color: "var(--ink)", border: "2px dashed rgba(0,0,0,0.2)", cursor: "pointer", fontSize: 15, fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1 }}>+</button>
                             )}
@@ -3311,27 +3676,29 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
                         const targetKey = weekKey;
                         const selectedSlots = planningSlots.filter(s => selectedSlotIds.has(s.id));
                         const data = await fetch(`/api/planning-semaine?key=${targetKey}`).then(r => r.json() as Promise<any>).catch(() => null);
-                        const existingSlots: PlanningSlot[] = (data?.slots?.length > 0)
+                        const joursCible = eachDayOfInterval({ start: targetWeekStart, end: addDays(targetWeekStart, 6) });
+                        const existingSlots: PlanningSlot[] = fusionnerBlocs((data?.slots?.length > 0)
                           ? (data.slots as PlanningSlot[])
-                          : getDefaultPlanningSlots(eachDayOfInterval({ start: targetWeekStart, end: addDays(targetWeekStart, 6) }));
-                        // Index existing target slots by "dateKey|debut|room" to allow both merge and insert
+                          : getDefaultPlanningSlots(joursCible), joursCible, blocs);
+                        // Salle principale : un créneau par heure de début. Bloc : un seul par jour.
+                        const cleSlot = (dk: string, debut: string, room: string) => room === 'principale' ? `${dk}|${debut}|principale` : `${dk}|bloc|${room}`;
                         const resultSlots: PlanningSlot[] = [...existingSlots];
                         const slotMap = new Map<string, number>();
-                        existingSlots.forEach((s, i) => slotMap.set(`${s.dateKey}|${s.debut}|${s.room ?? 'principale'}`, i));
+                        existingSlots.forEach((s, i) => slotMap.set(cleSlot(s.dateKey, s.debut, s.room ?? 'principale'), i));
                         for (const src of selectedSlots) {
                           const srcDow = (new Date(src.dateKey).getDay() + 6) % 7;
                           const targetDay = week[srcDow];
                           if (!targetDay) continue;
                           const targetDateKey = format(targetDay, 'yyyy-MM-dd');
                           const room = src.room ?? 'principale';
-                          const key = `${targetDateKey}|${src.debut}|${room}`;
+                          const key = cleSlot(targetDateKey, src.debut, room);
                           if (slotMap.has(key)) {
                             const idx = slotMap.get(key)!;
-                            resultSlots[idx] = { ...resultSlots[idx], membreIds: [...new Set([...resultSlots[idx].membreIds, ...src.membreIds])] };
+                            resultSlots[idx] = { ...resultSlots[idx], masque: false, membreIds: [...new Set([...resultSlots[idx].membreIds, ...src.membreIds])] };
                           } else {
                             // Custom-duration slot: add it to the target with adjusted dateKey/id
                             slotMap.set(key, resultSlots.length);
-                            resultSlots.push({ ...src, id: `${targetDateKey}-${src.debut}${room === 'jv' ? '-jv' : ''}`, dateKey: targetDateKey });
+                            resultSlots.push({ ...src, id: room === 'principale' ? `${targetDateKey}-${src.debut}` : `${targetDateKey}-bloc-${room}`, dateKey: targetDateKey });
                           }
                         }
                         const updatedSlots = resultSlots;
@@ -3771,6 +4138,8 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
           </div>
         </div>
       )}
+      {showBlocs && blocs && <GestionBlocs blocs={blocs} onFermer={() => setShowBlocs(false)} onMaj={chargerBlocs} />}
+
       {/* Confirmation des heures supp. : au-dessus de l'éditeur de planning. */}
       {confirmHS && (() => {
         const jour = new Date(confirmHS.slot.dateKey + 'T12:00:00');
