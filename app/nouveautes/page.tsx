@@ -3,11 +3,13 @@ import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useIsMobile } from "../../lib/useIsMobile";
 import BoutonScan from "../../components/ScanCodeBarre";
+import ScanNouveautes, { datesEntreeSalle, type JeuScanNouveaute } from "../../components/ScanNouveautes";
 
 type JeuNouveaute = {
   id: string | number;
   nom: string;
   ean: string;
+  code_syracuse?: string | null;
   couleur?: string;
   date_entree?: string | null;
   date_sortie?: string | null;
@@ -44,11 +46,12 @@ export default function NouveautesPage() {
   const [jeuxDispos, setJeuxDispos] = useState<JeuNouveaute[]>([]);
   const [rechercheAjout, setRechercheAjout] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+  const [scanOuvert, setScanOuvert] = useState(false);
 
-  const fetchDatas = async () => {
-    setIsLoading(true);
+  const fetchDatas = async (silencieux = false) => {
+    if (!silencieux) setIsLoading(true);
     const [bruts, catData]: [any[], any[]] = await Promise.all([
-      fetch('/api/jeux?statut=En+stock&fields=id,nom,ean,etape_nouveaute,date_entree,date_sortie').then(r => r.json() as Promise<any>).catch(() => []),
+      fetch('/api/jeux?statut=En+stock&fields=id,nom,ean,code_syracuse,etape_nouveaute,date_entree,date_sortie').then(r => r.json() as Promise<any>).catch(() => []),
       fetch('/api/catalogue?fields=ean,couleur').then(r => r.json() as Promise<any>).catch(() => []),
     ]);
 
@@ -72,13 +75,7 @@ export default function NouveautesPage() {
   };
 
   const validerEntreeEnSalle = async (id: string | number) => {
-    const aujourdhui = new Date();
-    const sortie = new Date();
-    sortie.setDate(aujourdhui.getDate() + 14);
-    await fetch(`/api/jeux/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-      date_entree: aujourdhui.toISOString().split('T')[0],
-      date_sortie: sortie.toISOString().split('T')[0],
-    }) });
+    await fetch(`/api/jeux/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(datesEntreeSalle()) });
     fetchDatas();
   };
 
@@ -208,7 +205,10 @@ export default function NouveautesPage() {
       <div style={{ padding: 'var(--page-pad-y) var(--page-pad-x)', display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 1200, width: '100%' }}>
         {/* Titre + recherche */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
-          <div />
+          <button type="button" onClick={() => setScanOuvert(true)} disabled={isLoading} className="pop-btn pop-btn-yellow"
+            style={{ width: isMobile ? '100%' : undefined, justifyContent: 'center' }}>
+            ▥ Scanner la sélection (Syracuse)
+          </button>
 
           {/* Barre de recherche */}
           <div style={{ position: 'relative', width: isMobile ? '100%' : 320, zIndex: 20, display: 'flex', gap: 8 }}>
@@ -343,6 +343,18 @@ export default function NouveautesPage() {
           </div>
         )}
       </div>
+
+      {scanOuvert && (
+        <ScanNouveautes
+          jeux={[...jeux, ...jeuxDispos] as JeuScanNouveaute[]}
+          salles={[
+            { titre: 'Salle Jeux', max: MAX_SALLE_JEUX, contient: j => j.couleur !== 'vert' },
+            { titre: 'Premiers Jeux', max: MAX_PREMIERS_JEUX, contient: j => j.couleur === 'vert' },
+          ]}
+          onModifie={() => fetchDatas(true)}
+          onFermer={() => setScanOuvert(false)}
+        />
+      )}
     </div>
   );
 }
