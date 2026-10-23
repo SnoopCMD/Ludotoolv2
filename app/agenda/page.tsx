@@ -295,6 +295,71 @@ const getDailyMinutes = (membre: MembreEquipe, dateKey: string, nomJour: string,
   return { expected: Math.max(0, expected), actual: Math.max(0, actual), amplitude: Math.max(0, amplitude), hasSwap };
 };
 
+// ─── Planning : horaires de travail et heures supplémentaires ─────────────────
+
+type Plage = { debut: number; fin: number };
+
+/**
+ * Les heures supp. posées depuis le planning sont des « Heures Exceptionnelles »
+ * de l'agenda dont l'identifiant dérive du créneau : on les retrouve pour les
+ * mettre à jour quand le créneau change, sans table de liaison.
+ */
+const prefixeHS = (slotId: string) => `hs-${slotId}-`;
+
+/**
+ * Plages où le membre travaille ce jour-là, en minutes : son horaire (échanges
+ * compris), moins ses absences à l'heure, plus les événements à horaires où il
+ * figure (heures exceptionnelles, soirées…), comme dans le décompte des heures.
+ * Les heures supp. du créneau `slotIgnore` sont exclues : c'est ce créneau
+ * qu'on évalue.
+ */
+function plagesTravail(m: MembreEquipe, dk: string, evs: Evenement[], slotIgnore?: string): Plage[] {
+  const d = new Date(dk + 'T12:00:00');
+  const nomJour = format(d, 'EEEE', { locale: fr }).toLowerCase();
+  const typeSemaine = getISOWeek(d) % 2 !== 0 ? 'semaineA' : 'semaineB';
+  const concerne = (e: Evenement) => e.date_debut <= dk && e.date_fin >= dk && (!e.membres?.length || e.membres.includes(m.id));
+  const intervals: { start: number; end: number }[] = [];
+  const h = getHoraireForDay(m, dk, nomJour, typeSemaine);
+  if (h) {
+    let segments = [{ debut: h.debut as string, fin: h.fin as string }];
+    evs.filter(e => ABSENCE_TYPES.includes(e.type) && concerne(e) && e.heure_debut && e.heure_fin).forEach(a => {
+      segments = segments.flatMap(s => soustraireHeures(s.debut, s.fin, a.heure_debut!, a.heure_fin!));
+    });
+    segments.forEach(s => intervals.push({ start: timeToMins(s.debut), end: timeToMins(s.fin, true) }));
+  }
+  evs.filter(e => !ABSENCE_TYPES.includes(e.type) && concerne(e) && e.heure_debut && e.heure_fin
+    && !(slotIgnore && e.id?.startsWith(prefixeHS(slotIgnore))))
+    .forEach(e => intervals.push({ start: timeToMins(e.heure_debut!), end: timeToMins(e.heure_fin!, true) }));
+  return mergeIntervals(intervals).map(i => ({ debut: i.start, fin: i.end }));
+}
+
+/** Ce qui, dans [debut, fin], tombe hors des plages données. */
+function horsPlages(plages: Plage[], debut: number, fin: number): Plage[] {
+  const out: Plage[] = [];
+  let curseur = debut;
+  for (const p of plages) {
+    if (p.fin <= curseur) continue;
+    if (p.debut >= fin) break;
+    if (p.debut > curseur) out.push({ debut: curseur, fin: p.debut });
+    curseur = Math.max(curseur, p.fin);
+  }
+  if (curseur < fin) out.push({ debut: curseur, fin });
+  return out;
+}
+
+/** Heures supp. qu'un créneau impose à chacun de ses membres de l'équipe. */
+function heuresSuppDuCreneau(slot: PlanningSlot, equipe: MembreEquipe[], evs: Evenement[]) {
+  return slot.membreIds.flatMap(mid => {
+    const m = equipe.find(e => e.id === mid);
+    if (!m) return []; // vacataire : pas d'horaires
+    const hors = horsPlages(plagesTravail(m, slot.dateKey, evs, slot.id), timeToMins(slot.debut), timeToMins(slot.fin, true));
+    return hors.length ? [{ membre: m, plages: hors }] : [];
+  });
+}
+
+const dureePlages = (plages: Plage[]) => plages.reduce((t, p) => t + p.fin - p.debut, 0);
+const formatDuree = (mins: number) => `${Math.floor(mins / 60)} h${mins % 60 ? String(mins % 60).padStart(2, '0') : ''}`;
+
 export default function AgendaPage() {
   const isMobile = useIsMobile();
   const [vue, setVue] = useState<"Mois" | "Semaine">("Mois");
@@ -460,11 +525,108 @@ useEffect(() => {
   const planningFeriesRef = useRef<Record<string, string>>({});
   const openPlanningModal = () => { setPlanningDate(dateActuelle); setShowPlanningModal(true); };
 
+  // ── Heures supp. depuis le planning
+  // Les écouteurs souris sont posés une fois pour toutes : ils lisent l'état par ces refs.
+  const equipeRef = useRef<MembreEquipe[]>([]);
+  const planningSlotsRef = useRef<PlanningSlot[]>([]);
+  const [confirmHS, setConfirmHS] = useState<{ slot: PlanningSlot; details: { membre: MembreEquipe; plages: Plage[] }[]; annuler?: () => void } | null>(null);
+
+  const remplacerSlot = (slot: PlanningSlot) => setPlanningSlots(prev => prev.map(s => s.id === slot.id ? slot : s));
+
+  /** Heures supp. que le créneau imposerait en plus de celles déjà posées pour lui. */
+  const nouvellesHS = (slot: PlanningSlot) => {
+    const evs = evenementsRef.current;
+    return heuresSuppDuCreneau(slot, equipeRef.current, evs).flatMap(({ membre, plages }) => {
+      const dejaPosees = evs
+        .filter(e => e.id?.startsWith(prefixeHS(slot.id)) && e.membres?.includes(membre.id) && e.heure_debut && e.heure_fin)
+        .map(e => ({ debut: timeToMins(e.heure_debut!), fin: timeToMins(e.heure_fin!, true) }))
+        .sort((a, b) => a.debut - b.debut);
+      const reste = plages.flatMap(p => horsPlages(dejaPosees, p.debut, p.fin));
+      return reste.length ? [{ membre, plages: reste }] : [];
+    });
+  };
+
+  /**
+   * Aligne les heures exceptionnelles de l'agenda sur le créneau : supprimées
+   * si le membre en est retiré ou si le créneau rentre dans ses horaires,
+   * ajustées s'il est redimensionné. Elles ne sont créées que pour `autorises`
+   * (confirmés à l'instant) ou pour qui en avait déjà sur ce créneau.
+   */
+  const appliquerHS = async (slotId: string, slot: PlanningSlot | null, autorises: string[]) => {
+    const evs = evenementsRef.current;
+    const existants = evs.filter(e => e.id?.startsWith(prefixeHS(slotId)));
+    const avaient = new Set(existants.flatMap(e => e.membres ?? []));
+    const voulus: Evenement[] = slot
+      ? heuresSuppDuCreneau(slot, equipeRef.current, evs)
+          .filter(({ membre }) => autorises.includes(membre.id) || avaient.has(membre.id))
+          .flatMap(({ membre, plages }) => plages.map((p, i) => ({
+            id: `${prefixeHS(slotId)}${membre.id}-${i}`,
+            titre: `Heures supp. (planning ${slot.debut}–${slot.fin})`,
+            type: 'Heures Exceptionnelles', date_debut: slot.dateKey, date_fin: slot.dateKey,
+            heure_debut: minsToTimeStr(p.debut), heure_fin: minsToTimeStr(p.fin), membres: [membre.id],
+          })))
+      : [];
+    const url = (id: string) => `/api/evenements/${encodeURIComponent(id)}`;
+    const json = { 'Content-Type': 'application/json' };
+    const ecritures: Promise<unknown>[] = [];
+    existants.filter(e => !voulus.some(v => v.id === e.id)).forEach(e => ecritures.push(fetch(url(e.id!), { method: 'DELETE' })));
+    voulus.forEach(v => {
+      const e = existants.find(x => x.id === v.id);
+      if (!e) ecritures.push(fetch('/api/evenements', { method: 'POST', headers: json, body: JSON.stringify(v) }));
+      else if (e.heure_debut !== v.heure_debut || e.heure_fin !== v.heure_fin || e.titre !== v.titre) {
+        const { id: _id, ...champs } = v;
+        ecritures.push(fetch(url(v.id!), { method: 'PUT', headers: json, body: JSON.stringify(champs) }));
+      }
+    });
+    if (!ecritures.length) return;
+    await Promise.all(ecritures.map(p => p.catch(() => null)));
+    chargerEvenements();
+  };
+
+  /** Dépose des membres sur un créneau ; ceux qui sortiraient de leurs horaires attendent confirmation. */
+  const placerMembres = (slot: PlanningSlot, ids: string[]) => {
+    const ajoutes = ids.filter(id => !slot.membreIds.includes(id));
+    if (!ajoutes.length) return;
+    const apres = { ...slot, membreIds: [...slot.membreIds, ...ajoutes] };
+    const aConfirmer = nouvellesHS(apres).filter(d => ajoutes.includes(d.membre.id));
+    if (!aConfirmer.length) { remplacerSlot(apres); return; }
+    const directs = ajoutes.filter(id => !aConfirmer.some(d => d.membre.id === id));
+    if (directs.length) remplacerSlot({ ...slot, membreIds: [...slot.membreIds, ...directs] });
+    setConfirmHS({ slot: apres, details: aConfirmer });
+  };
+
+  /** Fin d'un redimensionnement : un créneau qui déborde des horaires de ses membres demande confirmation. */
+  const finRedimension = (slotId: string, origDebut: string, origFin: string) => {
+    const slot = planningSlotsRef.current.find(s => s.id === slotId);
+    if (!slot || (slot.debut === origDebut && slot.fin === origFin)) return;
+    const aConfirmer = nouvellesHS(slot);
+    if (!aConfirmer.length) { appliquerHS(slot.id, slot, []); return; }
+    setConfirmHS({ slot, details: aConfirmer, annuler: () => remplacerSlot({ ...slot, debut: origDebut, fin: origFin }) });
+  };
+
+  const annulerHS = () => { confirmHS?.annuler?.(); setConfirmHS(null); };
+  const validerHS = () => {
+    if (!confirmHS) return;
+    remplacerSlot(confirmHS.slot);
+    appliquerHS(confirmHS.slot.id, confirmHS.slot, confirmHS.details.map(d => d.membre.id));
+    setConfirmHS(null);
+  };
+
+  const placerMembresRef = useRef(placerMembres);
+  const finRedimensionRef = useRef(finRedimension);
+  useEffect(() => {
+    placerMembresRef.current = placerMembres;
+    finRedimensionRef.current = finRedimension;
+    equipeRef.current = activeEquipe;
+    planningSlotsRef.current = planningSlots;
+  });
+
   const isAbsenceType = ABSENCE_TYPES.includes(nouvelEvent.type);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
+      if (confirmHS) { annulerHS(); return; }
       if (selectedDay) { setSelectedDay(null); return; }
       if (quickEditEv) { setQuickEditEv(null); return; }
       if (showEventModal) { setShowEventModal(false); return; }
@@ -475,7 +637,7 @@ useEffect(() => {
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [quickEditEv, showEventModal, swapSession, showEquipePanel, showEventsListPanel, showPlanningModal]);
+  }, [quickEditEv, showEventModal, swapSession, showEquipePanel, showEventsListPanel, showPlanningModal, confirmHS]);
 
   // Keep memberDataRef in sync so ghost element can read colors without stale closures
   useEffect(() => {
@@ -588,8 +750,9 @@ useEffect(() => {
               ev.date_debut <= slotDateKey && ev.date_fin >= slotDateKey &&
               (!ev.membres || ev.membres.length === 0 || ev.membres.includes(mid))
             ));
-            if (ids.length > 0) {
-              setPlanningSlots(prev => prev.map(s => s.id === slotId ? { ...s, membreIds: [...new Set([...s.membreIds, ...ids])] } : s));
+            const slot = planningSlotsRef.current.find(s => s.id === slotId);
+            if (ids.length > 0 && slot) {
+              placerMembresRef.current(slot, ids);
             } else {
               blocked = true;
             }
@@ -608,6 +771,10 @@ useEffect(() => {
           document.body.removeChild(ghostRef.current);
           ghostRef.current = null;
         }
+      }
+      if (resizingRef.current) {
+        const { slotId, origDebut, origFin } = resizingRef.current;
+        finRedimensionRef.current(slotId, origDebut, origFin);
       }
       resizingRef.current = null;
     };
@@ -2972,6 +3139,28 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
                                 </div>
                               </div>
                             )}
+                            {/* Pendant le glisser : en rouge, ce qui sort des horaires des agents tirés. */}
+                            {!ferie && !dragAbsentDays.has(dk) && (() => {
+                              const tires = dragSelectionIds.map(id => activeEquipe.find(m => m.id === id)).filter((m): m is MembreEquipe => !!m);
+                              if (!tires.length) return null;
+                              const hors = mergeIntervals(tires.flatMap(m => horsPlages(plagesTravail(m, dk, evenements), PLANNING_START * 60, PLANNING_END * 60))
+                                .map(p => ({ start: p.debut, end: p.fin })));
+                              return hors.map(p => (
+                                <div key={`hors-${p.start}`} style={{
+                                  position: "absolute", left: 0, right: 0, top: `${planningTopPct(minsToTimeStr(p.start))}%`,
+                                  height: `${planningHPct(minsToTimeStr(p.start), minsToTimeStr(p.end))}%`,
+                                  background: "repeating-linear-gradient(-45deg, rgba(248,113,113,0.28) 0 5px, rgba(248,113,113,0.08) 5px 12px)",
+                                  borderTop: "2px solid var(--rouge)", borderBottom: "2px solid var(--rouge)", pointerEvents: "none", zIndex: 35,
+                                  display: "flex", justifyContent: "center", alignItems: "flex-start", paddingTop: 3, boxSizing: "border-box",
+                                }}>
+                                  {p.end - p.start >= 45 && (
+                                    <span style={{ fontSize: 9, fontWeight: 800, color: "var(--rouge)", background: "rgba(255,255,255,0.9)", padding: "1px 6px", borderRadius: 4, border: "1.5px solid var(--rouge)", whiteSpace: "nowrap" }}>
+                                      Hors horaires
+                                    </span>
+                                  )}
+                                </div>
+                              ));
+                            })()}
                             {!ferie && daySlots.map(slot => {
                               const top = planningTopPct(slot.debut);
                               const height = planningHPct(slot.debut, slot.fin);
@@ -2991,7 +3180,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
                                     <div style={{ width: 18, height: 2, borderRadius: 1, background: "rgba(0,0,0,0.2)" }} />
                                   </div>
                                   {/* Delete button */}
-                                  <button onClick={e => { e.stopPropagation(); setPlanningSlots(prev => prev.filter(s => s.id !== slot.id)); }}
+                                  <button onClick={e => { e.stopPropagation(); setPlanningSlots(prev => prev.filter(s => s.id !== slot.id)); appliquerHS(slot.id, null, []); }}
                                     style={{ position: "absolute", top: 3, right: 3, width: 14, height: 14, borderRadius: "50%", background: "rgba(0,0,0,0.1)", color: "rgba(0,0,0,0.35)", border: "none", cursor: "pointer", fontSize: 8, display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1, zIndex: 5 }}>✕</button>
                                   {/* Content */}
                                   <div style={{ flex: 1, padding: "10px 6px 6px", display: "flex", flexDirection: "column", gap: 4, overflow: "hidden" }}>
@@ -3006,12 +3195,16 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
                                           if (!nomRaw && !membre) return null;
                                           const col = vac ? vac.couleur : getMemberColor({ groupe: membre?.groupe, couleur: membre?.horaires?.couleur });
                                           const tilt = (nom.charCodeAt(0) % 9 - 4) * 0.6;
+                                          const enHS = evenements.some(e => e.id?.startsWith(prefixeHS(slot.id)) && e.membres?.includes(mid));
                                           return (
                                             <div key={mid} style={{ position: "relative" }}>
+                                              {enHS && (
+                                                <span title="Heures supplémentaires (dans l'agenda)" style={{ position: "absolute", bottom: -2, left: -4, fontSize: 12, lineHeight: 1, zIndex: 1, filter: "drop-shadow(1px 1px 0 #0d0d0d)" }}>⭐</span>
+                                              )}
                                               <span className="bc" style={{ fontSize: 44, lineHeight: 1, display: "inline-block", color: col, WebkitTextStroke: "1.5px var(--ink)", filter: "drop-shadow(1.5px 1.5px 0 #0d0d0d)", transform: `rotate(${tilt}deg)` }}>
                                                 {nom[0].toUpperCase()}
                                               </span>
-                                              <button onClick={() => setPlanningSlots(prev => prev.map(s => s.id === slot.id ? { ...s, membreIds: s.membreIds.filter(id => id !== mid) } : s))}
+                                              <button onClick={() => { const apres = { ...slot, membreIds: slot.membreIds.filter(id => id !== mid) }; remplacerSlot(apres); appliquerHS(slot.id, apres, []); }}
                                                 style={{ position: "absolute", top: -3, right: -5, width: 13, height: 13, borderRadius: "50%", background: "var(--ink)", color: "var(--white)", border: "none", cursor: "pointer", fontSize: 8, display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1 }}>✕</button>
                                             </div>
                                           );
@@ -3054,7 +3247,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
                     <span style={{ color: "var(--white)", fontSize: 13, fontWeight: 700 }}>{selectedSlotIds.size} créneau{selectedSlotIds.size > 1 ? 'x' : ''} sélectionné{selectedSlotIds.size > 1 ? 's' : ''}</span>
                     <button className="pop-btn" onClick={() => { setShowPasteCalendar(true); setPasteCalMonth(planningDate); }}
                       style={{ background: "var(--vert)", color: "var(--ink)", fontSize: 13, padding: "6px 14px" }}>Copier</button>
-                    <button className="pop-btn" onClick={() => { setPlanningSlots(prev => prev.map(s => selectedSlotIds.has(s.id) ? { ...s, membreIds: [] } : s)); setSelectedSlotIds(new Set()); }}
+                    <button className="pop-btn" onClick={() => { setPlanningSlots(prev => prev.map(s => selectedSlotIds.has(s.id) ? { ...s, membreIds: [] } : s)); selectedSlotIds.forEach(id => appliquerHS(id, null, [])); setSelectedSlotIds(new Set()); }}
                       style={{ background: "var(--rouge)", color: "var(--white)", fontSize: 13, padding: "6px 14px" }}>Supprimer</button>
                     <button onClick={() => { setSelectedSlotIds(new Set()); setShowPasteCalendar(false); }} style={{ marginLeft: "auto", background: "transparent", border: "none", color: "rgba(255,255,255,0.5)", cursor: "pointer", fontSize: 13 }}>Annuler</button>
                   </div>
@@ -3574,6 +3767,46 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
           </div>
         </div>
       )}
+      {/* Confirmation des heures supp. : au-dessus de l'éditeur de planning. */}
+      {confirmHS && (() => {
+        const jour = new Date(confirmHS.slot.dateKey + 'T12:00:00');
+        const nomJour = format(jour, 'EEEE', { locale: fr }).toLowerCase();
+        const typeSemaine = getISOWeek(jour) % 2 !== 0 ? 'semaineA' : 'semaineB';
+        const total = confirmHS.details.reduce((t, d) => t + dureePlages(d.plages), 0);
+        return (
+          <div onMouseDown={e => { if (e.target === e.currentTarget) annulerHS(); }}
+            style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 10000, display: "flex", justifyContent: "center", alignItems: "center", padding: 16 }}>
+            <div className="pop-card" style={{ width: "100%", maxWidth: 440, background: "var(--white)", padding: 0, overflow: "hidden" }}>
+              <div style={{ background: "var(--rouge)", padding: "12px 18px", borderBottom: "2.5px solid var(--ink)" }}>
+                <h2 className="bc" style={{ margin: 0, fontSize: 22 }}>⚠️ Hors des horaires de travail</h2>
+              </div>
+              <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12, fontSize: 14 }}>
+                <div>
+                  Créneau du <b>{format(jour, 'EEEE d MMMM', { locale: fr })}</b>, {confirmHS.slot.debut}–{confirmHS.slot.fin} :
+                </div>
+                {confirmHS.details.map(({ membre, plages }) => {
+                  const h = getHoraireForDay(membre, confirmHS.slot.dateKey, nomJour, typeSemaine);
+                  return (
+                    <div key={membre.id} style={{ padding: "8px 12px", borderRadius: 8, border: "2px solid var(--ink)", background: "var(--cream)" }}>
+                      <b>{membre.nom}</b> {h ? <>travaille de {h.debut} à {h.fin} ce jour-là</> : <>ne travaille pas ce jour-là</>}.
+                      <div style={{ marginTop: 4, fontWeight: 700, color: "#b91c1c" }}>
+                        + {formatDuree(dureePlages(plages))} en heures supp. ({plages.map(p => `${minsToTimeStr(p.debut)}–${minsToTimeStr(p.fin)}`).join(', ')})
+                      </div>
+                    </div>
+                  );
+                })}
+                <div style={{ fontSize: 13, color: "rgba(0,0,0,0.6)" }}>
+                  En confirmant, {total > 0 ? formatDuree(total) : 'ces heures'} seront ajoutées à l’agenda en « Heures Exceptionnelles ⭐ ». Elles suivront le créneau : retirer l’agent ou supprimer le créneau les enlève.
+                </div>
+                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
+                  <button className="pop-btn pop-btn-outline" onClick={annulerHS}>Annuler</button>
+                  <button className="pop-btn pop-btn-dark" onClick={validerHS}>Oui, en heures supp.</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

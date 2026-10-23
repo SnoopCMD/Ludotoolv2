@@ -268,6 +268,26 @@ reprennent telles quelles les clés du corps de la requête.
 
 ---
 
+## Le planning de la semaine (`/agenda`)
+
+L'éditeur de planning se pilote au glisser-déposer. Deux garde-fous s'appliquent
+à un membre de l'équipe (pas aux vacataires, qui n'ont pas d'horaires) :
+
+- **Absent ce jour-là** (congé, RTT, récup, formation) : le dépôt est refusé.
+- **Hors de ses horaires** : pendant le glisser, ce qui sort de ses horaires
+  apparaît en rouge. Ses horaires, c'est son planning A/B (échanges compris),
+  moins ses absences à l'heure, plus les événements à horaires où il figure.
+  Déposer dessus demande confirmation ; confirmer crée dans l'agenda des
+  « Heures Exceptionnelles » pour la seule partie hors horaires, ce qui les
+  compte dans ses heures.
+
+Ces heures supp. ont pour identifiant `hs-<id du créneau>-<membre>-<n>` : c'est
+ce qui les relie au créneau sans table de liaison. Retirer le membre ou
+supprimer le créneau les supprime, redimensionner le créneau les ajuste (et
+redemande confirmation s'il déborde davantage). Une ⭐ sur l'initiale signale un
+membre placé en heures supp. La copie de créneaux vers une autre semaine ne
+crée pas d'heures supp. : à vérifier après coup.
+
 ## Les paniers communs : votes et vérification
 
 **Les votes sont nominatifs.** Une voix appartient à un compte
