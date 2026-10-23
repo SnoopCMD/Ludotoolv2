@@ -237,6 +237,9 @@ export default function ScanNouveautes({ jeux, salles, onFermer, onModifie }: {
               padding: "12px 14px", fontWeight: 700, fontSize: 14, lineHeight: 1.4,
             }}>
               Pense à bien modifier les exemplaires et les pièges sur Syracuse pour les jeux ci-dessous.
+              {retraits.length > 0 && (
+                <> Et retire l&apos;étiquette « À jouer sur place » de la boîte des jeux retirés de la sélection.</>
+              )}
             </div>
             {listeMouvements("Entrés en salle", ajouts)}
             {listeMouvements("Retirés de la sélection", retraits)}
