@@ -277,10 +277,12 @@ exception assumée au principe « connexion facultative » des comptes.
 
 **Le compte rendu** (`reunion_seances.compte_rendu`) est un tableau JSON de
 sections `{ titre, paragraphes: string[], concernes: string[], invites: string[],
-interlocuteur }` : les paragraphes appartiennent à leur section, `concernes` liste
-des identifiants `equipe`, `invites` des noms libres de personnes extérieures, et
-`interlocuteur` (qui présente le sujet) est un identifiant `equipe` ou le nom d'un
-invité. Les anciens formats se lisent sans perte (`lireCR`) : la liste à plat
+services: string[], interlocuteur }` : les paragraphes appartiennent à leur
+section, `concernes` liste des identifiants `equipe`, `invites` des noms libres de
+personnes extérieures, `services` des services concernés en bloc (`SERVICES_CR` :
+toute l'équipe, Ludo, Jeunesse, Adulte, Musique & Ciné, Accueil), et
+`interlocuteur` (qui présente le sujet) est un identifiant `equipe` ou un nom
+libre — il n'a pas à figurer parmi les concernés. Les anciens formats se lisent sans perte (`lireCR`) : la liste à plat
 `{ "t": "section" | "p", "texte" }` (chaque paragraphe rejoint la section qui le
 précède) et le texte libre d'avant les sections (une section sans titre) ; ils
 sont réécrits au nouveau format à la prochaine modification. La liste des

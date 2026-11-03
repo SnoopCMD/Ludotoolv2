@@ -161,12 +161,24 @@ type SectionCR = {
   concernes: string[];
   /** Noms libres des personnes extérieures. */
   invites: string[];
-  /** Identifiant `equipe` ou nom d'un invité. */
+  /** Services concernés en bloc (clés de SERVICES_CR), dont « toute l'équipe ». */
+  services: string[];
+  /** Identifiant `equipe` ou nom libre : l'interlocuteur n'est pas forcément concerné. */
   interlocuteur: string | null;
 };
+
+const SERVICES_CR: { v: string; label: string }[] = [
+  { v: "equipe",  label: "Toute l'équipe" },
+  { v: "ludo",    label: "Ludo" },
+  { v: "jeunesse", label: "Jeunesse" },
+  { v: "adulte",  label: "Adulte" },
+  { v: "musique_cine", label: "Musique & Ciné" },
+  { v: "accueil", label: "Accueil" },
+];
+const libelleService = (v: string) => SERVICES_CR.find(x => x.v === v)?.label ?? v;
 type BlocCR = SectionCR;
 
-const sectionVide = (titre = ""): SectionCR => ({ titre, paragraphes: [], concernes: [], invites: [], interlocuteur: null });
+const sectionVide = (titre = ""): SectionCR => ({ titre, paragraphes: [], concernes: [], invites: [], services: [], interlocuteur: null });
 const chaines = (v: unknown) => Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
 
 function lireCR(brut: string | null): BlocCR[] {
@@ -187,6 +199,7 @@ function lireCR(brut: string | null): BlocCR[] {
         paragraphes: chaines(b.paragraphes),
         concernes: chaines(b.concernes),
         invites: chaines(b.invites),
+        services: chaines(b.services),
         interlocuteur: typeof b.interlocuteur === "string" && b.interlocuteur ? b.interlocuteur : null,
       });
     }
@@ -196,12 +209,12 @@ function lireCR(brut: string | null): BlocCR[] {
 const ecrireCR = (blocs: BlocCR[]) => JSON.stringify(blocs);
 const sectionsCR = (blocs: BlocCR[]) => blocs.filter(b => b.titre.trim()).map(b => b.titre.trim());
 const sectionRemplie = (s: SectionCR) =>
-  !!(s.titre.trim() || s.paragraphes.some(p => p.trim()) || s.concernes.length || s.invites.length || s.interlocuteur);
+  !!(s.titre.trim() || s.paragraphes.some(p => p.trim()) || s.concernes.length || s.invites.length || s.services.length || s.interlocuteur);
 /** Nom affiché d'une personne de section : membre de l'équipe ou invité (nom tel quel). */
 const nomPersonne = (id: string, equipe: Membre[]) => equipe.find(m => m.id === id)?.nom ?? id;
 /** Tout le texte d'une section, pour la recherche. */
 const texteSection = (s: SectionCR, equipe: Membre[]) => [
-  s.titre, ...s.paragraphes, ...s.concernes.map(id => nomPersonne(id, equipe)), ...s.invites,
+  s.titre, ...s.paragraphes, ...s.services.map(libelleService), ...s.concernes.map(id => nomPersonne(id, equipe)), ...s.invites,
   s.interlocuteur ? nomPersonne(s.interlocuteur, equipe) : "",
 ].join("\n");
 
@@ -556,23 +569,22 @@ function EditeurCR({ blocs, equipe, onChange }: { blocs: BlocCR[]; equipe: Membr
     setNouvelInvite("");
     setPanneau(p => p?.i === i && p.quoi === quoi ? null : { i, quoi });
   };
-  /** Ajoute un invité ; avec `presente`, il devient aussi l'interlocuteur. */
-  const ajouterInvite = (i: number, presente = false) => {
+  /** Ajoute un invité aux personnes concernées (un nom de l'équipe coche le membre). */
+  const ajouterInvite = (i: number) => {
     const nom = nouvelInvite.trim();
     if (!nom) return;
     const s = blocs[i];
     const membre = equipe.find(m => normaliser(m.nom) === normaliser(nom));
-    if (membre) {
-      majSection(i, {
-        concernes: s.concernes.includes(membre.id) ? s.concernes : [...s.concernes, membre.id],
-        ...(presente ? { interlocuteur: membre.id } : {}),
-      });
-    } else {
-      majSection(i, {
-        invites: s.invites.some(x => normaliser(x) === normaliser(nom)) ? s.invites : [...s.invites, nom],
-        ...(presente ? { interlocuteur: nom } : {}),
-      });
-    }
+    if (membre) majSection(i, { concernes: s.concernes.includes(membre.id) ? s.concernes : [...s.concernes, membre.id] });
+    else majSection(i, { invites: s.invites.some(x => normaliser(x) === normaliser(nom)) ? s.invites : [...s.invites, nom] });
+    setNouvelInvite("");
+  };
+  /** Interlocuteur extérieur : il présente le sujet sans être ajouté aux concernés. */
+  const choisirInterlocuteurLibre = (i: number) => {
+    const nom = nouvelInvite.trim();
+    if (!nom) return;
+    const membre = equipe.find(m => normaliser(m.nom) === normaliser(nom));
+    majSection(i, { interlocuteur: membre ? membre.id : nom });
     setNouvelInvite("");
   };
 
@@ -599,9 +611,10 @@ function EditeurCR({ blocs, equipe, onChange }: { blocs: BlocCR[]; equipe: Membr
       )}
       {blocs.map((s, i) => {
         const ouvert = panneau?.i === i ? panneau.quoi : null;
-        const nbConcernes = s.concernes.length + s.invites.length;
-        // L'interlocuteur se choisit parmi l'équipe et les invités de la section.
-        const choixInterlocuteur = [...equipe.map(m => ({ cle: m.id, nom: m.nom, membre: m })), ...s.invites.map(n => ({ cle: n, nom: n, membre: undefined }))];
+        const nbConcernes = s.concernes.length + s.invites.length + s.services.length;
+        // L'interlocuteur se choisit parmi l'équipe, les invités de la section ou un nom libre.
+        const libres = [...s.invites, ...(s.interlocuteur && !equipe.some(m => m.id === s.interlocuteur) && !s.invites.includes(s.interlocuteur) ? [s.interlocuteur] : [])];
+        const choixInterlocuteur = [...equipe.map(m => ({ cle: m.id, nom: m.nom, membre: m as Membre | undefined })), ...libres.map(n => ({ cle: n, nom: n, membre: undefined }))];
         return (
           <div key={i} style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
             <div style={{ flex: 1, minWidth: 0, border: "2.5px solid var(--ink)", borderRadius: 12, background: "var(--white)", overflow: "hidden" }}>
@@ -623,6 +636,18 @@ function EditeurCR({ blocs, equipe, onChange }: { blocs: BlocCR[]; equipe: Membr
               {/* Panneau : personnes concernées */}
               {ouvert === "concernes" && (
                 <div style={{ padding: 10, display: "flex", flexDirection: "column", gap: 8, background: "var(--cream)", borderBottom: "2px dashed rgba(0,0,0,0.2)" }}>
+                  <span style={etiquette}>Services</span>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    {SERVICES_CR.map(sv => {
+                      const actif = s.services.includes(sv.v);
+                      return (
+                        <button key={sv.v} type="button" style={puce(actif)}
+                          onClick={() => majSection(i, { services: actif ? s.services.filter(x => x !== sv.v) : [...s.services, sv.v] })}>
+                          {sv.v === "equipe" ? "👥 " : ""}{sv.label}
+                        </button>
+                      );
+                    })}
+                  </div>
                   <span style={etiquette}>Agents concernés</span>
                   <ChoixMembres equipe={equipe} valeur={s.concernes} onChange={v => majSection(i, { concernes: v })} />
                   <span style={etiquette}>Invités</span>
@@ -630,7 +655,7 @@ function EditeurCR({ blocs, equipe, onChange }: { blocs: BlocCR[]; equipe: Membr
                     {s.invites.map(n => (
                       <span key={n} style={puce(true)}>
                         {n}
-                        <button type="button" onClick={() => majSection(i, { invites: s.invites.filter(x => x !== n), interlocuteur: s.interlocuteur === n ? null : s.interlocuteur })}
+                        <button type="button" onClick={() => majSection(i, { invites: s.invites.filter(x => x !== n) })}
                           style={{ border: "none", background: "none", cursor: "pointer", fontWeight: 900, color: "#b91c1c", padding: 0 }}>✕</button>
                       </span>
                     ))}
@@ -659,9 +684,9 @@ function EditeurCR({ blocs, equipe, onChange }: { blocs: BlocCR[]; equipe: Membr
                     })}
                   </div>
                   <div style={{ display: "flex", gap: 6 }}>
-                    <input value={nouvelInvite} onChange={e => setNouvelInvite(e.target.value)} onKeyDown={e => { if (e.key === "Enter") ajouterInvite(i, true); }}
-                      placeholder="Ou un invité : son nom (Entrée)…" style={inp} />
-                    <button type="button" className="pop-btn pop-btn-outline" onClick={() => ajouterInvite(i, true)} disabled={!nouvelInvite.trim()}>+</button>
+                    <input value={nouvelInvite} onChange={e => setNouvelInvite(e.target.value)} onKeyDown={e => { if (e.key === "Enter") choisirInterlocuteurLibre(i); }}
+                      placeholder="Ou un intervenant extérieur : son nom (Entrée)…" style={inp} />
+                    <button type="button" className="pop-btn pop-btn-outline" onClick={() => choisirInterlocuteurLibre(i)} disabled={!nouvelInvite.trim()}>+</button>
                   </div>
                 </div>
               )}
@@ -710,7 +735,8 @@ function EditeurCR({ blocs, equipe, onChange }: { blocs: BlocCR[]; equipe: Membr
 /** Interlocuteur et personnes concernées d'une section, en une ligne. */
 function ResumePersonnes({ s, equipe, q = "" }: { s: SectionCR; equipe: Membre[]; q?: string }) {
   const membres = s.concernes.map(id => equipe.find(m => m.id === id)).filter((m): m is Membre => !!m);
-  const nbConcernes = membres.length + s.invites.length;
+  const nbConcernes = membres.length + s.invites.length + s.services.length;
+  const interlocuteurExterieur = !!s.interlocuteur && !equipe.some(m => m.id === s.interlocuteur);
   return (
     <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", fontSize: 12 }}>
       {s.interlocuteur && (
@@ -719,11 +745,15 @@ function ResumePersonnes({ s, equipe, q = "" }: { s: SectionCR; equipe: Membre[]
             ? <Avatar m={equipe.find(m => m.id === s.interlocuteur)} taille={18} />
             : <span style={{ paddingLeft: 4 }}>🎤</span>}
           présenté par <Surligne texte={nomPersonne(s.interlocuteur, equipe)} q={q} />
+          {interlocuteurExterieur && <span style={{ fontWeight: 500, opacity: 0.6 }}>(invité)</span>}
         </span>
       )}
       {nbConcernes > 0 && (
         <span style={{ display: "inline-flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
           <b>👥 Concernés :</b>
+          {s.services.map(v => (
+            <span key={v} style={{ padding: "0 7px", borderRadius: 5, background: "var(--turquoise)", border: "1.5px solid var(--ink)", fontWeight: 800 }}><Surligne texte={libelleService(v)} q={q} /></span>
+          ))}
           {membres.map(m => (
             <span key={m.id} style={{ display: "inline-flex", alignItems: "center", gap: 3 }}><Avatar m={m} taille={16} /><Surligne texte={m.nom} q={q} /></span>
           ))}
@@ -750,7 +780,7 @@ function LectureCR({ blocs, equipe, q }: { blocs: BlocCR[]; equipe: Membre[]; q:
             </h3>
           )}
           <div style={{ padding: "8px 10px", display: "flex", flexDirection: "column", gap: 6 }}>
-            {(s.interlocuteur || s.concernes.length > 0 || s.invites.length > 0) && <ResumePersonnes s={s} equipe={equipe} q={q} />}
+            {(s.interlocuteur || s.concernes.length > 0 || s.invites.length > 0 || s.services.length > 0) && <ResumePersonnes s={s} equipe={equipe} q={q} />}
             {s.paragraphes.filter(p => p.trim()).map((p, k) => (
               <p key={k} style={{ margin: 0, fontSize: 14, whiteSpace: "pre-wrap", lineHeight: 1.55 }}><Surligne texte={p} q={q} /></p>
             ))}
