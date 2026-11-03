@@ -6,7 +6,7 @@ import { fr } from "date-fns/locale";
 import NavBar from "../../components/NavBar";
 import { useCompte } from "../../components/AuthProvider";
 import { useTempsReel } from "../../lib/temps-reel";
-import { estMissionAlerte, PRIORITE_ALERTE } from "../../lib/missionsAccueil";
+import { estMissionAlerte, PRIORITE_ALERTE, validations } from "../../lib/missionsAccueil";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -23,6 +23,8 @@ type Fiche = {
   priorite: number;
   deadline: string | null;
   assignes: string[];
+  /** Assignés ayant validé leur part depuis l'accueil (mission à plusieurs). */
+  valide_par?: string[];
   evenement_id: string | null;
   seance_id: string | null;
   decision: string | null;
@@ -364,16 +366,27 @@ const inp: React.CSSProperties = {
 
 const etiquette: React.CSSProperties = { fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.05em", opacity: 0.6, marginBottom: 4, display: "block" };
 
-function Avatar({ m, taille = 24 }: { m?: Membre; taille?: number }) {
+/** `valide` : coche verte, la personne a validé sa part de la mission. */
+function Avatar({ m, taille = 24, valide }: { m?: Membre; taille?: number; valide?: boolean }) {
   if (!m) return null;
   const initiales = m.nom.split(/\s+/).map(p => p[0]).join("").slice(0, 2).toUpperCase();
   return (
-    <span title={m.nom} style={{
+    <span title={valide ? `${m.nom} · a validé sa part` : m.nom} style={{
+      position: "relative",
       width: taille, height: taille, borderRadius: "50%", flexShrink: 0,
       background: m.couleur || (m.groupe === "A" ? "#f87171" : m.groupe === "B" ? "#60a5fa" : "#a8e063"),
       border: "1.5px solid var(--ink)", fontSize: taille * 0.42, fontWeight: 900,
       display: "inline-flex", alignItems: "center", justifyContent: "center", color: "var(--ink)",
-    }}>{initiales}</span>
+    }}>
+      {initiales}
+      {valide && (
+        <span style={{
+          position: "absolute", right: -4, bottom: -4, width: Math.max(12, taille * 0.55), height: Math.max(12, taille * 0.55),
+          borderRadius: "50%", background: "var(--vert)", border: "1.5px solid var(--ink)", fontSize: Math.max(7, taille * 0.32),
+          display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1,
+        }}>✓</span>
+      )}
+    </span>
   );
 }
 
@@ -835,7 +848,7 @@ function CarteFiche({ f, equipe, evenements, onOuvrir, onBasculer }: {
           {f.assignes.length > 0 && (
             <span style={{ display: "inline-flex", marginLeft: "auto" }}>
               {f.assignes.map((id, i) => (
-                <span key={id} style={{ marginLeft: i ? -6 : 0 }}><Avatar m={equipe.find(m => m.id === id)} taille={22} /></span>
+                <span key={id} style={{ marginLeft: i ? -6 : 0 }}><Avatar m={equipe.find(m => m.id === id)} taille={22} valide={!fait && f.assignes.length > 1 && validations(f).includes(id)} /></span>
               ))}
             </span>
           )}
@@ -898,7 +911,13 @@ function ModalFiche({ initial, equipe, evenements, onFermer, onEnregistre, onSup
         {!estPoint && (f.priorite ?? 1) >= PRIORITE_ALERTE && f.statut !== "fait" && (
           <p style={{ fontSize: 12, fontWeight: 700, margin: "6px 0 0", color: "rgba(0,0,0,0.55)" }}>
             📣 {(f.assignes ?? []).length > 0
-              ? `Apparaîtra dans les alertes de l'accueil de ${(f.assignes ?? []).map(id => equipe.find(m => m.id === id)?.nom ?? "?").join(", ")}, jusqu'à ce qu'elle soit faite.`
+              ? (() => {
+                  const ok = validations({ ...f, assignes: f.assignes ?? [] } as Fiche);
+                  const restants = (f.assignes ?? []).filter(id => !ok.includes(id));
+                  return restants.length
+                    ? `Apparaît dans les alertes de l'accueil de ${restants.map(id => equipe.find(m => m.id === id)?.nom ?? "?").join(", ")}, jusqu'à ce que chacun valide sa part ou qu'elle soit faite.`
+                    : "Tout le monde a validé sa part.";
+                })()
               : "Assigne-la à quelqu'un pour qu'elle apparaisse dans ses alertes de l'accueil."}
           </p>
         )}
@@ -922,6 +941,17 @@ function ModalFiche({ initial, equipe, evenements, onFermer, onEnregistre, onSup
       <div>
         <label style={etiquette}>{estPoint ? "Porté par" : "Assignée à"}</label>
         <ChoixMembres equipe={equipe} valeur={f.assignes ?? []} onChange={v => maj({ assignes: v })} />
+        {!estPoint && f.id && (f.assignes ?? []).length > 1 && f.statut !== "fait" && (() => {
+          const ok = validations({ ...f, assignes: f.assignes ?? [] } as Fiche);
+          return (
+            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginTop: 8, fontSize: 12 }}>
+              <b>Validé depuis l&apos;accueil :</b>
+              {ok.length === 0 ? <span style={{ opacity: 0.55 }}>personne pour l&apos;instant</span>
+                : ok.map(id => <span key={id} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><Avatar m={equipe.find(m => m.id === id)} taille={20} valide />{equipe.find(m => m.id === id)?.nom}</span>)}
+              <span style={{ opacity: 0.55 }}>· {ok.length}/{(f.assignes ?? []).length}. « Fait » ci-dessous termine la mission pour tout le monde.</span>
+            </div>
+          );
+        })()}
       </div>
       <div>
         <label style={etiquette}>Statut</label>

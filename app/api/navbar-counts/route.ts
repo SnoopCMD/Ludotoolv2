@@ -22,8 +22,9 @@ export async function GET() {
       ? await db.prepare(
           `SELECT COUNT(*) as count FROM reunion_fiches
             WHERE genre = 'mission' AND statut != 'fait' AND priorite >= ?
-              AND EXISTS (SELECT 1 FROM json_each(reunion_fiches.assignes) WHERE value = ?)`
-        ).bind(PRIORITE_ALERTE, compte.equipe_id).first<{ count: number }>().catch(() => null)
+              AND EXISTS (SELECT 1 FROM json_each(reunion_fiches.assignes) WHERE value = ?)
+              AND NOT EXISTS (SELECT 1 FROM json_each(reunion_fiches.valide_par) WHERE value = ?)`
+        ).bind(PRIORITE_ALERTE, compte.equipe_id, compte.equipe_id).first<{ count: number }>().catch(() => null)
       : null;
 
     const total = (alertes?.count ?? 0) + (rappels?.count ?? 0) + (nouveautes?.count ?? 0) + (missions?.count ?? 0);

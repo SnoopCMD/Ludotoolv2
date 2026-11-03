@@ -6,7 +6,7 @@ import { useIsMobile } from "../lib/useIsMobile";
 import BoutonScan from "../components/ScanCodeBarre";
 import { useCompte } from "../components/AuthProvider";
 import { useTempsReel } from "../lib/temps-reel";
-import { estMissionAlerte, lienMission, type MissionAlerte } from "../lib/missionsAccueil";
+import { estMissionAlerte, lienMission, validations, type MissionAlerte } from "../lib/missionsAccueil";
 import { ListeModules, ModalPersonnaliser, MODULES_PAR_DEFAUT, modulesValides, type Nouveaute } from "../components/ModulesAccueil";
 import {
   format, startOfWeek, endOfWeek, eachDayOfInterval,
@@ -320,11 +320,11 @@ export default function AccueilPage() {
   useEffect(() => { chargerMissions(); }, [compte?.equipe_id]); // eslint-disable-line react-hooks/exhaustive-deps
   useTempsReel("reunion", () => { chargerMissions(); });
 
+  // Valide la part du compte connecté seulement : une mission à plusieurs reste
+  // ouverte pour les autres (elle se termine quand tous ont validé, ou depuis le Bureau).
   const terminerMission = async (id: string) => {
     setResolvingId(id);
-    await fetch(`/api/reunion/fiches/${id}`, {
-      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ statut: 'fait' }),
-    }).catch(() => null);
+    await fetch(`/api/reunion/fiches/${id}/valider`, { method: 'POST' }).catch(() => null);
     setTimeout(() => { setMissions(prev => prev.filter(m => m.id !== id)); setResolvingId(null); }, 350);
   };
   useTempsReel("agenda", () => chargerEvenements());
@@ -867,11 +867,31 @@ export default function AccueilPage() {
                             </span>
                             {m.statut === "en_cours" && <span style={{ fontSize: 11, fontWeight: 700, color: "rgba(0,0,0,0.5)" }}>▶ en cours</span>}
                           </div>
-                          <button onClick={() => terminerMission(m.id)} title="Marquer la mission comme faite"
+                          <button onClick={() => terminerMission(m.id)}
+                            title={m.assignes.length > 1 ? "Valider ma part (la mission reste ouverte pour les autres)" : "Marquer la mission comme faite"}
                             style={{ width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", background: "var(--vert)", border: "2px solid var(--ink)", cursor: "pointer", fontSize: 13, flexShrink: 0, boxShadow: "1px 1px 0 var(--ink)" }}>✓</button>
                         </div>
                         <p style={{ fontWeight: 800, fontSize: 14, color: "var(--ink)", lineHeight: 1.3 }}>{m.titre}</p>
                         {m.description && <p style={{ fontSize: 12, color: "rgba(0,0,0,0.55)", lineHeight: 1.5, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{m.description}</p>}
+                        {m.assignes.length > 1 && (() => {
+                          const ok = validations(m);
+                          return (
+                            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                              {m.assignes.map(id => {
+                                const membre = equipe.find(e => e.id === id);
+                                const valide = ok.includes(id);
+                                return (
+                                  <span key={id} title={`${membre?.nom ?? "?"}${valide ? " · a validé sa part" : " · pas encore validé"}`}
+                                    style={{ position: "relative", width: 24, height: 24, borderRadius: "50%", background: membre ? getMemberDotColor(membre) : "var(--cream2)", border: "1.5px solid var(--ink)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 900, opacity: valide ? 1 : 0.55 }}>
+                                    {(membre?.nom ?? "?").slice(0, 1).toUpperCase()}
+                                    {valide && <span style={{ position: "absolute", right: -5, bottom: -4, width: 14, height: 14, borderRadius: "50%", background: "var(--vert)", border: "1.5px solid var(--ink)", fontSize: 8, display: "flex", alignItems: "center", justifyContent: "center" }}>✓</span>}
+                                  </span>
+                                );
+                              })}
+                              <span style={{ fontSize: 11, fontWeight: 700, color: "rgba(0,0,0,0.5)" }}>{ok.length}/{m.assignes.length} validé{ok.length > 1 ? "s" : ""}</span>
+                            </div>
+                          );
+                        })()}
                         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
                           <span style={{ fontSize: 11, fontWeight: retard ? 800 : 600, color: retard ? "#b91c1c" : "rgba(0,0,0,0.45)" }}>
                             {m.deadline ? `${retard ? "⚠️ En retard · " : "Pour le "}${format(new Date(m.deadline + "T00:00:00"), "d MMM", { locale: fr })}` : "Sans échéance"}
