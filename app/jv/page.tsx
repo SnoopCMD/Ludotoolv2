@@ -113,6 +113,46 @@ type JvRotationConfig = {
   week_start: string;
 };
 
+/** Stand-by d'un emplacement (table jv_standby) : sa sélection est gelée et
+ *  remplacée par `jeux_ids` (+ permanents), ou par rien du tout (`aucun`). */
+type JvStandby = {
+  slot: SelectionSlot;
+  date_debut: string;        // yyyy-MM-dd
+  date_fin: string | null;   // null = durée indéterminée
+  mode: "aucun" | "selection";
+  jeux_ids: string[];
+  inclure_permanents: boolean;
+  motif: string | null;
+};
+type StandbyParSlot = Partial<Record<SelectionSlot, JvStandby>>;
+
+const aujourdhuiStr = () => format(new Date(), "yyyy-MM-dd");
+
+/** Le stand-by couvre-t-il ce jour ? */
+function standbyCouvre(sb: JvStandby | undefined | null, date: string): sb is JvStandby {
+  return !!sb && sb.date_debut <= date && (!sb.date_fin || sb.date_fin >= date);
+}
+
+/** Libellé court de la période : « jusqu'au 12 nov. », « durée indéterminée »… */
+function periodeStandby(sb: JvStandby): string {
+  const d = (x: string) => format(parseISO(x), "d MMM", { locale: fr });
+  const debut = sb.date_debut > aujourdhuiStr() ? `du ${d(sb.date_debut)} ` : "";
+  return sb.date_fin ? `${debut}${debut ? "au" : "jusqu'au"} ${d(sb.date_fin)}` : `${debut}${debut ? "· " : ""}durée indéterminée`;
+}
+
+/** Jeux réservables sur un emplacement à une date : la sélection en place
+ *  (permanents compris) ou, pendant un stand-by, ce qu'il propose. */
+function jeuxReservables(slot: SelectionSlot, date: string, selections: JvSelection[], jeux: JvJeu[], standby: StandbyParSlot): { jeux: JvJeu[]; standby: JvStandby | null } {
+  const sb = standby[slot];
+  const parId = (ids: string[]) => [...new Set(ids)].map(id => jeux.find(j => j.id === id)).filter((j): j is JvJeu => !!j);
+  if (standbyCouvre(sb, date)) {
+    if (sb.mode === "aucun") return { jeux: [], standby: sb };
+    const perms = sb.inclure_permanents ? selections.filter(s => s.slot === slot && s.permanent).map(s => s.jeu_id) : [];
+    return { jeux: parId([...sb.jeux_ids, ...perms]), standby: sb };
+  }
+  return { jeux: parId(selections.filter(s => s.slot === slot && s.statut === "actif").map(s => s.jeu_id)), standby: null };
+}
+
 type JvReservation = {
   id: string;
   jeu_id: string;
@@ -1047,14 +1087,6 @@ function ModalRotation({
 }) {
   const consoleName = SLOT_CONSOLE[slot];
   const [pickerGroupe, setPickerGroupe] = useState<number | null>(null);
-  const [pickerSearch, setPickerSearch] = useState("");
-  const [pickerSelected, setPickerSelected] = useState<string[]>([]);
-  const [fJoueurs, setFJoueurs] = useState<number | null>(null);   // nb de joueurs supporté
-  const [fPegi, setFPegi] = useState<number | null>(null);         // PEGI maximum
-  const [fUsage, setFUsage] = useState<"jamais" | "ancien" | "populaire" | null>(null);
-  const [fGenre, setFGenre] = useState("");
-  const [tri, setTri] = useState<"az" | "ancien" | "resa" | "resa_asc" | "pegi">("az");
-  const pickerRef = useRef<HTMLInputElement>(null);
 
   const planifiees = selections
     .filter(s => s.slot === slot && s.statut === "planifie")
@@ -1075,108 +1107,11 @@ function ModalRotation({
     (slot !== "Switch_Multi" || (j.nb_joueurs && j.nb_joueurs !== "1"))
   );
 
-  const resetFiltres = () => {
-    setFJoueurs(null); setFPegi(null); setFUsage(null); setFGenre(""); setTri("az");
-  };
-  const nbFiltresActifs = (fJoueurs !== null ? 1 : 0) + (fPegi !== null ? 1 : 0) + (fUsage !== null ? 1 : 0) + (fGenre ? 1 : 0);
-
-  const openPicker = (groupe: number) => {
-    setPickerGroupe(groupe);
-    setPickerSearch("");
-    setPickerSelected([]);
-    resetFiltres();
-    setTimeout(() => pickerRef.current?.focus(), 50);
-  };
-
-  const closePicker = () => { setPickerGroupe(null); setPickerSearch(""); setPickerSelected([]); resetFiltres(); };
-
-  const confirmPicker = () => {
-    if (pickerGroupe === null) return;
-    pickerSelected.forEach(id => onAddToGroup(id, pickerGroupe));
-    closePicker();
-  };
+  const openPicker = (groupe: number) => setPickerGroupe(groupe);
+  const closePicker = () => setPickerGroupe(null);
 
   const CONSOLE_BG_R: Record<string, string> = { PS5: 'var(--bleu)', Switch: 'var(--rouge)', PC: 'var(--cream2)' };
   const headerBgR = CONSOLE_BG_R[consoleName] ?? 'var(--cream2)';
-
-  const resaCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    reservations.filter(r => r.statut !== "annulee").forEach(r => {
-      counts[r.jeu_id] = (counts[r.jeu_id] || 0) + 1;
-      if (r.jeu2_id) counts[r.jeu2_id] = (counts[r.jeu2_id] || 0) + 1;
-    });
-    return counts;
-  }, [reservations]);
-
-  // jv_selections ne garde que la sélection en cours (les lignes sont supprimées
-  // à chaque rotation) : l'historique réel d'un jeu, ce sont ses réservations.
-  const dernierePartie = useMemo(() => {
-    const map: Record<string, string> = {};
-    reservations.filter(r => r.statut !== "annulee").forEach(r => {
-      if (!r.date_creneau) return;
-      for (const id of [r.jeu_id, r.jeu2_id]) {
-        if (id && (!map[id] || r.date_creneau > map[id])) map[id] = r.date_creneau;
-      }
-    });
-    return map;
-  }, [reservations]);
-
-  const limiteAncien = useMemo(() => format(addDays(new Date(), -182), "yyyy-MM-dd"), []);
-
-  const popularityRank = useMemo(() => {
-    const byConsole: Record<string, { id: string; count: number }[]> = {};
-    jeux.forEach(j => {
-      if (!byConsole[j.console]) byConsole[j.console] = [];
-      byConsole[j.console].push({ id: j.id, count: resaCounts[j.id] || 0 });
-    });
-    const ranks: Record<string, { rank: number; total: number }> = {};
-    Object.values(byConsole).forEach(list => {
-      const sorted = [...list].sort((a, b) => b.count - a.count);
-      sorted.forEach((item, i) => { ranks[item.id] = { rank: i + 1, total: sorted.length }; });
-    });
-    return ranks;
-  }, [jeux, resaCounts]);
-
-  // Genres proposés au filtre (le champ est libre et parfois multi-valué)
-  const genresDispo = useMemo(() => {
-    return genresPresents(disponibles);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jeux, selections, slot]);
-
-  const pickerGames = useMemo(() => {
-    if (pickerGroupe === null) return [];
-    const dansLeGroupe = new Set(planifiees.filter(s => s.groupe === pickerGroupe).map(s => s.jeu_id));
-    const q = normalizeStr(pickerSearch);
-
-    const list = disponibles.filter(j => {
-      if (dansLeGroupe.has(j.id)) return false;
-      if (q && !normalizeStr(j.titre).includes(q)) return false;
-
-      if (fJoueurs !== null) {
-        const p = parseJoueurs(j.nb_joueurs);
-        if (!p) return false;
-        if (fJoueurs === 1 ? p.min > 1 : p.max < fJoueurs) return false;
-      }
-      if (fPegi !== null && (j.pegi === null || j.pegi > fPegi)) return false;
-      if (fUsage === "jamais" && (resaCounts[j.id] || 0) > 0) return false;
-      if (fUsage === "ancien" && (dernierePartie[j.id] ?? "") >= limiteAncien) return false;
-      if (fUsage === "populaire") {
-        const pop = popularityRank[j.id];
-        if (!pop || (resaCounts[j.id] || 0) === 0 || pop.rank / pop.total > 0.2) return false;
-      }
-      if (fGenre && !aLeGenre(j, fGenre)) return false;
-      return true;
-    });
-
-    const parTitre = (a: JvJeu, b: JvJeu) => a.titre.localeCompare(b.titre);
-    if (tri === "ancien")   list.sort((a, b) => (dernierePartie[a.id] ?? "").localeCompare(dernierePartie[b.id] ?? "") || parTitre(a, b));
-    else if (tri === "resa") list.sort((a, b) => (resaCounts[b.id] || 0) - (resaCounts[a.id] || 0) || parTitre(a, b));
-    else if (tri === "resa_asc") list.sort((a, b) => (resaCounts[a.id] || 0) - (resaCounts[b.id] || 0) || parTitre(a, b));
-    else if (tri === "pegi") list.sort((a, b) => (a.pegi ?? 99) - (b.pegi ?? 99) || parTitre(a, b));
-    else list.sort(parTitre);
-    return list;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [disponibles, planifiees, pickerGroupe, pickerSearch, fJoueurs, fPegi, fUsage, fGenre, tri, resaCounts, popularityRank, dernierePartie, limiteAncien]);
 
   const isPickerOpen = pickerGroupe !== null;
 
@@ -1276,177 +1211,331 @@ function ModalRotation({
 
         {/* Picker overlay */}
         {pickerGroupe !== null && (() => {
-          const existingInGroup = planifiees.filter(s => s.groupe === pickerGroupe).length;
-          const slotsLeft = 3 - existingInGroup - pickerSelected.length;
+          const dansLeGroupe = planifiees.filter(s => s.groupe === pickerGroupe);
+          const dejaDedans = new Set(dansLeGroupe.map(s => s.jeu_id));
           const groupLabel = groupNums.indexOf(pickerGroupe) >= 0 ? groupNums.indexOf(pickerGroupe) + 1 : groupNums.length + 1;
           return (
             <div style={{ position: 'absolute', inset: 0, background: 'var(--cream)', display: 'flex', flexDirection: 'column', zIndex: 10 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '18px 20px', borderBottom: '2.5px solid var(--ink)', flexShrink: 0 }}>
-                <button onClick={closePicker}
-                  style={{ width: 32, height: 32, border: '2.5px solid var(--ink)', borderRadius: 8, background: 'var(--white)', fontWeight: 900, cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>←</button>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{ fontWeight: 900, fontSize: 14, color: 'var(--ink)', margin: 0 }}>Groupe {groupLabel}</p>
-                  <p style={{ fontSize: 11, color: 'rgba(0,0,0,0.4)', margin: 0 }}>
-                    {pickerSelected.length > 0
-                      ? `${pickerSelected.length} sélectionné${pickerSelected.length > 1 ? "s" : ""} · ${slotsLeft} place${slotsLeft > 1 ? "s" : ""} restante${slotsLeft > 1 ? "s" : ""}`
-                      : `${consoleName} · choisir jusqu'à ${slotsLeft} jeu${slotsLeft > 1 ? "x" : ""}`}
-                  </p>
-                </div>
-              </div>
-              <div style={{ padding: '12px 20px', borderBottom: '2.5px solid var(--ink)', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <input
-                    ref={pickerRef}
-                    type="text"
-                    value={pickerSearch}
-                    onChange={e => setPickerSearch(e.target.value)}
-                    placeholder="Rechercher un jeu…"
-                    className="pop-input" style={{ flex: 1, minWidth: 0 }}
-                  />
-                  <select value={tri} onChange={e => setTri(e.target.value as typeof tri)}
-                    className="pop-input" style={{ fontSize: 12, padding: '8px 10px', cursor: 'pointer', flexShrink: 0 }}>
-                    <option value="az">Tri : A → Z</option>
-                    <option value="ancien">Tri : pas vus depuis longtemps</option>
-                    <option value="resa">Tri : + réservés</option>
-                    <option value="resa_asc">Tri : - réservés</option>
-                    <option value="pegi">Tri : PEGI croissant</option>
-                  </select>
-                </div>
-
-                <div style={{ display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
-                  <FilterGroup label="Joueurs">
-                    {[1, 2, 3, 4].map(n => (
-                      <FilterChip key={n} active={fJoueurs === n} onClick={() => setFJoueurs(fJoueurs === n ? null : n)}
-                        title={n === 1 ? "Jouable en solo" : `Jouable à ${n} joueurs ou plus`}>
-                        {n === 1 ? "Solo" : `${n}+`}
-                      </FilterChip>
-                    ))}
-                  </FilterGroup>
-
-                  <FilterGroup label="PEGI max">
-                    {[3, 7, 12, 16, 18].map(n => (
-                      <FilterChip key={n} active={fPegi === n} onClick={() => setFPegi(fPegi === n ? null : n)}
-                        title={`PEGI ${n} ou moins`}>
-                        {n}
-                      </FilterChip>
-                    ))}
-                  </FilterGroup>
-
-                  <FilterGroup label="Historique">
-                    <FilterChip active={fUsage === "jamais"} onClick={() => setFUsage(fUsage === "jamais" ? null : "jamais")} title="Aucune réservation à ce jour">Jamais joué</FilterChip>
-                    <FilterChip active={fUsage === "ancien"} onClick={() => setFUsage(fUsage === "ancien" ? null : "ancien")} title="Pas de partie depuis plus de 6 mois (jamais joués inclus)">Pas vu depuis 6 mois</FilterChip>
-                    <FilterChip active={fUsage === "populaire"} onClick={() => setFUsage(fUsage === "populaire" ? null : "populaire")} title="Top 20% des réservations de la console">🔥 Populaires</FilterChip>
-                  </FilterGroup>
-
-                  {genresDispo.length > 0 && (
-                    <FilterGroup label="Genre">
-                      <select value={fGenre} onChange={e => setFGenre(e.target.value)}
-                        className="pop-input" style={{ fontSize: 11, padding: '4px 8px', cursor: 'pointer', maxWidth: 150 }}>
-                        <option value="">Tous</option>
-                        {genresDispo.map(g => <option key={g} value={g}>{g}</option>)}
-                      </select>
-                    </FilterGroup>
-                  )}
-
-                  <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: 11, fontWeight: 800, color: 'rgba(0,0,0,0.4)' }}>
-                      {pickerGames.length} jeu{pickerGames.length > 1 ? "x" : ""}
-                    </span>
-                    {nbFiltresActifs > 0 && (
-                      <button onClick={resetFiltres} className="pop-btn pop-btn-outline" style={{ fontSize: 10, padding: '4px 10px' }}>
-                        Effacer ({nbFiltresActifs})
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-              <div className="flex-1 overflow-y-auto custom-scroll p-4">
-                {pickerGames.length === 0 ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '32px 0' }}>
-                    <p style={{ fontSize: 13, color: 'rgba(0,0,0,0.35)', textAlign: 'center', fontWeight: 600, margin: 0 }}>
-                      {nbFiltresActifs > 0 || pickerSearch ? "Aucun jeu ne correspond à la recherche" : "Aucun jeu disponible"}
-                    </p>
-                    {(nbFiltresActifs > 0 || pickerSearch) && (
-                      <button onClick={() => { resetFiltres(); setPickerSearch(""); }} className="pop-btn pop-btn-outline" style={{ fontSize: 12 }}>
-                        Réinitialiser les filtres
-                      </button>
-                    )}
-                  </div>
-                ) : (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(136px, 1fr))', gap: 10, alignContent: 'start' }}>
-                    {pickerGames.map(j => {
-                      const isSelected = pickerSelected.includes(j.id);
-                      const isDisabled = !isSelected && slotsLeft === 0;
-                      return (
-                        <button key={j.id}
-                          disabled={isDisabled}
-                          onClick={() => setPickerSelected(prev =>
-                            prev.includes(j.id) ? prev.filter(id => id !== j.id) : [...prev, j.id]
-                          )}
-                          style={{
-                            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: 8,
-                            border: isSelected ? '2.5px solid var(--ink)' : '2px solid var(--cream2)',
-                            borderRadius: 12, background: isSelected ? 'var(--yellow)' : 'var(--white)',
-                            cursor: isDisabled ? 'not-allowed' : 'pointer', opacity: isDisabled ? 0.4 : 1,
-                            position: 'relative', textAlign: 'left',
-                            boxShadow: isSelected ? '3px 3px 0 var(--ink)' : 'none',
-                          }}>
-                          {isSelected && (
-                            <span style={{ position: 'absolute', top: 4, right: 4, width: 18, height: 18, background: 'var(--ink)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--white)', fontSize: 9, fontWeight: 900, zIndex: 10 }}>✓</span>
-                          )}
-                          <div style={{ width: '100%', aspectRatio: '3/4', borderRadius: 8, overflow: 'hidden', background: 'var(--cream2)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid var(--cream2)' }}>
-                            {j.image_url
-                              ? <img src={j.image_url} alt={j.titre} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                              : <span style={{ fontSize: 24 }}>🎮</span>}
-                          </div>
-                          <p style={{ fontSize: 10, fontWeight: 700, textAlign: 'center', lineHeight: 1.2, overflow: 'hidden', maxHeight: '2.4em', width: '100%' }}>{j.titre}</p>
-                          {/* Info pills */}
-                          <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 3, width: '100%', marginTop: 2 }}>
-                            {(() => {
-                              const d = dernierePartie[j.id];
-                              if (!d) return <span style={{ fontSize: 8, fontWeight: 700, padding: '2px 5px', borderRadius: 999, background: 'var(--vert)', color: 'var(--ink)', lineHeight: 1, border: '1px solid var(--ink)' }}>Jamais joué</span>;
-                              const vieux = d < limiteAncien;
-                              return (
-                                <span title={`Dernière partie le ${format(parseISO(d), "d MMMM yyyy", { locale: fr })}`}
-                                  style={{ fontSize: 8, fontWeight: 700, padding: '2px 5px', borderRadius: 999, background: vieux ? 'var(--cream2)' : 'var(--white)', color: 'rgba(0,0,0,0.55)', lineHeight: 1, border: '1px solid rgba(0,0,0,0.2)' }}>
-                                  vu {format(parseISO(d), "MMM yy", { locale: fr })}
-                                </span>
-                              );
-                            })()}
-                            {(() => {
-                              const pop = popularityRank[j.id];
-                              const count = resaCounts[j.id] || 0;
-                              if (!pop || count === 0) return <span style={{ fontSize: 8, fontWeight: 700, padding: '2px 5px', borderRadius: 999, background: 'var(--cream2)', color: 'rgba(0,0,0,0.4)', lineHeight: 1 }}>0 rés.</span>;
-                              const pct = pop.rank / pop.total;
-                              const bg = pct <= 0.2 ? 'var(--orange)' : pct <= 0.5 ? 'var(--yellow)' : 'var(--cream2)';
-                              const icon = pct <= 0.2 ? "🔥" : pct <= 0.5 ? "⭐" : "";
-                              return <span style={{ fontSize: 8, fontWeight: 700, padding: '2px 5px', borderRadius: 999, background: bg, color: 'var(--ink)', lineHeight: 1 }}>{icon}{icon ? " " : ""}{count} rés.</span>;
-                            })()}
-                            {j.pegi ? (() => {
-                              const bg = j.pegi <= 7 ? 'var(--vert)' : j.pegi <= 12 ? 'var(--yellow)' : j.pegi <= 16 ? 'var(--orange)' : 'var(--rouge)';
-                              return <span style={{ fontSize: 8, fontWeight: 700, padding: '2px 5px', borderRadius: 999, background: bg, color: 'var(--ink)', lineHeight: 1, border: '1px solid var(--ink)' }}>PEGI {j.pegi}</span>;
-                            })() : <span style={{ fontSize: 8, fontWeight: 700, padding: '2px 5px', borderRadius: 999, background: 'var(--cream2)', color: 'rgba(0,0,0,0.3)', lineHeight: 1 }}>PEGI ?</span>}
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-              <div style={{ padding: '14px 20px', borderTop: '2.5px solid var(--ink)', flexShrink: 0 }}>
-                <button
-                  onClick={confirmPicker}
-                  disabled={pickerSelected.length === 0}
-                  className="pop-btn pop-btn-dark"
-                  style={{ width: '100%', opacity: pickerSelected.length === 0 ? 0.35 : 1, cursor: pickerSelected.length === 0 ? 'not-allowed' : 'pointer' }}>
-                  {pickerSelected.length === 0
-                    ? "Sélectionner des jeux"
-                    : `Ajouter ${pickerSelected.length} jeu${pickerSelected.length > 1 ? "x" : ""} au groupe`}
-                </button>
-              </div>
+              <PickerJeux
+                titre={`Groupe ${groupLabel}`}
+                sousTitre={`${consoleName} · choisir jusqu'à ${3 - dansLeGroupe.length} jeu${3 - dansLeGroupe.length > 1 ? "x" : ""}`}
+                candidats={disponibles.filter(j => !dejaDedans.has(j.id))}
+                jeux={jeux}
+                reservations={reservations}
+                max={3 - dansLeGroupe.length}
+                libelleConfirmer={n => `Ajouter ${n} jeu${n > 1 ? "x" : ""} au groupe`}
+                onConfirm={ids => { ids.forEach(id => onAddToGroup(id, pickerGroupe)); closePicker(); }}
+                onBack={closePicker}
+              />
             </div>
           );
         })()}
+      </div>
+    </div>
+  );
+}
+
+// ─── Sélecteur de jeux (vignettes, filtres, tri) ──────────────────────────────
+// Partagé par la file d'attente, les permanents, la sélection en cours et le
+// stand-by : partout où l'on choisit des jeux, on voit jaquettes, PEGI et usage.
+
+function PickerJeux({
+  titre,
+  sousTitre,
+  candidats,
+  jeux,
+  reservations,
+  max,
+  initial,
+  autoriserVide = false,
+  libelleConfirmer,
+  onConfirm,
+  onBack,
+  iconeRetour = "←",
+}: {
+  titre: string;
+  sousTitre?: string;
+  candidats: JvJeu[];
+  jeux: JvJeu[];
+  reservations: JvReservation[];
+  /** Nombre maximum de jeux cochés (null = sans limite). */
+  max: number | null;
+  initial?: string[];
+  /** Valider sans aucun jeu coché (ex. vider une sélection de stand-by). */
+  autoriserVide?: boolean;
+  libelleConfirmer: (n: number) => string;
+  onConfirm: (ids: string[]) => void;
+  onBack: () => void;
+  iconeRetour?: string;
+}) {
+  const [pickerSearch, setPickerSearch] = useState("");
+  const [pickerSelected, setPickerSelected] = useState<string[]>(initial ?? []);
+  const [fJoueurs, setFJoueurs] = useState<number | null>(null);   // nb de joueurs supporté
+  const [fPegi, setFPegi] = useState<number | null>(null);         // PEGI maximum
+  const [fUsage, setFUsage] = useState<"jamais" | "ancien" | "populaire" | null>(null);
+  const [fGenre, setFGenre] = useState("");
+  const [tri, setTri] = useState<"az" | "ancien" | "resa" | "resa_asc" | "pegi">("az");
+  const pickerRef = useRef<HTMLInputElement>(null);
+  useEffect(() => { const t = setTimeout(() => pickerRef.current?.focus(), 50); return () => clearTimeout(t); }, []);
+
+  const resetFiltres = () => {
+    setFJoueurs(null); setFPegi(null); setFUsage(null); setFGenre(""); setTri("az");
+  };
+  const nbFiltresActifs = (fJoueurs !== null ? 1 : 0) + (fPegi !== null ? 1 : 0) + (fUsage !== null ? 1 : 0) + (fGenre ? 1 : 0);
+
+  const resaCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    reservations.filter(r => r.statut !== "annulee").forEach(r => {
+      counts[r.jeu_id] = (counts[r.jeu_id] || 0) + 1;
+      if (r.jeu2_id) counts[r.jeu2_id] = (counts[r.jeu2_id] || 0) + 1;
+    });
+    return counts;
+  }, [reservations]);
+
+  // jv_selections ne garde que la sélection en cours (les lignes sont supprimées
+  // à chaque rotation) : l'historique réel d'un jeu, ce sont ses réservations.
+  const dernierePartie = useMemo(() => {
+    const map: Record<string, string> = {};
+    reservations.filter(r => r.statut !== "annulee").forEach(r => {
+      if (!r.date_creneau) return;
+      for (const id of [r.jeu_id, r.jeu2_id]) {
+        if (id && (!map[id] || r.date_creneau > map[id])) map[id] = r.date_creneau;
+      }
+    });
+    return map;
+  }, [reservations]);
+
+  const limiteAncien = useMemo(() => format(addDays(new Date(), -182), "yyyy-MM-dd"), []);
+
+  const popularityRank = useMemo(() => {
+    const byConsole: Record<string, { id: string; count: number }[]> = {};
+    jeux.forEach(j => {
+      if (!byConsole[j.console]) byConsole[j.console] = [];
+      byConsole[j.console].push({ id: j.id, count: resaCounts[j.id] || 0 });
+    });
+    const ranks: Record<string, { rank: number; total: number }> = {};
+    Object.values(byConsole).forEach(list => {
+      const sorted = [...list].sort((a, b) => b.count - a.count);
+      sorted.forEach((item, i) => { ranks[item.id] = { rank: i + 1, total: sorted.length }; });
+    });
+    return ranks;
+  }, [jeux, resaCounts]);
+
+  // Genres proposés au filtre (le champ est libre et parfois multi-valué)
+  const genresDispo = useMemo(() => genresPresents(candidats), [candidats]);
+
+  const pickerGames = useMemo(() => {
+    const q = normalizeStr(pickerSearch);
+    const list = candidats.filter(j => {
+      if (q && !normalizeStr(j.titre).includes(q)) return false;
+      if (fJoueurs !== null) {
+        const p = parseJoueurs(j.nb_joueurs);
+        if (!p) return false;
+        if (fJoueurs === 1 ? p.min > 1 : p.max < fJoueurs) return false;
+      }
+      if (fPegi !== null && (j.pegi === null || j.pegi > fPegi)) return false;
+      if (fUsage === "jamais" && (resaCounts[j.id] || 0) > 0) return false;
+      if (fUsage === "ancien" && (dernierePartie[j.id] ?? "") >= limiteAncien) return false;
+      if (fUsage === "populaire") {
+        const pop = popularityRank[j.id];
+        if (!pop || (resaCounts[j.id] || 0) === 0 || pop.rank / pop.total > 0.2) return false;
+      }
+      if (fGenre && !aLeGenre(j, fGenre)) return false;
+      return true;
+    });
+
+    const parTitre = (a: JvJeu, b: JvJeu) => a.titre.localeCompare(b.titre);
+    if (tri === "ancien")   list.sort((a, b) => (dernierePartie[a.id] ?? "").localeCompare(dernierePartie[b.id] ?? "") || parTitre(a, b));
+    else if (tri === "resa") list.sort((a, b) => (resaCounts[b.id] || 0) - (resaCounts[a.id] || 0) || parTitre(a, b));
+    else if (tri === "resa_asc") list.sort((a, b) => (resaCounts[a.id] || 0) - (resaCounts[b.id] || 0) || parTitre(a, b));
+    else if (tri === "pegi") list.sort((a, b) => (a.pegi ?? 99) - (b.pegi ?? 99) || parTitre(a, b));
+    else list.sort(parTitre);
+    return list;
+  }, [candidats, pickerSearch, fJoueurs, fPegi, fUsage, fGenre, tri, resaCounts, popularityRank, dernierePartie, limiteAncien]);
+
+  const slotsLeft = max === null ? Infinity : max - pickerSelected.length;
+  const peutValider = pickerSelected.length > 0 || autoriserVide;
+
+  return (
+    <>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '18px 20px', borderBottom: '2.5px solid var(--ink)', flexShrink: 0 }}>
+        <button onClick={onBack}
+          style={{ width: 32, height: 32, border: '2.5px solid var(--ink)', borderRadius: 8, background: 'var(--white)', fontWeight: 900, cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{iconeRetour}</button>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p style={{ fontWeight: 900, fontSize: 14, color: 'var(--ink)', margin: 0 }}>{titre}</p>
+          <p style={{ fontSize: 11, color: 'rgba(0,0,0,0.4)', margin: 0 }}>
+            {pickerSelected.length > 0
+              ? `${pickerSelected.length} sélectionné${pickerSelected.length > 1 ? "s" : ""}${max !== null ? ` · ${slotsLeft} place${slotsLeft > 1 ? "s" : ""} restante${slotsLeft > 1 ? "s" : ""}` : ""}`
+              : sousTitre ?? (max !== null ? `choisir jusqu'à ${max} jeu${max > 1 ? "x" : ""}` : "choisir des jeux")}
+          </p>
+        </div>
+        {pickerSelected.length > 0 && (
+          <button onClick={() => setPickerSelected([])} className="pop-btn pop-btn-outline" style={{ fontSize: 10, padding: '4px 10px', flexShrink: 0 }}>
+            Tout décocher
+          </button>
+        )}
+      </div>
+      <div style={{ padding: '12px 20px', borderBottom: '2.5px solid var(--ink)', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <input
+            ref={pickerRef}
+            type="text"
+            value={pickerSearch}
+            onChange={e => setPickerSearch(e.target.value)}
+            placeholder="Rechercher un jeu…"
+            className="pop-input" style={{ flex: 1, minWidth: 0 }}
+          />
+          <select value={tri} onChange={e => setTri(e.target.value as typeof tri)}
+            className="pop-input" style={{ fontSize: 12, padding: '8px 10px', cursor: 'pointer', flexShrink: 0 }}>
+            <option value="az">Tri : A → Z</option>
+            <option value="ancien">Tri : pas vus depuis longtemps</option>
+            <option value="resa">Tri : + réservés</option>
+            <option value="resa_asc">Tri : - réservés</option>
+            <option value="pegi">Tri : PEGI croissant</option>
+          </select>
+        </div>
+
+        <div style={{ display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+          <FilterGroup label="Joueurs">
+            {[1, 2, 3, 4].map(n => (
+              <FilterChip key={n} active={fJoueurs === n} onClick={() => setFJoueurs(fJoueurs === n ? null : n)}
+                title={n === 1 ? "Jouable en solo" : `Jouable à ${n} joueurs ou plus`}>
+                {n === 1 ? "Solo" : `${n}+`}
+              </FilterChip>
+            ))}
+          </FilterGroup>
+
+          <FilterGroup label="PEGI max">
+            {[3, 7, 12, 16, 18].map(n => (
+              <FilterChip key={n} active={fPegi === n} onClick={() => setFPegi(fPegi === n ? null : n)}
+                title={`PEGI ${n} ou moins`}>
+                {n}
+              </FilterChip>
+            ))}
+          </FilterGroup>
+
+          <FilterGroup label="Historique">
+            <FilterChip active={fUsage === "jamais"} onClick={() => setFUsage(fUsage === "jamais" ? null : "jamais")} title="Aucune réservation à ce jour">Jamais joué</FilterChip>
+            <FilterChip active={fUsage === "ancien"} onClick={() => setFUsage(fUsage === "ancien" ? null : "ancien")} title="Pas de partie depuis plus de 6 mois (jamais joués inclus)">Pas vu depuis 6 mois</FilterChip>
+            <FilterChip active={fUsage === "populaire"} onClick={() => setFUsage(fUsage === "populaire" ? null : "populaire")} title="Top 20% des réservations de la console">🔥 Populaires</FilterChip>
+          </FilterGroup>
+
+          {genresDispo.length > 0 && (
+            <FilterGroup label="Genre">
+              <select value={fGenre} onChange={e => setFGenre(e.target.value)}
+                className="pop-input" style={{ fontSize: 11, padding: '4px 8px', cursor: 'pointer', maxWidth: 150 }}>
+                <option value="">Tous</option>
+                {genresDispo.map(g => <option key={g} value={g}>{g}</option>)}
+              </select>
+            </FilterGroup>
+          )}
+
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 11, fontWeight: 800, color: 'rgba(0,0,0,0.4)' }}>
+              {pickerGames.length} jeu{pickerGames.length > 1 ? "x" : ""}
+            </span>
+            {nbFiltresActifs > 0 && (
+              <button onClick={resetFiltres} className="pop-btn pop-btn-outline" style={{ fontSize: 10, padding: '4px 10px' }}>
+                Effacer ({nbFiltresActifs})
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+      <div className="flex-1 overflow-y-auto custom-scroll p-4">
+        {pickerGames.length === 0 ? (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '32px 0' }}>
+            <p style={{ fontSize: 13, color: 'rgba(0,0,0,0.35)', textAlign: 'center', fontWeight: 600, margin: 0 }}>
+              {nbFiltresActifs > 0 || pickerSearch ? "Aucun jeu ne correspond à la recherche" : "Aucun jeu disponible"}
+            </p>
+            {(nbFiltresActifs > 0 || pickerSearch) && (
+              <button onClick={() => { resetFiltres(); setPickerSearch(""); }} className="pop-btn pop-btn-outline" style={{ fontSize: 12 }}>
+                Réinitialiser les filtres
+              </button>
+            )}
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(136px, 1fr))', gap: 10, alignContent: 'start' }}>
+            {pickerGames.map(j => {
+              const isSelected = pickerSelected.includes(j.id);
+              const isDisabled = !isSelected && slotsLeft <= 0;
+              return (
+                <button key={j.id}
+                  disabled={isDisabled}
+                  onClick={() => setPickerSelected(prev =>
+                    prev.includes(j.id) ? prev.filter(id => id !== j.id) : [...prev, j.id]
+                  )}
+                  style={{
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: 8,
+                    border: isSelected ? '2.5px solid var(--ink)' : '2px solid var(--cream2)',
+                    borderRadius: 12, background: isSelected ? 'var(--yellow)' : 'var(--white)',
+                    cursor: isDisabled ? 'not-allowed' : 'pointer', opacity: isDisabled ? 0.4 : 1,
+                    position: 'relative', textAlign: 'left',
+                    boxShadow: isSelected ? '3px 3px 0 var(--ink)' : 'none',
+                  }}>
+                  {isSelected && (
+                    <span style={{ position: 'absolute', top: 4, right: 4, width: 18, height: 18, background: 'var(--ink)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--white)', fontSize: 9, fontWeight: 900, zIndex: 10 }}>✓</span>
+                  )}
+                  <div style={{ width: '100%', aspectRatio: '3/4', borderRadius: 8, overflow: 'hidden', background: 'var(--cream2)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid var(--cream2)' }}>
+                    {j.image_url
+                      ? <img src={j.image_url} alt={j.titre} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      : <span style={{ fontSize: 24 }}>🎮</span>}
+                  </div>
+                  <p style={{ fontSize: 10, fontWeight: 700, textAlign: 'center', lineHeight: 1.2, overflow: 'hidden', maxHeight: '2.4em', width: '100%' }}>{j.titre}</p>
+                  {/* Info pills */}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 3, width: '100%', marginTop: 2 }}>
+                    {(() => {
+                      const d = dernierePartie[j.id];
+                      if (!d) return <span style={{ fontSize: 8, fontWeight: 700, padding: '2px 5px', borderRadius: 999, background: 'var(--vert)', color: 'var(--ink)', lineHeight: 1, border: '1px solid var(--ink)' }}>Jamais joué</span>;
+                      const vieux = d < limiteAncien;
+                      return (
+                        <span title={`Dernière partie le ${format(parseISO(d), "d MMMM yyyy", { locale: fr })}`}
+                          style={{ fontSize: 8, fontWeight: 700, padding: '2px 5px', borderRadius: 999, background: vieux ? 'var(--cream2)' : 'var(--white)', color: 'rgba(0,0,0,0.55)', lineHeight: 1, border: '1px solid rgba(0,0,0,0.2)' }}>
+                          vu {format(parseISO(d), "MMM yy", { locale: fr })}
+                        </span>
+                      );
+                    })()}
+                    {(() => {
+                      const pop = popularityRank[j.id];
+                      const count = resaCounts[j.id] || 0;
+                      if (!pop || count === 0) return <span style={{ fontSize: 8, fontWeight: 700, padding: '2px 5px', borderRadius: 999, background: 'var(--cream2)', color: 'rgba(0,0,0,0.4)', lineHeight: 1 }}>0 rés.</span>;
+                      const pct = pop.rank / pop.total;
+                      const bg = pct <= 0.2 ? 'var(--orange)' : pct <= 0.5 ? 'var(--yellow)' : 'var(--cream2)';
+                      const icon = pct <= 0.2 ? "🔥" : pct <= 0.5 ? "⭐" : "";
+                      return <span style={{ fontSize: 8, fontWeight: 700, padding: '2px 5px', borderRadius: 999, background: bg, color: 'var(--ink)', lineHeight: 1 }}>{icon}{icon ? " " : ""}{count} rés.</span>;
+                    })()}
+                    {j.pegi ? (() => {
+                      const bg = j.pegi <= 7 ? 'var(--vert)' : j.pegi <= 12 ? 'var(--yellow)' : j.pegi <= 16 ? 'var(--orange)' : 'var(--rouge)';
+                      return <span style={{ fontSize: 8, fontWeight: 700, padding: '2px 5px', borderRadius: 999, background: bg, color: 'var(--ink)', lineHeight: 1, border: '1px solid var(--ink)' }}>PEGI {j.pegi}</span>;
+                    })() : <span style={{ fontSize: 8, fontWeight: 700, padding: '2px 5px', borderRadius: 999, background: 'var(--cream2)', color: 'rgba(0,0,0,0.3)', lineHeight: 1 }}>PEGI ?</span>}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+      <div style={{ padding: '14px 20px', borderTop: '2.5px solid var(--ink)', flexShrink: 0 }}>
+        <button
+          onClick={() => onConfirm(pickerSelected)}
+          disabled={!peutValider}
+          className="pop-btn pop-btn-dark"
+          style={{ width: '100%', opacity: peutValider ? 1 : 0.35, cursor: peutValider ? 'pointer' : 'not-allowed' }}>
+          {peutValider ? libelleConfirmer(pickerSelected.length) : "Sélectionner des jeux"}
+        </button>
+      </div>
+    </>
+  );
+}
+
+/** Le sélecteur de jeux dans sa propre fenêtre (hors file d'attente). */
+function ModalPickerJeux(props: Omit<Parameters<typeof PickerJeux>[0], "onBack" | "iconeRetour"> & { onClose: () => void }) {
+  const { onClose, ...reste } = props;
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 60, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 'calc(var(--nav-h) + 12px) 12px 12px', overflowY: 'auto' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="pop-card" style={{ background: 'var(--cream)', width: '100%', maxWidth: 1040, display: 'flex', flexDirection: 'column', height: 'calc(100dvh - var(--nav-h) - 68px)', overflow: 'hidden', marginBottom: 32 }}>
+        <PickerJeux {...reste} onBack={onClose} iconeRetour="✕" />
       </div>
     </div>
   );
@@ -1472,6 +1561,7 @@ function GameChip({ jeu, size = "md" }: { jeu: JvJeu; size?: "sm" | "md" }) {
 
 function ModalRotationPlanning({
   selections,
+  standby,
   jeux,
   rotationConfig,
   onUpdateConfig,
@@ -1480,6 +1570,7 @@ function ModalRotationPlanning({
   onClose,
 }: {
   selections: JvSelection[];
+  standby: StandbyParSlot;
   jeux: JvJeu[];
   rotationConfig: JvRotationConfig;
   onUpdateConfig: (slotIndex: number, weekStart: string) => void | Promise<void>;
@@ -1560,15 +1651,22 @@ function ModalRotationPlanning({
       const slot = ROTATION_ORDER[(slotIndex + weekOffset) % ROTATION_ORDER.length];
       const date = addDays(currentMonday, weekOffset * 7);
       if (weekOffset === 0) {
-        return { weekOffset, slot, date, games: actifsDe(slot), groupeRang: null as number | null };
+        return { weekOffset, slot, date, games: actifsDe(slot), groupeRang: null as number | null, sb: null as JvStandby | null };
+      }
+      // Stand-by le jour de la rotation : la sélection reste, aucun groupe consommé
+      const sb = standby[slot];
+      if (standbyCouvre(sb, format(date, "yyyy-MM-dd"))) {
+        return { weekOffset, slot, date, games: [] as JvJeu[], groupeRang: null as number | null, sb };
       }
       const rang = consumed[slot];
       consumed[slot] = rang + 1;
       const g = groupesParSlot[slot]?.[rang] ?? null;
-      return { weekOffset, slot, date, games: g?.games ?? [], groupeRang: g ? rang + 1 : null };
+      return { weekOffset, slot, date, games: g?.games ?? [], groupeRang: g ? rang + 1 : null, sb: null as JvStandby | null };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selections, jeux, slotIndex, currentMonday, groupesParSlot]);
+  }, [selections, jeux, slotIndex, currentMonday, groupesParSlot, standby]);
+  const nextSlotEnStandby = standbyCouvre(standby[nextSlot], aujourdhuiStr()) ? standby[nextSlot]! : null;
+  const currentSlotEnStandby = standbyCouvre(standby[currentSlot], aujourdhuiStr()) ? standby[currentSlot]! : null;
 
   const finSemaine = addDays(currentMonday, 6);
 
@@ -1630,6 +1728,11 @@ function ModalRotationPlanning({
                 </p>
               </div>
 
+              {currentSlotEnStandby && (
+                <span style={{ fontSize: 12, fontWeight: 800, padding: '4px 10px', borderRadius: 10, background: 'var(--orange)', border: '2px solid var(--ink)', alignSelf: 'flex-start' }}>
+                  ⏸ En stand-by {periodeStandby(currentSlotEnStandby)}{currentSlotEnStandby.mode === "aucun" ? " · aucun jeu disponible" : ""} — sélection gelée ci-dessous
+                </span>
+              )}
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 {jeuxActifs.length === 0
                   ? <span style={{ fontSize: 12, color: 'rgba(0,0,0,0.3)', fontStyle: 'italic', fontWeight: 700 }}>aucun jeu actif sur ce slot</span>
@@ -1658,7 +1761,11 @@ function ModalRotationPlanning({
                   <span style={{ fontWeight: 900, fontSize: 16, color: 'rgba(0,0,0,0.35)' }}>→</span>
                   <span className="pop-sticker" style={{ fontSize: 11, padding: '4px 11px', background: SLOT_COLOR[nextSlot], boxShadow: '2px 2px 0 var(--ink)' }}>{SLOT_LABEL[nextSlot]}</span>
                 </div>
-                {prochainGroupe && prochainGroupe.games.length > 0 ? (
+                {nextSlotEnStandby ? (
+                  <span style={{ fontSize: 12, fontWeight: 800, padding: '4px 10px', borderRadius: 10, background: 'var(--orange)', border: '2px solid var(--ink)', alignSelf: 'flex-start' }}>
+                    ⏸ {SLOT_LABEL[nextSlot]} en stand-by {periodeStandby(nextSlotEnStandby)} : sa sélection ne change pas, la file reste intacte.
+                  </span>
+                ) : prochainGroupe && prochainGroupe.games.length > 0 ? (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                     {prochainGroupe.games.map(j => <GameChip key={j.id} jeu={j} size="sm" />)}
                   </div>
@@ -1687,7 +1794,7 @@ function ModalRotationPlanning({
               Semaines suivantes
             </span>
 
-            {planning.filter(p => p.weekOffset > 0).map(({ weekOffset, slot: pSlot, date: pDate, games, groupeRang }) => {
+            {planning.filter(p => p.weekOffset > 0).map(({ weekOffset, slot: pSlot, date: pDate, games, groupeRang, sb: pSb }) => {
               const isNext = weekOffset === 1;
               return (
                 <div key={weekOffset}
@@ -1716,7 +1823,11 @@ function ModalRotationPlanning({
 
                   {/* Jeux */}
                   <div style={{ flex: 1, minWidth: 0, padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
-                    {games.length === 0 ? (
+                    {pSb ? (
+                      <span style={{ fontSize: 11, fontWeight: 800, padding: '3px 9px', borderRadius: 999, background: 'var(--orange)', border: '1.5px solid var(--ink)' }}>
+                        ⏸ stand-by · sélection inchangée
+                      </span>
+                    ) : games.length === 0 ? (
                       <>
                         <span style={{ fontSize: 11, color: 'rgba(0,0,0,0.3)', fontStyle: 'italic', fontWeight: 700 }}>rien de planifié</span>
                         <button onClick={() => onOpenQueue(pSlot)}
@@ -1776,6 +1887,7 @@ function ModalRotationPlanning({
 function ModalReservation({
   jeux,
   selections,
+  standby,
   reservations,
   preDate,
   preHeureDebut,
@@ -1785,6 +1897,7 @@ function ModalReservation({
 }: {
   jeux: JvJeu[];
   selections: JvSelection[];
+  standby: StandbyParSlot;
   reservations: JvReservation[];
   preDate?: string;
   preHeureDebut?: string;
@@ -1861,12 +1974,14 @@ function ModalReservation({
 
   const heureFin = heureDebut ? minsToTime(parseTime(heureDebut) + durationMins) : "";
 
-  // Jeux de la sélection active pour ce slot
-  const activeSelections = selections.filter(s => s.slot === slot && s.statut === "actif");
-  const jeuxDispo = activeSelections
-    .map(s => ({ sel: s, jeu: jeux.find(j => j.id === s.jeu_id) }))
-    .filter((x): x is { sel: JvSelection; jeu: JvJeu } => !!x.jeu)
-    .filter(x => slot !== "Switch_Multi" || (x.jeu.nb_joueurs && x.jeu.nb_joueurs !== "1"));
+  // Jeux réservables ce jour-là : la sélection active, ou celle du stand-by
+  const reservables = jeuxReservables(slot, date, selections, jeux, standby);
+  const standbyDuJour = reservables.standby;
+  const permanentsIds = new Set(selections.filter(s => s.slot === slot && s.permanent).map(s => s.jeu_id));
+  const jeuxDispo = reservables.jeux
+    .filter(j => slot !== "Switch_Multi" || (j.nb_joueurs && j.nb_joueurs !== "1"))
+    .map(j => ({ jeu: j, permanent: permanentsIds.has(j.id) }));
+  useEffect(() => { if (jeuId && !jeuxDispo.some(x => x.jeu.id === jeuId)) setJeuId(""); }, [date]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { setJeuId(""); setNbJoueurs(1); setJoueurs([joueurVide()]); }, [posteId]);
 
@@ -2001,14 +2116,19 @@ function ModalReservation({
 
           {/* Jeu */}
           <div>
-            <label style={Slabel}>Jeu (sélection active) *</label>
+            <label style={Slabel}>Jeu ({standbyDuJour ? "sélection de stand-by" : "sélection active"}) *</label>
+            {standbyDuJour && (
+              <div style={{ background: 'var(--orange)', border: '2.5px solid var(--ink)', borderRadius: 10, padding: '8px 12px', fontSize: 12, fontWeight: 700, marginBottom: 8 }}>
+                ⏸ {SLOT_LABEL[slot]} en stand-by {periodeStandby(standbyDuJour)}{standbyDuJour.motif ? ` · ${standbyDuJour.motif}` : ""}
+              </div>
+            )}
             {jeuxDispo.length === 0 ? (
               <div style={{ background: 'var(--yellow)', border: '2.5px solid var(--ink)', borderRadius: 10, padding: '12px 14px', fontSize: 13, fontWeight: 600, boxShadow: '2px 2px 0 var(--ink)' }}>
-                Aucun jeu en sélection active pour ce poste
+                {standbyDuJour?.mode === "aucun" ? "Poste indisponible : aucun jeu pendant le stand-by" : "Aucun jeu en sélection active pour ce poste"}
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {jeuxDispo.map(({ sel, jeu: j }) => (
+                {jeuxDispo.map(({ permanent, jeu: j }) => (
                   <button key={j.id} onClick={() => setJeuId(j.id)}
                     style={{
                       display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', textAlign: 'left',
@@ -2028,7 +2148,7 @@ function ModalReservation({
                         {genresDe(j.genre).map(g => (
                           <span key={g} style={{ fontSize: 10, color: 'rgba(0,0,0,0.5)', background: 'var(--cream2)', borderRadius: 20, padding: '0 6px' }}>{g}</span>
                         ))}
-                        {sel.permanent && (
+                        {permanent && (
                           <span style={{ fontSize: 10, background: 'var(--orange)', border: '1.5px solid var(--ink)', borderRadius: 5, padding: '1px 5px', fontWeight: 700 }}>Permanent</span>
                         )}
                       </div>
@@ -2141,6 +2261,7 @@ function ModalReservationDetail({
   reservation,
   jeux,
   selections,
+  standby,
   reservations,
   onClose,
   onSaved,
@@ -2150,6 +2271,7 @@ function ModalReservationDetail({
   reservation: JvReservation;
   jeux: JvJeu[];
   selections: JvSelection[];
+  standby: StandbyParSlot;
   reservations: JvReservation[];
   /** `enregistree` : fermée après un enregistrement (le mode « Compléter » enchaîne alors). */
   onClose: (enregistree: boolean) => void;
@@ -2229,10 +2351,7 @@ function ModalReservationDetail({
   const slot = POSTE_SLOT[reservation.poste] ?? "PS5";
   const displayStatus = getDisplayStatus(reservation);
 
-  const activeJeux = selections
-    .filter(s => s.slot === slot && s.statut === "actif")
-    .map(s => jeux.find(j => j.id === s.jeu_id))
-    .filter((j): j is JvJeu => !!j);
+  const activeJeux = jeuxReservables(slot, reservation.date_creneau, selections, jeux, standby).jeux;
   const jeuActuel = jeux.find(j => j.id === jeuId);
   const jeuDansSelection = activeJeux.some(j => j.id === jeuId);
   const jeu2Actuel = jeu2Id ? jeux.find(j => j.id === jeu2Id) : null;
@@ -2797,23 +2916,281 @@ function ModalCorrectionSemaine({
 
 // ─── Onglet Sélections ────────────────────────────────────────────────────────
 
+// ─── Modal : Stand-by d'une sélection ─────────────────────────────────────────
+// Bloque temporairement la sélection d'un emplacement (console en panne,
+// vacances, événement…) : on choisit ce qui reste jouable pendant ce temps et
+// jusqu'à quand. La sélection et la file d'attente restent intactes dessous.
+
+function ModalStandby({
+  slot,
+  actuel,
+  selections,
+  jeux,
+  reservations,
+  onClose,
+  onSave,
+  onLever,
+}: {
+  slot: SelectionSlot;
+  actuel: JvStandby | undefined;
+  selections: JvSelection[];
+  jeux: JvJeu[];
+  reservations: JvReservation[];
+  onClose: () => void;
+  onSave: (sb: JvStandby) => Promise<void>;
+  onLever: () => Promise<void>;
+}) {
+  const auj = aujourdhuiStr();
+  // Un stand-by terminé ne sert plus que de modèle : on repart d'aujourd'hui.
+  const termine = !!actuel?.date_fin && actuel.date_fin < auj;
+  const [dateDebut, setDateDebut] = useState(actuel && !termine ? actuel.date_debut : auj);
+  const [indetermine, setIndetermine] = useState(actuel ? actuel.date_fin === null : false);
+  const [dateFin, setDateFin] = useState(actuel?.date_fin && !termine ? actuel.date_fin : format(addDays(new Date(), 7), "yyyy-MM-dd"));
+  const [mode, setMode] = useState<"aucun" | "selection">(actuel?.mode ?? "selection");
+  const [jeuxIds, setJeuxIds] = useState<string[]>(actuel?.jeux_ids ?? []);
+  const [inclurePermanents, setInclurePermanents] = useState(actuel?.inclure_permanents ?? true);
+  const [motif, setMotif] = useState(actuel?.motif ?? "");
+  const [picker, setPicker] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const consoleName = SLOT_CONSOLE[slot];
+  const parId = (id: string) => jeux.find(j => j.id === id);
+  const actifs = selections.filter(s => s.slot === slot && s.statut === "actif" && !s.permanent).sort((a, b) => a.ordre - b.ordre);
+  const permanents = selections.filter(s => s.slot === slot && s.permanent).map(s => parId(s.jeu_id)).filter((j): j is JvJeu => !!j);
+  const groupes = useMemo(() => {
+    const sels = selections.filter(s => s.slot === slot && s.statut === "planifie").sort((a, b) => a.groupe - b.groupe || a.ordre - b.ordre);
+    return [...new Set(sels.map(s => s.groupe))].sort((a, b) => a - b).map(g => sels.filter(s => s.groupe === g).map(s => s.jeu_id));
+  }, [selections, slot]);
+  const candidats = jeux.filter(j =>
+    j.console === consoleName && j.statut !== "retire" &&
+    (slot !== "Switch_Multi" || (j.nb_joueurs && j.nb_joueurs !== "1"))
+  );
+  const choisis = jeuxIds.map(parId).filter((j): j is JvJeu => !!j);
+  const memeListe = (ids: string[]) => ids.length === jeuxIds.length && ids.every(id => jeuxIds.includes(id));
+
+  const finAvantDebut = !indetermine && dateFin < dateDebut;
+  const totalJeux = new Set([...jeuxIds, ...(inclurePermanents ? permanents.map(j => j.id) : [])]).size;
+  const selectionVide = mode === "selection" && totalJeux === 0;
+  const peutEnregistrer = !!dateDebut && !finAvantDebut && !selectionVide && !saving;
+
+  const enregistrer = async () => {
+    if (!peutEnregistrer) return;
+    setSaving(true);
+    await onSave({
+      slot, date_debut: dateDebut, date_fin: indetermine ? null : dateFin, mode,
+      jeux_ids: mode === "selection" ? jeuxIds : [], inclure_permanents: mode === "selection" && inclurePermanents,
+      motif: motif.trim() || null,
+    });
+    setSaving(false);
+  };
+
+  const Slabel: React.CSSProperties = { fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: 'rgba(0,0,0,0.4)', marginBottom: 6, display: 'block' };
+  const raccourci = (jours: number, label: string) => {
+    const cible = format(addDays(parseISO(dateDebut || auj), jours), "yyyy-MM-dd");
+    const actif = !indetermine && dateFin === cible;
+    return (
+      <button key={label} onClick={() => { setIndetermine(false); setDateFin(cible); }}
+        className={actif ? "pop-btn pop-btn-dark" : "pop-btn pop-btn-outline"} style={{ fontSize: 11, padding: '5px 10px' }}>
+        {label}
+      </button>
+    );
+  };
+  const carteMode = (m: "aucun" | "selection", titre: string, detail: string) => (
+    <button onClick={() => setMode(m)}
+      style={{
+        flex: 1, minWidth: 180, textAlign: 'left', padding: '10px 12px', borderRadius: 12, cursor: 'pointer',
+        border: mode === m ? '2.5px solid var(--ink)' : '2px solid rgba(0,0,0,0.15)',
+        background: mode === m ? 'var(--yellow)' : 'var(--white)', boxShadow: mode === m ? '3px 3px 0 var(--ink)' : 'none',
+      }}>
+      <p style={{ fontWeight: 900, fontSize: 13, margin: 0 }}>{mode === m ? "● " : "○ "}{titre}</p>
+      <p style={{ fontSize: 11, color: 'rgba(0,0,0,0.5)', margin: '3px 0 0', fontWeight: 600 }}>{detail}</p>
+    </button>
+  );
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 50, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 'calc(var(--nav-h) + 12px) 12px 12px', overflowY: 'auto' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="pop-card" style={{ background: 'var(--cream)', width: '100%', maxWidth: 620, display: 'flex', flexDirection: 'column', maxHeight: 'calc(100dvh - var(--nav-h) - 68px)', overflow: 'hidden', marginBottom: 32 }}>
+
+        <div style={{ background: 'var(--orange)', padding: '18px 22px', display: 'flex', alignItems: 'center', gap: 12, borderBottom: '2.5px solid var(--ink)', flexShrink: 0 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <h2 className="bc" style={{ fontSize: 24, margin: 0, lineHeight: 1 }}>⏸ Stand-by — {SLOT_LABEL[slot]}</h2>
+            <p style={{ fontSize: 11, fontWeight: 700, color: 'rgba(0,0,0,0.5)', marginTop: 4 }}>
+              La sélection est gelée : la rotation ne la remplace pas, la file d&apos;attente reste intacte.
+            </p>
+          </div>
+          <button onClick={onClose} style={{ width: 36, height: 36, border: '2.5px solid var(--ink)', borderRadius: 8, background: 'var(--white)', fontWeight: 900, fontSize: 14, cursor: 'pointer', flexShrink: 0 }}>✕</button>
+        </div>
+
+        <div className="custom-scroll" style={{ flex: 1, overflowY: 'auto', padding: 20, display: 'flex', flexDirection: 'column', gap: 18 }}>
+
+          {/* Durée */}
+          <div>
+            <label style={Slabel}>Durée de l&apos;indisponibilité</label>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+              <div>
+                <span style={{ fontSize: 10, fontWeight: 800, color: 'rgba(0,0,0,0.45)' }}>À partir du</span>
+                <input type="date" value={dateDebut} onChange={e => setDateDebut(e.target.value)} className="pop-input" style={{ display: 'block', fontSize: 13 }} />
+              </div>
+              <div style={{ opacity: indetermine ? 0.4 : 1 }}>
+                <span style={{ fontSize: 10, fontWeight: 800, color: 'rgba(0,0,0,0.45)' }}>Jusqu&apos;au (inclus)</span>
+                <input type="date" value={dateFin} min={dateDebut} disabled={indetermine} onChange={e => setDateFin(e.target.value)} className="pop-input" style={{ display: 'block', fontSize: 13 }} />
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+              {raccourci(6, "1 semaine")}
+              {raccourci(13, "2 semaines")}
+              {raccourci(27, "4 semaines")}
+              <button onClick={() => setIndetermine(v => !v)}
+                className={indetermine ? "pop-btn pop-btn-dark" : "pop-btn pop-btn-outline"} style={{ fontSize: 11, padding: '5px 10px' }}>
+                ∞ Durée indéterminée
+              </button>
+            </div>
+            {finAvantDebut && <p style={{ fontSize: 11, color: 'var(--rouge)', fontWeight: 800, margin: '6px 0 0' }}>La fin est avant le début.</p>}
+          </div>
+
+          {/* Motif */}
+          <div>
+            <label style={Slabel}>Motif (facultatif)</label>
+            <input type="text" value={motif} onChange={e => setMotif(e.target.value)} className="pop-input" style={{ width: '100%' }}
+              placeholder="Console en réparation, vacances, animation…" />
+          </div>
+
+          {/* Jeux disponibles */}
+          <div>
+            <label style={Slabel}>Jeux disponibles pendant le stand-by</label>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              {carteMode("aucun", "Aucun jeu", "Poste complètement fermé : aucune réservation possible.")}
+              {carteMode("selection", "Une sélection", "Choisir ou composer les jeux qui restent jouables.")}
+            </div>
+          </div>
+
+          {mode === "selection" && (
+            <div className="pop-card" style={{ background: 'var(--white)', padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div>
+                <span style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.07em', color: 'rgba(0,0,0,0.4)' }}>Partir de</span>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+                  {actifs.length > 0 && (
+                    <FilterChip active={memeListe(actifs.map(s => s.jeu_id))} onClick={() => setJeuxIds(actifs.map(s => s.jeu_id))}
+                      title={actifs.map(s => parId(s.jeu_id)?.titre).filter(Boolean).join(", ")}>
+                      Sélection en cours ({actifs.length})
+                    </FilterChip>
+                  )}
+                  {groupes.map((ids, i) => (
+                    <FilterChip key={i} active={memeListe(ids)} onClick={() => setJeuxIds(ids)}
+                      title={ids.map(id => parId(id)?.titre).filter(Boolean).join(", ")}>
+                      Groupe {i + 1} ({ids.length})
+                    </FilterChip>
+                  ))}
+                  {jeuxIds.length > 0 && (
+                    <FilterChip active={false} onClick={() => setJeuxIds([])}>Vider</FilterChip>
+                  )}
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <span style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.07em', color: 'rgba(0,0,0,0.4)' }}>
+                  Jeux choisis ({choisis.length})
+                </span>
+                {choisis.length === 0 && (
+                  <p style={{ fontSize: 12, color: 'rgba(0,0,0,0.35)', fontStyle: 'italic', fontWeight: 700, margin: 0 }}>Aucun jeu choisi</p>
+                )}
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {choisis.map(j => (
+                    <span key={j.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 6px 4px 4px', background: 'var(--cream)', border: '2px solid var(--ink)', borderRadius: 10 }}>
+                      <span style={{ width: 24, height: 24, borderRadius: 5, overflow: 'hidden', background: 'var(--cream2)', border: '1.5px solid var(--ink)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        {j.image_url ? <img src={j.image_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: 10 }}>🎮</span>}
+                      </span>
+                      <span style={{ fontSize: 12, fontWeight: 700, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{j.titre}</span>
+                      <button onClick={() => setJeuxIds(prev => prev.filter(id => id !== j.id))}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', fontWeight: 900, fontSize: 11, color: 'var(--rouge)' }}>✕</button>
+                    </span>
+                  ))}
+                </div>
+                <button onClick={() => setPicker(true)}
+                  style={{ padding: '9px', border: '2.5px dashed var(--ink)', borderRadius: 10, background: 'transparent', cursor: 'pointer', fontSize: 12, fontWeight: 800, color: 'rgba(0,0,0,0.5)' }}>
+                  {choisis.length ? "✎ Composer / modifier la sélection" : "+ Composer une sélection"}
+                </button>
+              </div>
+
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: permanents.length ? 'pointer' : 'default', opacity: permanents.length ? 1 : 0.5 }}>
+                <input type="checkbox" checked={inclurePermanents && permanents.length > 0} disabled={!permanents.length}
+                  onChange={e => setInclurePermanents(e.target.checked)} style={{ marginTop: 2 }} />
+                <span style={{ fontSize: 12, fontWeight: 700 }}>
+                  Inclure les jeux permanents ({permanents.length})
+                  {permanents.length > 0 && (
+                    <span style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'rgba(0,0,0,0.45)' }}>{permanents.map(j => j.titre).join(", ")}</span>
+                  )}
+                </span>
+              </label>
+              {selectionVide && (
+                <p style={{ fontSize: 11, color: 'var(--rouge)', fontWeight: 800, margin: 0 }}>
+                  Aucun jeu disponible : choisis des jeux, ou passe en « Aucun jeu ».
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div style={{ padding: '14px 20px', borderTop: '2.5px solid var(--ink)', flexShrink: 0, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          {actuel && (
+            <button onClick={async () => { setSaving(true); await onLever(); setSaving(false); }} disabled={saving}
+              className="pop-btn pop-btn-outline" style={{ flex: 1, minWidth: 160 }}>
+              ▶ Lever le stand-by
+            </button>
+          )}
+          <button onClick={enregistrer} disabled={!peutEnregistrer}
+            className="pop-btn pop-btn-dark" style={{ flex: 2, minWidth: 200, opacity: peutEnregistrer ? 1 : 0.4, cursor: peutEnregistrer ? 'pointer' : 'not-allowed' }}>
+            {saving ? "Enregistrement…" : actuel && !termine ? "Enregistrer le stand-by" : "⏸ Mettre en stand-by"}
+          </button>
+        </div>
+      </div>
+
+      {picker && (
+        <ModalPickerJeux
+          titre={`Sélection de stand-by — ${SLOT_LABEL[slot]}`}
+          sousTitre={`${consoleName} · autant de jeux que tu veux`}
+          candidats={candidats}
+          jeux={jeux}
+          reservations={reservations}
+          max={null}
+          initial={jeuxIds}
+          autoriserVide
+          libelleConfirmer={n => n === 0 ? "Ne garder aucun jeu choisi" : `Valider ${n} jeu${n > 1 ? "x" : ""}`}
+          onConfirm={ids => { setJeuxIds(ids); setPicker(false); }}
+          onClose={() => setPicker(false)}
+        />
+      )}
+    </div>
+  );
+}
+
 function TabSelections({
   jeux,
   selections,
+  reservations,
+  standby,
   rotationConfig,
   onRotationOpen,
   onToggleActif,
   onPlanningOpen,
   onCorrectionOpen,
+  onStandbyOpen,
 }: {
   jeux: JvJeu[];
   selections: JvSelection[];
+  reservations: JvReservation[];
+  standby: StandbyParSlot;
   rotationConfig: JvRotationConfig;
   onRotationOpen: (slot: SelectionSlot) => void;
-  onToggleActif: (jeuId: string, slot: SelectionSlot, isPermanent: boolean, currentSel: JvSelection | undefined) => void;
+  onToggleActif: (jeuId: string, slot: SelectionSlot, isPermanent: boolean, currentSel: JvSelection | undefined) => void | Promise<void>;
   onPlanningOpen: () => void;
   onCorrectionOpen: (slot: SelectionSlot) => void;
+  onStandbyOpen: (slot: SelectionSlot) => void;
 }) {
+  // Ajout de jeux par le sélecteur à vignettes : permanents ou sélection en cours
+  const [ajout, setAjout] = useState<{ slot: SelectionSlot; permanent: boolean } | null>(null);
+  const auj = aujourdhuiStr();
   const idx = Number.isInteger(rotationConfig.current_slot_index)
     ? ((rotationConfig.current_slot_index % ROTATION_ORDER.length) + ROTATION_ORDER.length) % ROTATION_ORDER.length
     : 0;
@@ -2873,6 +3250,10 @@ function TabSelections({
 
           const estEnCours = slot === slotEnCours;
           const estProchain = slot === prochainSlot;
+          const sb = standby[slot];
+          const enStandby = standbyCouvre(sb, auj);
+          const standbyAVenir = !!sb && sb.date_debut > auj;
+          const jeuxStandby = enStandby ? jeuxReservables(slot, auj, selections, jeux, standby).jeux : [];
 
           return (
             <div key={slot} className="pop-card"
@@ -2894,6 +3275,16 @@ function TabSelections({
                     suivant
                   </span>
                 )}
+                {enStandby && (
+                  <span style={{ fontSize: 9, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.06em', padding: '3px 7px', borderRadius: 999, background: 'var(--orange)', border: '1.5px solid var(--ink)', flexShrink: 0 }}>
+                    ⏸ stand-by
+                  </span>
+                )}
+                <button onClick={() => onStandbyOpen(slot)}
+                  title={sb ? "Modifier ou lever le stand-by" : "Mettre la sélection en stand-by"}
+                  style={{ width: 28, height: 28, border: '2px solid var(--ink)', borderRadius: 8, background: enStandby ? 'var(--orange)' : 'var(--white)', cursor: 'pointer', fontSize: 11, fontWeight: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  ⏸
+                </button>
                 <button onClick={() => onCorrectionOpen(slot)}
                   title="Corriger les jeux d'une semaine passée"
                   style={{ width: 28, height: 28, border: '2px solid var(--ink)', borderRadius: 8, background: 'var(--white)', cursor: 'pointer', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -2902,6 +3293,49 @@ function TabSelections({
               </div>
 
               <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
+
+                {/* Stand-by en cours ou prévu */}
+                {enStandby && sb && (
+                  <div style={{ background: 'var(--orange)', border: '2.5px solid var(--ink)', borderRadius: 12, padding: 10, display: 'flex', flexDirection: 'column', gap: 8, boxShadow: '2px 2px 0 var(--ink)' }}>
+                    <div>
+                      <p style={{ fontWeight: 900, fontSize: 13, margin: 0 }}>⏸ En stand-by {periodeStandby(sb)}</p>
+                      {sb.motif && <p style={{ fontSize: 11, fontWeight: 700, color: 'rgba(0,0,0,0.6)', margin: '2px 0 0' }}>{sb.motif}</p>}
+                    </div>
+                    {sb.mode === "aucun" ? (
+                      <p style={{ fontSize: 12, fontWeight: 800, margin: 0 }}>🚫 Aucun jeu disponible</p>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <span style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.07em', color: 'rgba(0,0,0,0.5)' }}>
+                          Disponibles ({jeuxStandby.length}){sb.inclure_permanents ? " · permanents inclus" : ""}
+                        </span>
+                        {jeuxStandby.map(j => (
+                          <div key={j.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 6px', background: 'var(--white)', border: '2px solid var(--ink)', borderRadius: 8 }}>
+                            <div style={{ width: 24, height: 24, borderRadius: 5, overflow: 'hidden', background: 'var(--cream2)', flexShrink: 0, border: '1.5px solid var(--ink)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              {j.image_url ? <img src={j.image_url} alt={j.titre} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: 10 }}>🎮</span>}
+                            </div>
+                            <p style={{ fontWeight: 700, fontSize: 12, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', margin: 0 }}>{j.titre}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <button onClick={() => onStandbyOpen(slot)} className="pop-btn pop-btn-outline" style={{ fontSize: 11, padding: '5px 10px', background: 'var(--white)', justifyContent: 'center' }}>
+                      Modifier / lever le stand-by
+                    </button>
+                  </div>
+                )}
+                {standbyAVenir && sb && (
+                  <button onClick={() => onStandbyOpen(slot)}
+                    style={{ textAlign: 'left', fontSize: 11, fontWeight: 800, padding: '6px 10px', borderRadius: 10, border: '2px dashed var(--ink)', background: 'transparent', cursor: 'pointer' }}>
+                    ⏸ Stand-by prévu {periodeStandby(sb)}{sb.motif ? ` · ${sb.motif}` : ""}
+                  </button>
+                )}
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12, opacity: enStandby ? 0.45 : 1 }}>
+                {enStandby && (
+                  <span style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.07em', color: 'rgba(0,0,0,0.5)' }}>
+                    Sélection gelée (reprend à la fin du stand-by)
+                  </span>
+                )}
 
                 {/* Permanents — repliés par défaut, ils prennent vite de la place */}
                 <details className="jv-perm">
@@ -2926,14 +3360,10 @@ function TabSelections({
                         </div>
                       );
                     })}
-                    <select
-                      defaultValue=""
-                      onChange={e => { if (e.target.value) onToggleActif(e.target.value, slot, true, undefined); }}
-                      className="pop-input"
-                      style={{ border: '2px dashed var(--ink)', background: 'transparent', cursor: 'pointer', fontSize: 12, color: 'rgba(0,0,0,0.4)', padding: '6px 8px' }}>
-                      <option value="">+ Ajouter un permanent…</option>
-                      {disponibles.map(j => <option key={j.id} value={j.id}>{j.titre}</option>)}
-                    </select>
+                    <button onClick={() => setAjout({ slot, permanent: true })} disabled={disponibles.length === 0}
+                      style={{ padding: '7px 8px', border: '2px dashed var(--ink)', borderRadius: 10, background: 'transparent', cursor: disponibles.length ? 'pointer' : 'not-allowed', fontSize: 12, fontWeight: 800, color: 'rgba(0,0,0,0.45)' }}>
+                      + Ajouter des permanents…
+                    </button>
                   </div>
                 </details>
 
@@ -2959,15 +3389,12 @@ function TabSelections({
                     );
                   })}
                   {actifSels.length < 3 && (
-                    <select
-                      defaultValue=""
-                      onChange={e => { if (e.target.value) onToggleActif(e.target.value, slot, false, undefined); }}
-                      className="pop-input"
-                      style={{ border: '2px dashed var(--ink)', background: 'transparent', cursor: 'pointer', fontSize: 12, color: 'rgba(0,0,0,0.4)', padding: '6px 8px' }}>
-                      <option value="">+ Ajouter ({3 - actifSels.length} place{3 - actifSels.length > 1 ? "s" : ""})…</option>
-                      {disponibles.map(j => <option key={j.id} value={j.id}>{j.titre}</option>)}
-                    </select>
+                    <button onClick={() => setAjout({ slot, permanent: false })} disabled={disponibles.length === 0}
+                      style={{ padding: '7px 8px', border: '2px dashed var(--ink)', borderRadius: 10, background: 'transparent', cursor: disponibles.length ? 'pointer' : 'not-allowed', fontSize: 12, fontWeight: 800, color: 'rgba(0,0,0,0.45)' }}>
+                      + Ajouter ({3 - actifSels.length} place{3 - actifSels.length > 1 ? "s" : ""})…
+                    </button>
                   )}
+                </div>
                 </div>
 
                 {/* File d'attente */}
@@ -3020,6 +3447,35 @@ function TabSelections({
           );
         })}
       </div>
+
+      {ajout && (() => {
+        const { slot, permanent } = ajout;
+        const consoleName = SLOT_CONSOLE[slot];
+        const usedIds = new Set(selections.filter(s => s.slot === slot).map(s => s.jeu_id));
+        const candidats = jeux.filter(j =>
+          j.console === consoleName && j.statut !== "retire" && !usedIds.has(j.id) &&
+          (slot !== "Switch_Multi" || (j.nb_joueurs && j.nb_joueurs !== "1"))
+        );
+        const places = 3 - selections.filter(s => s.slot === slot && s.statut === "actif" && !s.permanent).length;
+        return (
+          <ModalPickerJeux
+            titre={permanent ? `Jeux permanents — ${SLOT_LABEL[slot]}` : `Sélection en cours — ${SLOT_LABEL[slot]}`}
+            sousTitre={permanent ? `${consoleName} · toujours disponibles, quelle que soit la rotation` : `${consoleName} · ${places} place${places > 1 ? "s" : ""} libre${places > 1 ? "s" : ""}`}
+            candidats={candidats}
+            jeux={jeux}
+            reservations={reservations}
+            max={permanent ? null : Math.max(0, places)}
+            libelleConfirmer={n => permanent
+              ? `Ajouter ${n} permanent${n > 1 ? "s" : ""}`
+              : `Ajouter ${n} jeu${n > 1 ? "x" : ""} à la sélection`}
+            onConfirm={async ids => {
+              setAjout(null);
+              for (const id of ids) await onToggleActif(id, slot, permanent, undefined);
+            }}
+            onClose={() => setAjout(null)}
+          />
+        );
+      })()}
     </div>
   );
 }
@@ -4652,6 +5108,8 @@ export default function JvPage() {
   const [selections, setSelections] = useState<JvSelection[]>([]);
   const [reservations, setReservations] = useState<JvReservation[]>([]);
   const [notes, setNotes] = useState<JvNote[]>([]);
+  const [standby, setStandby] = useState<StandbyParSlot>({});
+  const [modalStandby, setModalStandby] = useState<SelectionSlot | null>(null);
   const [rotationConfig, setRotationConfig] = useState<JvRotationConfig>({
     id: "main", current_slot_index: 0, week_start: format(startOfWeek(new Date(), { weekStartsOn: 1 }), "yyyy-MM-dd"),
   });
@@ -4682,13 +5140,15 @@ export default function JvPage() {
   const load = async (silencieux = false) => {
       if (!silencieux) setIsLoading(true);
       const toArr = (d: any) => Array.isArray(d) ? d : [];
-      const [j, s, r, cfg, n] = await Promise.all([
+      const [j, s, r, cfg, n, sb] = await Promise.all([
         fetch('/api/jv-jeux').then(res => res.json()).then(toArr).catch(() => []),
         fetch('/api/jv-selections').then(res => res.json()).then(toArr).catch(() => []),
         fetch('/api/jv-reservations').then(res => res.json()).then(toArr).catch(() => []),
         fetch('/api/jv-rotation-config').then(res => res.json()).catch(() => null),
         fetch('/api/jv-notes').then(res => res.json()).then(toArr).catch(() => []),
+        fetch('/api/jv-standby').then(res => res.json()).then(toArr).catch(() => []),
       ]);
+      setStandby(Object.fromEntries((sb as JvStandby[]).map(x => [x.slot, x])) as StandbyParSlot);
       setJeux(j as JvJeu[]);
       setSelections((s as any[]).map(sel => ({ ...sel, permanent: !!sel.permanent })) as JvSelection[]);
       const resas = (r as any[]).map(res => ({
@@ -4802,10 +5262,34 @@ export default function JvPage() {
     setRotationConfig(prev => ({ ...prev, current_slot_index: slotIndex, week_start: weekStart }));
   }, []);
 
+  // ── Handlers stand-by ─────────────────────────────────────────────────────
+
+  const handleStandbySave = useCallback(async (sb: JvStandby) => {
+    const res = await fetch('/api/jv-standby', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(sb) })
+      .then(r => r.ok).catch(() => false);
+    if (!res) { alert("Le stand-by n'a pas pu être enregistré."); return; }
+    setStandby(prev => ({ ...prev, [sb.slot]: sb }));
+    setModalStandby(null);
+  }, []);
+
+  const handleStandbyLever = useCallback(async (slot: SelectionSlot) => {
+    await fetch(`/api/jv-standby?slot=${encodeURIComponent(slot)}`, { method: 'DELETE' }).catch(() => null);
+    setStandby(prev => { const n = { ...prev }; delete n[slot]; return n; });
+    setModalStandby(null);
+  }, []);
+
   // Applique la rotation : le prochain slot dans le cycle remplace ses actifs par son 1er groupe planifié
   const handleApplyRotation = useCallback(async () => {
     const nextSlotIndex = (rotationConfig.current_slot_index + 1) % 4;
     const nextSlot = ROTATION_ORDER[nextSlotIndex];
+    const newWeekStartSb = format(startOfWeek(new Date(), { weekStartsOn: 1 }), "yyyy-MM-dd");
+
+    // Sélection en stand-by : son tour passe sans rien changer, la file reste
+    // intacte et reprendra à la fin du stand-by.
+    if (standbyCouvre(standby[nextSlot], aujourdhuiStr())) {
+      await handleUpdateRotationConfig(nextSlotIndex, newWeekStartSb);
+      return;
+    }
 
     // Actifs non-permanents du prochain slot → seront retirés
     const activeSels = selections.filter(s => s.slot === nextSlot && s.statut === "actif" && !s.permanent);
@@ -4859,7 +5343,7 @@ export default function JvPage() {
       if (toSelection.includes(j.id)) return { ...j, statut: "selection" as const };
       return j;
     }));
-  }, [rotationConfig, selections, handleUpdateRotationConfig]);
+  }, [rotationConfig, selections, standby, handleUpdateRotationConfig]);
 
   // ── Handlers réservations ─────────────────────────────────────────────────
 
@@ -5022,11 +5506,14 @@ export default function JvPage() {
               <TabSelections
                 jeux={jeux}
                 selections={selections}
+                reservations={reservations}
+                standby={standby}
                 rotationConfig={rotationConfig}
                 onRotationOpen={slot => setModalRotation(slot)}
                 onToggleActif={handleToggleActif}
                 onPlanningOpen={() => setModalPlanning(true)}
                 onCorrectionOpen={slot => setModalCorrection(slot)}
+                onStandbyOpen={slot => setModalStandby(slot)}
               />
             )}
             {onglet === "reservations" && (
@@ -5081,6 +5568,7 @@ export default function JvPage() {
       {modalPlanning && (
         <ModalRotationPlanning
           selections={selections}
+          standby={standby}
           jeux={jeux}
           rotationConfig={rotationConfig}
           onUpdateConfig={handleUpdateRotationConfig}
@@ -5093,12 +5581,26 @@ export default function JvPage() {
         <ModalReservation
           jeux={jeux}
           selections={selections}
+          standby={standby}
           reservations={reservations}
           preDate={modalResa.date}
           preHeureDebut={modalResa.heureDebut}
           prePoste={modalResa.poste}
           onClose={() => setModalResa({ open: false })}
           onSaved={handleResaSaved}
+        />
+      )}
+      {modalStandby && (
+        <ModalStandby
+          key={modalStandby}
+          slot={modalStandby}
+          actuel={standby[modalStandby]}
+          selections={selections}
+          jeux={jeux}
+          reservations={reservations}
+          onClose={() => setModalStandby(null)}
+          onSave={handleStandbySave}
+          onLever={() => handleStandbyLever(modalStandby)}
         />
       )}
       {modalCorrection && (
@@ -5116,6 +5618,7 @@ export default function JvPage() {
           reservation={modalResaDetail}
           jeux={jeux}
           selections={selections}
+          standby={standby}
           reservations={reservations}
           onClose={fermerFicheResa}
           onSaved={handleResaUpdated}

@@ -97,6 +97,17 @@ cours + groupes planifiés). Les lignes sont supprimées à chaque rotation, don
 « ce jeu est déjà passé » se déduit des réservations (`jv_reservations`), seule
 trace durable.
 
+**Le stand-by d'une sélection (`/jv`, bouton ⏸ de chaque emplacement).** Une
+sélection peut être bloquée temporairement (`jv_standby`, une ligne par
+emplacement) : du `date_debut` au `date_fin` inclus, ou sans fin (`NULL`). Pendant
+ce temps, les réservations ne proposent plus la sélection en place mais soit
+aucun jeu (`mode = 'aucun'`, poste fermé), soit les jeux de `jeux_ids` composés au
+sélecteur ou repris d'un groupe, plus les permanents si `inclure_permanents`.
+La sélection et la file d'attente restent intactes : quand la rotation tombe sur
+un emplacement en stand-by, elle avance sans rien installer, et le planning
+global ne consomme pas de groupe cette semaine-là. Un stand-by dont la date de
+fin est passée n'a plus d'effet.
+
 **Les étapes de préparation (`/atelier`).** Un jeu entre en `En préparation`,
 passe par les étapes `etape_*` de la table `jeux`, puis passe `En stock`.
 
@@ -147,7 +158,7 @@ jeu, servi par `/api/regles/[ean]` ; `catalogue.pdf_url` pointe vers cette route
 | `paniers`, `panier_lignes` | Paniers d'achat |
 | `paniers_communs_lignes` | Lignes des commandes communes (`votes` = cache du score) |
 | `paniers_communs_votes`, `paniers_communs_commentaires` | Votes nominatifs et commentaires sur ces lignes |
-| `jv_jeux`, `jv_selections`, `jv_reservations`, `jv_rotation_config`, `jv_notes` | Section jeux vidéo |
+| `jv_jeux`, `jv_selections`, `jv_reservations`, `jv_rotation_config`, `jv_notes`, `jv_standby` | Section jeux vidéo |
 | `pieces_manquantes`, `pieces_trouvees`, `reparations` | Suivi du matériel |
 | `pieces_detachees` | Stock de pièces de rechange, rangées par jeu |
 | `alertes`, `suggestions`, `selections` | Alertes, boîte à idées, sélections thématiques |
