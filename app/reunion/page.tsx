@@ -1302,9 +1302,11 @@ function ModalLancement({ equipe, points, suggestions, moi, onFermer, onLancer }
 
 // ─── Point traité en séance ───────────────────────────────────────────────────
 
-function PointEnSeance({ p, equipe, seanceId, onMaj, onOuvrir }: {
-  p: Fiche; equipe: Membre[]; seanceId: string; onMaj: (f: Fiche) => void; onOuvrir: () => void;
+function PointEnSeance({ p, equipe, seanceId, ouvertParDefaut = false, onMaj, onOuvrir }: {
+  p: Fiche; equipe: Membre[]; seanceId: string; ouvertParDefaut?: boolean; onMaj: (f: Fiche) => void; onOuvrir: () => void;
 }) {
+  // Replié par défaut : l'ordre du jour tient sur un écran, on déplie le point qu'on traite.
+  const [ouvert, setOuvert] = useState(ouvertParDefaut);
   const [decision, setDecision] = useState(p.decision ?? "");
   const [versMission, setVersMission] = useState(false);
   const [assignes, setAssignes] = useState<string[]>(p.assignes);
@@ -1318,17 +1320,32 @@ function PointEnSeance({ p, equipe, seanceId, onMaj, onOuvrir }: {
   };
 
   return (
-    <div className="pop-card" style={{ padding: 12, display: "flex", flexDirection: "column", gap: 8, background: traite ? "var(--cream2)" : "var(--white)", flexShrink: 0 }}>
+    <div className="pop-card" style={{ padding: ouvert ? 12 : "8px 12px", display: "flex", flexDirection: "column", gap: 8, background: traite ? "var(--cream2)" : "var(--white)", flexShrink: 0 }}>
       <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 800, fontSize: 16, overflowWrap: "anywhere" }}>
-            {p.genre === "mission" ? "🎯 " : traite ? "✓ " : ""}{p.titre}
-          </div>
-          {p.description && <div style={{ fontSize: 13, opacity: 0.7, whiteSpace: "pre-wrap", marginTop: 2 }}>{p.description}</div>}
-          <div style={{ marginTop: 4 }}><Auteur id={p.cree_par} equipe={equipe} /></div>
-        </div>
+        <button onClick={() => setOuvert(o => !o)} aria-expanded={ouvert}
+          style={{ flex: 1, minWidth: 0, display: "flex", gap: 8, alignItems: "flex-start", textAlign: "left", border: "none", background: "none", padding: 0, cursor: "pointer", fontFamily: "inherit", color: "inherit" }}>
+          <span style={{ fontSize: 14, lineHeight: "22px", flexShrink: 0, width: 12 }}>{ouvert ? "▾" : "▸"}</span>
+          <span style={{ flex: 1, minWidth: 0 }}>
+            <span style={{ display: "block", fontWeight: 800, fontSize: ouvert ? 16 : 15, overflowWrap: "anywhere" }}>
+              {p.genre === "mission" ? "🎯 " : traite ? "✓ " : ""}{p.titre}
+            </span>
+            {!ouvert && (p.priorite !== 1 && !traite || p.decision?.trim()) && (
+              <span style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginTop: 3, fontSize: 11 }}>
+                {p.priorite !== 1 && !traite && <Pastille texte={priorite(p.priorite).label} fond={priorite(p.priorite).couleur} />}
+                {p.decision?.trim() && <span style={{ opacity: 0.6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>📝 {p.decision.trim().split("\n")[0]}</span>}
+              </span>
+            )}
+          </span>
+        </button>
         <button onClick={onOuvrir} title="Modifier" style={{ border: "none", background: "none", cursor: "pointer", fontSize: 15, flexShrink: 0 }}>✏️</button>
       </div>
+      {ouvert && <>
+      {(p.description || p.cree_par) && (
+        <div style={{ paddingLeft: 20 }}>
+          {p.description && <div style={{ fontSize: 13, opacity: 0.7, whiteSpace: "pre-wrap" }}>{p.description}</div>}
+          <div style={{ marginTop: 4 }}><Auteur id={p.cree_par} equipe={equipe} /></div>
+        </div>
+      )}
 
       {!traite && <ChoixPriorite compact valeur={p.priorite} onChange={v => sauver({ priorite: v })} />}
 
@@ -1375,6 +1392,7 @@ function PointEnSeance({ p, equipe, seanceId, onMaj, onOuvrir }: {
           )}
         </div>
       )}
+      </>}
     </div>
   );
 }
@@ -1391,6 +1409,8 @@ function VueSeance({ seance, equipe, fiches, evenements, connecte, onSeance, onF
   const [envoye, setEnvoye] = useState(() => ecrireCR(lireCR(seance.compte_rendu)));
   const [envoi, setEnvoi] = useState(false);
   const [saisie, setSaisie] = useState("");
+  // « Tout déplier / replier » : la clé change, les points repartent dans cet état.
+  const [depli, setDepli] = useState({ ouvert: false, n: 0 });
   const etat = envoi ? "envoi" : cr === envoye ? "ok" : "attente";
 
   // Sauvegarde automatique du compte rendu, une seconde après la dernière frappe.
@@ -1446,7 +1466,11 @@ function VueSeance({ seance, equipe, fiches, evenements, connecte, onSeance, onF
       </div>
 
       <div className="pop-grid-2" style={{ alignItems: "start", gap: 20 }}>
-        <Section titre={`Ordre du jour · ${aTraiter.length}`}>
+        <Section titre={`Ordre du jour · ${aTraiter.length}`} droite={(aTraiter.length + traites.length) > 0 &&
+          <button className="pop-btn pop-btn-outline" style={{ padding: "3px 10px", fontSize: 12 }}
+            onClick={() => setDepli(d => ({ ouvert: !d.ouvert, n: d.n + 1 }))}>
+            {depli.ouvert ? "▸ Tout replier" : "▾ Tout déplier"}
+          </button>}>
           {connecte && (
             <div style={{ display: "flex", gap: 6 }}>
               <input value={saisie} onChange={e => setSaisie(e.target.value)} onKeyDown={e => { if (e.key === "Enter") ajouterPoint(); }} placeholder="Ajouter un point (Entrée)…" style={inp} />
@@ -1455,13 +1479,13 @@ function VueSeance({ seance, equipe, fiches, evenements, connecte, onSeance, onF
           )}
           {aTraiter.length === 0 && <Vide>Tous les points ont été abordés 🎉</Vide>}
           {aTraiter.map(p => (
-            <PointEnSeance key={p.id} p={p} equipe={equipe} seanceId={seance.id} onMaj={onFiche} onOuvrir={() => onOuvrirFiche(p)} />
+            <PointEnSeance key={`${p.id}-${depli.n}`} p={p} equipe={equipe} seanceId={seance.id} ouvertParDefaut={depli.ouvert} onMaj={onFiche} onOuvrir={() => onOuvrirFiche(p)} />
           ))}
           {traites.length > 0 && (
             <>
               <div style={{ fontSize: 12, fontWeight: 800, textTransform: "uppercase", opacity: 0.5, marginTop: 6 }}>Traités pendant cette réunion · {traites.length}</div>
               {traites.map(p => (
-                <PointEnSeance key={p.id} p={p} equipe={equipe} seanceId={seance.id} onMaj={onFiche} onOuvrir={() => onOuvrirFiche(p)} />
+                <PointEnSeance key={`${p.id}-${depli.n}`} p={p} equipe={equipe} seanceId={seance.id} ouvertParDefaut={depli.ouvert} onMaj={onFiche} onOuvrir={() => onOuvrirFiche(p)} />
               ))}
             </>
           )}
@@ -1570,8 +1594,14 @@ function CarteCompteRendu({ s, equipe, fiches, q, onMaj, onSupprime }: {
             <div>
               <div style={etiquette}>Points abordés</div>
               {points.map(p => (
-                <div key={p.id} style={{ fontSize: 14, marginBottom: 4 }}>
-                  • <b><Surligne texte={p.titre} q={q} /></b>{p.decision && <span style={{ opacity: 0.75 }}> — <Surligne texte={p.decision} q={q} /></span>}
+                <div key={p.id} style={{ fontSize: 14, marginBottom: 8, display: "flex", flexDirection: "column", gap: 3 }}>
+                  <span>• <b style={{ whiteSpace: "pre-wrap" }}><Surligne texte={p.titre} q={q} /></b></span>
+                  {p.description?.trim() && (
+                    <div style={{ paddingLeft: 14, fontSize: 13, opacity: 0.6, whiteSpace: "pre-wrap", lineHeight: 1.5, overflowWrap: "anywhere" }}><Surligne texte={p.description} q={q} /></div>
+                  )}
+                  {p.decision?.trim() && (
+                    <div style={{ marginLeft: 14, paddingLeft: 10, borderLeft: "3px solid var(--turquoise)", whiteSpace: "pre-wrap", lineHeight: 1.5, overflowWrap: "anywhere" }}><Surligne texte={p.decision} q={q} /></div>
+                  )}
                 </div>
               ))}
             </div>
@@ -1584,7 +1614,7 @@ function CarteCompteRendu({ s, equipe, fiches, q, onMaj, onSupprime }: {
                   <span>{m.statut === "fait" ? "✅" : "🎯"} <b><Surligne texte={m.titre} q={q} /></b></span>
                   {m.assignes.length > 0 && <span style={{ opacity: 0.7 }}>→ <Surligne texte={m.assignes.map(nomDe).join(", ")} q={q} /></span>}
                   {m.deadline && <span style={{ opacity: 0.7 }}>· avant le {dateCourte(m.deadline)}</span>}
-                  {m.decision && <span style={{ opacity: 0.6, width: "100%", paddingLeft: 20, fontSize: 13 }}><Surligne texte={m.decision} q={q} /></span>}
+                  {m.decision?.trim() && <span style={{ opacity: 0.7, width: "100%", paddingLeft: 20, fontSize: 13, whiteSpace: "pre-wrap", lineHeight: 1.5, overflowWrap: "anywhere" }}><Surligne texte={m.decision} q={q} /></span>}
                 </div>
               ))}
             </div>
