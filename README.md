@@ -261,6 +261,15 @@ Trois objets, trois tables :
   traitées en séance gardent `seance_id`, ce qui reconstitue le compte rendu
   sans le recopier dans les notes libres.
 
+**Missions prioritaires à l'accueil** (`lib/missionsAccueil.ts`). Une mission
+en priorité haute ou urgente, pas encore faite, apparaît dans les alertes de
+l'accueil de **chaque membre assigné** (connecté), et compte dans la pastille
+de la barre de navigation. Rien n'est copié dans `alertes` : elle disparaît
+d'elle-même quand la mission est faite, dépriorisée ou réassignée. La carte
+porte un lien « Ouvrir au Bureau » (`/reunion?fiche=<id>`, qui ouvre directement
+la fiche) et un bouton ✓ pour la marquer faite. Côté Bureau, ces missions
+portent la pastille « 📣 À l'accueil ».
+
 **Créer demande d'être connecté** (fiches, événements, séances, copie dans
 l'agenda : les `POST` répondent 401 sinon) ; consulter et modifier restent
 ouverts, pour qu'une réunion avance depuis n'importe quel poste. C'est une

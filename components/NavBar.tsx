@@ -39,8 +39,10 @@ export default function NavBar({ current }: { current?: Page }) {
     const data = await fetch('/api/navbar-counts', { cache: 'no-store' }).then(r => r.json() as Promise<{ total: number }>).catch(() => ({ total: 0 }));
     setAlertCount(data.total ?? 0);
   };
-  useEffect(() => { fetchCount(); }, []);
+  // Le total compte aussi les missions prioritaires du compte connecté.
+  useEffect(() => { fetchCount(); }, [compte?.id]);
   useTempsReel("alertes", fetchCount);
+  useTempsReel("reunion", fetchCount);
 
   // Pastille Suggestions : nouvelles suggestions (Timothé seul) et commentaires
   // non lus sur ses propres suggestions. La page Suggestions émet

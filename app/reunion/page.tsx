@@ -6,6 +6,7 @@ import { fr } from "date-fns/locale";
 import NavBar from "../../components/NavBar";
 import { useCompte } from "../../components/AuthProvider";
 import { useTempsReel } from "../../lib/temps-reel";
+import { estMissionAlerte, PRIORITE_ALERTE } from "../../lib/missionsAccueil";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -589,6 +590,10 @@ function CarteFiche({ f, equipe, evenements, onOuvrir, onBasculer }: {
         )}
         <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
           {!fait && f.priorite !== 1 && <Pastille texte={p.label} fond={p.couleur} />}
+          {estMissionAlerte(f) && (
+            <Pastille texte="📣 À l'accueil" fond="var(--white)"
+              titre={`Affichée dans les alertes de l'accueil de ${f.assignes.map(id => equipe.find(m => m.id === id)?.nom ?? "?").join(", ")}`} />
+          )}
           {f.statut === "en_cours" && <Pastille texte="▶ En cours" fond="var(--bleu)" />}
           <BadgeDeadline f={f} />
           {ev && <Pastille texte={`${typeEv(ev.type).icone} ${ev.titre}`} fond="var(--cream)" />}
@@ -656,6 +661,13 @@ function ModalFiche({ initial, equipe, evenements, onFermer, onEnregistre, onSup
       <div>
         <label style={etiquette}>Priorité</label>
         <ChoixPriorite valeur={f.priorite ?? 1} onChange={v => maj({ priorite: v })} />
+        {!estPoint && (f.priorite ?? 1) >= PRIORITE_ALERTE && f.statut !== "fait" && (
+          <p style={{ fontSize: 12, fontWeight: 700, margin: "6px 0 0", color: "rgba(0,0,0,0.55)" }}>
+            📣 {(f.assignes ?? []).length > 0
+              ? `Apparaîtra dans les alertes de l'accueil de ${(f.assignes ?? []).map(id => equipe.find(m => m.id === id)?.nom ?? "?").join(", ")}, jusqu'à ce qu'elle soit faite.`
+              : "Assigne-la à quelqu'un pour qu'elle apparaisse dans ses alertes de l'accueil."}
+          </p>
+        )}
       </div>
       <div className="pop-grid-2" style={{ gap: 12 }}>
         <div>
@@ -1535,6 +1547,19 @@ export default function ReunionPage() {
       lireListe<EvAgenda>("/api/evenements").then(setAgenda),
     ]).then(() => setCharge(true));
   }, []);
+  // Lien depuis l'accueil (/reunion?fiche=…) : ouvre directement la mission.
+  useEffect(() => {
+    if (!charge) return;
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get("fiche");
+    if (!id) return;
+    const cible = fiches.find(f => f.id === id);
+    if (cible) { setOnglet("taches"); setFicheEditee(cible); }
+    params.delete("fiche");
+    const reste = params.toString();
+    window.history.replaceState(null, "", window.location.pathname + (reste ? `?${reste}` : ""));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [charge]);
   useTempsReel("reunion", () => {
     lireListe<Fiche>("/api/reunion/fiches").then(setFiches);
     lireListe<EvPrep>("/api/reunion/evenements").then(setEvenements);

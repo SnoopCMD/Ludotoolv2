@@ -1,10 +1,12 @@
 "use client";
 import { useState, useEffect, useMemo } from "react";
+import Link from "next/link";
 import NavBar from "../components/NavBar";
 import { useIsMobile } from "../lib/useIsMobile";
 import BoutonScan from "../components/ScanCodeBarre";
 import { useCompte } from "../components/AuthProvider";
 import { useTempsReel } from "../lib/temps-reel";
+import { estMissionAlerte, lienMission, type MissionAlerte } from "../lib/missionsAccueil";
 import { ListeModules, ModalPersonnaliser, MODULES_PAR_DEFAUT, modulesValides, type Nouveaute } from "../components/ModulesAccueil";
 import {
   format, startOfWeek, endOfWeek, eachDayOfInterval,
@@ -238,6 +240,8 @@ export default function AccueilPage() {
   const [jourChoisi, setJourChoisi] = useState<string | null>(null);
   const [alertes, setAlertes] = useState<Alerte[]>([]);
   const [rappels, setRappels] = useState<RappelItem[]>([]);
+  // Missions du Bureau en priorité haute ou urgente, assignées au compte connecté
+  const [missions, setMissions] = useState<MissionAlerte[]>([]);
   const [equipe, setEquipe] = useState<MembreEquipe[]>([]);
   const [evenements, setEvenements] = useState<Evenement[]>([]);
   const [nouveautes, setNouveautes] = useState<Nouveaute[]>([]);
@@ -304,6 +308,25 @@ export default function AccueilPage() {
   useEffect(() => { chargerAlertes(); chargerEquipe(); chargerNouveautes(); }, []);
   useEffect(() => { chargerEvenements(); }, [semaineRef]);
   useTempsReel("alertes", () => { chargerAlertes(); chargerNouveautes(); });
+
+  const chargerMissions = async () => {
+    if (!compte) { setMissions([]); return; }
+    const data = await fetch('/api/reunion/fiches', { cache: 'no-store' }).then(r => r.json() as Promise<unknown>).catch(() => []);
+    const liste = (Array.isArray(data) ? data : []) as MissionAlerte[];
+    setMissions(liste
+      .filter(f => estMissionAlerte(f, compte.equipe_id))
+      .sort((a, b) => b.priorite - a.priorite || (a.deadline ?? "9999").localeCompare(b.deadline ?? "9999")));
+  };
+  useEffect(() => { chargerMissions(); }, [compte?.equipe_id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useTempsReel("reunion", () => { chargerMissions(); });
+
+  const terminerMission = async (id: string) => {
+    setResolvingId(id);
+    await fetch(`/api/reunion/fiches/${id}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ statut: 'fait' }),
+    }).catch(() => null);
+    setTimeout(() => { setMissions(prev => prev.filter(m => m.id !== id)); setResolvingId(null); }, 350);
+  };
   useTempsReel("agenda", () => chargerEvenements());
   useEffect(() => {
     const key = format(startOfWeek(semaineRef, { weekStartsOn: 1 }), 'yyyy-MM-dd');
@@ -531,7 +554,7 @@ export default function AccueilPage() {
   const nbColonnes = joursVisibles.length;
 
   const rotationAlertes = nouveautes.filter(j => j.date_sortie && new Date(j.date_sortie) <= new Date());
-  const totalCount = alertes.length + rappels.length + rotationAlertes.length;
+  const totalCount = alertes.length + rappels.length + rotationAlertes.length + missions.length;
 
   return (
     <div style={{ minHeight: "100dvh", background: "var(--cream)" }}>
@@ -831,6 +854,33 @@ export default function AccueilPage() {
                 </div>
               ) : (
                 <>
+                  {missions.map(m => {
+                    const urgente = m.priorite >= 3;
+                    const auj = format(new Date(), "yyyy-MM-dd");
+                    const retard = !!m.deadline && m.deadline < auj;
+                    return (
+                      <div key={`mission-${m.id}`} style={{ background: urgente ? "#fecaca" : "#fed7aa", border: "2.5px solid var(--ink)", borderRadius: 10, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8, opacity: resolvingId === m.id ? 0 : 1, transition: "opacity 0.3s" }}>
+                        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", flex: 1, minWidth: 0 }}>
+                            <span className="pop-sticker" style={{ background: urgente ? "var(--rouge)" : "var(--orange)", color: urgente ? "var(--white)" : "var(--ink)", border: "1.5px solid var(--ink)", fontSize: 10 }}>
+                              🎯 Mission {urgente ? "urgente" : "haute"}
+                            </span>
+                            {m.statut === "en_cours" && <span style={{ fontSize: 11, fontWeight: 700, color: "rgba(0,0,0,0.5)" }}>▶ en cours</span>}
+                          </div>
+                          <button onClick={() => terminerMission(m.id)} title="Marquer la mission comme faite"
+                            style={{ width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", background: "var(--vert)", border: "2px solid var(--ink)", cursor: "pointer", fontSize: 13, flexShrink: 0, boxShadow: "1px 1px 0 var(--ink)" }}>✓</button>
+                        </div>
+                        <p style={{ fontWeight: 800, fontSize: 14, color: "var(--ink)", lineHeight: 1.3 }}>{m.titre}</p>
+                        {m.description && <p style={{ fontSize: 12, color: "rgba(0,0,0,0.55)", lineHeight: 1.5, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{m.description}</p>}
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                          <span style={{ fontSize: 11, fontWeight: retard ? 800 : 600, color: retard ? "#b91c1c" : "rgba(0,0,0,0.45)" }}>
+                            {m.deadline ? `${retard ? "⚠️ En retard · " : "Pour le "}${format(new Date(m.deadline + "T00:00:00"), "d MMM", { locale: fr })}` : "Sans échéance"}
+                          </span>
+                          <Link href={lienMission(m.id)} style={{ fontSize: 12, fontWeight: 800, color: "var(--ink)" }}>Ouvrir au Bureau →</Link>
+                        </div>
+                      </div>
+                    );
+                  })}
                   {alertes.map((alerte, idx) => {
                     const s = ALERTE_STYLES[alerte.type] ?? ALERTE_STYLES.info;
                     return (
