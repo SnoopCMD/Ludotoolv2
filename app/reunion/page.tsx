@@ -145,22 +145,65 @@ const comparerFiches = (a: Fiche, b: Fiche) =>
 // ─── Compte rendu structuré ───────────────────────────────────────────────────
 
 /**
- * Le compte rendu est stocké en JSON : une suite de titres de section et de
- * paragraphes. Un texte qui n'est pas ce JSON (notes saisies avant les
- * sections) se lit comme un paragraphe unique : rien n'est perdu.
+ * Le compte rendu est stocké en JSON : une suite de sections, chacune avec ses
+ * paragraphes, les personnes concernées (membres de l'équipe et invités) et
+ * l'interlocuteur qui présente le sujet.
+ *
+ * Formats plus anciens, lus sans perte : la liste à plat de titres et de
+ * paragraphes (`{ t: "section" | "p", texte }`) — chaque paragraphe rejoint la
+ * section qui le précède, ou une section sans titre en tête — et le texte libre
+ * d'avant les sections, qui devient une section sans titre.
  */
-type BlocCR = { t: "section" | "p"; texte: string };
+type SectionCR = {
+  titre: string;
+  paragraphes: string[];
+  /** Identifiants `equipe`. */
+  concernes: string[];
+  /** Noms libres des personnes extérieures. */
+  invites: string[];
+  /** Identifiant `equipe` ou nom d'un invité. */
+  interlocuteur: string | null;
+};
+type BlocCR = SectionCR;
+
+const sectionVide = (titre = ""): SectionCR => ({ titre, paragraphes: [], concernes: [], invites: [], interlocuteur: null });
+const chaines = (v: unknown) => Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
 
 function lireCR(brut: string | null): BlocCR[] {
   if (!brut?.trim()) return [];
-  try {
-    const v = JSON.parse(brut);
-    if (Array.isArray(v)) return v.filter(b => b && (b.t === "section" || b.t === "p") && typeof b.texte === "string");
-  } catch { /* texte libre historique */ }
-  return [{ t: "p", texte: brut }];
+  let v: unknown;
+  try { v = JSON.parse(brut); } catch { return [{ ...sectionVide(), paragraphes: [brut] }]; }
+  if (!Array.isArray(v)) return [{ ...sectionVide(), paragraphes: [brut] }];
+  const out: SectionCR[] = [];
+  for (const b of v as Record<string, unknown>[]) {
+    if (!b || typeof b !== "object") continue;
+    if (b.t === "p") {
+      if (typeof b.texte !== "string") continue;
+      if (!out.length) out.push(sectionVide());
+      out[out.length - 1].paragraphes.push(b.texte);
+    } else if (b.t === "section" || "titre" in b) {
+      out.push({
+        titre: typeof b.titre === "string" ? b.titre : typeof b.texte === "string" ? b.texte : "",
+        paragraphes: chaines(b.paragraphes),
+        concernes: chaines(b.concernes),
+        invites: chaines(b.invites),
+        interlocuteur: typeof b.interlocuteur === "string" && b.interlocuteur ? b.interlocuteur : null,
+      });
+    }
+  }
+  return out;
 }
 const ecrireCR = (blocs: BlocCR[]) => JSON.stringify(blocs);
-const sectionsCR = (blocs: BlocCR[]) => blocs.filter(b => b.t === "section" && b.texte.trim()).map(b => b.texte.trim());
+const sectionsCR = (blocs: BlocCR[]) => blocs.filter(b => b.titre.trim()).map(b => b.titre.trim());
+const sectionRemplie = (s: SectionCR) =>
+  !!(s.titre.trim() || s.paragraphes.some(p => p.trim()) || s.concernes.length || s.invites.length || s.interlocuteur);
+/** Nom affiché d'une personne de section : membre de l'équipe ou invité (nom tel quel). */
+const nomPersonne = (id: string, equipe: Membre[]) => equipe.find(m => m.id === id)?.nom ?? id;
+/** Tout le texte d'une section, pour la recherche. */
+const texteSection = (s: SectionCR, equipe: Membre[]) => [
+  s.titre, ...s.paragraphes, ...s.concernes.map(id => nomPersonne(id, equipe)), ...s.invites,
+  s.interlocuteur ? nomPersonne(s.interlocuteur, equipe) : "",
+].join("\n");
 
 // ─── Recherche ────────────────────────────────────────────────────────────────
 
@@ -488,70 +531,231 @@ function TexteAuto({ value, onChange, placeholder, style }: { value: string; onC
     style={{ ...inp, resize: "none", overflow: "hidden", lineHeight: 1.5, ...style }} />;
 }
 
-function EditeurCR({ blocs, onChange }: { blocs: BlocCR[]; onChange: (b: BlocCR[]) => void }) {
-  const majBloc = (i: number, texte: string) => onChange(blocs.map((b, j) => j === i ? { ...b, texte } : b));
+function EditeurCR({ blocs, equipe, onChange }: { blocs: BlocCR[]; equipe: Membre[]; onChange: (b: BlocCR[]) => void }) {
+  // Un seul panneau ouvert à la fois : personnes concernées ou interlocuteur d'une section.
+  const [panneau, setPanneau] = useState<{ i: number; quoi: "concernes" | "interlocuteur" } | null>(null);
+  const [nouvelInvite, setNouvelInvite] = useState("");
+
+  const majSection = (i: number, champs: Partial<SectionCR>) => onChange(blocs.map((b, j) => j === i ? { ...b, ...champs } : b));
   const deplacer = (i: number, d: number) => {
     const j = i + d;
     if (j < 0 || j >= blocs.length) return;
     const n = [...blocs];
     [n[i], n[j]] = [n[j], n[i]];
     onChange(n);
+    setPanneau(null);
   };
   const retirer = (i: number) => {
-    if (blocs[i].texte.trim() && !confirm("Supprimer ce bloc et son texte ?")) return;
+    if (sectionRemplie(blocs[i]) && !confirm("Supprimer cette section et tout son contenu ?")) return;
     onChange(blocs.filter((_, j) => j !== i));
+    setPanneau(null);
   };
-  const ajouter = (t: BlocCR["t"]) => onChange([...blocs, { t, texte: "" }]);
+  const ajouterSection = () => onChange([...blocs, { ...sectionVide(), paragraphes: [""] }]);
+  const ajouterParagraphe = (i: number) => majSection(i, { paragraphes: [...blocs[i].paragraphes, ""] });
+  const basculerPanneau = (i: number, quoi: "concernes" | "interlocuteur") => {
+    setNouvelInvite("");
+    setPanneau(p => p?.i === i && p.quoi === quoi ? null : { i, quoi });
+  };
+  /** Ajoute un invité ; avec `presente`, il devient aussi l'interlocuteur. */
+  const ajouterInvite = (i: number, presente = false) => {
+    const nom = nouvelInvite.trim();
+    if (!nom) return;
+    const s = blocs[i];
+    const membre = equipe.find(m => normaliser(m.nom) === normaliser(nom));
+    if (membre) {
+      majSection(i, {
+        concernes: s.concernes.includes(membre.id) ? s.concernes : [...s.concernes, membre.id],
+        ...(presente ? { interlocuteur: membre.id } : {}),
+      });
+    } else {
+      majSection(i, {
+        invites: s.invites.some(x => normaliser(x) === normaliser(nom)) ? s.invites : [...s.invites, nom],
+        ...(presente ? { interlocuteur: nom } : {}),
+      });
+    }
+    setNouvelInvite("");
+  };
 
   const outil: React.CSSProperties = {
     width: 26, height: 26, borderRadius: 6, border: "1.5px solid rgba(0,0,0,0.25)", background: "var(--white)",
     cursor: "pointer", fontSize: 12, padding: 0, fontFamily: "inherit", flexShrink: 0,
   };
+  const bouton = (actif: boolean): React.CSSProperties => ({
+    display: "inline-flex", alignItems: "center", gap: 4, padding: "5px 9px", borderRadius: 8, cursor: "pointer",
+    fontFamily: "inherit", fontSize: 12, fontWeight: 800, whiteSpace: "nowrap",
+    border: "2px solid var(--ink)", background: actif ? "var(--yellow)" : "var(--white)",
+    boxShadow: actif ? "2px 2px 0 var(--ink)" : "none",
+  });
+  const puce = (actif: boolean): React.CSSProperties => ({
+    display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 9px", borderRadius: 20, cursor: "pointer",
+    fontFamily: "inherit", fontSize: 12, fontWeight: actif ? 800 : 500,
+    background: actif ? "var(--yellow)" : "var(--white)", border: actif ? "2px solid var(--ink)" : "2px solid rgba(0,0,0,0.15)",
+  });
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       {blocs.length === 0 && (
-        <Vide>Commence par une section (« Planning », « Animations »…) ou un paragraphe.</Vide>
+        <Vide>Commence par une section (« Planning », « Animations »…).</Vide>
       )}
-      {blocs.map((b, i) => (
-        <div key={i} style={{ display: "flex", gap: 6, alignItems: "flex-start", marginTop: b.t === "section" && i ? 8 : 0 }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            {b.t === "section" ? (
-              <input value={b.texte} onChange={e => majBloc(i, e.target.value)} placeholder="Titre de la section"
-                style={{ ...inp, fontWeight: 900, fontSize: 16, background: "var(--cream2)", textTransform: "uppercase", letterSpacing: "0.03em" }} />
-            ) : (
-              <TexteAuto value={b.texte} onChange={v => majBloc(i, v)} placeholder="Paragraphe…" />
-            )}
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-            <div style={{ display: "flex", gap: 3 }}>
-              <button type="button" style={outil} title="Monter" onClick={() => deplacer(i, -1)} disabled={i === 0}>↑</button>
-              <button type="button" style={outil} title="Descendre" onClick={() => deplacer(i, 1)} disabled={i === blocs.length - 1}>↓</button>
+      {blocs.map((s, i) => {
+        const ouvert = panneau?.i === i ? panneau.quoi : null;
+        const nbConcernes = s.concernes.length + s.invites.length;
+        // L'interlocuteur se choisit parmi l'équipe et les invités de la section.
+        const choixInterlocuteur = [...equipe.map(m => ({ cle: m.id, nom: m.nom, membre: m })), ...s.invites.map(n => ({ cle: n, nom: n, membre: undefined }))];
+        return (
+          <div key={i} style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
+            <div style={{ flex: 1, minWidth: 0, border: "2.5px solid var(--ink)", borderRadius: 12, background: "var(--white)", overflow: "hidden" }}>
+              {/* En-tête : titre + outils de la section */}
+              <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", padding: 8, background: "var(--cream2)", borderBottom: "2px solid var(--ink)" }}>
+                <input value={s.titre} onChange={e => majSection(i, { titre: e.target.value })} placeholder="Titre de la section"
+                  style={{ ...inp, flex: "1 1 180px", width: "auto", fontWeight: 900, fontSize: 16, textTransform: "uppercase", letterSpacing: "0.03em" }} />
+                <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                  <button type="button" style={bouton(false)} onClick={() => ajouterParagraphe(i)} title="Ajouter un paragraphe à cette section">+ Paragraphe</button>
+                  <button type="button" style={bouton(ouvert === "concernes")} onClick={() => basculerPanneau(i, "concernes")} title="Personnes concernées par ce sujet">
+                    👥 Concernés{nbConcernes ? ` · ${nbConcernes}` : ""}
+                  </button>
+                  <button type="button" style={bouton(ouvert === "interlocuteur")} onClick={() => basculerPanneau(i, "interlocuteur")} title="Qui présente ce sujet">
+                    🎤 {s.interlocuteur ? nomPersonne(s.interlocuteur, equipe) : "Interlocuteur"}
+                  </button>
+                </div>
+              </div>
+
+              {/* Panneau : personnes concernées */}
+              {ouvert === "concernes" && (
+                <div style={{ padding: 10, display: "flex", flexDirection: "column", gap: 8, background: "var(--cream)", borderBottom: "2px dashed rgba(0,0,0,0.2)" }}>
+                  <span style={etiquette}>Agents concernés</span>
+                  <ChoixMembres equipe={equipe} valeur={s.concernes} onChange={v => majSection(i, { concernes: v })} />
+                  <span style={etiquette}>Invités</span>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    {s.invites.map(n => (
+                      <span key={n} style={puce(true)}>
+                        {n}
+                        <button type="button" onClick={() => majSection(i, { invites: s.invites.filter(x => x !== n), interlocuteur: s.interlocuteur === n ? null : s.interlocuteur })}
+                          style={{ border: "none", background: "none", cursor: "pointer", fontWeight: 900, color: "#b91c1c", padding: 0 }}>✕</button>
+                      </span>
+                    ))}
+                  </div>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <input value={nouvelInvite} onChange={e => setNouvelInvite(e.target.value)} onKeyDown={e => { if (e.key === "Enter") ajouterInvite(i); }}
+                      placeholder="Nom d'un invité (Entrée)…" style={inp} />
+                    <button type="button" className="pop-btn pop-btn-outline" onClick={() => ajouterInvite(i)} disabled={!nouvelInvite.trim()}>+</button>
+                  </div>
+                </div>
+              )}
+
+              {/* Panneau : interlocuteur */}
+              {ouvert === "interlocuteur" && (
+                <div style={{ padding: 10, display: "flex", flexDirection: "column", gap: 8, background: "var(--cream)", borderBottom: "2px dashed rgba(0,0,0,0.2)" }}>
+                  <span style={etiquette}>Qui présente ce sujet ?</span>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    {choixInterlocuteur.map(c => {
+                      const actif = s.interlocuteur === c.cle;
+                      return (
+                        <button key={c.cle} type="button" style={puce(actif)}
+                          onClick={() => majSection(i, { interlocuteur: actif ? null : c.cle })}>
+                          {c.membre ? <Avatar m={c.membre} taille={18} /> : <span>🙋</span>}{c.nom}{!c.membre && <span style={{ opacity: 0.5 }}> (invité)</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <input value={nouvelInvite} onChange={e => setNouvelInvite(e.target.value)} onKeyDown={e => { if (e.key === "Enter") ajouterInvite(i, true); }}
+                      placeholder="Ou un invité : son nom (Entrée)…" style={inp} />
+                    <button type="button" className="pop-btn pop-btn-outline" onClick={() => ajouterInvite(i, true)} disabled={!nouvelInvite.trim()}>+</button>
+                  </div>
+                </div>
+              )}
+
+              {/* Corps : qui, puis les paragraphes */}
+              <div style={{ padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+                {(s.interlocuteur || nbConcernes > 0) && !ouvert && (
+                  <ResumePersonnes s={s} equipe={equipe} />
+                )}
+                {s.paragraphes.map((p, k) => (
+                  <div key={k} style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
+                    <TexteAuto value={p} placeholder="Paragraphe…"
+                      onChange={v => majSection(i, { paragraphes: s.paragraphes.map((x, j) => j === k ? v : x) })} />
+                    <button type="button" style={outil} title="Supprimer ce paragraphe"
+                      onClick={() => {
+                        if (p.trim() && !confirm("Supprimer ce paragraphe ?")) return;
+                        majSection(i, { paragraphes: s.paragraphes.filter((_, j) => j !== k) });
+                      }}>✕</button>
+                  </div>
+                ))}
+                {s.paragraphes.length === 0 && (
+                  <button type="button" onClick={() => ajouterParagraphe(i)}
+                    style={{ padding: 8, border: "2px dashed rgba(0,0,0,0.25)", borderRadius: 8, background: "transparent", cursor: "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 700, opacity: 0.6 }}>
+                    + Ajouter un paragraphe
+                  </button>
+                )}
+              </div>
             </div>
-            <button type="button" style={{ ...outil, width: "100%" }} title="Supprimer" onClick={() => retirer(i)}>✕</button>
+            <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+              <div style={{ display: "flex", gap: 3 }}>
+                <button type="button" style={outil} title="Monter" onClick={() => deplacer(i, -1)} disabled={i === 0}>↑</button>
+                <button type="button" style={outil} title="Descendre" onClick={() => deplacer(i, 1)} disabled={i === blocs.length - 1}>↓</button>
+              </div>
+              <button type="button" style={{ ...outil, width: "100%" }} title="Supprimer la section" onClick={() => retirer(i)}>✕</button>
+            </div>
           </div>
-        </div>
-      ))}
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        <button type="button" className="pop-btn pop-btn-outline" style={{ padding: "4px 12px", fontSize: 13 }} onClick={() => ajouter("section")}>+ Section</button>
-        <button type="button" className="pop-btn pop-btn-outline" style={{ padding: "4px 12px", fontSize: 13 }} onClick={() => ajouter("p")}>+ Paragraphe</button>
+        );
+      })}
+      <div>
+        <button type="button" className="pop-btn pop-btn-outline" style={{ padding: "4px 12px", fontSize: 13 }} onClick={ajouterSection}>+ Section</button>
       </div>
     </div>
   );
 }
 
-/** Lecture du compte rendu : sections en titres, paragraphes en texte, recherche surlignée. */
-function LectureCR({ blocs, q }: { blocs: BlocCR[]; q: string }) {
-  const visibles = blocs.filter(b => b.texte.trim());
+/** Interlocuteur et personnes concernées d'une section, en une ligne. */
+function ResumePersonnes({ s, equipe, q = "" }: { s: SectionCR; equipe: Membre[]; q?: string }) {
+  const membres = s.concernes.map(id => equipe.find(m => m.id === id)).filter((m): m is Membre => !!m);
+  const nbConcernes = membres.length + s.invites.length;
+  return (
+    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", fontSize: 12 }}>
+      {s.interlocuteur && (
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "2px 9px 2px 3px", borderRadius: 20, background: "var(--yellow)", border: "1.5px solid var(--ink)", fontWeight: 800 }}>
+          {equipe.find(m => m.id === s.interlocuteur)
+            ? <Avatar m={equipe.find(m => m.id === s.interlocuteur)} taille={18} />
+            : <span style={{ paddingLeft: 4 }}>🎤</span>}
+          présenté par <Surligne texte={nomPersonne(s.interlocuteur, equipe)} q={q} />
+        </span>
+      )}
+      {nbConcernes > 0 && (
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
+          <b>👥 Concernés :</b>
+          {membres.map(m => (
+            <span key={m.id} style={{ display: "inline-flex", alignItems: "center", gap: 3 }}><Avatar m={m} taille={16} /><Surligne texte={m.nom} q={q} /></span>
+          ))}
+          {s.invites.map(n => (
+            <span key={n} style={{ padding: "0 7px", borderRadius: 20, border: "1.5px dashed rgba(0,0,0,0.4)" }}><Surligne texte={n} q={q} /> <span style={{ opacity: 0.5 }}>(invité)</span></span>
+          ))}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** Lecture du compte rendu : une carte par section, paragraphes dedans, recherche surlignée. */
+function LectureCR({ blocs, equipe, q }: { blocs: BlocCR[]; equipe: Membre[]; q: string }) {
+  const visibles = blocs.filter(sectionRemplie);
   if (!visibles.length) return <div style={{ fontSize: 14, opacity: 0.5 }}>Pas de notes.</div>;
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      {visibles.map((b, i) => b.t === "section" ? (
-        <h3 key={i} className="bc" style={{ margin: i ? "10px 0 0" : 0, fontSize: 17, borderBottom: "2px solid var(--ink)", paddingBottom: 2 }}>
-          <Surligne texte={b.texte} q={q} />
-        </h3>
-      ) : (
-        <p key={i} style={{ margin: 0, fontSize: 14, whiteSpace: "pre-wrap", lineHeight: 1.55 }}><Surligne texte={b.texte} q={q} /></p>
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {visibles.map((s, i) => (
+        <div key={i} style={{ border: "2px solid var(--ink)", borderRadius: 10, overflow: "hidden" }}>
+          {s.titre.trim() && (
+            <h3 className="bc" style={{ margin: 0, fontSize: 16, padding: "6px 10px", background: "var(--cream2)", borderBottom: "2px solid var(--ink)" }}>
+              <Surligne texte={s.titre} q={q} />
+            </h3>
+          )}
+          <div style={{ padding: "8px 10px", display: "flex", flexDirection: "column", gap: 6 }}>
+            {(s.interlocuteur || s.concernes.length > 0 || s.invites.length > 0) && <ResumePersonnes s={s} equipe={equipe} q={q} />}
+            {s.paragraphes.filter(p => p.trim()).map((p, k) => (
+              <p key={k} style={{ margin: 0, fontSize: 14, whiteSpace: "pre-wrap", lineHeight: 1.55 }}><Surligne texte={p} q={q} /></p>
+            ))}
+          </div>
+        </div>
       ))}
     </div>
   );
@@ -1271,7 +1475,7 @@ function VueSeance({ seance, equipe, fiches, evenements, connecte, onSeance, onF
             <div style={{ fontSize: 12, opacity: 0.6, marginTop: -4 }}>
               Les points abordés, décisions et missions créées s’ajoutent d’eux-mêmes au compte rendu : ici, les notes libres.
             </div>
-            <EditeurCR blocs={blocs} onChange={setBlocs} />
+            <EditeurCR blocs={blocs} equipe={equipe} onChange={setBlocs} />
           </Section>
 
           <Section titre={`Missions à prioriser · ${missions.length}`} droite={connecte &&
@@ -1299,11 +1503,11 @@ function VueSeance({ seance, equipe, fiches, evenements, connecte, onSeance, onF
 // ─── Compte rendu archivé ─────────────────────────────────────────────────────
 
 /** Tout le texte d'un compte rendu, pour la recherche : titre, présents, notes, points et missions. */
-function texteCompteRendu(s: Seance, fiches: Fiche[], nomDe: (id: string) => string) {
+function texteCompteRendu(s: Seance, fiches: Fiche[], nomDe: (id: string) => string, equipeCR: Membre[]) {
   const liees = fiches.filter(f => f.seance_id === s.id);
   return [
     s.titre ?? "", dateLongue(s.date), ...s.participants.map(nomDe),
-    ...lireCR(s.compte_rendu).map(b => b.texte),
+    ...lireCR(s.compte_rendu).map(b => texteSection(b, equipeCR)),
     ...liees.flatMap(f => [f.titre, f.description ?? "", f.decision ?? "", ...f.assignes.map(nomDe)]),
   ].join("\n");
 }
@@ -1387,7 +1591,7 @@ function CarteCompteRendu({ s, equipe, fiches, q, onMaj, onSupprime }: {
           )}
           <div>
             <div style={etiquette}>Notes</div>
-            {edition ? <EditeurCR blocs={blocs} onChange={setBlocs} /> : <LectureCR blocs={enregistres} q={q} />}
+            {edition ? <EditeurCR blocs={blocs} equipe={equipe} onChange={setBlocs} /> : <LectureCR blocs={enregistres} equipe={equipe} q={q} />}
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button className="pop-btn pop-btn-outline" onClick={supprimer} style={{ color: "#b91c1c", marginRight: "auto" }}>Supprimer</button>
@@ -1657,7 +1861,7 @@ export default function ReunionPage() {
     const q = normaliser(rechercheCR.trim());
     if (!q) return comptesRendus;
     const nomDe = (id: string) => equipe.find(m => m.id === id)?.nom ?? "";
-    return comptesRendus.filter(s => normaliser(texteCompteRendu(s, fiches, nomDe)).includes(q));
+    return comptesRendus.filter(s => normaliser(texteCompteRendu(s, fiches, nomDe, equipe)).includes(q));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seances, fiches, equipe, rechercheCR]);
 

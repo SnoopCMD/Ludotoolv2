@@ -276,11 +276,18 @@ ouverts, pour qu'une réunion avance depuis n'importe quel poste. C'est une
 exception assumée au principe « connexion facultative » des comptes.
 
 **Le compte rendu** (`reunion_seances.compte_rendu`) est un tableau JSON de
-blocs `{ "t": "section" | "p", "texte": … }`. La liste des comptes rendus n'en
-montre que les titres de section ; le détail affiche tout. Un texte qui n'est
-pas ce JSON (notes saisies avant les sections) se lit comme un paragraphe
-unique. La recherche se fait côté client, sur les notes, le titre, les présents
-et les points et missions rattachés, sans tenir compte des accents ni de la casse.
+sections `{ titre, paragraphes: string[], concernes: string[], invites: string[],
+interlocuteur }` : les paragraphes appartiennent à leur section, `concernes` liste
+des identifiants `equipe`, `invites` des noms libres de personnes extérieures, et
+`interlocuteur` (qui présente le sujet) est un identifiant `equipe` ou le nom d'un
+invité. Les anciens formats se lisent sans perte (`lireCR`) : la liste à plat
+`{ "t": "section" | "p", "texte" }` (chaque paragraphe rejoint la section qui le
+précède) et le texte libre d'avant les sections (une section sans titre) ; ils
+sont réécrits au nouveau format à la prochaine modification. La liste des
+comptes rendus n'en montre que les titres de section ; le détail affiche tout.
+La recherche se fait côté client, sur les notes, les personnes des sections, le
+titre, les présents et les points et missions rattachés, sans tenir compte des
+accents ni de la casse.
 
 Les routes `/api/reunion/*` n'écrivent que les colonnes listées dans
 `lib/reunion.ts`, contrairement aux routes génériques plus anciennes qui
