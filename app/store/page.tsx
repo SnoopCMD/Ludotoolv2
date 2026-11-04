@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import NavBar from "../../components/NavBar";
 import { useIsMobile } from "../../lib/useIsMobile";
 import { useCompte } from "../../components/AuthProvider";
-import { useCouleurProfil } from "../../lib/couleurProfil";
+import { useCouleurProfil } from "../../lib/useCouleurProfil";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

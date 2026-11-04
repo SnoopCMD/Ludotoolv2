@@ -6,7 +6,7 @@ import { useTempsReel } from "../../lib/temps-reel";
 import { useIsMobile } from "../../lib/useIsMobile";
 import { format, addMonths, subMonths, addWeeks, subWeeks, startOfWeek, endOfWeek, eachDayOfInterval, startOfMonth, endOfMonth, isSameMonth, isToday, subDays, setMonth, setYear, getISOWeek, getYear, addDays } from "date-fns";
 import { fr } from "date-fns/locale";
-import { useCouleurProfil } from "../../lib/couleurProfil";
+import { useCouleurProfil } from "../../lib/useCouleurProfil";
 
 type AbsenceHS = { debut: string; fin: string; type: 'conge' | 'rtt' | 'recup' };
 
