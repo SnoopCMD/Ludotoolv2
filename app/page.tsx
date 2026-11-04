@@ -13,7 +13,7 @@ import {
   isToday, addWeeks, subWeeks, getISOWeek,
 } from "date-fns";
 import { fr } from "date-fns/locale";
-import { useCouleurProfil } from "../lib/couleurProfil";
+import { useCouleurProfil } from "../lib/useCouleurProfil";
 
 // ─── Constantes planning ──────────────────────────────────────────────────────
 

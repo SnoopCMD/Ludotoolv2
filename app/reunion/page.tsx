@@ -7,7 +7,7 @@ import NavBar from "../../components/NavBar";
 import { useCompte } from "../../components/AuthProvider";
 import { useTempsReel } from "../../lib/temps-reel";
 import { estMissionAlerte, PRIORITE_ALERTE, validations } from "../../lib/missionsAccueil";
-import { useCouleurProfil } from "../../lib/couleurProfil";
+import { useCouleurProfil } from "../../lib/useCouleurProfil";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

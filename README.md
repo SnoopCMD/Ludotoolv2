@@ -213,7 +213,7 @@ l'éditeur d'équipe de l'agenda), écrite par `PUT /api/auth/couleur` pour le
 compte connecté seulement. `GET /api/equipe` la renvoie aussi à plat
 (`couleur`) pour les avatars ; les routes d'écriture de l'équipe ignorent ce
 reflet. Après un changement, l'événement `couleur-profil`
-(`lib/couleurProfil.ts`) repeint l'agenda, l'accueil, le Bureau et le Store
+(`lib/useCouleurProfil.ts`) repeint l'agenda, l'accueil, le Bureau et le Store
 déjà ouverts, sans recharger.
 
 ### Les modules du tableau de bord
