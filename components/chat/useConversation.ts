@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MessageChat, ReponseFlux } from "../../lib/chat";
-import { ouvrirCanal, type Canal } from "../../lib/chat-canal";
+import { useDirect, useEvenementsChat } from "../../lib/chat-canal";
 
 /** Message affiché : enregistré, ou encore en cours d'envoi côté client. */
 export type MessageAffiche = MessageChat & { etat?: "envoi" | "echec" };
@@ -12,8 +12,10 @@ type Etat = {
   chargement: boolean;
   erreur: string | null;
   plusAnciens: boolean;
-  connecte: boolean;
 };
+
+/** Sans direct, on sonde le fil ouvert à ce rythme (onglet visible seulement). */
+const SONDAGE_MS = 2500;
 
 /** Fusionne par id (et reconnaît un message en attente à son client_id), trie par id. */
 function fusionner(actuels: MessageAffiche[], recus: MessageChat[]): MessageAffiche[] {
@@ -31,19 +33,31 @@ function fusionner(actuels: MessageAffiche[], recus: MessageChat[]): MessageAffi
   return [...[...parId.values()].sort((a, b) => a.id - b.id), ...enAttente.values()];
 }
 
-/**
- * État d'une conversation : chargement initial, historique, envoi optimiste,
- * suppression, et abonnement au canal tant que `actif` est vrai.
- */
-export function useConversation(conversation: string, actif: boolean, moi: { id: string; equipe_id: string; nom: string; couleur: string | null; groupe: string | null } | null) {
-  const [etat, setEtat] = useState<Etat>({ messages: [], chargement: true, erreur: null, plusAnciens: false, connecte: true });
-  const canal = useRef<Canal | null>(null);
-  const base = `/api/chat/${encodeURIComponent(conversation)}`;
+type Moi = { id: string; equipe_id: string; nom: string; couleur: string | null; groupe: string | null };
 
+/**
+ * État d'un fil de discussion : chargement, historique, envoi optimiste,
+ * suppression. Reçoit les nouveautés par le direct ; sans direct, sonde.
+ * À monter avec `key={conversation}` : changer de conversation repart de zéro.
+ */
+export function useConversation(conversation: string, moi: Moi | null) {
+  const [etat, setEtat] = useState<Etat>({ messages: [], chargement: true, erreur: null, plusAnciens: false });
+  const base = `/api/chat/${encodeURIComponent(conversation)}`;
+  const direct = useDirect();
+  // Curseur : dernier id reçu et horloge serveur du dernier rattrapage.
+  const curseur = useRef<{ apres: number; depuis: string } | null>(null);
+  const actif = !!moi;
+
+  const recevoir = useCallback((recus: MessageChat[]) => {
+    if (!recus.length) return;
+    if (curseur.current) curseur.current.apres = Math.max(curseur.current.apres, ...recus.map(m => m.id));
+    setEtat(e => ({ ...e, messages: fusionner(e.messages, recus) }));
+  }, []);
+
+  // Chargement initial.
   useEffect(() => {
-    if (!actif || !moi) return;
+    if (!actif) return;
     let annule = false;
-    setEtat(e => ({ ...e, chargement: e.messages.length === 0, erreur: null }));
     fetch(`${base}/flux`, { cache: "no-store" })
       .then(async r => {
         const d = await r.json() as ReponseFlux & { error?: string };
@@ -52,22 +66,44 @@ export function useConversation(conversation: string, actif: boolean, moi: { id:
       })
       .then(d => {
         if (annule) return;
-        setEtat(e => ({ ...e, messages: fusionner(e.messages.filter(m => m.etat), d.messages), plusAnciens: !!d.plus_anciens, chargement: false }));
-        const apres = d.messages.length ? d.messages[d.messages.length - 1].id : 0;
-        canal.current = ouvrirCanal(conversation, { apres, depuis: d.maintenant }, ev => {
-          if (ev.type === "messages") setEtat(e => ({ ...e, messages: fusionner(e.messages, ev.messages) }));
-          else if (ev.type === "etat") setEtat(e => ({ ...e, connecte: ev.connecte }));
-        });
+        curseur.current = { apres: 0, depuis: d.maintenant };
+        recevoir(d.messages);
+        setEtat(e => ({ ...e, plusAnciens: !!d.plus_anciens, chargement: false }));
       })
       .catch((err: Error) => { if (!annule) setEtat(e => ({ ...e, chargement: false, erreur: err.message })); });
-    return () => {
-      annule = true;
-      canal.current?.fermer();
-      canal.current = null;
-    };
-    // `moi` change d'objet à chaque rendu : seul le compte compte.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conversation, actif, moi?.id, base]);
+    return () => { annule = true; };
+  }, [base, actif, recevoir]);
+
+  // Rattrapage : tout ce qui a bougé depuis le curseur (nouveaux, supprimés).
+  const enCours = useRef(false);
+  const rattraper = useCallback(async () => {
+    const c = curseur.current;
+    if (!c || enCours.current) return;
+    enCours.current = true;
+    try {
+      const r = await fetch(`${base}/flux?apres=${c.apres}&depuis=${encodeURIComponent(c.depuis)}`, { cache: "no-store" });
+      if (!r.ok) return;
+      const d = await r.json() as ReponseFlux;
+      c.depuis = d.maintenant;
+      recevoir(d.messages);
+    } catch { /* réseau : on réessaiera */ }
+    finally { enCours.current = false; }
+  }, [base, recevoir]);
+
+  // Direct : les messages de cette conversation arrivent un par un.
+  useEvenementsChat(actif, ev => {
+    if (ev.type === "message" && ev.message.conversation_id === conversation) recevoir([ev.message]);
+    else if (ev.type === "reconnecte") rattraper();
+  });
+
+  // Sans direct : sondage, et un tour dès qu'on revient sur l'onglet.
+  useEffect(() => {
+    if (!actif || direct) return;
+    const minuteur = setInterval(() => { if (document.visibilityState === "visible") rattraper(); }, SONDAGE_MS);
+    const auRetour = () => { if (document.visibilityState === "visible") rattraper(); };
+    document.addEventListener("visibilitychange", auRetour);
+    return () => { clearInterval(minuteur); document.removeEventListener("visibilitychange", auRetour); };
+  }, [actif, direct, rattraper]);
 
   const chargerPlusAnciens = useCallback(async () => {
     const premier = etat.messages.find(m => !m.etat);
@@ -87,12 +123,11 @@ export function useConversation(conversation: string, actif: boolean, moi: { id:
       });
       const d = await r.json() as MessageChat & { error?: string };
       if (!r.ok) throw new Error(d.error);
-      setEtat(e => ({ ...e, messages: fusionner(e.messages, [d]) }));
-      canal.current?.reveiller();
+      recevoir([d]);
     } catch {
       setEtat(e => ({ ...e, messages: e.messages.map(m => m.client_id === provisoire.client_id && m.etat ? { ...m, etat: "echec" } : m) }));
     }
-  }, [base]);
+  }, [base, recevoir]);
 
   const envoyer = useCallback((contenu: string) => {
     if (!moi) return;
@@ -139,5 +174,5 @@ export function useConversation(conversation: string, actif: boolean, moi: { id:
     }).catch(() => null);
   }, [base]);
 
-  return { ...etat, chargerPlusAnciens, envoyer, reessayer, abandonner, supprimer, marquerLu };
+  return { ...etat, direct, chargerPlusAnciens, envoyer, reessayer, abandonner, supprimer, marquerLu };
 }

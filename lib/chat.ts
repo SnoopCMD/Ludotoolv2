@@ -2,17 +2,17 @@
  * Messagerie interne : types et constantes partagés entre les routes API et le
  * client. Pas d'accès à la base ici (le fichier est importé côté navigateur).
  *
- * Architecture, pensée pour la suite :
+ * Architecture :
  *
- *  - D1 est la source de vérité (`migrations/0024_chat.sql`). Tout message a un
- *    `id` entier croissant qui sert de curseur.
- *  - Le client ne parle jamais directement au transport : il s'abonne à un
- *    canal (`lib/chat-canal.ts`) qui lui livre des `EvenementChat`. Aujourd'hui
- *    le canal sonde `/api/chat/<conversation>/flux` ; demain il pourra ouvrir
- *    un WebSocket (Durable Object) sans que le panneau change.
- *  - Les événements sont typés par `type` : les réactions « qui défilent à
- *    l'écran » seront un nouveau type, éphémère (non stocké), diffusé par le
- *    même canal et affiché par une couche au-dessus de la page.
+ *  - D1 est la source de vérité (`migrations/0024_chat.sql`, `0025_chat_prive.sql`).
+ *    Tout message a un `id` entier croissant qui sert de curseur.
+ *  - Le direct passe par un Durable Object (`worker/MessagerieDO.ts`) : les
+ *    routes écrivent en base puis lui demandent de pousser un `EvenementDirect`
+ *    aux comptes concernés, par WebSocket.
+ *  - Côté navigateur, une seule connexion par onglet (`lib/chat-canal.ts`)
+ *    distribue les événements à qui s'y abonne. Sans direct (coupure, `next
+ *    dev`), les abonnés reviennent au sondage HTTP ; à la reconnexion, ils
+ *    rattrapent ce qu'ils ont manqué avec le curseur.
  */
 
 export const CONVERSATION_GENERALE = "general";
@@ -47,13 +47,42 @@ export type ReponseFlux = {
 };
 
 /**
- * Ce que le canal livre aux abonnés. Ajouter un type ici (réaction éphémère,
- * « est en train d'écrire »…) ne casse pas les abonnés existants : chacun
+ * Ce que le serveur pousse en direct. Ajouter un type ici (réaction éphémère,
+ * « est en train d'écrire »…) ne casse pas les postes existants : chacun
  * ignore ce qu'il ne connaît pas.
  */
-export type EvenementChat =
-  | { type: "messages"; messages: MessageChat[] }
-  | { type: "etat"; connecte: boolean };
+export type EvenementDirect =
+  /** Message nouveau, ou modifié / supprimé (même id). */
+  | { type: "message"; message: MessageChat }
+  /** Une conversation vient d'être créée avec ce compte parmi les membres. */
+  | { type: "conversation"; conversation_id: string };
+
+/** Ligne de la liste des discussions (`GET /api/chat/conversations`). */
+export type ResumeConversation = {
+  id: string;
+  type: "general" | "prive";
+  /** « Général », ou le prénom de l'autre personne. */
+  nom: string;
+  /** Message privé : l'autre membre. */
+  avec: CompteChat | null;
+  non_lus: number;
+  dernier: { auteur_id: string; contenu: string; cree_le: string; supprime: boolean } | null;
+};
+
+/** Un compte de l'équipe, tel que la messagerie l'affiche. */
+export type CompteChat = {
+  id: string;
+  equipe_id: string;
+  nom: string;
+  groupe: string | null;
+  couleur: string | null;
+};
+
+export type ReponseConversations = {
+  conversations: ResumeConversation[];
+  /** Les autres comptes : on peut ouvrir une discussion privée avec chacun. */
+  comptes: CompteChat[];
+};
 
 /** Ligne SQL → message. La requête doit joindre utilisateurs et equipe. */
 export function versMessage(l: Record<string, unknown>): MessageChat {

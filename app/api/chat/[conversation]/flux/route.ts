@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getDB } from '../../../../../lib/db';
 import { compteCourant } from '../../../../../lib/auth';
+import { conversationAccessible } from '../../../../../lib/chat-serveur';
 import { SELECT_MESSAGE, TAILLE_PAGE, maintenantIso, versMessage, type ReponseFlux } from '../../../../../lib/chat';
 
 export const dynamic = 'force-dynamic';
@@ -10,7 +11,7 @@ export const dynamic = 'force-dynamic';
 const MARGE_MS = 15_000;
 
 /**
- * Flux d'une conversation, réservé aux comptes connectés.
+ * Flux d'une conversation, réservé aux comptes qui y ont accès.
  *
  *  - sans paramètre : les `TAILLE_PAGE` derniers messages (ouverture du panneau) ;
  *  - `?avant=<id>` : la page précédente (on remonte l'historique) ;
@@ -27,6 +28,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ conv
     const avant = url.searchParams.get('avant');
     const depuis = url.searchParams.get('depuis');
     const db = await getDB();
+    if (!await conversationAccessible(db, compte, conversation)) {
+      return NextResponse.json({ error: 'Conversation introuvable.' }, { status: 404 });
+    }
     const maintenant = maintenantIso();
     const entetes = { 'Cache-Control': 'no-store' };
 

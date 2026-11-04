@@ -1,9 +1,13 @@
 import { NextResponse } from 'next/server';
 import { getDB } from '../../../../../lib/db';
 import { compteCourant } from '../../../../../lib/auth';
+import { conversationAccessible, destinataires, diffuser } from '../../../../../lib/chat-serveur';
 import { LONGUEUR_MAX_MESSAGE, SELECT_MESSAGE, versMessage } from '../../../../../lib/chat';
 
-/** Envoie un message. Corps : `{ contenu, client_id }`. Renvoie le message enregistré. */
+/**
+ * Envoie un message. Corps : `{ contenu, client_id }`. Renvoie le message
+ * enregistré, après l'avoir poussé en direct aux membres de la conversation.
+ */
 export async function POST(request: Request, { params }: { params: Promise<{ conversation: string }> }) {
   try {
     const compte = await compteCourant();
@@ -18,7 +22,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ con
     }
 
     const db = await getDB();
-    const conv = await db.prepare('SELECT id FROM chat_conversations WHERE id = ?').bind(conversation).first();
+    const conv = await conversationAccessible(db, compte, conversation);
     if (!conv) return NextResponse.json({ error: 'Conversation introuvable.' }, { status: 404 });
 
     // Renvoi du même message (client_id déjà vu) : on ne crée pas de doublon.
@@ -38,7 +42,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ con
        ON CONFLICT (utilisateur_id, conversation_id) DO UPDATE SET dernier_lu = MAX(dernier_lu, ?3)`
     ).bind(compte.id, conversation, Number(ligne.id)).run();
 
-    return NextResponse.json(versMessage(ligne));
+    const message = versMessage(ligne);
+    await diffuser({ type: 'message', message }, await destinataires(db, conv));
+    return NextResponse.json(message);
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });
   }

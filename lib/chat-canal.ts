@@ -1,89 +1,142 @@
 "use client";
 
-import type { EvenementChat, ReponseFlux } from "./chat";
+import { useEffect, useRef, useSyncExternalStore } from "react";
+import type { EvenementDirect } from "./chat";
 
 /**
- * Transport de la messagerie, côté navigateur.
+ * Le direct de la messagerie, côté navigateur : **une seule** WebSocket par
+ * onglet (`/api/chat/ws`, prise par `worker.ts` puis le Durable Object),
+ * partagée par tous les abonnés (pastille, liste des discussions, fil ouvert).
  *
- * Le panneau ne sait pas *comment* les messages arrivent : il ouvre un canal
- * sur une conversation à partir d'un curseur, et reçoit des `EvenementChat`.
- * Cette version sonde `/api/chat/<conversation>/flux` toutes les
- * `INTERVALLE_MS` (seulement onglet visible). Pour passer au vrai direct, il
- * suffira d'écrire un `ouvrirCanal` qui ouvre un WebSocket (Durable Object par
- * conversation) avec la même signature : le curseur `apres` sert alors à
- * rattraper ce qui a été manqué pendant une coupure.
+ * Le direct n'est qu'un accélérateur : la base reste la vérité. Quand il
+ * tombe (réseau, veille, déploiement) ou n'existe pas (`next dev`), `direct`
+ * passe à faux et les abonnés sondent en HTTP ; quand il revient, l'événement
+ * `reconnecte` leur dit de rattraper ce qu'ils ont manqué (curseur `apres`).
  */
-export type Canal = {
-  /** Demande un tour immédiat (après un envoi, au retour sur l'onglet…). */
-  reveiller(): void;
-  fermer(): void;
-};
+export type EvenementCanal =
+  | EvenementDirect
+  | { type: "reconnecte" };
 
-export type Curseur = { apres: number; depuis: string };
+type Abonne = (e: EvenementCanal) => void;
 
-const INTERVALLE_MS = 2500;
+const abonnes = new Set<Abonne>();
+const ecouteursEtat = new Set<() => void>();
+let ws: WebSocket | null = null;
+let direct = false;
+let tentatives = 0;
+let reconnexion: ReturnType<typeof setTimeout> | null = null;
+let battement: ReturnType<typeof setInterval> | null = null;
+let attentePong: ReturnType<typeof setTimeout> | null = null;
 
-export function ouvrirCanal(conversation: string, depart: Curseur, recevoir: (e: EvenementChat) => void): Canal {
-  let { apres, depuis } = depart;
-  let minuteur: ReturnType<typeof setTimeout> | null = null;
-  let enCours = false;
-  let encore = false;
-  let ferme = false;
-  let connecte = true;
+const BATTEMENT_MS = 25_000;
+const DELAI_PONG_MS = 10_000;
+const ATTENTE_MAX_MS = 30_000;
 
-  const signalerEtat = (ok: boolean) => {
-    if (ok === connecte) return;
-    connecte = ok;
-    recevoir({ type: "etat", connecte: ok });
+function changerEtat(v: boolean) {
+  if (v === direct) return;
+  direct = v;
+  ecouteursEtat.forEach(fn => fn());
+}
+
+const emettre = (e: EvenementCanal) => abonnes.forEach(fn => { try { fn(e); } catch (err) { console.error(err); } });
+
+function arreterBattement() {
+  if (battement) clearInterval(battement);
+  if (attentePong) clearTimeout(attentePong);
+  battement = attentePong = null;
+}
+
+function connecter() {
+  if (ws || abonnes.size === 0) return;
+  if (reconnexion) { clearTimeout(reconnexion); reconnexion = null; }
+  const url = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/chat/ws`;
+  let socket: WebSocket;
+  try { socket = new WebSocket(url); } catch { planifierReconnexion(); return; }
+  ws = socket;
+
+  socket.onopen = () => {
+    tentatives = 0;
+    changerEtat(true);
+    emettre({ type: "reconnecte" });
+    // Maintien en vie : le Durable Object répond « pong » sans se réveiller.
+    // Pas de réponse = connexion morte (Wi-Fi coupé…) : on la relance.
+    battement = setInterval(() => {
+      if (socket.readyState !== WebSocket.OPEN) return;
+      socket.send("ping");
+      if (attentePong) clearTimeout(attentePong);
+      attentePong = setTimeout(() => socket.close(), DELAI_PONG_MS);
+    }, BATTEMENT_MS);
   };
 
-  const planifier = () => {
-    if (minuteur) clearTimeout(minuteur);
-    minuteur = null;
-    if (ferme || document.visibilityState !== "visible") return;
-    minuteur = setTimeout(tour, INTERVALLE_MS);
+  socket.onmessage = ev => {
+    if (ev.data === "pong") { if (attentePong) clearTimeout(attentePong); attentePong = null; return; }
+    try { emettre(JSON.parse(String(ev.data)) as EvenementDirect); } catch { /* message illisible : ignoré */ }
   };
 
-  async function tour() {
-    if (ferme) return;
-    if (enCours) { encore = true; return; }
-    enCours = true;
-    try {
-      const url = `/api/chat/${encodeURIComponent(conversation)}/flux?apres=${apres}&depuis=${encodeURIComponent(depuis)}`;
-      const res = await fetch(url, { cache: "no-store" });
-      if (!res.ok) throw new Error(String(res.status));
-      const d = await res.json() as ReponseFlux;
-      signalerEtat(true);
-      depuis = d.maintenant;
-      if (d.messages.length) {
-        apres = Math.max(apres, ...d.messages.map(m => m.id));
-        if (!ferme) recevoir({ type: "messages", messages: d.messages });
-      }
-    } catch {
-      signalerEtat(false);
-    } finally {
-      enCours = false;
-      if (encore) { encore = false; tour(); } else planifier();
-    }
+  socket.onclose = () => {
+    if (ws === socket) ws = null;
+    arreterBattement();
+    changerEtat(false);
+    planifierReconnexion();
+  };
+}
+
+function planifierReconnexion() {
+  if (abonnes.size === 0 || reconnexion) return;
+  // 1 s, 2 s, 4 s… jusqu'à 30 s, avec un peu de hasard pour que tous les
+  // postes ne reviennent pas à la même seconde après un déploiement.
+  const delai = Math.min(ATTENTE_MAX_MS, 1000 * 2 ** tentatives++) * (0.75 + Math.random() * 0.5);
+  reconnexion = setTimeout(() => { reconnexion = null; connecter(); }, delai);
+}
+
+/** Retour sur l'onglet ou sur le réseau : inutile d'attendre la fin du délai. */
+function relancer() {
+  if (document.visibilityState !== "visible" || ws) return;
+  tentatives = 0;
+  connecter();
+}
+
+function deconnecter() {
+  if (reconnexion) clearTimeout(reconnexion);
+  reconnexion = null;
+  arreterBattement();
+  const s = ws;
+  ws = null;
+  if (s) { s.onclose = null; s.close(1000); }
+  changerEtat(false);
+  document.removeEventListener("visibilitychange", relancer);
+  window.removeEventListener("online", relancer);
+}
+
+/** S'abonne au direct ; renvoie la fonction de désabonnement. */
+export function abonnerChat(fn: Abonne): () => void {
+  abonnes.add(fn);
+  if (abonnes.size === 1) {
+    document.addEventListener("visibilitychange", relancer);
+    window.addEventListener("online", relancer);
+    connecter();
   }
-
-  const auRetour = () => {
-    if (document.visibilityState === "visible") tour();
-    else planifier();
+  return () => {
+    abonnes.delete(fn);
+    if (abonnes.size === 0) deconnecter();
   };
-  document.addEventListener("visibilitychange", auRetour);
-  window.addEventListener("focus", auRetour);
-  window.addEventListener("online", auRetour);
-  planifier();
+}
 
-  return {
-    reveiller: () => { tour(); },
-    fermer: () => {
-      ferme = true;
-      if (minuteur) clearTimeout(minuteur);
-      document.removeEventListener("visibilitychange", auRetour);
-      window.removeEventListener("focus", auRetour);
-      window.removeEventListener("online", auRetour);
-    },
-  };
+/** Appelle `fn` à chaque événement du direct, tant que `actif`. */
+export function useEvenementsChat(actif: boolean, fn: Abonne) {
+  const ref = useRef(fn);
+  useEffect(() => { ref.current = fn; });
+  useEffect(() => {
+    if (!actif) return;
+    return abonnerChat(e => ref.current(e));
+  }, [actif]);
+}
+
+/** Vrai quand le direct est ouvert ; faux = les abonnés doivent sonder. */
+export function useDirect(): boolean {
+  return useSyncExternalStore(
+    fn => { ecouteursEtat.add(fn); return () => ecouteursEtat.delete(fn); },
+    () => direct,
+    () => false,
+  );
 }
