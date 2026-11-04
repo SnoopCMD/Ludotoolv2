@@ -9,7 +9,7 @@ import { useEffect, useRef } from "react";
  * données. Le sondage s'arrête quand l'onglet est caché et repart dès qu'on y
  * revient.
  */
-export type Domaine = "alertes" | "jv" | "suggestions" | "reunion" | "agenda";
+export type Domaine = "alertes" | "jv" | "suggestions" | "reunion" | "agenda" | "chat";
 
 const INTERVALLE_MS = 8000;
 

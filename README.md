@@ -16,6 +16,7 @@ toutes les données.
 - [Architecture](#architecture)
 - [Base de données](#base-de-données)
 - [Les comptes](#les-comptes)
+- [La messagerie](#la-messagerie)
 - [Les paniers communs : votes et vérification](#les-paniers-communs--votes-et-vérification)
 - [Sources externes](#sources-externes)
 - [Déploiement](#déploiement)
@@ -161,6 +162,7 @@ jeu, servi par `/api/regles/[ean]` ; `catalogue.pdf_url` pointe vers cette route
 | `jv_jeux`, `jv_selections`, `jv_reservations`, `jv_rotation_config`, `jv_notes`, `jv_standby` | Section jeux vidéo |
 | `pieces_manquantes`, `pieces_trouvees`, `reparations` | Suivi du matériel |
 | `pieces_detachees` | Stock de pièces de rechange, rangées par jeu |
+| `chat_conversations`, `chat_messages`, `chat_lectures` | Messagerie interne : conversations, messages, dernier message lu par compte |
 | `alertes`, `suggestions`, `selections` | Alertes, boîte à idées, sélections thématiques |
 | `utilisateurs`, `utilisateur_sessions` | Comptes (un par membre de `equipe`) et sessions ouvertes |
 | `utilisateur_preferences` | Modules choisis sur le tableau de bord, par compte |
@@ -370,6 +372,39 @@ heures pleines (avant 12 h ou après 15 h, `HEURES_PLEINES`), ou un bloc avec
 moins que son effectif, est surligné en orange ; l'en-tête du planning compte
 ces créneaux. Le PDF a une colonne par bloc, seulement les semaines où ce bloc
 a quelqu'un.
+
+## La messagerie
+
+Bouton 💬 en haut à droite (pastille = messages des autres non lus) : il ouvre
+un panneau sur la droite, monté une fois dans le layout (`ChatProvider`), qui
+reste ouvert d'une page à l'autre. Pour l'instant une seule conversation,
+« Général ». Lire et écrire demandent d'être connecté.
+
+L'architecture est pensée pour la suite (direct, réactions qui défilent à
+l'écran, plusieurs conversations) :
+
+- **D1 est la source de vérité** (`migrations/0024_chat.sql`). `chat_messages.id`
+  est un entier croissant qui sert de **curseur** : « tout ce qui est après
+  1234 ». Ne pas le remplacer par un UUID.
+- **Le transport est isolé** dans `lib/chat-canal.ts` : `ouvrirCanal(conversation,
+  curseur, recevoir)` livre des `EvenementChat` (`lib/chat.ts`). Aujourd'hui il
+  sonde `GET /api/chat/<conversation>/flux?apres=<id>&depuis=<iso>` toutes les
+  2,5 s, onglet visible seulement. Passer au WebSocket (un Durable Object par
+  conversation) = réécrire `ouvrirCanal` avec la même signature, le panneau ne
+  bouge pas ; le curseur sert alors à rattraper ce qui a été manqué.
+- **Les événements sont typés** (`type: "messages" | "etat"`) : une réaction
+  éphémère sera un nouveau type, ignoré par les abonnés qui ne le connaissent
+  pas, et affichée par une couche globale branchée dans `ChatProvider`.
+- **Envoi optimiste** : le message s'affiche tout de suite (grisé), avec un
+  `client_id` tiré par le navigateur. Le serveur ignore un renvoi du même
+  `client_id` (index unique), donc « Réessayer » après une coupure ne crée pas
+  de doublon.
+- **Suppression douce** : on ne supprime que ses propres messages, la ligne
+  reste (« Message supprimé ») et `modifie_le` avance pour que les autres
+  postes la reçoivent via `depuis`.
+- **Non lus** : `chat_lectures.dernier_lu` par compte et conversation, avancé
+  quand le bas du fil est visible. La pastille suit le domaine `chat` de
+  `/api/maj` (déclencheurs de la migration), comme les autres pastilles.
 
 ## Les paniers communs : votes et vérification
 

@@ -381,3 +381,7 @@ body::before {
   /* Cellule facultative restée vide : elle n'occupe pas une ligne. */
   table.pop-cards td[data-vide="1"] { display: none; }
 }
+
+/* ── Messagerie : le panneau glisse depuis la droite ── */
+@keyframes chatEntree { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+.chat-panneau { animation: chatEntree 0.16s ease-out; }
