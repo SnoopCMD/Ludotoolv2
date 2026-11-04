@@ -7,6 +7,8 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     const { id } = await params;
     const body = await request.json() as any;
     const normalized = { ...body };
+    // `couleur` n'est qu'un reflet de horaires.couleur renvoyé par le GET : pas une colonne.
+    delete normalized.couleur;
     for (const k of ['horaires', 'absences_hs']) {
       if (k in normalized && typeof normalized[k] !== 'string') {
         normalized[k] = JSON.stringify(normalized[k] ?? (k === 'horaires' ? {} : []));

@@ -7,6 +7,7 @@ import NavBar from "../../components/NavBar";
 import { useCompte } from "../../components/AuthProvider";
 import { useTempsReel } from "../../lib/temps-reel";
 import { estMissionAlerte, PRIORITE_ALERTE, validations } from "../../lib/missionsAccueil";
+import { useCouleurProfil } from "../../lib/couleurProfil";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1810,6 +1811,8 @@ export default function ReunionPage() {
   const moi = compte?.equipe_id ?? null;
 
   const [equipe, setEquipe] = useState<Membre[]>([]);
+  // Couleur de profil changée depuis le menu du compte : repeint les avatars sans recharger.
+  useCouleurProfil(({ equipe_id, couleur }) => setEquipe(prev => prev.map(m => m.id === equipe_id ? { ...m, couleur } : m)));
   const [fiches, setFiches] = useState<Fiche[]>([]);
   const [evenements, setEvenements] = useState<EvPrep[]>([]);
   const [seances, setSeances] = useState<Seance[]>([]);

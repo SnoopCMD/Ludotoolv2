@@ -13,6 +13,7 @@ import {
   isToday, addWeeks, subWeeks, getISOWeek,
 } from "date-fns";
 import { fr } from "date-fns/locale";
+import { useCouleurProfil } from "../lib/couleurProfil";
 
 // ─── Constantes planning ──────────────────────────────────────────────────────
 
@@ -243,6 +244,10 @@ export default function AccueilPage() {
   // Missions du Bureau en priorité haute ou urgente, assignées au compte connecté
   const [missions, setMissions] = useState<MissionAlerte[]>([]);
   const [equipe, setEquipe] = useState<MembreEquipe[]>([]);
+  // Couleur de profil changée depuis le menu du compte : repeint sans recharger.
+  useCouleurProfil(({ equipe_id, couleur }) => setEquipe(prev => prev.map(m => m.id === equipe_id
+    ? { ...m, couleur: couleur ?? undefined, horaires: { ...(m.horaires || {}), couleur: couleur ?? undefined } } as typeof m
+    : m)));
   const [evenements, setEvenements] = useState<Evenement[]>([]);
   const [nouveautes, setNouveautes] = useState<Nouveaute[]>([]);
   const [semaineRef, setSemaineRef] = useState(new Date());

@@ -5,11 +5,16 @@ export async function GET() {
   try {
     const db = await getDB();
     const result = await db.prepare('SELECT * FROM equipe ORDER BY nom').all();
-    return NextResponse.json(result.results.map((r: any) => ({
-      ...r,
-      horaires: typeof r.horaires === 'string' ? JSON.parse(r.horaires) : (r.horaires ?? {}),
-      absences_hs: typeof r.absences_hs === 'string' ? JSON.parse(r.absences_hs) : (r.absences_hs ?? []),
-    })));
+    return NextResponse.json(result.results.map((r: any) => {
+      const horaires = typeof r.horaires === 'string' ? JSON.parse(r.horaires) : (r.horaires ?? {});
+      return {
+        ...r,
+        horaires,
+        absences_hs: typeof r.absences_hs === 'string' ? JSON.parse(r.absences_hs) : (r.absences_hs ?? []),
+        // Couleur de profil à plat : avatars du Bureau, de l'accueil… (source : horaires.couleur)
+        couleur: horaires?.couleur ?? null,
+      };
+    }));
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
@@ -20,6 +25,8 @@ export async function POST(request: Request) {
     const db = await getDB();
     const body = await request.json() as any;
     const normalized = { ...body };
+    // `couleur` n'est qu'un reflet de horaires.couleur renvoyé par le GET : pas une colonne.
+    delete normalized.couleur;
     for (const k of ['horaires', 'absences_hs']) {
       if (k in normalized && typeof normalized[k] !== 'string') {
         normalized[k] = JSON.stringify(normalized[k] ?? (k === 'horaires' ? {} : []));

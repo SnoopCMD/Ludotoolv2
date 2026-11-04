@@ -204,6 +204,18 @@ Côté client, `components/AuthProvider.tsx` expose `useCompte()` :
 `{ compte, chargement, connexion, deconnexion, changerMotDePasse }`. `compte`
 vaut `null` hors connexion — c'est un état normal, pas une erreur.
 
+### La couleur de profil
+
+Chacun choisit sa couleur dans le menu de son compte (en haut à droite) :
+palette ou couleur libre, « Par défaut » revient à la couleur du groupe (A
+rouge, B bleu). Une seule source, `equipe.horaires.couleur` (la même que
+l'éditeur d'équipe de l'agenda), écrite par `PUT /api/auth/couleur` pour le
+compte connecté seulement. `GET /api/equipe` la renvoie aussi à plat
+(`couleur`) pour les avatars ; les routes d'écriture de l'équipe ignorent ce
+reflet. Après un changement, l'événement `couleur-profil`
+(`lib/couleurProfil.ts`) repeint l'agenda, l'accueil, le Bureau et le Store
+déjà ouverts, sans recharger.
+
 ### Les modules du tableau de bord
 
 L'agenda et les alertes sont fixes. Le reste de l'accueil est une liste de

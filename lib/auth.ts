@@ -17,6 +17,8 @@ export type Compte = {
   role: string | null;
   groupe: string | null;
   doit_changer_mdp: boolean;
+  /** Couleur de profil choisie (equipe.horaires.couleur), sinon null. */
+  couleur: string | null;
 };
 
 const b64 = (u8: Uint8Array) => btoa(String.fromCharCode(...u8));
@@ -100,7 +102,8 @@ export async function compteCourant(): Promise<Compte | null> {
 
     const db = await getDB();
     const ligne = await db.prepare(
-      `SELECT u.id, u.equipe_id, u.identifiant, u.doit_changer_mdp, e.nom, e.role, e.groupe
+      `SELECT u.id, u.equipe_id, u.identifiant, u.doit_changer_mdp, e.nom, e.role, e.groupe,
+              json_extract(e.horaires, '$.couleur') AS couleur
          FROM utilisateur_sessions s
          JOIN utilisateurs u ON u.id = s.utilisateur_id
          JOIN equipe e       ON e.id = u.equipe_id
@@ -116,6 +119,7 @@ export async function compteCourant(): Promise<Compte | null> {
       role: ligne.role ?? null,
       groupe: ligne.groupe ?? null,
       doit_changer_mdp: !!ligne.doit_changer_mdp,
+      couleur: typeof ligne.couleur === 'string' && ligne.couleur ? ligne.couleur : null,
     };
   } catch {
     return null;

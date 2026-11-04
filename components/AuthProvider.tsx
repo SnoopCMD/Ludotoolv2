@@ -1,5 +1,6 @@
 "use client";
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { EVT_COULEUR_PROFIL, type DetailCouleurProfil } from "../lib/couleurProfil";
 
 export type Compte = {
   id: string;
@@ -9,6 +10,7 @@ export type Compte = {
   role: string | null;
   groupe: string | null;
   doit_changer_mdp: boolean;
+  couleur: string | null;
 };
 
 type AuthContextValue = {
@@ -17,6 +19,8 @@ type AuthContextValue = {
   connexion: (identifiant: string, motDePasse: string) => Promise<void>;
   deconnexion: () => Promise<void>;
   changerMotDePasse: (nouveau: string, ancien?: string) => Promise<void>;
+  /** null : revenir à la couleur du groupe. */
+  changerCouleur: (couleur: string | null) => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -73,8 +77,21 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     setCompte(d.compte ?? null);
   }, []);
 
+  const changerCouleur = useCallback(async (couleur: string | null) => {
+    const r = await fetch("/api/auth/couleur", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ couleur }),
+    });
+    const d = await r.json().catch(() => ({})) as { compte?: Compte; error?: string };
+    if (!r.ok || !d.compte) throw new Error(d.error || "Impossible d'enregistrer la couleur.");
+    setCompte(d.compte);
+    // Les pages ouvertes repeignent les avatars de ce membre sans recharger.
+    window.dispatchEvent(new CustomEvent<DetailCouleurProfil>(EVT_COULEUR_PROFIL, { detail: { equipe_id: d.compte.equipe_id, couleur } }));
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ compte, chargement, connexion, deconnexion, changerMotDePasse }}>
+    <AuthContext.Provider value={{ compte, chargement, connexion, deconnexion, changerMotDePasse, changerCouleur }}>
       {children}
       {compte?.doit_changer_mdp && <PremierMotDePasse />}
     </AuthContext.Provider>

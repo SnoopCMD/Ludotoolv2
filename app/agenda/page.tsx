@@ -6,6 +6,7 @@ import { useTempsReel } from "../../lib/temps-reel";
 import { useIsMobile } from "../../lib/useIsMobile";
 import { format, addMonths, subMonths, addWeeks, subWeeks, startOfWeek, endOfWeek, eachDayOfInterval, startOfMonth, endOfMonth, isSameMonth, isToday, subDays, setMonth, setYear, getISOWeek, getYear, addDays } from "date-fns";
 import { fr } from "date-fns/locale";
+import { useCouleurProfil } from "../../lib/couleurProfil";
 
 type AbsenceHS = { debut: string; fin: string; type: 'conge' | 'rtt' | 'recup' };
 
@@ -855,6 +856,10 @@ useEffect(() => {
   };
 
   const [equipe, setEquipe] = useState<MembreEquipe[]>([]);
+  // Couleur de profil changée depuis le menu du compte : repeint sans recharger.
+  useCouleurProfil(({ equipe_id, couleur }) => setEquipe(prev => prev.map(m => m.id === equipe_id
+    ? { ...m, couleur: couleur ?? undefined, horaires: { ...(m.horaires || {}), couleur: couleur ?? undefined } } as typeof m
+    : m)));
   const [evenements, setEvenements] = useState<Evenement[]>([]);
 
   const [isDraftMode, setIsDraftMode] = useState(false);

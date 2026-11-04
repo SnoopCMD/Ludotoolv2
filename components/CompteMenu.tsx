@@ -2,11 +2,17 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useCompte } from "./AuthProvider";
+import { COULEURS_PROFIL, couleurParDefaut } from "../lib/couleurProfil";
 
 /** Bouton de compte de la barre de navigation : connexion, ou menu du profil. */
 export default function CompteMenu() {
-  const { compte, chargement, deconnexion } = useCompte();
+  const { compte, chargement, deconnexion, changerCouleur } = useCompte();
   const [ouvert, setOuvert] = useState(false);
+  const [erreurCouleur, setErreurCouleur] = useState<string | null>(null);
+  const choisirCouleur = async (c: string | null) => {
+    setErreurCouleur(null);
+    try { await changerCouleur(c); } catch (e: any) { setErreurCouleur(e.message); }
+  };
   const [showMdp, setShowMdp] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -45,7 +51,7 @@ export default function CompteMenu() {
         fontWeight: 700, fontSize: 13, boxShadow: "2px 2px 0 rgba(0,0,0,0.25)",
       }}>
         <span className="bc" style={{
-          width: 22, height: 22, borderRadius: "50%", background: "var(--yellow)",
+          width: 22, height: 22, borderRadius: "50%", background: compte.couleur ?? couleurParDefaut(compte.groupe),
           color: "var(--ink)", display: "flex", alignItems: "center", justifyContent: "center",
           fontSize: 13, flexShrink: 0,
         }}>
@@ -58,7 +64,7 @@ export default function CompteMenu() {
 
       {ouvert && (
         <div className="pop-card" style={{
-          position: "absolute", top: "calc(100% + 8px)", right: 0, width: 210,
+          position: "absolute", top: "calc(100% + 8px)", right: 0, width: 230,
           padding: 8, zIndex: 120, display: "flex", flexDirection: "column", gap: 4,
         }}>
           <div style={{ padding: "6px 8px 8px", borderBottom: "1.5px solid rgba(0,0,0,0.08)", marginBottom: 2 }}>
@@ -66,6 +72,38 @@ export default function CompteMenu() {
             <div style={{ fontSize: 11, fontWeight: 600, color: "rgba(0,0,0,0.45)" }}>
               {compte.role || "Compte"}
             </div>
+          </div>
+          {/* Couleur de profil : avatars et initiales partout (agenda, Bureau, accueil, Store…) */}
+          <div style={{ padding: "4px 8px 8px", borderBottom: "1.5px solid rgba(0,0,0,0.08)", marginBottom: 2 }}>
+            <div style={{ fontSize: 10, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.07em", color: "rgba(0,0,0,0.45)", marginBottom: 6 }}>Ma couleur</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 6 }}>
+              {COULEURS_PROFIL.map(c => {
+                const actif = (compte.couleur ?? "").toLowerCase() === c;
+                return (
+                  <button key={c} onClick={() => choisirCouleur(c)} title={c} aria-label={`Couleur ${c}`}
+                    style={{
+                      width: 26, height: 26, borderRadius: "50%", background: c, cursor: "pointer", padding: 0,
+                      border: actif ? "3px solid var(--ink)" : "2px solid var(--ink)",
+                      boxShadow: actif ? "2px 2px 0 var(--ink)" : "none", fontSize: 11, fontWeight: 900,
+                    }}>{actif ? "✓" : ""}</button>
+                );
+              })}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8 }}>
+              <label title="Autre couleur" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                <input type="color" value={compte.couleur ?? couleurParDefaut(compte.groupe)}
+                  onChange={e => choisirCouleur(e.target.value)}
+                  style={{ width: 28, height: 24, border: "2px solid var(--ink)", borderRadius: 6, padding: 1, background: "var(--white)", cursor: "pointer" }} />
+                Autre…
+              </label>
+              {compte.couleur && (
+                <button onClick={() => choisirCouleur(null)}
+                  style={{ marginLeft: "auto", fontSize: 11, fontWeight: 700, background: "none", border: "none", cursor: "pointer", textDecoration: "underline", color: "rgba(0,0,0,0.5)", fontFamily: "inherit" }}>
+                  Par défaut
+                </button>
+              )}
+            </div>
+            {erreurCouleur && <div style={{ fontSize: 11, fontWeight: 700, color: "#b91c1c", marginTop: 4 }}>{erreurCouleur}</div>}
           </div>
           <button onClick={() => { setShowMdp(true); setOuvert(false); }}
             className="pop-btn pop-btn-outline" style={{ justifyContent: "flex-start", fontSize: 12, padding: "7px 10px" }}>

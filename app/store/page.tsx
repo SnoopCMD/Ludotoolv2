@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import NavBar from "../../components/NavBar";
 import { useIsMobile } from "../../lib/useIsMobile";
 import { useCompte } from "../../components/AuthProvider";
+import { useCouleurProfil } from "../../lib/couleurProfil";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -785,6 +786,8 @@ export default function StorePage() {
   };
 
   useEffect(() => { chargerPaniers(); chargerSummary(); }, []);
+  // Couleur de profil changée depuis le menu du compte : les pastilles d'équipe suivent.
+  useCouleurProfil(() => { chargerSummary(); });
 
   // `mon_vote` dépend de qui regarde : se connecter ou se déconnecter rend le
   // cache des lignes obsolète, il faut le vider et recharger le panier ouvert.
