@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import CompteMenu from "./CompteMenu";
 import { useCompte } from "./AuthProvider";
 import { useTempsReel } from "../lib/temps-reel";
+import { useChat } from "./chat/ChatProvider";
 
 type Page = "accueil" | "inventaire" | "atelier" | "agenda" | "reunion" | "store" | "catalogage" | "jv" | "suggestions";
 
@@ -171,6 +172,8 @@ export default function NavBar({ current }: { current?: Page }) {
       {/* Sur téléphone les onglets disparaissent : on pousse compte + burger à droite. */}
       <div className="mobile-only" style={{ flex: 1 }} />
 
+      <BoutonChat />
+
       <CompteMenu />
 
       {/* Burger — visible seulement sur téléphone */}
@@ -216,6 +219,33 @@ export default function NavBar({ current }: { current?: Page }) {
         pointerEvents: "none",
       }} />
     </nav>
+  );
+}
+
+/** Ouvre ou ferme le panneau de messagerie, avec les messages non lus. */
+function BoutonChat() {
+  const { ouvert, basculer, nonLus } = useChat();
+  return (
+    <button onClick={basculer} aria-label={ouvert ? "Fermer la messagerie" : "Ouvrir la messagerie"} aria-expanded={ouvert}
+      title="Messagerie"
+      style={{
+        position: "relative", marginLeft: 8, flexShrink: 0, height: 32, minWidth: 38,
+        padding: "0 9px", borderRadius: 6, cursor: "pointer", fontFamily: "inherit",
+        display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 5,
+        background: ouvert ? "var(--yellow)" : "rgba(0,0,0,0.04)",
+        color: "var(--ink)",
+        border: ouvert ? "2px solid var(--ink)" : "2px solid transparent",
+        boxShadow: ouvert ? "2px 2px 0 var(--ink)" : "none",
+        fontSize: 16, fontWeight: 700,
+        transition: "background 0.12s, box-shadow 0.12s",
+      }}>
+      💬
+      {nonLus > 0 && (
+        <span style={{ position: "absolute", top: -7, right: -8, display: "flex" }}>
+          <Pastille n={nonLus} />
+        </span>
+      )}
+    </button>
   );
 }
 

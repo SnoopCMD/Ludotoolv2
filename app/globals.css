@@ -381,3 +381,15 @@ body::before {
   /* Cellule facultative restée vide : elle n'occupe pas une ligne. */
   table.pop-cards td[data-vide="1"] { display: none; }
 }
+
+/* ── Messagerie : le panneau glisse depuis la droite ── */
+@keyframes chatEntree { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+.chat-panneau { animation: chatEntree 0.16s ease-out; }
+@keyframes chatToast { from { transform: translateY(12px); opacity: 0; } to { transform: none; opacity: 1; } }
+.chat-toast { animation: chatToast 0.18s ease-out; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); }
+/* Panneau ouvert : la notification se met à sa gauche pour ne pas cacher la saisie… */
+.chat-toast-panneau { right: calc(min(400px, 100vw) + 16px); }
+/* …et en haut sur téléphone, où le panneau prend toute la largeur. */
+@media (max-width: 640px) {
+  .chat-toast-panneau { right: 16px; bottom: auto; top: calc(var(--nav-h) + 66px); }
+}
