@@ -304,6 +304,11 @@ libre — il n'a pas à figurer parmi les concernés. Les anciens formats se lis
 précède) et le texte libre d'avant les sections (une section sans titre) ; ils
 sont réécrits au nouveau format à la prochaine modification. La liste des
 comptes rendus n'en montre que les titres de section ; le détail affiche tout.
+Un compte rendu terminé se réédite en entier (« Modifier le compte rendu ») :
+titre, date, présents, notes, et les points abordés et missions rattachés
+(✏️ sur chacun, « + Point » / « + Mission » pour en rattacher de nouveaux). Le
+bouton « 📄 PDF » l'exporte (`exporterCompteRenduPdf`, jsPDF) ; les polices
+standard du PDF n'acceptent que le Latin-1, les émojis y sont donc retirés.
 La recherche se fait côté client, sur les notes, les personnes des sections, le
 titre, les présents et les points et missions rattachés, sans tenir compte des
 accents ni de la casse.

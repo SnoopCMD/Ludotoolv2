@@ -1597,14 +1597,139 @@ function texteCompteRendu(s: Seance, fiches: Fiche[], nomDe: (id: string) => str
   ].join("\n");
 }
 
-function CarteCompteRendu({ s, equipe, fiches, q, onMaj, onSupprime }: {
+// ─── Export PDF d'un compte rendu ─────────────────────────────────────────────
+
+/**
+ * Les polices standard de jsPDF ne connaissent que le Latin-1 (WinAnsi) : les
+ * apostrophes typographiques passent en droites et les émojis disparaissent,
+ * sinon ils sortent en caractères illisibles.
+ */
+const textePdf = (t: string) => t
+  .replace(/[’‘]/g, "'").replace(/[“”]/g, '"').replace(/…/g, "...").replace(/[–—]/g, "-")
+  .replace(/œ/g, "oe").replace(/Œ/g, "OE").replace(/€/g, " EUR").replace(/[\u00A0\u202F]/g, " ")
+  .replace(/[^\x09\x0A\x0D\x20-\x7E\xA0-\xFF]/g, "")
+  .replace(/[ \t]+\n/g, "\n").trim();
+
+async function exporterCompteRenduPdf(s: Seance, fiches: Fiche[], equipe: Membre[]) {
+  const { jsPDF } = await import("jspdf");
+  const doc = new jsPDF({ unit: "mm", format: "a4" });
+  const marge = 16, largeur = 210 - marge * 2, basPage = 297 - 16;
+  let y = 20;
+  const nomDe = (id: string) => nomPersonne(id, equipe);
+
+  const place = (h: number) => { if (y + h > basPage) { doc.addPage(); y = 18; } };
+  /** Écrit un texte coupé à la largeur disponible, ligne à ligne, avec saut de page. */
+  const ecrire = (texte: string, o: { taille?: number; gras?: boolean; gris?: boolean; retrait?: number; interligne?: number; apres?: number } = {}) => {
+    const t = textePdf(texte);
+    if (!t) return;
+    const taille = o.taille ?? 10.5, retrait = o.retrait ?? 0;
+    doc.setFont("helvetica", o.gras ? "bold" : "normal");
+    doc.setFontSize(taille);
+    doc.setTextColor(o.gris ? 110 : 20);
+    const h = taille * 0.42 * (o.interligne ?? 1.25);
+    for (const ligne of doc.splitTextToSize(t, largeur - retrait) as string[]) {
+      place(h);
+      doc.text(ligne, marge + retrait, y);
+      y += h;
+    }
+    y += o.apres ?? 0;
+  };
+  const titreBloc = (t: string) => {
+    place(14);
+    y += 3;
+    doc.setDrawColor(20); doc.setLineWidth(0.5);
+    ecrire(t.toUpperCase(), { taille: 11, gras: true, apres: 0.5 });
+    doc.line(marge, y - 2.6, marge + largeur, y - 2.6);
+    y += 2;
+  };
+
+  // En-tête
+  ecrire(s.titre || "Réunion", { taille: 18, gras: true, apres: 1 });
+  ecrire(dateLongue(s.date).replace(/^./, c => c.toUpperCase()), { taille: 11, gris: true, apres: 2 });
+  if (s.participants.length) ecrire(`Présents : ${s.participants.map(nomDe).join(", ")}`, { apres: 2 });
+
+  const points = fiches.filter(f => f.seance_id === s.id && f.genre === "point");
+  const missions = fiches.filter(f => f.seance_id === s.id && f.genre === "mission");
+
+  if (points.length) {
+    titreBloc("Points abordés");
+    for (const p of points) {
+      ecrire(p.titre, { gras: true, apres: 0.5 });
+      if (p.description?.trim()) ecrire(p.description, { gris: true, retrait: 5, taille: 9.5, apres: 0.5 });
+      if (p.decision?.trim()) ecrire(`Décision : ${p.decision}`, { retrait: 5, apres: 0.5 });
+      y += 1.5;
+    }
+  }
+
+  if (missions.length) {
+    titreBloc("Missions décidées");
+    for (const m of missions) {
+      const infos = [
+        m.assignes.length ? `Pour : ${m.assignes.map(nomDe).join(", ")}` : "",
+        m.deadline ? `avant le ${dateCourte(m.deadline)}` : "",
+        `priorité ${priorite(m.priorite).label.toLowerCase()}`,
+        m.statut === "fait" ? "faite" : "",
+      ].filter(Boolean).join(" · ");
+      ecrire(m.titre, { gras: true, apres: 0.5 });
+      ecrire(infos, { gris: true, retrait: 5, taille: 9.5, apres: 0.5 });
+      if (m.decision?.trim()) ecrire(m.decision, { retrait: 5, apres: 0.5 });
+      y += 1.5;
+    }
+  }
+
+  const sectionsRemplies = lireCR(s.compte_rendu).filter(sectionRemplie);
+  if (sectionsRemplies.length) {
+    titreBloc("Notes");
+    for (const sec of sectionsRemplies) {
+      if (sec.titre.trim()) ecrire(sec.titre.toUpperCase(), { taille: 11, gras: true, apres: 0.8 });
+      if (sec.interlocuteur) {
+        const ext = !equipe.some(m => m.id === sec.interlocuteur);
+        ecrire(`Présenté par ${nomDe(sec.interlocuteur)}${ext ? " (invité)" : ""}`, { gris: true, taille: 9.5 });
+      }
+      const concernes = [...sec.services.map(libelleService), ...sec.concernes.map(nomDe), ...sec.invites.map(n => `${n} (invité)`)];
+      if (concernes.length) ecrire(`Concernés : ${concernes.join(", ")}`, { gris: true, taille: 9.5 });
+      for (const p of sec.paragraphes.filter(x => x.trim())) ecrire(p, { apres: 1.5 });
+      y += 2;
+    }
+  }
+
+  // Pied de page : numéros
+  const nb = doc.getNumberOfPages();
+  for (let i = 1; i <= nb; i++) {
+    doc.setPage(i);
+    doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(140);
+    doc.text(textePdf(`${s.titre || "Réunion"} · ${dateCourte(s.date)} · ${i}/${nb}`), 210 - marge, 297 - 8, { align: "right" });
+  }
+  const nom = `Compte rendu ${s.date} ${s.titre || "Réunion"}`.replace(/[/\\?%*:|"<>]/g, "-");
+  doc.save(`${nom}.pdf`);
+}
+
+function CarteCompteRendu({ s, equipe, fiches, q, onMaj, onSupprime, onOuvrirFiche }: {
   s: Seance; equipe: Membre[]; fiches: Fiche[]; q: string; onMaj: (s: Seance) => void; onSupprime: (id: string) => void;
+  /** Ouvre la fiche d'un point ou d'une mission (ou en crée une rattachée à ce compte rendu). */
+  onOuvrirFiche: (f: Partial<Fiche>) => void;
 }) {
   // null : ouverture automatique pendant une recherche, sinon fermé.
   const [ouvertManuel, setOuvertManuel] = useState<boolean | null>(null);
   const ouvert = ouvertManuel ?? !!q.trim();
   const [edition, setEdition] = useState(false);
   const [blocs, setBlocs] = useState<BlocCR[]>(() => lireCR(s.compte_rendu));
+  // Réédition : titre, date et présents se modifient avec les notes.
+  const [titre, setTitre] = useState(s.titre ?? "");
+  const [date, setDate] = useState(s.date);
+  const [presents, setPresents] = useState<string[]>(s.participants);
+  const [envoi, setEnvoi] = useState(false);
+  const [export_, setExport] = useState(false);
+  const commencerEdition = () => {
+    setBlocs(lireCR(s.compte_rendu)); setTitre(s.titre ?? ""); setDate(s.date); setPresents(s.participants);
+    setEdition(true); setOuvertManuel(true);
+  };
+  const exporter = async () => {
+    setExport(true);
+    try { await exporterCompteRenduPdf(s, fiches, equipe); }
+    catch { alert("Le PDF n'a pas pu être généré."); }
+    finally { setExport(false); }
+  };
   const nomDe = (id: string) => equipe.find(m => m.id === id)?.nom ?? "?";
   const points = fiches.filter(f => f.seance_id === s.id && f.genre === "point");
   const missions = fiches.filter(f => f.seance_id === s.id && f.genre === "mission");
@@ -1612,7 +1737,12 @@ function CarteCompteRendu({ s, equipe, fiches, q, onMaj, onSupprime }: {
   const sections = sectionsCR(enregistres);
 
   const sauver = async () => {
-    const res = await envoyer<Seance>(`/api/reunion/seances/${s.id}`, "PUT", { compte_rendu: ecrireCR(blocs) });
+    if (!date) return;
+    setEnvoi(true);
+    const res = await envoyer<Seance>(`/api/reunion/seances/${s.id}`, "PUT", {
+      compte_rendu: ecrireCR(blocs), titre: titre.trim() || null, date, participants: presents,
+    });
+    setEnvoi(false);
     if (res) { onMaj(res); setEdition(false); }
   };
   const supprimer = async () => {
@@ -1650,13 +1780,41 @@ function CarteCompteRendu({ s, equipe, fiches, q, onMaj, onSupprime }: {
       </button>
       {ouvert && (
         <div style={{ padding: "0 14px 14px", display: "flex", flexDirection: "column", gap: 14, borderTop: "2px solid var(--cream2)" }}>
-          {s.participants.length > 0 && <div style={{ fontSize: 13, marginTop: 10 }}><b>Présents :</b> <Surligne texte={s.participants.map(nomDe).join(", ")} q={q} /></div>}
-          {points.length > 0 && (
+          {edition && (
+            <div className="pop-grid-2" style={{ gap: 12, marginTop: 10 }}>
+              <div>
+                <label style={etiquette}>Titre</label>
+                <input value={titre} onChange={e => setTitre(e.target.value)} placeholder="Réunion" style={inp} />
+              </div>
+              <div>
+                <label style={etiquette}>Date</label>
+                <input type="date" value={date} onChange={e => setDate(e.target.value)} style={inp} />
+              </div>
+            </div>
+          )}
+          {edition ? (
             <div>
-              <div style={etiquette}>Points abordés</div>
+              <label style={etiquette}>Présents</label>
+              <ChoixMembres equipe={equipe} valeur={presents} onChange={setPresents} />
+            </div>
+          ) : s.participants.length > 0 && <div style={{ fontSize: 13, marginTop: 10 }}><b>Présents :</b> <Surligne texte={s.participants.map(nomDe).join(", ")} q={q} /></div>}
+          {(points.length > 0 || edition) && (
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ ...etiquette, marginBottom: 0 }}>Points abordés</div>
+                {edition && (
+                  <button className="pop-btn pop-btn-outline" style={{ marginLeft: "auto", padding: "2px 10px", fontSize: 12 }}
+                    onClick={() => onOuvrirFiche({ genre: "point", statut: "fait", seance_id: s.id })}>+ Point</button>
+                )}
+              </div>
+              {edition && points.length === 0 && <div style={{ fontSize: 13, opacity: 0.5, margin: "6px 0" }}>Aucun point rattaché à cette réunion.</div>}
               {points.map(p => (
-                <div key={p.id} style={{ fontSize: 14, marginBottom: 8, display: "flex", flexDirection: "column", gap: 3 }}>
-                  <span>• <b style={{ whiteSpace: "pre-wrap" }}><Surligne texte={p.titre} q={q} /></b></span>
+                <div key={p.id} style={{ fontSize: 14, margin: "6px 0 8px", display: "flex", flexDirection: "column", gap: 3 }}>
+                  <span style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
+                    <span style={{ flex: 1, minWidth: 0 }}>• <b style={{ whiteSpace: "pre-wrap" }}><Surligne texte={p.titre} q={q} /></b></span>
+                    {edition && <button onClick={() => onOuvrirFiche(p)} title="Modifier ce point (titre, détail, décision…)"
+                      style={{ border: "none", background: "none", cursor: "pointer", fontSize: 14, flexShrink: 0 }}>✏️</button>}
+                  </span>
                   {p.description?.trim() && (
                     <div style={{ paddingLeft: 14, fontSize: 13, opacity: 0.6, whiteSpace: "pre-wrap", lineHeight: 1.5, overflowWrap: "anywhere" }}><Surligne texte={p.description} q={q} /></div>
                   )}
@@ -1667,11 +1825,19 @@ function CarteCompteRendu({ s, equipe, fiches, q, onMaj, onSupprime }: {
               ))}
             </div>
           )}
-          {missions.length > 0 && (
+          {(missions.length > 0 || edition) && (
             <div>
-              <div style={etiquette}>Missions décidées</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                <div style={{ ...etiquette, marginBottom: 0 }}>Missions décidées</div>
+                {edition && (
+                  <button className="pop-btn pop-btn-outline" style={{ marginLeft: "auto", padding: "2px 10px", fontSize: 12 }}
+                    onClick={() => onOuvrirFiche({ genre: "mission", seance_id: s.id })}>+ Mission</button>
+                )}
+              </div>
               {missions.map(m => (
                 <div key={m.id} style={{ fontSize: 14, marginBottom: 4, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                  {edition && <button onClick={() => onOuvrirFiche(m)} title="Modifier cette mission"
+                    style={{ border: "none", background: "none", cursor: "pointer", fontSize: 14, padding: 0 }}>✏️</button>}
                   <span>{m.statut === "fait" ? "✅" : "🎯"} <b><Surligne texte={m.titre} q={q} /></b></span>
                   {m.assignes.length > 0 && <span style={{ opacity: 0.7 }}>→ <Surligne texte={m.assignes.map(nomDe).join(", ")} q={q} /></span>}
                   {m.deadline && <span style={{ opacity: 0.7 }}>· avant le {dateCourte(m.deadline)}</span>}
@@ -1687,9 +1853,12 @@ function CarteCompteRendu({ s, equipe, fiches, q, onMaj, onSupprime }: {
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button className="pop-btn pop-btn-outline" onClick={supprimer} style={{ color: "#b91c1c", marginRight: "auto" }}>Supprimer</button>
             {edition
-              ? <><button className="pop-btn pop-btn-outline" onClick={() => { setBlocs(lireCR(s.compte_rendu)); setEdition(false); }}>Annuler</button>
-                  <button className="pop-btn pop-btn-dark" onClick={sauver}>Enregistrer</button></>
-              : <button className="pop-btn pop-btn-outline" onClick={() => { setBlocs(lireCR(s.compte_rendu)); setEdition(true); }}>✏️ Modifier les notes</button>}
+              ? <><button className="pop-btn pop-btn-outline" onClick={() => setEdition(false)}>Annuler</button>
+                  <button className="pop-btn pop-btn-dark" onClick={sauver} disabled={envoi || !date}>{envoi ? "…" : "Enregistrer"}</button></>
+              : <>
+                  <button className="pop-btn pop-btn-outline" onClick={exporter} disabled={export_}>{export_ ? "…" : "📄 PDF"}</button>
+                  <button className="pop-btn pop-btn-outline" onClick={commencerEdition}>✏️ Modifier le compte rendu</button>
+                </>}
           </div>
         </div>
       )}
@@ -2203,6 +2372,7 @@ export default function ReunionPage() {
                 {comptesRendus.length === 0 && <Vide>Pas encore de compte rendu. Lance une réunion pour en créer un.</Vide>}
                 {crTrouves.map(s => (
                   <CarteCompteRendu key={s.id} s={s} equipe={equipe} fiches={fiches} q={rechercheCR} onMaj={majSeance}
+                    onOuvrirFiche={f => setFicheEditee(f)}
                     onSupprime={id => setSeances(prev => prev.filter(x => x.id !== id))} />
                 ))}
               </div>
