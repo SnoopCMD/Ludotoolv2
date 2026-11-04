@@ -5,8 +5,7 @@
  *
  * Quand un membre change sa couleur depuis le menu de son compte, l'événement
  * `EVT_COULEUR_PROFIL` prévient les pages ouvertes, qui mettent à jour leurs
- * avatars sans recharger (`useCouleurProfil`, dans `lib/useCouleurProfil.ts` :
- * ce fichier-ci reste sans React, il est aussi importé par une route API).
+ * avatars sans recharger.
  */
 export const COULEURS_PROFIL = [
   "#f87171", "#fb923c", "#fde047", "#a8e063", "#4ade80", "#2dd4bf",
@@ -20,3 +19,5 @@ export const couleurParDefaut = (groupe?: string | null) =>
 
 export const EVT_COULEUR_PROFIL = "couleur-profil";
 export type DetailCouleurProfil = { equipe_id: string; couleur: string | null };
+
+
