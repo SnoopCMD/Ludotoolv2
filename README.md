@@ -111,6 +111,15 @@ fin est passée n'a plus d'effet.
 **Les étapes de préparation (`/atelier`).** Un jeu entre en `En préparation`,
 passe par les étapes `etape_*` de la table `jeux`, puis passe `En stock`.
 
+**Les réceptions (`/atelier` › Réceptions).** Une réception, ce sont les lignes
+`commandes` enregistrées ensemble : elles partagent le même `date_commande`
+(horodatage de la validation), et `notes` peut porter un libellé. L'historique
+les affiche en grille, avec la couleur du catalogue de chaque jeu ; « 🎨
+Couleurs » ouvre l'attribution des couleurs, un jeu par EAN (la couleur est au
+catalogue et vaut pour tous ses exemplaires). Les identifiants de couleur sont
+ceux de l'inventaire : vert, rose, bleu, rouge, **jaune** (pastille orangée) ;
+un ancien « orange » saisi depuis l'atelier se lit comme « jaune ».
+
 ---
 
 ## Architecture

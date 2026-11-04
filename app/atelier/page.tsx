@@ -60,13 +60,22 @@ const defaultEtapes = {
   etape_notice: false
 };
 
+// Couleurs de pastille du catalogue (mêmes identifiants que l'inventaire et
+// lib/couleursJeux.ts) : « jaune » est la pastille orangée, il n'y a pas d'« orange ».
 const COULEURS = [
-  { id: 'vert',   hex: '#a8e063' },
-  { id: 'rose',   hex: '#f472b6' },
-  { id: 'bleu',   hex: '#60a5fa' },
-  { id: 'rouge',  hex: '#f87171' },
-  { id: 'orange', hex: '#fb923c' },
+  { id: 'vert',   hex: '#a8e063', label: 'Vert' },
+  { id: 'rose',   hex: '#f472b6', label: 'Rose' },
+  { id: 'bleu',   hex: '#60a5fa', label: 'Bleu' },
+  { id: 'rouge',  hex: '#f87171', label: 'Rouge' },
+  { id: 'jaune',  hex: '#fb923c', label: 'Jaune' },
 ];
+// L'atelier enregistrait autrefois « orange » pour la pastille jaune : on le lit comme « jaune ».
+const couleurNormalisee = (id: string | null | undefined) => (id === 'orange' ? 'jaune' : id ?? '');
+const hexCouleur = (id: string | null | undefined) => COULEURS.find(c => c.id === couleurNormalisee(id))?.hex ?? null;
+
+/** Une réception = les lignes `commandes` enregistrées ensemble (même horodatage). */
+type Reception = { cle: string; date: string; notes: string | null; entrees: ReceptionEntreeType[] };
+type InfoCatalogue = { couleur: string; image_url: string | null };
 
 const formatDate = (dateStr: string) =>
   new Date(dateStr).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
@@ -118,17 +127,51 @@ export default function Home() {
   const [editingReceptionIndex,    setEditingReceptionIndex]    = useState<number | null>(null);
   const [editingReceptionEanIndex, setEditingReceptionEanIndex] = useState<number | null>(null);
 
-  // Historique groupé par jour  (calculé à la volée)
-  const historiqueParJour = historiqueEntrees.reduce<Record<string, ReceptionEntreeType[]>>((acc, e) => {
-    const jour = formatDate(e.date_commande);
-    if (!acc[jour]) acc[jour] = [];
-    acc[jour].push(e);
-    return acc;
-  }, {});
+  // Couleur et jaquette des jeux reçus (catalogue), par EAN
+  const [infosCatalogue, setInfosCatalogue] = useState<Record<string, InfoCatalogue>>({});
+  const [receptionCouleurs, setReceptionCouleurs] = useState<string | null>(null);
+  const [receptionsOuvertes, setReceptionsOuvertes] = useState<Record<string, boolean>>({});
+
+  // Une réception validée partage un même horodatage : c'est ce qui la délimite.
+  const receptions: Reception[] = (() => {
+    const map = new Map<string, Reception>();
+    for (const e of historiqueEntrees) {
+      const cle = e.date_commande;
+      if (!map.has(cle)) map.set(cle, { cle, date: e.date_commande, notes: e.notes, entrees: [] });
+      const r = map.get(cle)!;
+      r.entrees.push(e);
+      if (!r.notes && e.notes) r.notes = e.notes;
+    }
+    return [...map.values()].sort((a, b) => b.date.localeCompare(a.date));
+  })();
 
   const fetchHistorique = async () => {
     const data = await fetch('/api/commandes').then(r => r.json() as Promise<any>).then(d => Array.isArray(d) ? d : []).catch(() => []);
-    setHistoriqueEntrees(data as ReceptionEntreeType[]);
+    const entrees = data as ReceptionEntreeType[];
+    setHistoriqueEntrees(entrees);
+    const eans = [...new Set(entrees.map(e => e.ean).filter(e => e && e !== 'Manuel'))];
+    if (!eans.length) return;
+    const cat = await fetch(`/api/catalogue?eans=${encodeURIComponent(eans.join(','))}&fields=ean,couleur,image_url`)
+      .then(r => r.json() as Promise<any>).then(d => Array.isArray(d) ? d : []).catch(() => []);
+    const infos: Record<string, InfoCatalogue> = {};
+    for (const c of cat as any[]) infos[c.ean] = { couleur: c.couleur || "", image_url: c.image_url || null };
+    setInfosCatalogue(infos);
+  };
+
+  /** Couleur d'un jeu au catalogue : vaut pour tous ses exemplaires (doubles compris). */
+  const changerCouleurCatalogue = async (ean: string, nom: string, couleur: string) => {
+    setInfosCatalogue(prev => ({ ...prev, [ean]: { image_url: prev[ean]?.image_url ?? null, couleur } }));
+    const ok = await fetch('/api/catalogue', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify([{ ean, nom, couleur }]) })
+      .then(r => r.ok).catch(() => false);
+    if (!ok) { alert(`La couleur de « ${nom} » n'a pas pu être enregistrée.`); fetchHistorique(); }
+  };
+
+  const supprimerReception = async (r: Reception) => {
+    if (!confirm(`Retirer toute la réception du ${formatDate(r.date)} de l'historique (${r.entrees.length} ligne${r.entrees.length > 1 ? 's' : ''}) ? Les jeux restent dans l'atelier.`)) return;
+    for (let i = 0; i < r.entrees.length; i += 10) {
+      await Promise.all(r.entrees.slice(i, i + 10).map(e => fetch(`/api/commandes/${e.id}`, { method: 'DELETE' })));
+    }
+    fetchHistorique();
   };
 
   const fetchDashboardData = async () => {
@@ -142,7 +185,7 @@ export default function Home() {
       (catData as any[]).forEach(item => { if (item.couleur) colorMap[item.ean] = item.couleur; });
     }
 
-    const jeux = jeuxBruts.map(j => ({ ...j, couleur: colorMap[j.ean] || "" }));
+    const jeux = jeuxBruts.map(j => ({ ...j, couleur: couleurNormalisee(colorMap[j.ean]) }));
     setJeuxEnPrepa(jeux);
     setTotalEnPrepa(jeux.length);
     setComptesEtapes({
@@ -517,6 +560,8 @@ export default function Home() {
       <style>{`
         input[type="checkbox"].custom-cb { accent-color: #0d0d0d; width: 1.1rem; height: 1.1rem; cursor: pointer; }
         input[type="checkbox"].custom-cb:disabled { cursor: default; opacity: 0.5; }
+        .reception-tuile .reception-retirer { opacity: 0; transition: opacity .15s; }
+        .reception-tuile:hover .reception-retirer { opacity: 1; }
       `}</style>
 
       <NavBar current="atelier" />
@@ -884,37 +929,164 @@ export default function Home() {
               </div>
 
               {/* ── Historique ── */}
-              <div style={{ padding: '20px 24px' }}>
-                <div className="bc" style={{ fontSize: 15, textTransform: 'uppercase', letterSpacing: '.06em', color: 'rgba(0,0,0,0.4)', marginBottom: 16 }}>Historique des réceptions</div>
-                {Object.keys(historiqueParJour).length === 0 ? (
+              <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div className="bc" style={{ fontSize: 15, textTransform: 'uppercase', letterSpacing: '.06em', color: 'rgba(0,0,0,0.4)' }}>Historique des réceptions</div>
+                {receptions.length === 0 ? (
                   <p style={{ textAlign: 'center', color: 'rgba(0,0,0,0.3)', padding: '24px 0', fontSize: 15 }}>Aucune réception enregistrée.</p>
-                ) : Object.entries(historiqueParJour).map(([jour, entrees]) => (
-                  <div key={jour} style={{ marginBottom: 20 }}>
-                    {/* En-tête de jour */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                      <div style={{ background: 'var(--ink)', color: 'var(--white)', borderRadius: 6, padding: '3px 12px', fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap' }}>{jour}</div>
-                      <div style={{ flex: 1, height: 2, background: 'var(--cream2)' }} />
-                      <span className="pop-sticker" style={{ fontSize: 12, background: 'var(--vert)' }}>{entrees.length} jeu{entrees.length > 1 ? 'x' : ''}</span>
-                    </div>
-                    {/* Jeux du jour */}
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                      {entrees.map(e => (
-                        <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--white)', border: '2px solid var(--ink)', borderRadius: 8, padding: '5px 10px', fontSize: 14, boxShadow: '2px 2px 0 var(--ink)' }}>
-                          <span style={{ fontWeight: 700 }}>{e.nom}</span>
-                          <span style={{ fontSize: 11, color: 'rgba(0,0,0,0.35)', fontFamily: 'monospace' }}>{e.ean !== 'Manuel' ? e.ean : ''}</span>
-                          <button onClick={() => supprimerEntreeHistorique(e.id)}
-                            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: 'rgba(0,0,0,0.3)', padding: '0 0 0 4px', lineHeight: 1 }} title="Retirer de l'historique">✕</button>
+                ) : receptions.map((r, ri) => {
+                  const ouverte = receptionsOuvertes[r.cle] ?? ri === 0;
+                  const eansUniques = [...new Set(r.entrees.map(e => e.ean))];
+                  const sansCouleur = eansUniques.filter(ean => ean !== 'Manuel' && !hexCouleur(infosCatalogue[ean]?.couleur)).length;
+                  return (
+                    <div key={r.cle} className="pop-card" style={{ padding: 0, overflow: 'hidden', background: 'var(--white)', flexShrink: 0 }}>
+                      {/* En-tête de la réception */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'var(--cream2)', borderBottom: ouverte ? '2.5px solid var(--ink)' : 'none', flexWrap: 'wrap' }}>
+                        <button onClick={() => setReceptionsOuvertes(prev => ({ ...prev, [r.cle]: !ouverte }))}
+                          style={{ display: 'flex', alignItems: 'center', gap: 8, flex: '1 1 220px', minWidth: 0, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', padding: 0 }}>
+                          <span style={{ fontSize: 15, width: 14 }}>{ouverte ? '▾' : '▸'}</span>
+                          <span style={{ minWidth: 0 }}>
+                            <span style={{ display: 'block', fontWeight: 800, fontSize: 15, textTransform: 'capitalize' }}>{formatDate(r.date)}</span>
+                            {r.notes && <span style={{ display: 'block', fontSize: 12, color: 'rgba(0,0,0,0.5)', fontWeight: 600 }}>{r.notes}</span>}
+                          </span>
+                        </button>
+                        <span className="pop-sticker" style={{ fontSize: 12, background: 'var(--vert)' }}>{r.entrees.length} jeu{r.entrees.length > 1 ? 'x' : ''}</span>
+                        {sansCouleur > 0 && (
+                          <span className="pop-sticker" style={{ fontSize: 12, background: 'var(--white)' }} title="Jeux sans couleur au catalogue">⚪ {sansCouleur} sans couleur</span>
+                        )}
+                        <button className="pop-btn pop-btn-dark" style={{ fontSize: 12, padding: '5px 12px' }} onClick={() => setReceptionCouleurs(r.cle)}>🎨 Couleurs</button>
+                        <button onClick={() => supprimerReception(r)} title="Retirer cette réception de l'historique"
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: 'rgba(0,0,0,0.35)' }}>✕</button>
+                      </div>
+                      {/* Grille des jeux */}
+                      {ouverte && (
+                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, minmax(0, 1fr))' : 'repeat(auto-fill, minmax(190px, 1fr))', gap: 8, padding: 12 }}>
+                          {r.entrees.map(e => {
+                            const info = infosCatalogue[e.ean];
+                            const hex = hexCouleur(info?.couleur);
+                            return (
+                              <div key={e.id} className="reception-tuile" style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, background: 'var(--white)', border: '2px solid var(--ink)', borderRadius: 8, padding: '6px 8px 6px 0', overflow: 'hidden' }}>
+                                <span title={info?.couleur || 'Sans couleur'} style={{ alignSelf: 'stretch', width: 7, flexShrink: 0, margin: '-6px 0', background: hex ?? 'repeating-linear-gradient(45deg, var(--cream2) 0 4px, var(--white) 4px 8px)', borderRight: '2px solid var(--ink)' }} />
+                                <div style={{ width: 34, height: 34, flexShrink: 0, borderRadius: 5, background: 'var(--cream2)', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                  {info?.image_url ? <img src={info.image_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : <span style={{ fontSize: 14 }}>🎲</span>}
+                                </div>
+                                <div style={{ minWidth: 0, flex: 1 }}>
+                                  <div title={e.nom} style={{ fontWeight: 700, fontSize: 13, lineHeight: 1.2, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{e.nom}</div>
+                                  <div style={{ fontSize: 10, color: 'rgba(0,0,0,0.35)', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.ean !== 'Manuel' ? e.ean : 'saisie manuelle'}</div>
+                                </div>
+                                <button className="reception-retirer" onClick={() => supprimerEntreeHistorique(e.id)} title="Retirer de l'historique"
+                                  style={{ position: 'absolute', top: 2, right: 4, background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: 'rgba(0,0,0,0.35)', padding: 0, lineHeight: 1 }}>✕</button>
+                              </div>
+                            );
+                          })}
                         </div>
-                      ))}
+                      )}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
             </div>
           </div>
         </div>
       )}
+
+      {/* ══ MODAL COULEURS D'UNE RÉCEPTION ══ */}
+      {receptionCouleurs && (() => {
+        const r = receptions.find(x => x.cle === receptionCouleurs);
+        if (!r) return null;
+        return (
+          <ModalCouleursReception reception={r} infos={infosCatalogue} isMobile={isMobile}
+            onChanger={changerCouleurCatalogue}
+            onFermer={() => { setReceptionCouleurs(null); fetchDashboardData(); }} />
+        );
+      })()}
+    </div>
+  );
+}
+
+/**
+ * Attribuer les couleurs d'une réception : un jeu par ligne (les exemplaires
+ * d'un même EAN sont regroupés, la couleur étant au catalogue), et un clic sur
+ * une pastille l'enregistre tout de suite.
+ */
+function ModalCouleursReception({ reception, infos, isMobile, onChanger, onFermer }: {
+  reception: Reception; infos: Record<string, InfoCatalogue>; isMobile: boolean;
+  onChanger: (ean: string, nom: string, couleur: string) => void; onFermer: () => void;
+}) {
+  const [filtre, setFiltre] = useState<'tous' | 'sans' | string>('tous');
+  const jeux = (() => {
+    const map = new Map<string, { ean: string; nom: string; n: number }>();
+    for (const e of reception.entrees) {
+      if (e.ean === 'Manuel') continue;
+      const x = map.get(e.ean);
+      if (x) x.n++; else map.set(e.ean, { ean: e.ean, nom: e.nom, n: 1 });
+    }
+    return [...map.values()].sort((a, b) => a.nom.localeCompare(b.nom));
+  })();
+  const couleurDe = (ean: string) => (hexCouleur(infos[ean]?.couleur) ? couleurNormalisee(infos[ean].couleur) : '');
+  const visibles = jeux.filter(j => filtre === 'tous' || (filtre === 'sans' ? !couleurDe(j.ean) : couleurDe(j.ean) === filtre));
+  const compte = (c: string) => jeux.filter(j => couleurDe(j.ean) === c).length;
+  const puce = (actif: boolean): React.CSSProperties => ({
+    display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 10px', borderRadius: 20, cursor: 'pointer', fontFamily: 'inherit',
+    fontSize: 12, fontWeight: actif ? 800 : 600, border: actif ? '2px solid var(--ink)' : '2px solid rgba(0,0,0,0.15)',
+    background: actif ? 'var(--yellow)' : 'var(--white)',
+  });
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'calc(var(--nav-h) + 12px) 12px 12px' }}
+      onClick={e => { if (e.target === e.currentTarget) onFermer(); }}>
+      <div style={{ background: 'var(--cream)', border: '3px solid var(--ink)', borderRadius: 12, boxShadow: '8px 8px 0 var(--ink)', width: '100%', maxWidth: 760, display: 'flex', flexDirection: 'column', maxHeight: 'calc(100dvh - var(--nav-h) - 36px)', overflow: 'hidden' }}>
+        <div style={{ padding: '16px 20px', borderBottom: '3px solid var(--ink)', background: 'var(--yellow)', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="bc" style={{ fontSize: 22, textTransform: 'uppercase' }}>🎨 Couleurs</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'rgba(0,0,0,0.55)', textTransform: 'capitalize' }}>
+              Réception du {formatDate(reception.date)} · {jeux.length} jeu{jeux.length > 1 ? 'x' : ''}
+            </div>
+          </div>
+          <button onClick={onFermer} style={{ width: 32, height: 32, background: 'var(--ink)', color: 'var(--white)', border: '2px solid var(--ink)', borderRadius: 6, fontWeight: 700, fontSize: 16, cursor: 'pointer' }}>✕</button>
+        </div>
+        <div style={{ padding: '10px 20px', borderBottom: '2px solid var(--ink)', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <button style={puce(filtre === 'tous')} onClick={() => setFiltre('tous')}>Tous ({jeux.length})</button>
+          <button style={puce(filtre === 'sans')} onClick={() => setFiltre('sans')}>⚪ Sans couleur ({jeux.filter(j => !couleurDe(j.ean)).length})</button>
+          {COULEURS.map(c => (
+            <button key={c.id} style={puce(filtre === c.id)} onClick={() => setFiltre(c.id)}>
+              <span style={{ width: 11, height: 11, borderRadius: '50%', background: c.hex, border: '1.5px solid var(--ink)' }} />{c.label} ({compte(c.id)})
+            </button>
+          ))}
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto', padding: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {visibles.length === 0 && <p style={{ textAlign: 'center', color: 'rgba(0,0,0,0.35)', padding: '24px 0', fontWeight: 600 }}>Aucun jeu dans ce filtre.</p>}
+          {visibles.map(j => {
+            const actuelle = couleurDe(j.ean);
+            return (
+              <div key={j.ean} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', background: 'var(--white)', border: '2px solid var(--ink)', borderRadius: 10, flexWrap: isMobile ? 'wrap' : 'nowrap' }}>
+                <div style={{ width: 38, height: 38, flexShrink: 0, borderRadius: 6, background: 'var(--cream2)', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', border: `3px solid ${hexCouleur(actuelle) ?? 'var(--cream2)'}` }}>
+                  {infos[j.ean]?.image_url ? <img src={infos[j.ean].image_url!} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : <span>🎲</span>}
+                </div>
+                <div style={{ flex: '1 1 180px', minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, lineHeight: 1.25 }}>{j.nom}{j.n > 1 && <span style={{ fontWeight: 600, color: 'rgba(0,0,0,0.45)' }}> ×{j.n}</span>}</div>
+                  <div style={{ fontSize: 10, color: 'rgba(0,0,0,0.35)', fontFamily: 'monospace' }}>{j.ean}</div>
+                </div>
+                <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                  {COULEURS.map(c => {
+                    const actif = actuelle === c.id;
+                    return (
+                      <button key={c.id} onClick={() => onChanger(j.ean, j.nom, actif ? '' : c.id)} title={actif ? `${c.label} (cliquer pour retirer)` : c.label}
+                        style={{ width: 28, height: 28, borderRadius: '50%', background: c.hex, cursor: 'pointer', padding: 0, fontSize: 12, fontWeight: 900,
+                          border: actif ? '3px solid var(--ink)' : '2px solid rgba(0,0,0,0.25)', boxShadow: actif ? '2px 2px 0 var(--ink)' : 'none',
+                          transform: actif ? 'scale(1.1)' : 'none', opacity: actuelle && !actif ? 0.45 : 1 }}>{actif ? '✓' : ''}</button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <div style={{ padding: '12px 20px', borderTop: '3px solid var(--ink)', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: 'rgba(0,0,0,0.5)', flex: 1 }}>Chaque clic est enregistré tout de suite, pour tous les exemplaires du jeu.</span>
+          <button className="pop-btn pop-btn-dark" onClick={onFermer}>Terminé</button>
+        </div>
+      </div>
     </div>
   );
 }
