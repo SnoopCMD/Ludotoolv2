@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import NavBar from "../../components/NavBar";
 import { useIsMobile } from "../../lib/useIsMobile";
 import { useCompte } from "../../components/AuthProvider";
@@ -700,7 +701,34 @@ export default function StorePage() {
   const [filterTag, setFilterTag] = useState<string | null>(null);
   const [tagEdit, setTagEdit] = useState<string | null>(null);
   const [tagInput, setTagInput] = useState("");
-  const [tagHover, setTagHover] = useState<string | null>(null);
+  // Menu rapide des tags : affiché en position fixe, hors du tableau qui le
+  // rognait (lignes du haut), et fermé avec un léger délai pour qu'on puisse
+  // glisser de « + tag » jusqu'au menu sans qu'il disparaisse.
+  const [tagMenu, setTagMenu] = useState<{ id: string; left: number; top: number; bottom: number } | null>(null);
+  const fermetureTagMenu = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const tagMenuRef = useRef<HTMLDivElement>(null);
+  const garderTagMenu = () => { if (fermetureTagMenu.current) { clearTimeout(fermetureTagMenu.current); fermetureTagMenu.current = null; } };
+  const ouvrirTagMenu = (id: string, el: HTMLElement) => {
+    garderTagMenu();
+    const r = el.getBoundingClientRect();
+    setTagMenu({ id, left: r.left, top: r.top, bottom: r.bottom });
+  };
+  const fermerTagMenuBientot = () => {
+    garderTagMenu();
+    fermetureTagMenu.current = setTimeout(() => setTagMenu(null), 250);
+  };
+  // Un défilement de la page décalerait le menu de son bouton : on le referme
+  // (mais pas quand on fait défiler la liste du menu elle-même).
+  useEffect(() => {
+    if (!tagMenu) return;
+    const fermer = (e: Event) => {
+      if (e.target instanceof Node && tagMenuRef.current?.contains(e.target)) return;
+      setTagMenu(null);
+    };
+    window.addEventListener("scroll", fermer, true);
+    window.addEventListener("resize", fermer);
+    return () => { window.removeEventListener("scroll", fermer, true); window.removeEventListener("resize", fermer); };
+  }, [tagMenu]);
   const [nomEdit, setNomEdit] = useState<string | null>(null);
   const [filterConsole, setFilterConsole] = useState<string | null>(null);
   const [localPrixCommun, setLocalPrixCommun] = useState<Record<string, string>>({});
@@ -1784,24 +1812,12 @@ ${filtered.map(l => `<tr>
                                         style={{ fontSize: 11, padding: "1px 6px", border: "1.5px solid var(--ink)", borderRadius: 10, outline: "none", width: 100, fontFamily: "inherit" }} />
                                     ) : (
                                       <div style={{ position: "relative", display: "inline-block" }}
-                                        onMouseEnter={() => setTagHover(ligne.id)}
-                                        onMouseLeave={() => setTagHover(null)}>
-                                        <button onClick={() => { setTagEdit(ligne.id); setTagInput(""); }}
+                                        onMouseEnter={e => ouvrirTagMenu(ligne.id, e.currentTarget)}
+                                        onMouseLeave={fermerTagMenuBientot}>
+                                        <button onClick={() => { setTagMenu(null); setTagEdit(ligne.id); setTagInput(""); }}
                                           style={{ fontSize: 10, padding: "1px 6px", borderRadius: 10, background: "transparent", color: "rgba(0,0,0,0.3)", border: "1.5px dashed rgba(0,0,0,0.2)", cursor: "pointer", fontFamily: "inherit" }}>
                                           + tag
                                         </button>
-                                        {tagHover === ligne.id && allTags.filter(t => !lTags.includes(t)).length > 0 && (
-                                          <div style={{ position: "absolute", bottom: "calc(100% + 4px)", left: 0, zIndex: 50, background: "var(--white)", border: "2px solid var(--ink)", borderRadius: 8, boxShadow: "3px 3px 0 var(--ink)", padding: 4, display: "flex", flexDirection: "column", gap: 2, minWidth: 110 }}>
-                                            {allTags.filter(t => !lTags.includes(t)).map(t => (
-                                              <button key={t} onMouseDown={() => ajouterTag(ligne.id, t)}
-                                                style={{ fontSize: 11, padding: "3px 8px", borderRadius: 4, background: "var(--cream2)", color: "var(--ink)", border: "none", cursor: "pointer", fontFamily: "inherit", fontWeight: 700, textAlign: "left", whiteSpace: "nowrap" }}
-                                                onMouseEnter={e => { e.currentTarget.style.background = "var(--ink)"; e.currentTarget.style.color = "var(--cream)"; }}
-                                                onMouseLeave={e => { e.currentTarget.style.background = "var(--cream2)"; e.currentTarget.style.color = "var(--ink)"; }}>
-                                                #{t}
-                                              </button>
-                                            ))}
-                                          </div>
-                                        )}
                                       </div>
                                     )}
                                   </div>
@@ -1964,6 +1980,35 @@ ${filtered.map(l => `<tr>
               </div>
             </div>
           </div>
+        );
+      })()}
+      {tagMenu && (() => {
+        const ligne = lignes.find(l => l.id === tagMenu.id);
+        const dispo = ligne ? allTags.filter(t => !parseTags(ligne.tags).includes(t)) : [];
+        if (!dispo.length || typeof document === "undefined") return null;
+        // Vers le bas quand il y a la place (lignes du haut), sinon vers le haut.
+        const hautDispo = tagMenu.top - 8;
+        const basDispo = window.innerHeight - tagMenu.bottom - 8;
+        const versLeBas = basDispo >= 160 || basDispo >= hautDispo;
+        return createPortal(
+          <div ref={tagMenuRef} onMouseEnter={garderTagMenu} onMouseLeave={fermerTagMenuBientot}
+            style={{
+              position: "fixed", left: Math.min(tagMenu.left, window.innerWidth - 170), zIndex: 1000,
+              ...(versLeBas ? { top: tagMenu.bottom + 2 } : { bottom: window.innerHeight - tagMenu.top + 2 }),
+              maxHeight: Math.max(120, (versLeBas ? basDispo : hautDispo) - 4), overflowY: "auto",
+              background: "var(--white)", border: "2px solid var(--ink)", borderRadius: 8, boxShadow: "3px 3px 0 var(--ink)",
+              padding: 4, display: "flex", flexDirection: "column", gap: 2, minWidth: 110,
+            }}>
+            {dispo.map(t => (
+              <button key={t} onMouseDown={() => { ajouterTag(tagMenu.id, t); setTagMenu(null); }}
+                style={{ fontSize: 11, padding: "3px 8px", borderRadius: 4, background: "var(--cream2)", color: "var(--ink)", border: "none", cursor: "pointer", fontFamily: "inherit", fontWeight: 700, textAlign: "left", whiteSpace: "nowrap", flexShrink: 0 }}
+                onMouseEnter={e => { e.currentTarget.style.background = "var(--ink)"; e.currentTarget.style.color = "var(--cream)"; }}
+                onMouseLeave={e => { e.currentTarget.style.background = "var(--cream2)"; e.currentTarget.style.color = "var(--ink)"; }}>
+                #{t}
+              </button>
+            ))}
+          </div>,
+          document.body,
         );
       })()}
     </div>
