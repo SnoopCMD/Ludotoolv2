@@ -1,6 +1,7 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
-	"main": ".open-next/worker.js",
+	// worker.ts enveloppe le worker d'OpenNext et ajoute le direct de la messagerie.
+	"main": "worker.ts",
 	"name": "ludotool",
 	"compatibility_date": "2026-05-20",
 	"compatibility_flags": [
@@ -34,6 +35,15 @@
 			"database_name": "ludotool-db",
 			"database_id": "e7f95196-5ea8-4453-8852-090bb661f30c"
 		}
+	],
+	// Direct de la messagerie (WebSockets) : voir worker/MessagerieDO.ts
+	"durable_objects": {
+		"bindings": [
+			{ "name": "CHAT", "class_name": "MessagerieDO" }
+		]
+	},
+	"migrations": [
+		{ "tag": "v1-messagerie", "new_sqlite_classes": ["MessagerieDO"] }
 	],
 	"r2_buckets": [
 		{

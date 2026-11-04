@@ -16,6 +16,7 @@ toutes les données.
 - [Architecture](#architecture)
 - [Base de données](#base-de-données)
 - [Les comptes](#les-comptes)
+- [La messagerie](#la-messagerie)
 - [Les paniers communs : votes et vérification](#les-paniers-communs--votes-et-vérification)
 - [Sources externes](#sources-externes)
 - [Déploiement](#déploiement)
@@ -120,8 +121,10 @@ app/
   <section>/page.tsx     Pages (composants clients, état local, appels fetch)
   api/<ressource>/       Routes API : GET/POST sur la collection,
     route.ts             GET/PUT/DELETE sur /[id]
-components/              NavBar et générateurs PDF
+components/              NavBar, messagerie (chat/) et générateurs PDF
 lib/db.ts                Accès D1 via getCloudflareContext()
+worker.ts                Point d'entrée du Worker : OpenNext + WebSockets de la messagerie
+worker/                  Durable Objects (direct de la messagerie)
 migrations/              SQL appliqué à la main sur D1
 scripts/                 Scripts de réparation de données, ponctuels
 ```
@@ -161,6 +164,7 @@ jeu, servi par `/api/regles/[ean]` ; `catalogue.pdf_url` pointe vers cette route
 | `jv_jeux`, `jv_selections`, `jv_reservations`, `jv_rotation_config`, `jv_notes`, `jv_standby` | Section jeux vidéo |
 | `pieces_manquantes`, `pieces_trouvees`, `reparations` | Suivi du matériel |
 | `pieces_detachees` | Stock de pièces de rechange, rangées par jeu |
+| `chat_conversations`, `chat_membres`, `chat_messages`, `chat_lectures` | Messagerie : conversations (générale, privées) et leurs membres, messages, dernier message lu par compte |
 | `alertes`, `suggestions`, `selections` | Alertes, boîte à idées, sélections thématiques |
 | `utilisateurs`, `utilisateur_sessions` | Comptes (un par membre de `equipe`) et sessions ouvertes |
 | `utilisateur_preferences` | Modules choisis sur le tableau de bord, par compte |
@@ -376,6 +380,84 @@ moins que son effectif, est surligné en orange ; l'en-tête du planning compte
 ces créneaux. Le PDF a une colonne par bloc, seulement les semaines où ce bloc
 a quelqu'un.
 
+## La messagerie
+
+Bouton 💬 en haut à droite (pastille = messages des autres non lus, toutes
+discussions confondues) : il ouvre un panneau sur la droite, monté une fois
+dans le layout (`components/chat/ChatProvider.tsx`), qui reste ouvert d'une
+page à l'autre. Le panneau liste les discussions : **Général** (toute
+l'équipe), puis une ligne par collègue pour les **messages privés** (la
+discussion est créée au premier clic). Un message privé reçu hors de vue
+affiche une notification en bas de l'écran ; la générale se contente de la
+pastille. Lire et écrire demandent d'être connecté.
+
+### Le direct
+
+```
+navigateur ──POST /api/chat/<conv>/messages──▶ route Next ──▶ D1 (vérité)
+                                                    │
+                                                    └─RPC diffuser()─▶ MessagerieDO
+navigateur ◀════════ WebSocket /api/chat/ws ════════════════════════════════╝
+```
+
+- **D1 est la source de vérité.** `chat_messages.id` est un entier croissant
+  qui sert de **curseur** (« tout ce qui est après 1234 »). Ne pas le
+  remplacer par un UUID.
+- **Un seul Durable Object pour l'équipe** (`worker/MessagerieDO.ts`,
+  `idFromName("equipe")`) tient les WebSockets et relaie. Il ne stocke rien.
+  Chaque socket est étiqueté avec l'id du compte : un message privé n'est
+  envoyé qu'aux sockets de ses deux membres. API d'hibernation : des sockets
+  ouverts toute la journée ne coûtent rien tant que rien ne passe, et le
+  `ping` de maintien en vie reçoit son `pong` sans réveiller l'objet.
+- **Les WebSockets ne passent pas par Next.** `worker.ts` (le point d'entrée
+  du Worker, voir `wrangler.jsonc`) enveloppe celui d'OpenNext : il prend
+  `/api/chat/ws`, vérifie l'origine et le cookie de session dans D1, puis
+  passe la main au Durable Object. Tout le reste va à Next.
+- **Écrire passe toujours par HTTP** (validation et droits à un seul endroit),
+  puis la route appelle `diffuser()` (`lib/chat-serveur.ts`). Une panne du
+  direct ne fait jamais échouer l'écriture.
+- **Côté navigateur, une WebSocket par onglet** (`lib/chat-canal.ts`),
+  partagée par la pastille, la liste et le fil ouvert. Reconnexion automatique
+  (1 s, 2 s, 4 s… 30 s), relancée dès le retour sur l'onglet ou le réseau.
+  À chaque (re)connexion, l'événement `reconnecte` fait rattraper ce qui a été
+  manqué avec le curseur. Tant que le direct est coupé, le fil ouvert sonde
+  `GET /api/chat/<conv>/flux?apres=<id>&depuis=<iso>` toutes les 2,5 s et la
+  liste suit le compteur `chat` de `/api/maj`. Le point vert « En direct » de
+  l'en-tête le signale.
+- **Les événements sont typés** (`EvenementDirect` dans `lib/chat.ts` :
+  `message`, `conversation`) : un poste ignore les types qu'il ne connaît pas.
+  Les réactions qui défileront à l'écran seront un nouveau type, éphémère :
+  envoyé par le navigateur sur la WebSocket, relayé par
+  `MessagerieDO.webSocketMessage()` après vérification des membres, et affiché
+  par une couche branchée dans `ChatProvider`.
+
+### Les règles
+
+- **Conversations privées** (`chat_membres`, migration 0025) : identifiant
+  `prive-<id1>-<id2>` (ids des comptes triés), donc ouvrir la discussion avec
+  quelqu'un est idempotent. Toutes les routes passent par
+  `conversationAccessible()` : une conversation dont on n'est pas membre
+  répond 404, comme si elle n'existait pas. La table est prête pour des
+  groupes.
+- **Envoi optimiste** : le message s'affiche tout de suite (grisé), avec un
+  `client_id` tiré par le navigateur. Le serveur ignore un renvoi du même
+  `client_id` (index unique), donc « Réessayer » ne crée pas de doublon.
+- **Suppression douce** : on ne supprime que ses propres messages, la ligne
+  reste (« Message supprimé »), elle est rediffusée, et `modifie_le` avance
+  pour les postes qui sondent.
+- **Non lus** : `chat_lectures.dernier_lu` par compte et par conversation,
+  avancé quand le bas du fil est visible.
+
+### Tester le direct en local
+
+`next dev` n'a pas de Durable Object : la messagerie y fonctionne en mode
+sondage (point gris « Synchronisation… »), ce qui suffit pour l'interface.
+Pour le vrai direct, le runtime Workers local :
+
+```bash
+npm run build:cf && npx wrangler dev
+```
+
 ## Les paniers communs : votes et vérification
 
 **Les votes sont nominatifs.** Une voix appartient à un compte
@@ -581,9 +663,11 @@ Déploiement manuel :
 npm run deploy
 ```
 
-Configuration dans `wrangler.jsonc` : nom du Worker `ludotool`, binding D1 `DB`, bucket R2 `REGLES`,
-binding images, et auto-référence `WORKER_SELF_REFERENCE` requise par OpenNext
-pour le cache.
+Configuration dans `wrangler.jsonc` : nom du Worker `ludotool`, point d'entrée
+`worker.ts`, binding D1 `DB`, bucket R2 `REGLES`, Durable Object `CHAT`
+(classe `MessagerieDO`, créée par la migration `v1-messagerie` au premier
+déploiement), binding images, et auto-référence `WORKER_SELF_REFERENCE`
+requise par OpenNext pour le cache.
 
 ---
 
