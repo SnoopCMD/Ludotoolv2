@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useCompte } from "../AuthProvider";
 import { useChat } from "./ChatProvider";
 import { useConversation, type MessageAffiche } from "./useConversation";
-import { CONVERSATION_GENERALE, LONGUEUR_MAX_MESSAGE, type ResumeConversation } from "../../lib/chat";
+import { CONVERSATION_GENERALE, LONGUEUR_MAX_MESSAGE, REACTIONS_RAPIDES, REACTIONS_TOUTES, type ResumeConversation } from "../../lib/chat";
 import { useDirect } from "../../lib/chat-canal";
 import { couleurParDefaut } from "../../lib/couleurProfil";
 import { useCouleurProfil } from "../../lib/useCouleurProfil";
@@ -237,6 +237,8 @@ function Fil({ conversation, prive, nomAutre }: { conversation: string; prive: b
   const [enBas, setEnBas] = useState(true);
   const [nouveaux, setNouveaux] = useState(0);
   const [chargeHistorique, setChargeHistorique] = useState(false);
+  /** Message dont la barre de réactions est ouverte. */
+  const [menu, setMenu] = useState<number | null>(null);
 
   // ── Défilement : on suit le bas tant qu'on y est ; sinon, une pastille
   //    « nouveaux messages ». Charger l'historique garde la position de lecture.
@@ -318,7 +320,7 @@ function Fil({ conversation, prive, nomAutre }: { conversation: string; prive: b
         <>
           {/* Fil */}
           <div style={{ position: "relative", flex: 1, minHeight: 0 }}>
-            <div ref={liste} onScroll={auDefilement} style={{ position: "absolute", inset: 0, overflowY: "auto", padding: "12px 12px 8px", display: "flex", flexDirection: "column" }}>
+            <div ref={liste} onScroll={auDefilement} className="chat-fil" style={{ position: "absolute", inset: 0, overflowY: "auto", padding: "12px 12px 8px", display: "flex", flexDirection: "column" }}>
               {conv.plusAnciens && (
                 <button onClick={plusAnciens} disabled={chargeHistorique} className="pop-btn pop-btn-outline"
                   style={{ alignSelf: "center", fontSize: 11, padding: "5px 12px", marginBottom: 10 }}>
@@ -344,7 +346,8 @@ function Fil({ conversation, prive, nomAutre }: { conversation: string; prive: b
                 return (
                   <Fragment key={m.etat ? `c-${m.client_id}` : m.id}>
                     {nouveauJour && <SeparateurJour iso={m.cree_le} />}
-                    <Bulle m={m} moi={m.auteur_id === compte.id} suite={!!suite} couleur={couleurDe(m)}
+                    <Bulle m={m} moi={m.auteur_id === compte.id} moiId={compte.id} suite={!!suite} couleur={couleurDe(m)}
+                      menu={menu === m.id && !m.etat} onMenu={o => setMenu(o ? m.id : null)} onReagir={e => conv.reagir(m, e)}
                       onSupprimer={() => conv.supprimer(m)} onReessayer={() => conv.reessayer(m)} onAbandonner={() => conv.abandonner(m)} />
                   </Fragment>
                 );
@@ -395,22 +398,42 @@ function SeparateurJour({ iso }: { iso: string }) {
   );
 }
 
-function Bulle({ m, moi, suite, couleur, onSupprimer, onReessayer, onAbandonner }: {
-  m: MessageAffiche; moi: boolean; suite: boolean; couleur: string;
+function Bulle({ m, moi, moiId, suite, couleur, menu, onMenu, onReagir, onSupprimer, onReessayer, onAbandonner }: {
+  m: MessageAffiche; moi: boolean; moiId: string; suite: boolean; couleur: string;
+  /** Barre de réactions ouverte sur ce message (une seule à la fois dans le fil). */
+  menu: boolean; onMenu: (ouvrir: boolean) => void;
+  onReagir: (emoji: string) => void;
   onSupprimer: () => void; onReessayer: () => void; onAbandonner: () => void;
 }) {
   const [survol, setSurvol] = useState(false);
-  const [confirmer, setConfirmer] = useState(false);
+  const bulle = useRef<HTMLDivElement>(null);
+  // Place disponible au-dessus et au-dessous de la bulle, dans le fil : la
+  // barre s'ouvre du côté où elle tient (le fil défile et coupe ce qui déborde).
+  const [place, setPlace] = useState({ dessus: 999, dessous: 999 });
+  const interactif = !m.etat && !m.supprime;
+
+  const ouvrir = () => {
+    if (!interactif) return;
+    if (menu) { onMenu(false); return; }
+    const el = bulle.current;
+    const fil = el?.closest(".chat-fil");
+    if (el && fil) {
+      const r = el.getBoundingClientRect(), f = fil.getBoundingClientRect();
+      setPlace({ dessus: r.top - f.top, dessous: f.bottom - r.bottom });
+    }
+    onMenu(true);
+  };
+
   const avatar = (
     <span className="bc" style={{
       width: 28, height: 28, borderRadius: "50%", background: couleur, border: "2px solid var(--ink)",
       display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, flexShrink: 0,
-      visibility: suite ? "hidden" : "visible",
+      visibility: suite ? "hidden" : "visible", alignSelf: m.reactions.length ? "center" : "flex-end",
     }}>{m.auteur_nom.trim()[0]?.toUpperCase()}</span>
   );
 
   return (
-    <div onMouseEnter={() => setSurvol(true)} onMouseLeave={() => { setSurvol(false); setConfirmer(false); }}
+    <div onMouseEnter={() => setSurvol(true)} onMouseLeave={() => setSurvol(false)}
       style={{ display: "flex", gap: 8, flexDirection: moi ? "row-reverse" : "row", alignItems: "flex-end", marginTop: suite ? 3 : 10 }}>
       {!moi && avatar}
       <div style={{ maxWidth: "78%", display: "flex", flexDirection: "column", alignItems: moi ? "flex-end" : "flex-start" }}>
@@ -420,29 +443,64 @@ function Bulle({ m, moi, suite, couleur, onSupprimer, onReessayer, onAbandonner 
             <span style={{ color: "rgba(0,0,0,0.4)", fontWeight: 600 }}>{heure(m.cree_le)}</span>
           </div>
         )}
-        <div style={{ display: "flex", alignItems: "center", gap: 6, flexDirection: moi ? "row-reverse" : "row" }}>
-          {/* Au doigt, pas de survol : toucher sa bulle montre la corbeille. */}
-          <div title={suite ? heure(m.cree_le) : undefined} onClick={() => { if (moi) setSurvol(v => !v); }} style={{
-            background: m.supprime ? "transparent" : moi ? "var(--yellow)" : "var(--white)",
-            border: m.etat === "echec" ? "2px solid #dc2626" : m.supprime ? "1.5px dashed rgba(0,0,0,0.25)" : "2px solid var(--ink)",
-            borderRadius: 10,
-            borderBottomRightRadius: moi && !m.supprime ? 3 : 10,
-            borderBottomLeftRadius: !moi && !m.supprime ? 3 : 10,
-            boxShadow: m.supprime ? "none" : "2px 2px 0 var(--ink)",
-            padding: "6px 10px", fontSize: 13.5, lineHeight: 1.4,
-            whiteSpace: "pre-wrap", overflowWrap: "anywhere",
-            opacity: m.etat === "envoi" ? 0.55 : 1,
-            fontStyle: m.supprime ? "italic" : "normal",
-            color: m.supprime ? "rgba(0,0,0,0.45)" : "var(--ink)",
-          }}>
+        <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 6, flexDirection: moi ? "row-reverse" : "row" }}>
+          {/* Cliquer (ou toucher) un message ouvre ses réactions. */}
+          <div ref={bulle} title={suite ? heure(m.cree_le) : undefined} onClick={ouvrir}
+            role={interactif ? "button" : undefined} aria-label={interactif ? "Réagir à ce message" : undefined} aria-expanded={interactif ? menu : undefined}
+            style={{
+              background: m.supprime ? "transparent" : moi ? "var(--yellow)" : "var(--white)",
+              border: m.etat === "echec" ? "2px solid #dc2626" : m.supprime ? "1.5px dashed rgba(0,0,0,0.25)" : "2px solid var(--ink)",
+              borderRadius: 10,
+              borderBottomRightRadius: moi && !m.supprime ? 3 : 10,
+              borderBottomLeftRadius: !moi && !m.supprime ? 3 : 10,
+              boxShadow: m.supprime ? "none" : menu ? "3px 3px 0 var(--ink)" : "2px 2px 0 var(--ink)",
+              transform: menu ? "translate(-1px, -1px)" : "none",
+              padding: "6px 10px", fontSize: 13.5, lineHeight: 1.4,
+              whiteSpace: "pre-wrap", overflowWrap: "anywhere",
+              opacity: m.etat === "envoi" ? 0.55 : 1,
+              fontStyle: m.supprime ? "italic" : "normal",
+              color: m.supprime ? "rgba(0,0,0,0.45)" : "var(--ink)",
+              cursor: interactif ? "pointer" : "default",
+              transition: "box-shadow 0.1s, transform 0.1s",
+            }}>
             {m.supprime ? "Message supprimé" : <Texte contenu={m.contenu} />}
           </div>
-          {moi && !m.etat && !m.supprime && survol && (
-            confirmer
-              ? <button onClick={onSupprimer} style={petitBouton("#dc2626", "#fff")}>Supprimer ?</button>
-              : <button onClick={() => setConfirmer(true)} aria-label="Supprimer le message" title="Supprimer" style={petitBouton("transparent", "var(--ink)")}>🗑</button>
+          {/* Au survol (souris), un rappel discret qu'on peut réagir. */}
+          {interactif && survol && !menu && (
+            <button onClick={ouvrir} aria-label="Ajouter une réaction" title="Réagir" style={petitBouton("transparent", "var(--ink)")}>☺︎+</button>
+          )}
+          {menu && (
+            <BarreReactions moi={moi} cote={moi ? "droite" : "gauche"} place={place}
+              dejaMises={m.reactions.filter(r => r.comptes.some(c => c.id === moiId)).map(r => r.emoji)}
+              onChoisir={e => { onReagir(e); onMenu(false); }}
+              onSupprimer={moi ? () => { onMenu(false); onSupprimer(); } : undefined}
+              onFermer={() => onMenu(false)} />
           )}
         </div>
+        {m.reactions.length > 0 && !m.supprime && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 4, justifyContent: moi ? "flex-end" : "flex-start" }}>
+            {m.reactions.map(r => {
+              const mienne = r.comptes.some(c => c.id === moiId);
+              const noms = r.comptes.map(c => c.id === moiId ? "toi" : c.nom).join(", ");
+              return (
+                <button key={r.emoji} onClick={() => onReagir(r.emoji)}
+                  title={`${noms} ${r.comptes.length > 1 ? "ont" : "a"} réagi ${r.emoji}${mienne ? " — cliquer pour retirer" : ""}`}
+                  aria-pressed={mienne} aria-label={`${r.emoji} ${r.comptes.length}, ${noms}`}
+                  className="chat-reaction" style={{
+                    display: "inline-flex", alignItems: "center", gap: 4, height: 24, padding: "0 7px",
+                    borderRadius: 12, cursor: "pointer", fontFamily: "inherit",
+                    background: mienne ? "var(--yellow)" : "var(--white)",
+                    border: mienne ? "2px solid var(--ink)" : "1.5px solid rgba(0,0,0,0.25)",
+                    boxShadow: mienne ? "1px 1px 0 var(--ink)" : "none",
+                    fontSize: 13, lineHeight: 1,
+                  }}>
+                  <span>{r.emoji}</span>
+                  <span style={{ fontSize: 11, fontWeight: 800 }}>{r.comptes.length}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
         {m.etat === "echec" && (
           <div style={{ fontSize: 11, fontWeight: 700, color: "#dc2626", marginTop: 3, display: "flex", gap: 8 }}>
             Pas envoyé.
@@ -451,6 +509,88 @@ function Bulle({ m, moi, suite, couleur, onSupprimer, onReessayer, onAbandonner 
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/** Hauteurs approximatives, pour choisir de quel côté ouvrir la barre. */
+const HAUTEUR_BARRE = 52;
+const HAUTEUR_GRILLE = 230;
+
+/**
+ * Barre flottante au-dessus (ou au-dessous) d'une bulle : réactions rapides,
+ * « + » pour tout le choix, et la corbeille sur ses propres messages.
+ */
+function BarreReactions({ moi, cote, place, dejaMises, onChoisir, onSupprimer, onFermer }: {
+  moi: boolean; cote: "gauche" | "droite"; place: { dessus: number; dessous: number };
+  dejaMises: string[]; onChoisir: (emoji: string) => void; onSupprimer?: () => void; onFermer: () => void;
+}) {
+  const [grille, setGrille] = useState(false);
+  const [confirmer, setConfirmer] = useState(false);
+  const boite = useRef<HTMLDivElement>(null);
+
+  // Clic ailleurs ou Échap : on referme (Échap ne ferme pas tout le panneau).
+  useEffect(() => {
+    const clic = (e: MouseEvent) => {
+      const cible = e.target as Node;
+      if (boite.current?.contains(cible)) return;
+      // Un clic sur la bulle elle-même est géré par la bulle (bascule).
+      if ((cible as HTMLElement).closest?.("[aria-expanded='true']")) return;
+      onFermer();
+    };
+    const touche = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); onFermer(); } };
+    document.addEventListener("mousedown", clic);
+    document.addEventListener("keydown", touche, true);
+    return () => { document.removeEventListener("mousedown", clic); document.removeEventListener("keydown", touche, true); };
+  }, [onFermer]);
+
+  const hauteur = grille ? HAUTEUR_GRILLE : HAUTEUR_BARRE;
+  const dessous = place.dessus < hauteur + 8 && place.dessous > place.dessus;
+
+  const bouton = (e: string, taille: number) => {
+    const deja = dejaMises.includes(e);
+    return (
+      <button key={e} onClick={() => onChoisir(e)} aria-label={`${deja ? "Retirer" : "Réagir"} ${e}`} title={deja ? "Retirer" : undefined}
+        className="chat-emote" style={{
+          width: taille, height: taille, borderRadius: 8, cursor: "pointer", padding: 0, flexShrink: 0,
+          fontSize: Math.round(taille * 0.6), lineHeight: 1, display: "flex", alignItems: "center", justifyContent: "center",
+          background: deja ? "var(--yellow)" : "transparent",
+          border: deja ? "2px solid var(--ink)" : "2px solid transparent",
+        }}>{e}</button>
+    );
+  };
+
+  return (
+    <div ref={boite} role="dialog" aria-label="Réactions" className="pop-card chat-barre-reactions" style={{
+      position: "absolute", zIndex: 5,
+      [cote === "droite" ? "right" : "left"]: 0,
+      ...(dessous ? { top: "calc(100% + 6px)" } : { bottom: "calc(100% + 6px)" }),
+      padding: 5, boxShadow: "3px 3px 0 var(--ink)", borderRadius: 12,
+      width: grille ? 262 : "max-content",
+    }}>
+      {grille ? (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gap: 2 }}>
+          {REACTIONS_TOUTES.map(e => bouton(e, 30))}
+        </div>
+      ) : (
+        <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+          {REACTIONS_RAPIDES.map(e => bouton(e, 34))}
+          <button onClick={() => setGrille(true)} aria-label="Plus d'émotes" title="Plus d'émotes" style={{
+            width: 34, height: 34, borderRadius: 8, cursor: "pointer", flexShrink: 0, fontFamily: "inherit",
+            background: "var(--cream)", border: "2px solid var(--ink)", fontSize: 18, fontWeight: 900, lineHeight: 1,
+          }}>+</button>
+          {moi && onSupprimer && (
+            <>
+              <span style={{ width: 1.5, height: 24, background: "rgba(0,0,0,0.12)", margin: "0 3px" }} />
+              {confirmer
+                ? <button onClick={onSupprimer} style={{ ...petitBouton("#dc2626", "#fff"), height: 30 }}>Supprimer ?</button>
+                : <button onClick={() => setConfirmer(true)} aria-label="Supprimer le message" title="Supprimer" style={{
+                    width: 34, height: 34, borderRadius: 8, cursor: "pointer", background: "transparent", border: "2px solid transparent", fontSize: 16,
+                  }}>🗑</button>}
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
