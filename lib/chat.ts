@@ -90,8 +90,8 @@ export type EvenementDirect =
   /** Quelqu'un a réagi à un de MES messages (envoyé à l'auteur seul) : notification. */
   | { type: "reaction"; conversation_id: string; message_id: number; emoji: string; par: CompteChat; extrait: string }
   /**
-   * Réaction volante : une émote qui traverse l'écran, éphémère (rien en
-   * base). Relayée par le Durable Object aux membres de la conversation.
+   * Réaction volante : une émote qui monte au milieu de l'écran, éphémère
+   * (rien en base). Générale seulement, relayée par le Durable Object à tous.
    * `cle` est tirée par l'onglet émetteur, qui reconnaît ainsi son propre écho.
    */
   | VolanteChat;

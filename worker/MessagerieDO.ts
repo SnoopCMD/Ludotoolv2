@@ -68,8 +68,9 @@ export class MessagerieDO extends DurableObject<CloudflareEnv> {
     const auteur = this.ctx.getTags(ws)[0];
     if (!auteur) return;
 
-    const pour = destinatairesVolante(envoi.conversation_id, auteur);
-    if (pour === undefined) return; // conversation dont l'auteur n'est pas membre
+    // Réservées à la conversation générale (toute l'équipe) : pas de volantes
+    // dans les fils privés.
+    if (envoi.conversation_id !== CONVERSATION_GENERALE) return;
 
     // Au plus VOLANTES_MAX par fenêtre : au-delà, on ignore sans rien dire.
     const maintenant = Date.now();
@@ -79,7 +80,7 @@ export class MessagerieDO extends DurableObject<CloudflareEnv> {
     this.rafales.set(auteur, recentes);
 
     const evenement: VolanteChat = { type: "volante", conversation_id: envoi.conversation_id, emoji: envoi.emoji, auteur_id: auteur, cle: envoi.cle };
-    await this.diffuser(evenement, pour);
+    await this.diffuser(evenement, null);
   }
 
   async webSocketClose(ws: WebSocket, code: number, raison: string): Promise<void> {
@@ -90,19 +91,4 @@ export class MessagerieDO extends DurableObject<CloudflareEnv> {
   async webSocketError(ws: WebSocket): Promise<void> {
     try { ws.close(1011, "erreur"); } catch { /* déjà fermé */ }
   }
-}
-
-/**
- * Qui reçoit une volante : tout le monde pour la générale (null), les deux
- * membres pour une privée, et `undefined` si l'auteur n'en fait pas partie.
- * Une privée s'appelle `prive-<id1>-<id2>` (ids triés, sans tiret) : le nom
- * suffit à vérifier, sans lire la base. Des groupes demanderont `chat_membres`.
- */
-function destinatairesVolante(conversation: unknown, auteur: string): string[] | null | undefined {
-  if (conversation === CONVERSATION_GENERALE) return null;
-  if (typeof conversation !== "string" || !conversation.startsWith("prive-")) return undefined;
-  const membres = conversation.slice("prive-".length);
-  if (membres.startsWith(auteur + "-")) return [auteur, membres.slice(auteur.length + 1)];
-  if (membres.endsWith("-" + auteur)) return [membres.slice(0, -auteur.length - 1), auteur];
-  return undefined;
 }

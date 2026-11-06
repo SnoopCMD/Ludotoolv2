@@ -368,15 +368,16 @@ function Fil({ conversation, prive, nomAutre }: { conversation: string; prive: b
 
           {/* Saisie */}
           <div style={{ position: "relative", borderTop: "2.5px solid var(--ink)", background: "var(--white)", padding: "10px 12px calc(10px + env(safe-area-inset-bottom))", flexShrink: 0 }}>
-            {palette && <PaletteVolantes conversation={conversation} moiId={compte.id} onFermer={() => setPalette(false)} />}
+            {/* Réactions volantes : dans la générale seulement. */}
+            {palette && !prive && <PaletteVolantes conversation={conversation} onFermer={() => setPalette(false)} />}
             <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
-              <button onClick={() => setPalette(p => !p)} aria-label="Envoyer une réaction volante" aria-expanded={palette}
+              {!prive && <button onClick={() => setPalette(p => !p)} aria-label="Envoyer une réaction volante" aria-expanded={palette}
                 title="Réaction volante" className="chat-bouton-palette" style={{
                   height: 40, width: 40, flexShrink: 0, borderRadius: 8, cursor: "pointer", fontSize: 19, padding: 0,
                   background: palette ? "var(--yellow)" : "transparent",
                   border: palette ? "2.5px solid var(--ink)" : "2.5px solid transparent",
                   boxShadow: palette ? "2px 2px 0 var(--ink)" : "none",
-                }}>✨</button>
+                }}>✨</button>}
               <textarea ref={champ} value={texte} rows={1} maxLength={LONGUEUR_MAX_MESSAGE}
                 placeholder={prive ? `Écrire à ${nomAutre ?? "…"}…` : "Écrire à l'équipe…"}
                 onChange={e => setTexte(e.target.value)}
@@ -531,11 +532,11 @@ function Bulle({ m, moi, moiId, prive, suite, couleur, menu, onMenu, onReagir, o
 const VOLANTES_PROPOSEES = ["👍", "❤️", "😂", "🎉", "🔥", "👏", "😮", "🎲", "🏆", "🦄"];
 
 /**
- * Palette des réactions volantes : chaque clic lance une émote qui traverse
- * l'écran de tous les membres de la conversation. Reste ouverte pour qu'on
+ * Palette des réactions volantes : chaque clic lance une émote qui monte au
+ * milieu de l'écran de toute l'équipe. Reste ouverte pour qu'on
  * puisse en envoyer une rafale.
  */
-function PaletteVolantes({ conversation, moiId, onFermer }: { conversation: string; moiId: string; onFermer: () => void }) {
+function PaletteVolantes({ conversation, onFermer }: { conversation: string; onFermer: () => void }) {
   const boite = useRef<HTMLDivElement>(null);
   const muet = useVolantesMuettes();
   const direct = useDirect();
@@ -559,7 +560,7 @@ function PaletteVolantes({ conversation, moiId, onFermer }: { conversation: stri
     }}>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 2, justifyContent: "space-between" }}>
         {VOLANTES_PROPOSEES.map(e => (
-          <button key={e} onClick={() => lancerVolante(conversation, e, moiId)} aria-label={`Lancer ${e}`}
+          <button key={e} onClick={() => lancerVolante(conversation, e)} aria-label={`Lancer ${e}`}
             className="chat-emote" style={{
               width: 32, height: 32, borderRadius: 8, cursor: "pointer", padding: 0, fontSize: 21, lineHeight: 1,
               background: "transparent", border: "2px solid transparent",
@@ -567,7 +568,7 @@ function PaletteVolantes({ conversation, moiId, onFermer }: { conversation: stri
         ))}
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6, paddingTop: 6, borderTop: "1.5px solid rgba(0,0,0,0.08)", fontSize: 11, fontWeight: 600, color: "rgba(0,0,0,0.5)" }}>
-        <span style={{ flex: 1 }}>{direct ? "Elles traversent l'écran de tout le monde." : "Direct coupé : toi seul les vois."}</span>
+        <span style={{ flex: 1 }}>{direct ? "Elles montent sur l'écran de toute l'équipe." : "Direct coupé : toi seul les vois."}</span>
         <button onClick={() => changerMuet(!muet)} style={{ ...lienBouton, fontSize: 11, color: "rgba(0,0,0,0.6)" }}>
           {muet ? "🔕 Réactivées chez moi" : "🔔 Les couper chez moi"}
         </button>

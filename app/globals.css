@@ -431,13 +431,9 @@ body::before {
   line-height: 1; will-change: transform, opacity; animation-timing-function: linear; animation-fill-mode: forwards;
 }
 .chat-volante-emoji { filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.25)); }
-.chat-volante-nom {
-  font-size: 11px; font-weight: 800; color: var(--ink); padding: 2px 7px; border-radius: 9px;
-  border: 1.5px solid var(--ink); white-space: nowrap; box-shadow: 1px 1px 0 var(--ink);
-}
 
 /* Fontaine : ça monte en ondulant, grossit un peu, puis s'efface. */
-.chat-volantes-fontaine .chat-volante { animation-name: volanteFontaine; }
+.chat-volante { animation-name: volanteFontaine; }
 @keyframes volanteFontaine {
   0%   { transform: translate(0, 0) scale(0.4); opacity: 0; }
   8%   { transform: translate(calc(var(--derive) * 0.1), -6vh) scale(1.1); opacity: 1; }
@@ -445,18 +441,6 @@ body::before {
   55%  { transform: translate(calc(var(--derive) * -0.6), -44vh) scale(1); opacity: 1; }
   80%  { transform: translate(calc(var(--derive) * 0.5), -62vh) scale(0.95); opacity: 0.7; }
   100% { transform: translate(0, -78vh) scale(0.9); opacity: 0; }
-}
-
-/* Défilement : de droite à gauche sur toute la largeur, avec un léger roulis. */
-.chat-volantes-defilement .chat-volante { animation-name: volanteDefilement; }
-@keyframes volanteDefilement {
-  0%   { transform: translate(0, 0) rotate(0deg); opacity: 0; }
-  5%   { opacity: 1; }
-  25%  { transform: translate(-28vw, calc(var(--derive) * 0.25)) rotate(-6deg); }
-  50%  { transform: translate(-56vw, 0) rotate(5deg); }
-  75%  { transform: translate(-84vw, calc(var(--derive) * -0.25)) rotate(-4deg); }
-  95%  { opacity: 1; }
-  100% { transform: translate(calc(-100vw - 120px), 0) rotate(0deg); opacity: 0; }
 }
 
 /* Mouvement réduit : l'émote apparaît sur place et s'efface. */

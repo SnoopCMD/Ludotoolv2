@@ -135,10 +135,7 @@ export default function ChatProvider({ children }: { children: React.ReactNode }
     <ChatContext.Provider value={value}>
       {children}
       {ouvert && <PanneauChat />}
-      {compte && (
-        <CoucheVolantes panneauOuvert={ouvert} comptes={aJour ? donnees.comptes : []}
-          moi={{ id: compte.id, equipe_id: compte.equipe_id, nom: compte.nom, groupe: compte.groupe, couleur: compte.couleur }} />
-      )}
+      {compte && <CoucheVolantes actif panneauOuvert={ouvert} />}
       {toast && compteId && (
         <ToastChat key={toast.cle} notif={toast} panneauOuvert={ouvert}
           onOuvrir={() => { ouvrirConversation(toast.conversation_id); setToast(null); }}

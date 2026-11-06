@@ -434,11 +434,26 @@ navigateur ◀════════ WebSocket /api/chat/ws ══════
   liste suit le compteur `chat` de `/api/maj`. Le point vert « En direct » de
   l'en-tête le signale.
 - **Les événements sont typés** (`EvenementDirect` dans `lib/chat.ts` :
-  `message`, `conversation`) : un poste ignore les types qu'il ne connaît pas.
-  Les réactions qui défileront à l'écran seront un nouveau type, éphémère :
-  envoyé par le navigateur sur la WebSocket, relayé par
-  `MessagerieDO.webSocketMessage()` après vérification des membres, et affiché
-  par une couche branchée dans `ChatProvider`.
+  `message`, `conversation`, `reaction`, `volante`) : un poste ignore les types
+  qu'il ne connaît pas.
+
+### Réactions volantes et notifications
+
+- **Réactions volantes** (bouton ✨ à gauche de la saisie, **conversation
+  générale seulement**) : chaque clic sur une émote de la palette la fait
+  monter en fontaine au milieu de l'écran de toute l'équipe, sur n'importe
+  quelle page, panneau ouvert ou non (`components/chat/CoucheVolantes.tsx`,
+  montée dans `ChatProvider`). Éphémères : le navigateur les envoie sur la
+  WebSocket (`envoyerDirect`), `MessagerieDO.webSocketMessage()` vérifie
+  (auteur = étiquette du socket, générale uniquement, émote valide, au plus
+  `VOLANTES_MAX` = 12 par 3 s et par compte) puis relaie ; rien en base, et
+  rien n'est rejoué si le direct est coupé. L'émetteur les voit tout de suite
+  et ignore son propre écho grâce à la `cle`. Chacun peut les couper sur son
+  appareil depuis la palette (`localStorage`), et le mouvement réduit du
+  système est respecté.
+- **Notifications** (`ToastChat`) : un message privé reçu, ou une réaction
+  posée sur un de ses messages (événement `reaction`, envoyé à l'auteur seul,
+  pas pour un retrait), quand la discussion n'est pas sous les yeux.
 
 ### Les règles
 
