@@ -86,7 +86,24 @@ export type EvenementDirect =
   /** Message nouveau, ou modifié / supprimé (même id). */
   | { type: "message"; message: MessageChat }
   /** Une conversation vient d'être créée avec ce compte parmi les membres. */
-  | { type: "conversation"; conversation_id: string };
+  | { type: "conversation"; conversation_id: string }
+  /** Quelqu'un a réagi à un de MES messages (envoyé à l'auteur seul) : notification. */
+  | { type: "reaction"; conversation_id: string; message_id: number; emoji: string; par: CompteChat; extrait: string }
+  /**
+   * Réaction volante : une émote qui monte au milieu de l'écran, éphémère
+   * (rien en base). Générale seulement, relayée par le Durable Object à tous.
+   * `cle` est tirée par l'onglet émetteur, qui reconnaît ainsi son propre écho.
+   */
+  | VolanteChat;
+
+export type VolanteChat = { type: "volante"; conversation_id: string; emoji: string; auteur_id: string; cle: string };
+
+/** Ce qu'un poste envoie sur la WebSocket (l'auteur est ajouté par le serveur). */
+export type EnvoiDirect = { type: "volante"; conversation_id: string; emoji: string; cle: string };
+
+/** Garde-fou du Durable Object : volantes au plus par compte et par fenêtre. */
+export const VOLANTES_MAX = 12;
+export const VOLANTES_FENETRE_MS = 3000;
 
 /** Ligne de la liste des discussions (`GET /api/chat/conversations`). */
 export type ResumeConversation = {

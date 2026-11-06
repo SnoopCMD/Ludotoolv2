@@ -7,6 +7,7 @@ import { useChat } from "./ChatProvider";
 import { useConversation, type MessageAffiche } from "./useConversation";
 import { CONVERSATION_GENERALE, LONGUEUR_MAX_MESSAGE, REACTIONS_RAPIDES, REACTIONS_TOUTES, type ResumeConversation } from "../../lib/chat";
 import { useDirect } from "../../lib/chat-canal";
+import { changerMuet, lancerVolante, useVolantesMuettes } from "./CoucheVolantes";
 import { couleurParDefaut } from "../../lib/couleurProfil";
 import { useCouleurProfil } from "../../lib/useCouleurProfil";
 
@@ -239,6 +240,8 @@ function Fil({ conversation, prive, nomAutre }: { conversation: string; prive: b
   const [chargeHistorique, setChargeHistorique] = useState(false);
   /** Message dont la barre de réactions est ouverte. */
   const [menu, setMenu] = useState<number | null>(null);
+  /** Palette des réactions volantes, au-dessus de la saisie. */
+  const [palette, setPalette] = useState(false);
 
   // ── Défilement : on suit le bas tant qu'on y est ; sinon, une pastille
   //    « nouveaux messages ». Charger l'historique garde la position de lecture.
@@ -364,8 +367,17 @@ function Fil({ conversation, prive, nomAutre }: { conversation: string; prive: b
           </div>
 
           {/* Saisie */}
-          <div style={{ borderTop: "2.5px solid var(--ink)", background: "var(--white)", padding: "10px 12px calc(10px + env(safe-area-inset-bottom))", flexShrink: 0 }}>
+          <div style={{ position: "relative", borderTop: "2.5px solid var(--ink)", background: "var(--white)", padding: "10px 12px calc(10px + env(safe-area-inset-bottom))", flexShrink: 0 }}>
+            {/* Réactions volantes : dans la générale seulement. */}
+            {palette && !prive && <PaletteVolantes conversation={conversation} onFermer={() => setPalette(false)} />}
             <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+              {!prive && <button onClick={() => setPalette(p => !p)} aria-label="Envoyer une réaction volante" aria-expanded={palette}
+                title="Réaction volante" className="chat-bouton-palette" style={{
+                  height: 40, width: 40, flexShrink: 0, borderRadius: 8, cursor: "pointer", fontSize: 19, padding: 0,
+                  background: palette ? "var(--yellow)" : "transparent",
+                  border: palette ? "2.5px solid var(--ink)" : "2.5px solid transparent",
+                  boxShadow: palette ? "2px 2px 0 var(--ink)" : "none",
+                }}>✨</button>}
               <textarea ref={champ} value={texte} rows={1} maxLength={LONGUEUR_MAX_MESSAGE}
                 placeholder={prive ? `Écrire à ${nomAutre ?? "…"}…` : "Écrire à l'équipe…"}
                 onChange={e => setTexte(e.target.value)}
@@ -511,6 +523,55 @@ function Bulle({ m, moi, moiId, prive, suite, couleur, menu, onMenu, onReagir, o
             <button onClick={onAbandonner} style={lienBouton}>Effacer</button>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+/** Émotes proposées pour les réactions volantes. */
+const VOLANTES_PROPOSEES = ["👍", "❤️", "😂", "🎉", "🔥", "👏", "😮", "🎲", "🏆", "🦄"];
+
+/**
+ * Palette des réactions volantes : chaque clic lance une émote qui monte au
+ * milieu de l'écran de toute l'équipe. Reste ouverte pour qu'on
+ * puisse en envoyer une rafale.
+ */
+function PaletteVolantes({ conversation, onFermer }: { conversation: string; onFermer: () => void }) {
+  const boite = useRef<HTMLDivElement>(null);
+  const muet = useVolantesMuettes();
+  const direct = useDirect();
+
+  useEffect(() => {
+    const clic = (e: MouseEvent) => {
+      const cible = e.target as HTMLElement;
+      if (boite.current?.contains(cible) || cible.closest?.(".chat-bouton-palette")) return;
+      onFermer();
+    };
+    const touche = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); onFermer(); } };
+    document.addEventListener("mousedown", clic);
+    document.addEventListener("keydown", touche, true);
+    return () => { document.removeEventListener("mousedown", clic); document.removeEventListener("keydown", touche, true); };
+  }, [onFermer]);
+
+  return (
+    <div ref={boite} role="dialog" aria-label="Réactions volantes" className="pop-card chat-palette-volantes" style={{
+      position: "absolute", left: 10, right: 10, bottom: "calc(100% + 8px)", zIndex: 6, padding: "8px 8px 6px",
+      boxShadow: "3px 3px 0 var(--ink)", borderRadius: 12,
+    }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 2, justifyContent: "space-between" }}>
+        {VOLANTES_PROPOSEES.map(e => (
+          <button key={e} onClick={() => lancerVolante(conversation, e)} aria-label={`Lancer ${e}`}
+            className="chat-emote" style={{
+              width: 32, height: 32, borderRadius: 8, cursor: "pointer", padding: 0, fontSize: 21, lineHeight: 1,
+              background: "transparent", border: "2px solid transparent",
+            }}>{e}</button>
+        ))}
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6, paddingTop: 6, borderTop: "1.5px solid rgba(0,0,0,0.08)", fontSize: 11, fontWeight: 600, color: "rgba(0,0,0,0.5)" }}>
+        <span style={{ flex: 1 }}>{direct ? "Elles montent sur l'écran de toute l'équipe." : "Direct coupé : toi seul les vois."}</span>
+        <button onClick={() => changerMuet(!muet)} style={{ ...lienBouton, fontSize: 11, color: "rgba(0,0,0,0.6)" }}>
+          {muet ? "🔕 Réactivées chez moi" : "🔔 Les couper chez moi"}
+        </button>
       </div>
     </div>
   );

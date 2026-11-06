@@ -423,3 +423,31 @@ body::before {
 /* Discussion privée : les émotes seules, un peu plus grandes. */
 .chat-reactions.seules { border-radius: 16px; }
 .chat-reactions.seules .chat-reaction { height: 26px; padding: 0 4px; font-size: 17px; border-radius: 13px; }
+
+/* ── Messagerie : réactions volantes ── */
+.chat-volantes { position: fixed; inset: 0; pointer-events: none; z-index: 120; overflow: hidden; }
+.chat-volante {
+  position: absolute; display: flex; flex-direction: column; align-items: center; gap: 2px;
+  line-height: 1; will-change: transform, opacity; animation-timing-function: linear; animation-fill-mode: forwards;
+}
+.chat-volante-emoji { filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.25)); }
+
+/* Fontaine : ça monte en ondulant, grossit un peu, puis s'efface. */
+.chat-volante { animation-name: volanteFontaine; }
+@keyframes volanteFontaine {
+  0%   { transform: translate(0, 0) scale(0.4); opacity: 0; }
+  8%   { transform: translate(calc(var(--derive) * 0.1), -6vh) scale(1.1); opacity: 1; }
+  30%  { transform: translate(var(--derive), -24vh) scale(1); }
+  55%  { transform: translate(calc(var(--derive) * -0.6), -44vh) scale(1); opacity: 1; }
+  80%  { transform: translate(calc(var(--derive) * 0.5), -62vh) scale(0.95); opacity: 0.7; }
+  100% { transform: translate(0, -78vh) scale(0.9); opacity: 0; }
+}
+
+/* Mouvement réduit : l'émote apparaît sur place et s'efface. */
+@media (prefers-reduced-motion: reduce) {
+  .chat-volantes .chat-volante { animation-name: volanteCalme !important; animation-duration: 1800ms !important; }
+  @keyframes volanteCalme { 0% { opacity: 0; } 20%, 70% { opacity: 1; } 100% { opacity: 0; } }
+}
+
+/* Palette d'envoi au-dessus de la saisie. */
+.chat-palette-volantes { animation: chatBarre 0.12s ease-out; }

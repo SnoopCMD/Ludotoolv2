@@ -1,4 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
+import { CONVERSATION_GENERALE, VOLANTES_FENETRE_MS, VOLANTES_MAX, emojiValide, type EnvoiDirect, type VolanteChat } from "../lib/chat";
 
 /**
  * Le direct de la messagerie : un seul Durable Object pour toute l'équipe
@@ -51,13 +52,36 @@ export class MessagerieDO extends DurableObject<CloudflareEnv> {
     return envoyes;
   }
 
+  /** Horodatages des dernières volantes par compte (garde-fou anti-rafale). */
+  private rafales = new Map<string, number[]>();
+
   /**
-   * Messages venus des postes. Rien pour l'instant hors « ping » (traité sans
-   * réveil). C'est ici que passeront les événements éphémères (réactions qui
-   * défilent, « est en train d'écrire ») : l'étiquette du socket donne
-   * l'auteur, à vérifier contre les membres de la conversation avant relais.
+   * Messages venus des postes (hors « ping », traité sans réveil). Seules les
+   * réactions volantes passent par ici : éphémères, elles ne touchent pas la
+   * base. L'auteur est l'étiquette du socket, jamais ce que dit le message.
    */
-  async webSocketMessage(): Promise<void> {}
+  async webSocketMessage(ws: WebSocket, donnees: string | ArrayBuffer): Promise<void> {
+    if (typeof donnees !== "string" || donnees.length > 500) return;
+    let envoi: EnvoiDirect;
+    try { envoi = JSON.parse(donnees); } catch { return; }
+    if (envoi?.type !== "volante" || !emojiValide(envoi.emoji) || typeof envoi.cle !== "string" || envoi.cle.length > 64) return;
+    const auteur = this.ctx.getTags(ws)[0];
+    if (!auteur) return;
+
+    // Réservées à la conversation générale (toute l'équipe) : pas de volantes
+    // dans les fils privés.
+    if (envoi.conversation_id !== CONVERSATION_GENERALE) return;
+
+    // Au plus VOLANTES_MAX par fenêtre : au-delà, on ignore sans rien dire.
+    const maintenant = Date.now();
+    const recentes = (this.rafales.get(auteur) ?? []).filter(t => maintenant - t < VOLANTES_FENETRE_MS);
+    if (recentes.length >= VOLANTES_MAX) return;
+    recentes.push(maintenant);
+    this.rafales.set(auteur, recentes);
+
+    const evenement: VolanteChat = { type: "volante", conversation_id: envoi.conversation_id, emoji: envoi.emoji, auteur_id: auteur, cle: envoi.cle };
+    await this.diffuser(evenement, null);
+  }
 
   async webSocketClose(ws: WebSocket, code: number, raison: string): Promise<void> {
     // 1005/1006 ne peuvent pas être renvoyés tels quels.
