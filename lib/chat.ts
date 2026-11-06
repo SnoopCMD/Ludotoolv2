@@ -32,9 +32,40 @@ export type MessageChat = {
   contenu: string;
   client_id: string | null;
   cree_le: string;
+  /** Dernier changement : suppression, ou réaction posée ou retirée. */
   modifie_le: string | null;
   supprime: boolean;
+  /** Par émote, dans l'ordre où elle a été posée la première fois. */
+  reactions: ReactionChat[];
 };
+
+export type ReactionChat = {
+  emoji: string;
+  /** Qui l'a posée (ids de comptes et prénoms, pour l'infobulle). */
+  comptes: { id: string; nom: string }[];
+};
+
+/** Proposées en un clic sous un message. */
+export const REACTIONS_RAPIDES = ["👍", "❤️", "😂", "😮", "😢", "🎉"];
+
+/** Le choix complet, quand on clique sur « + ». */
+export const REACTIONS_TOUTES = [
+  "👍", "👎", "❤️", "😂", "🤣", "😮", "😢", "😡", "🎉", "🔥",
+  "👏", "🙏", "💪", "🤝", "👀", "🤔", "😅", "😎", "🥳", "😴",
+  "✅", "❌", "⭐", "💯", "🚀", "☕", "🍕", "🍰", "🎂", "🎁",
+  "🎲", "♟️", "🃏", "🧩", "🎮", "🕹️", "🏆", "🦄", "🐉", "👻",
+];
+
+/** Émotes différentes au plus sur un message (garde-fou). */
+export const REACTIONS_MAX_PAR_MESSAGE = 20;
+
+/** Une seule émote : un caractère pictographique, avec ses variantes (peau, ZWJ…). */
+export function emojiValide(e: unknown): e is string {
+  if (typeof e !== "string" || e.length === 0 || e.length > 16 || /\s/.test(e)) return false;
+  if (!/\p{Extended_Pictographic}/u.test(e)) return false;
+  // Pas de texte autour : seulement pictogrammes, modificateurs, ZWJ et sélecteurs.
+  return /^(?:\p{Extended_Pictographic}|\p{Emoji_Modifier}|\p{Emoji_Component}|\u200D|\uFE0F|\u20E3)+$/u.test(e);
+}
 
 /** Réponse de `GET /api/chat/<conversation>/flux`. */
 export type ReponseFlux = {
@@ -101,13 +132,34 @@ export function versMessage(l: Record<string, unknown>): MessageChat {
     cree_le: String(l.cree_le),
     modifie_le: (l.modifie_le as string | null) ?? null,
     supprime,
+    reactions: supprime ? [] : grouperReactions(l.reactions),
   };
+}
+
+/** `[{e, u, n}, …]` (JSON de la requête, triés par date) → par émote. */
+function grouperReactions(brut: unknown): ReactionChat[] {
+  let lignes: { e: string; u: string; n: string }[] = [];
+  try { lignes = typeof brut === "string" ? JSON.parse(brut) : []; } catch { /* JSON abîmé : aucune réaction */ }
+  const parEmoji = new Map<string, ReactionChat>();
+  for (const r of lignes) {
+    if (!r?.e) continue;
+    if (!parEmoji.has(r.e)) parEmoji.set(r.e, { emoji: r.e, comptes: [] });
+    parEmoji.get(r.e)!.comptes.push({ id: String(r.u), nom: String(r.n ?? "?") });
+  }
+  return [...parEmoji.values()];
 }
 
 export const SELECT_MESSAGE = `
   SELECT m.id, m.conversation_id, m.auteur_id, m.contenu, m.client_id, m.cree_le, m.modifie_le, m.supprime,
          e.id AS auteur_equipe_id, e.nom AS auteur_nom, e.groupe AS auteur_groupe,
-         json_extract(e.horaires, '$.couleur') AS auteur_couleur
+         json_extract(e.horaires, '$.couleur') AS auteur_couleur,
+         (SELECT json_group_array(json_object('e', x.emoji, 'u', x.utilisateur_id, 'n', x.nom))
+            FROM (SELECT r.emoji, r.utilisateur_id, re.nom
+                    FROM chat_reactions r
+                    JOIN utilisateurs ru ON ru.id = r.utilisateur_id
+                    JOIN equipe re ON re.id = ru.equipe_id
+                   WHERE r.message_id = m.id
+                   ORDER BY r.cree_le) x) AS reactions
     FROM chat_messages m
     JOIN utilisateurs u ON u.id = m.auteur_id
     JOIN equipe e       ON e.id = u.equipe_id`;

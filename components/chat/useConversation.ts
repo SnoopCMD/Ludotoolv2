@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { MessageChat, ReponseFlux } from "../../lib/chat";
+import type { MessageChat, ReactionChat, ReponseFlux } from "../../lib/chat";
 import { useDirect, useEvenementsChat } from "../../lib/chat-canal";
 
 /** Message affiché : enregistré, ou encore en cours d'envoi côté client. */
@@ -31,6 +31,17 @@ function fusionner(actuels: MessageAffiche[], recus: MessageChat[]): MessageAffi
   }
   // Les messages en attente restent en bas, dans leur ordre d'envoi.
   return [...[...parId.values()].sort((a, b) => a.id - b.id), ...enAttente.values()];
+}
+
+/** Ajoute ou retire le compte sur une émote (sans toucher à l'ordre des autres). */
+function basculer(reactions: ReactionChat[], emoji: string, moi: { id: string; nom: string }): ReactionChat[] {
+  const r = reactions.find(x => x.emoji === emoji);
+  if (!r) return [...reactions, { emoji, comptes: [{ id: moi.id, nom: moi.nom }] }];
+  const dedans = r.comptes.some(c => c.id === moi.id);
+  const comptes = dedans ? r.comptes.filter(c => c.id !== moi.id) : [...r.comptes, { id: moi.id, nom: moi.nom }];
+  return comptes.length
+    ? reactions.map(x => x.emoji === emoji ? { ...x, comptes } : x)
+    : reactions.filter(x => x.emoji !== emoji);
 }
 
 type Moi = { id: string; equipe_id: string; nom: string; couleur: string | null; groupe: string | null };
@@ -144,6 +155,7 @@ export function useConversation(conversation: string, moi: Moi | null) {
       cree_le: new Date().toISOString(),
       modifie_le: null,
       supprime: false,
+      reactions: [],
       etat: "envoi",
     };
     setEtat(e => ({ ...e, messages: [...e.messages, provisoire] }));
@@ -166,6 +178,28 @@ export function useConversation(conversation: string, moi: Moi | null) {
     if (!r || !r.ok) setEtat(e => ({ ...e, messages: e.messages.map(x => x.id === m.id ? m : x) }));
   }, [base]);
 
+  /**
+   * Pose ou retire `emoji` sur un message, tout de suite à l'écran ; la
+   * réponse du serveur (ou le direct) remet ensuite l'état exact. En cas
+   * d'échec, on revient à ce qui était affiché.
+   */
+  const reagir = useCallback(async (m: MessageAffiche, emoji: string) => {
+    if (!moi || m.etat || m.supprime) return;
+    setEtat(e => ({ ...e, messages: e.messages.map(x => x.id === m.id ? { ...x, reactions: basculer(x.reactions, emoji, moi) } : x) }));
+    try {
+      const r = await fetch(`${base}/messages/${m.id}/reactions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ emoji }),
+      });
+      const d = await r.json() as MessageChat & { error?: string };
+      if (!r.ok) throw new Error(d.error);
+      recevoir([d]);
+    } catch {
+      setEtat(e => ({ ...e, messages: e.messages.map(x => x.id === m.id ? { ...x, reactions: m.reactions } : x) }));
+    }
+  }, [base, moi, recevoir]);
+
   const marquerLu = useCallback((jusqua: number) => {
     return fetch(`${base}/lu`, {
       method: "POST",
@@ -174,5 +208,5 @@ export function useConversation(conversation: string, moi: Moi | null) {
     }).catch(() => null);
   }, [base]);
 
-  return { ...etat, direct, chargerPlusAnciens, envoyer, reessayer, abandonner, supprimer, marquerLu };
+  return { ...etat, direct, chargerPlusAnciens, envoyer, reessayer, abandonner, supprimer, reagir, marquerLu };
 }

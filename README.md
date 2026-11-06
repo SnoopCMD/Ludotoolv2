@@ -173,7 +173,7 @@ jeu, servi par `/api/regles/[ean]` ; `catalogue.pdf_url` pointe vers cette route
 | `jv_jeux`, `jv_selections`, `jv_reservations`, `jv_rotation_config`, `jv_notes`, `jv_standby` | Section jeux vidéo |
 | `pieces_manquantes`, `pieces_trouvees`, `reparations` | Suivi du matériel |
 | `pieces_detachees` | Stock de pièces de rechange, rangées par jeu |
-| `chat_conversations`, `chat_membres`, `chat_messages`, `chat_lectures` | Messagerie : conversations (générale, privées) et leurs membres, messages, dernier message lu par compte |
+| `chat_conversations`, `chat_membres`, `chat_messages`, `chat_reactions`, `chat_lectures` | Messagerie : conversations (générale, privées) et leurs membres, messages, réactions, dernier message lu par compte |
 | `alertes`, `suggestions`, `selections` | Alertes, boîte à idées, sélections thématiques |
 | `utilisateurs`, `utilisateur_sessions` | Comptes (un par membre de `equipe`) et sessions ouvertes |
 | `utilisateur_preferences` | Modules choisis sur le tableau de bord, par compte |
@@ -454,6 +454,16 @@ navigateur ◀════════ WebSocket /api/chat/ws ══════
 - **Suppression douce** : on ne supprime que ses propres messages, la ligne
   reste (« Message supprimé »), elle est rediffusée, et `modifie_le` avance
   pour les postes qui sondent.
+- **Réactions** (`chat_reactions`, migration 0026) : cliquer (ou toucher) un
+  message ouvre une barre avec six émotes rapides, « + » pour le choix complet
+  (`REACTIONS_TOUTES` dans `lib/chat.ts`) et, sur ses propres messages, la
+  corbeille. Sous la bulle, une pastille par émote avec son compteur (qui a
+  réagi au survol) ; cliquer une pastille ajoute ou retire sa réaction. Une
+  ligne par (message, compte, émote), au plus 20 émotes différentes par
+  message, et le serveur n'accepte qu'une émote seule (`emojiValide`).
+  Réagir avance `modifie_le` du message : il repart aux autres postes, réactions
+  comprises, par le même chemin qu'une suppression. Les réactions arrivent avec
+  chaque message (`SELECT_MESSAGE`), il n'y a pas de route à part pour les lire.
 - **Non lus** : `chat_lectures.dernier_lu` par compte et par conversation,
   avancé quand le bas du fil est visible.
 
