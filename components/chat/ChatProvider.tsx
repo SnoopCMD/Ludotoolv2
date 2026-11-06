@@ -4,9 +4,10 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import { useCompte } from "../AuthProvider";
 import { useTempsReel } from "../../lib/temps-reel";
 import { useEvenementsChat } from "../../lib/chat-canal";
-import type { CompteChat, MessageChat, ReponseConversations, ResumeConversation } from "../../lib/chat";
+import type { CompteChat, ReponseConversations, ResumeConversation } from "../../lib/chat";
 import PanneauChat from "./PanneauChat";
-import ToastChat from "./ToastChat";
+import ToastChat, { type Notification } from "./ToastChat";
+import CoucheVolantes from "./CoucheVolantes";
 
 type ChatContextValue = {
   ouvert: boolean;
@@ -37,8 +38,8 @@ export function useChat() {
  * Messagerie, montée une fois dans le layout : le panneau survit aux
  * changements de page, et le direct (une WebSocket par onglet) reste ouvert
  * tant qu'on est connecté, pour la pastille et les notifications. C'est aussi
- * ici que se brancheront les couches globales à venir (réactions qui défilent
- * par-dessus la page).
+ * ici que sont montées les couches globales : notifications et réactions
+ * volantes par-dessus la page.
  */
 export default function ChatProvider({ children }: { children: React.ReactNode }) {
   const { compte } = useCompte();
@@ -46,7 +47,7 @@ export default function ChatProvider({ children }: { children: React.ReactNode }
   const [ouvert, setOuvert] = useState(false);
   const [active, setActive] = useState<string | null>(null);
   const [donnees, setDonnees] = useState<ReponseConversations & { pour: string | null }>({ conversations: [], comptes: [], pour: null });
-  const [toast, setToast] = useState<MessageChat | null>(null);
+  const [toast, setToast] = useState<Notification | null>(null);
 
   const rafraichir = useCallback(() => {
     if (!compteId) return;
@@ -77,7 +78,20 @@ export default function ChatProvider({ children }: { children: React.ReactNode }
       // Notification pour les messages privés seulement : la générale peut
       // être bavarde, sa pastille suffit.
       const prive = m.conversation_id.startsWith("prive-");
-      if (prive && m.auteur_id !== compteId && !m.supprime && !m.modifie_le && m.conversation_id !== visible.current) setToast(m);
+      if (prive && m.auteur_id !== compteId && !m.supprime && !m.modifie_le && m.conversation_id !== visible.current) {
+        setToast({
+          cle: `m-${m.id}`, conversation_id: m.conversation_id, nom: m.auteur_nom,
+          couleur: m.auteur_couleur, groupe: m.auteur_groupe, sousTitre: "message privé", texte: m.contenu,
+        });
+      }
+    } else if (ev.type === "reaction") {
+      // Quelqu'un a réagi à un de mes messages (le serveur ne l'envoie qu'à moi).
+      if (ev.conversation_id !== visible.current) {
+        setToast({
+          cle: `r-${ev.message_id}-${ev.par.id}-${ev.emoji}`, conversation_id: ev.conversation_id, nom: ev.par.nom,
+          couleur: ev.par.couleur, groupe: ev.par.groupe, sousTitre: `a réagi ${ev.emoji}`, texte: `« ${ev.extrait} »`,
+        });
+      }
     } else if (ev.type === "conversation" || ev.type === "reconnecte") {
       rafraichirBientot();
     }
@@ -121,8 +135,12 @@ export default function ChatProvider({ children }: { children: React.ReactNode }
     <ChatContext.Provider value={value}>
       {children}
       {ouvert && <PanneauChat />}
+      {compte && (
+        <CoucheVolantes panneauOuvert={ouvert} comptes={aJour ? donnees.comptes : []}
+          moi={{ id: compte.id, equipe_id: compte.equipe_id, nom: compte.nom, groupe: compte.groupe, couleur: compte.couleur }} />
+      )}
       {toast && compteId && (
-        <ToastChat key={toast.id} message={toast} panneauOuvert={ouvert}
+        <ToastChat key={toast.cle} notif={toast} panneauOuvert={ouvert}
           onOuvrir={() => { ouvrirConversation(toast.conversation_id); setToast(null); }}
           onFermer={() => setToast(null)} />
       )}

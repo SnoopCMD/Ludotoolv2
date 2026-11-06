@@ -30,6 +30,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ con
       'SELECT 1 FROM chat_reactions WHERE message_id = ? AND utilisateur_id = ? AND emoji = ?'
     ).bind(messageId, compte.id, emoji).first();
 
+    const ajout = !existe;
     if (existe) {
       await db.batch([
         db.prepare('DELETE FROM chat_reactions WHERE message_id = ? AND utilisateur_id = ? AND emoji = ?').bind(messageId, compte.id, emoji),
@@ -52,6 +53,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ con
     if (!ligne) return NextResponse.json({ error: 'Message introuvable.' }, { status: 404 });
     const maj = versMessage(ligne);
     await diffuser({ type: 'message', message: maj }, await destinataires(db, conv));
+    // L'auteur du message est prévenu qu'on a réagi (pas pour un retrait, ni à soi-même).
+    if (ajout && maj.auteur_id !== compte.id) {
+      await diffuser({
+        type: 'reaction', conversation_id: conversation, message_id: messageId, emoji,
+        par: { id: compte.id, equipe_id: compte.equipe_id, nom: compte.nom, groupe: compte.groupe, couleur: compte.couleur },
+        extrait: maj.contenu.slice(0, 100),
+      }, [maj.auteur_id]);
+    }
     return NextResponse.json(maj);
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });

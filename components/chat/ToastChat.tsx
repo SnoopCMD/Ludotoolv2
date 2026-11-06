@@ -1,14 +1,25 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import type { MessageChat } from "../../lib/chat";
 import { couleurParDefaut } from "../../lib/couleurProfil";
 
 const DUREE_MS = 6000;
 
-/** Message privé reçu alors que la discussion n'est pas sous les yeux. */
-export default function ToastChat({ message, panneauOuvert, onOuvrir, onFermer }: {
-  message: MessageChat; panneauOuvert: boolean; onOuvrir: () => void; onFermer: () => void;
+/** Ce qu'une notification affiche : qui, à propos de quoi, et un extrait. */
+export type Notification = {
+  cle: string;
+  conversation_id: string;
+  nom: string;
+  couleur: string | null;
+  groupe: string | null;
+  /** « message privé », « a réagi 👍 »… */
+  sousTitre: string;
+  texte: string;
+};
+
+/** Message privé, ou réaction à l'un de ses messages, hors de vue. */
+export default function ToastChat({ notif, panneauOuvert, onOuvrir, onFermer }: {
+  notif: Notification; panneauOuvert: boolean; onOuvrir: () => void; onFermer: () => void;
 }) {
   // Le délai part à l'affichage et ne repart pas à chaque rendu du parent.
   const fermer = useRef(onFermer);
@@ -29,17 +40,17 @@ export default function ToastChat({ message, panneauOuvert, onOuvrir, onFermer }
       }}>
         <span className="bc" style={{
           width: 30, height: 30, borderRadius: "50%", border: "2px solid var(--ink)", flexShrink: 0,
-          background: message.auteur_couleur ?? couleurParDefaut(message.auteur_groupe),
+          background: notif.couleur ?? couleurParDefaut(notif.groupe),
           display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14,
-        }}>{message.auteur_nom.trim()[0]?.toUpperCase()}</span>
+        }}>{notif.nom.trim()[0]?.toUpperCase()}</span>
         <span style={{ minWidth: 0 }}>
           <span style={{ display: "block", fontSize: 12, fontWeight: 800 }}>
-            {message.auteur_nom} <span style={{ fontWeight: 600, color: "rgba(0,0,0,0.45)" }}>· message privé</span>
+            {notif.nom} <span style={{ fontWeight: 600, color: "rgba(0,0,0,0.45)" }}>· {notif.sousTitre}</span>
           </span>
           <span style={{
             display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
             fontSize: 13, lineHeight: 1.35, marginTop: 2, overflowWrap: "anywhere",
-          }}>{message.contenu}</span>
+          }}>{notif.texte}</span>
         </span>
       </button>
       <button onClick={onFermer} aria-label="Fermer la notification" style={{

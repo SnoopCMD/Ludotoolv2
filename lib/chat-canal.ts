@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useSyncExternalStore } from "react";
-import type { EvenementDirect } from "./chat";
+import type { EnvoiDirect, EvenementDirect } from "./chat";
 
 /**
  * Le direct de la messagerie, côté navigateur : **une seule** WebSocket par
@@ -106,6 +106,16 @@ function deconnecter() {
   changerEtat(false);
   document.removeEventListener("visibilitychange", relancer);
   window.removeEventListener("online", relancer);
+}
+
+/**
+ * Envoie un événement éphémère sur la WebSocket (réaction volante). Faux si
+ * le direct est coupé : l'événement est perdu, ce qui est voulu (rien
+ * d'éphémère ne mérite d'être rejoué plus tard).
+ */
+export function envoyerDirect(e: EnvoiDirect): boolean {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return false;
+  try { ws.send(JSON.stringify(e)); return true; } catch { return false; }
 }
 
 /** S'abonne au direct ; renvoie la fonction de désabonnement. */
