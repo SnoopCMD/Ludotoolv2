@@ -59,7 +59,7 @@ export default function PanneauChat() {
   const ailleurs = nonLus - (conv?.non_lus ?? 0);
 
   return (
-    <aside ref={panneau} aria-label="Messagerie" className="chat-panneau" data-style-reactions="verre" style={{
+    <aside ref={panneau} aria-label="Messagerie" className="chat-panneau" style={{
       position: "fixed", top: "var(--nav-h)", right: 0, bottom: 0,
       width: "min(400px, 100vw)", zIndex: 95,
       background: "var(--cream)", borderLeft: "3px solid var(--ink)",
@@ -480,26 +480,28 @@ function Bulle({ m, moi, moiId, prive, suite, couleur, menu, onMenu, onReagir, o
           )}
         </div>
         {m.reactions.length > 0 && !m.supprime && (
-          // Les pastilles mordent sur le bas de la bulle : l'effet de verre
-          // laisse deviner la bulle derrière.
+          // Une seule pastille de verre dépoli pour toutes les émotes, qui mord
+          // sur le bas de la bulle : le flou laisse deviner la bulle derrière.
           <div style={{
-            display: "flex", flexWrap: "wrap", gap: 4, marginTop: -8, padding: "0 8px",
-            position: "relative", zIndex: 1, justifyContent: moi ? "flex-end" : "flex-start",
+            display: "flex", marginTop: -8, padding: "0 8px", position: "relative", zIndex: 1,
+            justifyContent: moi ? "flex-end" : "flex-start", maxWidth: "100%",
           }}>
-            {m.reactions.map(r => {
-              const mienne = r.comptes.some(c => c.id === moiId);
-              const noms = r.comptes.map(c => c.id === moiId ? "toi" : c.nom).join(", ");
-              return (
-                <button key={r.emoji} onClick={() => onReagir(r.emoji)}
-                  title={`${noms} ${r.comptes.length > 1 ? "ont" : "a"} réagi ${r.emoji}${mienne ? " — cliquer pour retirer" : ""}`}
-                  aria-pressed={mienne} aria-label={`${r.emoji} ${r.comptes.length}, ${noms}`}
-                  className={`chat-reaction${mienne ? " mienne" : ""}${prive ? " seule" : ""}`}>
-                  <span>{r.emoji}</span>
-                  {/* À deux, le compteur n'apprend rien : l'émote suffit. */}
-                  {!prive && <span className="chat-reaction-n">{r.comptes.length}</span>}
-                </button>
-              );
-            })}
+            <div className={`chat-reactions${prive ? " seules" : ""}`}>
+              {m.reactions.map(r => {
+                const mienne = r.comptes.some(c => c.id === moiId);
+                const noms = r.comptes.map(c => c.id === moiId ? "toi" : c.nom).join(", ");
+                return (
+                  <button key={r.emoji} onClick={() => onReagir(r.emoji)}
+                    title={`${noms} ${r.comptes.length > 1 ? "ont" : "a"} réagi ${r.emoji}${mienne ? " — cliquer pour retirer" : ""}`}
+                    aria-pressed={mienne} aria-label={`${r.emoji} ${r.comptes.length}, ${noms}`}
+                    className={`chat-reaction${mienne ? " mienne" : ""}`}>
+                    <span>{r.emoji}</span>
+                    {/* À deux, le compteur n'apprend rien : l'émote suffit. */}
+                    {!prive && r.comptes.length > 1 && <span className="chat-reaction-n">{r.comptes.length}</span>}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         )}
         {m.etat === "echec" && (

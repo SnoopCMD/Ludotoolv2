@@ -399,33 +399,27 @@ body::before {
 .chat-barre-reactions { animation: chatBarre 0.12s ease-out; }
 .chat-emote { transition: transform 0.08s; }
 .chat-emote:hover { transform: scale(1.22); }
-.chat-reaction {
-  display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px;
-  border-radius: 12px; cursor: pointer; font-family: inherit; font-size: 13px; line-height: 1;
-  color: var(--ink); transition: transform 0.08s, background 0.12s;
+/* Une pastille de verre dépoli par message, toutes émotes dedans. */
+.chat-reactions {
+  display: inline-flex; flex-wrap: wrap; align-items: center; gap: 1px; padding: 2px;
+  border-radius: 14px; max-width: 100%;
+  background: rgba(255, 255, 255, 0.45);
+  border: 1px solid rgba(0, 0, 0, 0.10);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.10);
   -webkit-backdrop-filter: blur(8px) saturate(1.6); backdrop-filter: blur(8px) saturate(1.6);
 }
-.chat-reaction:active { transform: scale(0.92); }
+.chat-reaction {
+  display: inline-flex; align-items: center; gap: 3px; height: 22px; padding: 0 5px;
+  border: none; border-radius: 11px; background: transparent; cursor: pointer;
+  font-family: inherit; font-size: 13px; line-height: 1; color: var(--ink);
+  transition: transform 0.08s, background 0.12s;
+}
+.chat-reaction:hover { background: rgba(255, 255, 255, 0.6); }
+.chat-reaction:active { transform: scale(0.9); }
+/* Sa propre réaction : un léger voile, sans contour. */
+.chat-reaction.mienne { background: rgba(0, 0, 0, 0.08); }
+.chat-reaction.mienne:hover { background: rgba(0, 0, 0, 0.12); }
 .chat-reaction-n { font-size: 11px; font-weight: 800; }
-/* Discussion privée : l'émote seule, un peu plus grande. */
-.chat-reaction.seule { height: 28px; padding: 0 6px; font-size: 17px; border-radius: 14px; }
-
-/* Variante « flou » : verre dépoli, uni et discret. */
-[data-style-reactions="flou"] .chat-reaction {
-  background: rgba(255, 255, 255, 0.45);
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.10);
-}
-[data-style-reactions="flou"] .chat-reaction:hover { background: rgba(255, 255, 255, 0.65); }
-[data-style-reactions="flou"] .chat-reaction.mienne { border: 1.5px solid var(--ink); }
-
-/* Variante « verre » : reflet en haut, liseré clair, ombre douce. */
-[data-style-reactions="verre"] .chat-reaction {
-  background: linear-gradient(160deg, rgba(255, 255, 255, 0.75) 0%, rgba(255, 255, 255, 0.18) 55%, rgba(255, 255, 255, 0.35) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.85);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.95), inset 0 -1px 2px rgba(0, 0, 0, 0.06), 0 3px 8px rgba(0, 0, 0, 0.14);
-}
-[data-style-reactions="verre"] .chat-reaction:hover { background: rgba(255, 255, 255, 0.7); }
-[data-style-reactions="verre"] .chat-reaction.mienne {
-  box-shadow: 0 0 0 1.5px var(--ink), inset 0 1px 0 rgba(255, 255, 255, 0.95), 0 3px 8px rgba(0, 0, 0, 0.14);
-}
+/* Discussion privée : les émotes seules, un peu plus grandes. */
+.chat-reactions.seules { border-radius: 16px; }
+.chat-reactions.seules .chat-reaction { height: 26px; padding: 0 4px; font-size: 17px; border-radius: 13px; }
