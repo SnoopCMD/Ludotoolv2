@@ -346,7 +346,7 @@ function Fil({ conversation, prive, nomAutre }: { conversation: string; prive: b
                 return (
                   <Fragment key={m.etat ? `c-${m.client_id}` : m.id}>
                     {nouveauJour && <SeparateurJour iso={m.cree_le} />}
-                    <Bulle m={m} moi={m.auteur_id === compte.id} moiId={compte.id} suite={!!suite} couleur={couleurDe(m)}
+                    <Bulle m={m} moi={m.auteur_id === compte.id} moiId={compte.id} prive={prive} suite={!!suite} couleur={couleurDe(m)}
                       menu={menu === m.id && !m.etat} onMenu={o => setMenu(o ? m.id : null)} onReagir={e => conv.reagir(m, e)}
                       onSupprimer={() => conv.supprimer(m)} onReessayer={() => conv.reessayer(m)} onAbandonner={() => conv.abandonner(m)} />
                   </Fragment>
@@ -398,8 +398,10 @@ function SeparateurJour({ iso }: { iso: string }) {
   );
 }
 
-function Bulle({ m, moi, moiId, suite, couleur, menu, onMenu, onReagir, onSupprimer, onReessayer, onAbandonner }: {
+function Bulle({ m, moi, moiId, prive, suite, couleur, menu, onMenu, onReagir, onSupprimer, onReessayer, onAbandonner }: {
   m: MessageAffiche; moi: boolean; moiId: string; suite: boolean; couleur: string;
+  /** Discussion à deux : réactions sans compteur, un peu plus grandes. */
+  prive: boolean;
   /** Barre de réactions ouverte sur ce message (une seule à la fois dans le fil). */
   menu: boolean; onMenu: (ouvrir: boolean) => void;
   onReagir: (emoji: string) => void;
@@ -478,27 +480,28 @@ function Bulle({ m, moi, moiId, suite, couleur, menu, onMenu, onReagir, onSuppri
           )}
         </div>
         {m.reactions.length > 0 && !m.supprime && (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 4, justifyContent: moi ? "flex-end" : "flex-start" }}>
-            {m.reactions.map(r => {
-              const mienne = r.comptes.some(c => c.id === moiId);
-              const noms = r.comptes.map(c => c.id === moiId ? "toi" : c.nom).join(", ");
-              return (
-                <button key={r.emoji} onClick={() => onReagir(r.emoji)}
-                  title={`${noms} ${r.comptes.length > 1 ? "ont" : "a"} réagi ${r.emoji}${mienne ? " — cliquer pour retirer" : ""}`}
-                  aria-pressed={mienne} aria-label={`${r.emoji} ${r.comptes.length}, ${noms}`}
-                  className="chat-reaction" style={{
-                    display: "inline-flex", alignItems: "center", gap: 4, height: 24, padding: "0 7px",
-                    borderRadius: 12, cursor: "pointer", fontFamily: "inherit",
-                    background: mienne ? "var(--yellow)" : "var(--white)",
-                    border: mienne ? "2px solid var(--ink)" : "1.5px solid rgba(0,0,0,0.25)",
-                    boxShadow: mienne ? "1px 1px 0 var(--ink)" : "none",
-                    fontSize: 13, lineHeight: 1,
-                  }}>
-                  <span>{r.emoji}</span>
-                  <span style={{ fontSize: 11, fontWeight: 800 }}>{r.comptes.length}</span>
-                </button>
-              );
-            })}
+          // Une seule pastille de verre dépoli pour toutes les émotes, qui mord
+          // sur le bas de la bulle : le flou laisse deviner la bulle derrière.
+          <div style={{
+            display: "flex", marginTop: -8, padding: "0 8px", position: "relative", zIndex: 1,
+            justifyContent: moi ? "flex-end" : "flex-start", maxWidth: "100%",
+          }}>
+            <div className={`chat-reactions${prive ? " seules" : ""}`}>
+              {m.reactions.map(r => {
+                const mienne = r.comptes.some(c => c.id === moiId);
+                const noms = r.comptes.map(c => c.id === moiId ? "toi" : c.nom).join(", ");
+                return (
+                  <button key={r.emoji} onClick={() => onReagir(r.emoji)}
+                    title={`${noms} ${r.comptes.length > 1 ? "ont" : "a"} réagi ${r.emoji}${mienne ? " — cliquer pour retirer" : ""}`}
+                    aria-pressed={mienne} aria-label={`${r.emoji} ${r.comptes.length}, ${noms}`}
+                    className={`chat-reaction${mienne ? " mienne" : ""}`}>
+                    <span>{r.emoji}</span>
+                    {/* À deux, le compteur n'apprend rien : l'émote suffit. */}
+                    {!prive && r.comptes.length > 1 && <span className="chat-reaction-n">{r.comptes.length}</span>}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         )}
         {m.etat === "echec" && (
