@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import BoutonScan, { type RetourScan } from "./ScanCodeBarre";
+import { ETAPES_FAITES_SAUF_NOUVEAUTE } from "../lib/etapesAtelier";
 
 /** Le strict nécessaire pour recouper un scan avec le parc. */
 export type JeuVerif = {
@@ -76,7 +77,7 @@ const normaliserCode = (brut: string) => {
   return code;
 };
 
-const ETAPES_FAITES = { etape_nouveaute: 0, etape_plastifier: 1, etape_contenu: 1, etape_etiquette: 1, etape_equiper: 1, etape_encoder: 1, etape_notice: 1 };
+const ETAPES_FAITES = ETAPES_FAITES_SAUF_NOUVEAUTE;
 
 /** Signal sonore + vibration selon le verdict, pour qu'on n'ait pas à
  *  regarder l'écran entre deux boîtes : un bip bref si tout va bien, deux

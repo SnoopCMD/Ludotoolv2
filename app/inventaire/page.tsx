@@ -5,6 +5,7 @@ import NavBar from "../../components/NavBar";
 import { useIsMobile } from "../../lib/useIsMobile";
 import BoutonScan from "../../components/ScanCodeBarre";
 import VerificationScan from "../../components/VerificationScan";
+import { ETAPES_A_ZERO, ETAPES_FAITES_SAUF_NOUVEAUTE, etapeFaite, etapesDuJeu } from "../../lib/etapesAtelier";
 
 type JeuNote = { texte: string; rappel: boolean };
 
@@ -22,6 +23,7 @@ type JeuType = {
   etape_equiper?: boolean;
   etape_encoder?: boolean;
   etape_notice?: boolean;
+  etape_verification?: boolean;
   couleur?: string;
   mecanique?: string;
   nb_de_joueurs?: string;
@@ -149,12 +151,9 @@ const DureeGauge = ({ duree }: { duree?: string }) => {
 };
 
 const getProgression = (jeu: Partial<JeuType>) => {
-  const steps = [
-    jeu.etape_plastifier, jeu.etape_contenu, jeu.etape_etiquette,
-    jeu.etape_equiper, jeu.etape_encoder, jeu.etape_notice
-  ];
-  const done = steps.filter(Boolean).length;
-  return Math.round((done / 6) * 100);
+  const etapes = etapesDuJeu(jeu as Record<string, unknown>);
+  const done = etapes.filter(e => etapeFaite(jeu as Record<string, unknown>, e)).length;
+  return Math.round((done / etapes.length) * 100);
 };
 
 const normalizeStr = (str: string) => {
@@ -404,7 +403,7 @@ export default function InventairePage() {
 
   const fetchInventaire = async () => {
     setIsLoading(true);
-    const fields = 'id,nom,ean,code_syracuse,statut,is_double,etape_nouveaute,date_entree,date_sortie,etape_plastifier,etape_contenu,etape_etiquette,etape_equiper,etape_encoder,etape_notice,notes,notes_rappel';
+    const fields = 'id,nom,ean,code_syracuse,statut,is_double,etape_nouveaute,date_entree,date_sortie,etape_plastifier,etape_contenu,etape_etiquette,etape_equiper,etape_encoder,etape_notice,etape_verification,notes,notes_rappel';
     const toArr = (d: any) => Array.isArray(d) ? d : [];
     const [jeuxData, repsData, manqData, selData, catData] = await Promise.all([
       fetch(`/api/jeux?fields=${fields}`).then(r => r.json() as Promise<any>).then(toArr).catch(() => []),
@@ -429,6 +428,7 @@ export default function InventairePage() {
       etape_equiper: !!j.etape_equiper,
       etape_encoder: !!j.etape_encoder,
       etape_notice: !!j.etape_notice,
+      etape_verification: !!j.etape_verification,
     })) as JeuType[];
 
     const catMap = new Map();
@@ -1066,7 +1066,7 @@ export default function InventairePage() {
       }
 
       if (!item.isUpdateOnly) {
-        const etapesOk = { etape_nouveaute: 0, etape_plastifier: 1, etape_contenu: 1, etape_etiquette: 1, etape_equiper: 1, etape_encoder: 1, etape_notice: 1 };
+        const etapesOk = ETAPES_FAITES_SAUF_NOUVEAUTE;
         if (item.codes.length > 0) {
           for (let cIdx = 0; cIdx < item.codes.length; cIdx++) {
             const code = item.codes[cIdx];
@@ -1278,27 +1278,21 @@ export default function InventairePage() {
       ean: ficheJeu.ean,
       code_syracuse: "", 
       statut: "En préparation",
-      is_double: true,
-      etape_nouveaute: false, 
-      etape_plastifier: false,
-      etape_contenu: false,
-      etape_etiquette: false,
-      etape_equiper: false,
-      etape_encoder: false,
-      etape_notice: false
+      is_double: 1,
+      ...ETAPES_A_ZERO,
     };
 
-    const b = (v: boolean) => v ? 1 : 0;
     const res = await fetch('/api/jeux', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...newJeu, is_double: b(newJeu.is_double), etape_nouveaute: b(newJeu.etape_nouveaute), etape_plastifier: b(newJeu.etape_plastifier), etape_contenu: b(newJeu.etape_contenu), etape_etiquette: b(newJeu.etape_etiquette), etape_equiper: b(newJeu.etape_equiper), etape_encoder: b(newJeu.etape_encoder), etape_notice: b(newJeu.etape_notice) }),
+      body: JSON.stringify(newJeu),
     }).then(r => r.json() as Promise<any>).catch(() => ({ error: 'réseau' }));
     if (res.error) {
       alert("Erreur: " + res.error);
     } else {
       fetchInventaire();
-      const createdJeu = { ...newJeu, id: res.id };
+      // L'état local garde les étapes en booléens, comme fetchInventaire.
+      const createdJeu = { ...newJeu, is_double: true, ...Object.fromEntries(Object.keys(ETAPES_A_ZERO).map(k => [k, false])), id: res.id } as JeuType;
       const updatedCopies = [...ficheJeu.copies, createdJeu];
       setFicheJeu({ ...ficheJeu, copies: updatedCopies, activeCopyIndex: updatedCopies.length - 1, ...createdJeu });
       alert("Nouvel exemplaire créé !");
@@ -2814,11 +2808,14 @@ export default function InventairePage() {
                         <div style={{ height: "100%", background: "var(--orange)", width: `${getProgression(activeCopy)}%`, transition: "width 0.3s" }}></div>
                       </div>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                        {[{ id: 'etape_plastifier', label: 'Plastification' }, { id: 'etape_contenu', label: 'Contenu' }, { id: 'etape_etiquette', label: 'Étiquette' }, { id: 'etape_equiper', label: 'Équiper' }, { id: 'etape_encoder', label: 'Encoder' }, { id: 'etape_notice', label: 'Notice' }].map(step => (
-                          <span key={step.id} style={{ fontSize: 10, fontWeight: 800, padding: "2px 7px", borderRadius: 20, border: "1.5px solid var(--ink)", background: activeCopy[step.id as keyof typeof activeCopy] ? "var(--vert)" : "var(--white)" }}>
-                            {activeCopy[step.id as keyof typeof activeCopy] ? '✓' : '○'} {step.label}
-                          </span>
-                        ))}
+                        {etapesDuJeu(activeCopy as Record<string, unknown>).map(step => {
+                          const faite = etapeFaite(activeCopy as Record<string, unknown>, step);
+                          return (
+                            <span key={step.id} title={step.detail} style={{ fontSize: 10, fontWeight: 800, padding: "2px 7px", borderRadius: 20, border: "1.5px solid var(--ink)", background: faite ? "var(--vert)" : "var(--white)" }}>
+                              {faite ? '✓' : '○'} {step.num}. {step.nom}
+                            </span>
+                          );
+                        })}
                       </div>
                     </div>
                   )}
