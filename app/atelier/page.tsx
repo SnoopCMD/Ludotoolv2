@@ -6,6 +6,9 @@ import { useIsMobile } from "../../lib/useIsMobile";
 import { genererEanCustom } from "../../lib/eanCustom";
 import BoutonScan from "../../components/ScanCodeBarre";
 import ModalFicheAtelier, { type FocusFiche } from "../../components/ModalFicheAtelier";
+import ModalEditionTuto from "../../components/ModalEditionTuto";
+import { useCompte } from "../../components/AuthProvider";
+import { peutModifierTutos, type GesteTuto, type TutosAtelier } from "../../lib/tutosAtelier";
 import {
   ETAPES_ATELIER, CHAMPS_ETIQUETTE, type EtapeAtelier,
   etapeCourante, etapeConcerne, etapeFaite, etapesEnAvance, etiquetteComplete, jeuTermine, colonnesEtape, statutApres,
@@ -112,6 +115,11 @@ export default function Home() {
   const [modeGroupe, setModeGroupe] = useState(false);
   const [groupe, setGroupe] = useState<(string | number)[]>([]);
   const [isGroupeOpen, setIsGroupeOpen] = useState(false);
+  // Tutos des étapes (en base) ; seuls certains comptes peuvent les modifier.
+  const { compte } = useCompte();
+  const editeurTutos = peutModifierTutos(compte);
+  const [tutos, setTutos] = useState<TutosAtelier>({});
+  const [tutoEdite, setTutoEdite] = useState<EtapeAtelier | null>(null);
 
   const [isScanOpen,  setIsScanOpen]  = useState(false);
   const [scanQueue,   setScanQueue]   = useState<JeuType[]>([]);
@@ -221,7 +229,10 @@ export default function Home() {
     setNbDetachees(new Set((detData as any[]).map(d => String(d.nom_jeu ?? '').toLowerCase().trim())).size);
   };
 
-  useEffect(() => { fetchDashboardData(); fetchHistorique(); }, []);
+  useEffect(() => {
+    fetchDashboardData(); fetchHistorique();
+    fetch('/api/atelier-tutos').then(r => r.json() as Promise<any>).then(d => { if (d && !d.error) setTutos(d as TutosAtelier); }).catch(() => {});
+  }, []);
 
   const etapesVisuelles = ETAPES_ATELIER;
 
@@ -768,6 +779,7 @@ export default function Home() {
               {etapesVisuelles.map(etape => (
                 <Etagere key={etape.id} etape={etape} jeux={jeuxParEtape[etape.id]} isMobile={isMobile}
                   modeGroupe={modeGroupe} groupe={groupe}
+                  tuto={tutos[etape.id]} editeurTutos={editeurTutos} onEditerTuto={() => setTutoEdite(etape)}
                   onEntete={() => clicEnteteEtagere(etape.id)} onBoite={(j, e) => clicBoite(j, etape.id, e)} onFiche={ouvrirFiche} />
               ))}
               {jeuxPrets.length > 0 && (
@@ -839,6 +851,17 @@ export default function Home() {
       {isGroupeOpen && (
         <ModalValidationGroupe jeux={jeuxEnPrepa.filter(j => groupe.includes(j.id))} isMobile={isMobile}
           onFermer={() => setIsGroupeOpen(false)} onEnregistrer={enregistrerGroupe} />
+      )}
+
+      {/* ══ MODAL ÉDITION D'UN TUTO ══ */}
+      {tutoEdite && (
+        <ModalEditionTuto etape={tutoEdite} gestes={tutos[tutoEdite.id] ?? []} isMobile={isMobile}
+          onFermer={() => setTutoEdite(null)}
+          onEnregistre={gestes => setTutos(prev => {
+            const n = { ...prev };
+            if (gestes.length) n[tutoEdite.id] = gestes; else delete n[tutoEdite.id];
+            return n;
+          })} />
       )}
 
       {/* ══ MODAL VIGNETTE / ÉTIQUETTE ══ */}
@@ -1210,9 +1233,10 @@ function ModalCouleursReception({ reception, infos, isMobile, onChanger, onFerme
  * à cette étape posées sur sa planche. Cliquer sur l'en-tête ouvre la
  * validation ; cliquer sur une boîte l'ouvre avec ce jeu déjà coché.
  */
-function Etagere({ etape, jeux, isMobile, modeGroupe, groupe, onEntete, onBoite, onFiche }: {
+function Etagere({ etape, jeux, isMobile, modeGroupe, groupe, onEntete, onBoite, onFiche, tuto, editeurTutos, onEditerTuto }: {
   etape: EtapeAtelier; jeux: JeuType[]; isMobile: boolean;
   modeGroupe: boolean; groupe: (string | number)[];
+  tuto?: GesteTuto[]; editeurTutos: boolean; onEditerTuto: () => void;
   onEntete: () => void; onBoite: (jeu: JeuType, e: React.MouseEvent) => void;
   onFiche: (jeu: JeuType, focus: FocusFiche) => void;
 }) {
@@ -1220,7 +1244,7 @@ function Etagere({ etape, jeux, isMobile, modeGroupe, groupe, onEntete, onBoite,
   const tousPris = !vide && jeux.every(j => groupe.includes(j.id));
   const [tutoOuvert, setTutoOuvert] = useState(false);
   return (
-    <div style={{ background: etape.hex, border: '2.5px solid var(--ink)', borderRadius: 12, boxShadow: '4px 4px 0 rgba(0,0,0,0.4)', overflow: 'hidden', position: 'relative', opacity: vide ? 0.6 : 1 }}>
+    <div style={{ background: etape.hex, border: '2.5px solid var(--ink)', borderRadius: 12, boxShadow: '4px 4px 0 rgba(0,0,0,0.4)', overflow: 'hidden', position: 'relative' }}>
       <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(circle,rgba(0,0,0,0.07) 1px,transparent 1px)', backgroundSize: '10px 10px', pointerEvents: 'none' }} />
 
       {/* En-tête de l'étagère */}
@@ -1239,7 +1263,14 @@ function Etagere({ etape, jeux, isMobile, modeGroupe, groupe, onEntete, onBoite,
             </span>
           )}
         </button>
-        {etape.tuto && (
+        {editeurTutos && (
+          <button onClick={onEditerTuto} title={tuto?.length ? `Modifier le tuto de l'étape ${etape.num}` : `Ajouter un tuto à l'étape ${etape.num}`}
+            style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 5, fontFamily: 'inherit', fontSize: 12, fontWeight: 800, cursor: 'pointer',
+              border: '2px dashed var(--ink)', borderRadius: 20, padding: '4px 11px', color: 'var(--ink)', background: 'rgba(255,255,255,0.45)' }}>
+            ✏️ {isMobile ? '' : (tuto?.length ? 'Modifier' : 'Ajouter un tuto')}
+          </button>
+        )}
+        {!!tuto?.length && (
           <button onClick={() => setTutoOuvert(o => !o)} aria-expanded={tutoOuvert} title={tutoOuvert ? 'Replier le tuto' : `Comment faire l'étape ${etape.num}`}
             style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 5, fontFamily: 'inherit', fontSize: 12, fontWeight: 800, cursor: 'pointer',
               border: '2px solid var(--ink)', borderRadius: 20, padding: '4px 11px', color: tutoOuvert ? 'var(--white)' : 'var(--ink)',
@@ -1250,10 +1281,10 @@ function Etagere({ etape, jeux, isMobile, modeGroupe, groupe, onEntete, onBoite,
         <span className="pop-sticker" style={{ background: 'var(--ink)', color: 'var(--white)', fontSize: 13, flexShrink: 0 }}>{jeux.length}</span>
       </div>
 
-      {etape.tuto && tutoOuvert && <TutoEtape etape={etape} isMobile={isMobile} onFermer={() => setTutoOuvert(false)} />}
+      {!!tuto?.length && tutoOuvert && <TutoEtape etape={etape} gestes={tuto} isMobile={isMobile} onFermer={() => setTutoOuvert(false)} />}
 
-      {/* Les boîtes, posées sur la planche */}
-      <div style={{ position: 'relative' }}>
+      {/* Les boîtes, posées sur la planche (estompée quand elle est vide) */}
+      <div style={{ position: 'relative', opacity: vide ? 0.6 : 1 }}>
         <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 14, background: 'rgba(0,0,0,0.22)', borderTop: '2.5px solid var(--ink)' }} />
         <div style={{ display: 'flex', alignItems: 'flex-end', gap: isMobile ? 14 : 20, overflowX: 'auto', overflowY: 'hidden', padding: isMobile ? '14px 14px 10px' : '16px 22px 10px', minHeight: vide ? 56 : (isMobile ? 120 : 146), position: 'relative' }}>
           {vide ? (
@@ -1272,8 +1303,7 @@ function Etagere({ etape, jeux, isMobile, modeGroupe, groupe, onEntete, onBoite,
  * Le tuto d'une étape, déplié dans son étagère : les gestes dans l'ordre, chacun
  * avec son illustration.
  */
-function TutoEtape({ etape, isMobile, onFermer }: { etape: EtapeAtelier; isMobile: boolean; onFermer: () => void }) {
-  const gestes = etape.tuto ?? [];
+function TutoEtape({ etape, gestes, isMobile, onFermer }: { etape: EtapeAtelier; gestes: GesteTuto[]; isMobile: boolean; onFermer: () => void }) {
   // Illustrations carrées (1:1) ; une image d'un autre format y tient entière.
   const cote = isMobile ? 170 : 240;
   return (

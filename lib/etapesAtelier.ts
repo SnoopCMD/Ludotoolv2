@@ -13,9 +13,6 @@
  * après l'étape 6.
  */
 
-/** Une étape d'un tuto : une illustration (dans public/tutos) et ce qu'il faut faire. */
-export type EtapeTuto = { titre: string; texte?: string; image: string };
-
 export type EtapeAtelier = {
   /** Numéro affiché, de 1 à 7. */
   num: number;
@@ -29,17 +26,10 @@ export type EtapeAtelier = {
   hex: string;
   /** Étape réservée aux nouveautés (pas aux doubles). */
   nouveauteSeulement?: boolean;
-  /** Tuto illustré, dans l'ordre où l'on fait les gestes. */
-  tuto?: EtapeTuto[];
 };
 
 export const ETAPES_ATELIER: EtapeAtelier[] = [
-  { num: 1, id: "etape_plastifier",   colonnes: ["etape_plastifier", "etape_equiper"], nom: "Plastification et équiper", detail: "Plastification, code-barre et puce RFID",            hex: "#a8e063",
-    tuto: [
-      { titre: "Plastifier le haut de la boîte", texte: "Recouvrir le couvercle de film plastique.", image: "/tutos/etape1-1-plastifier.webp" },
-      { titre: "Coller le code-barre", texte: "En haut de la tranche gauche de la boîte.", image: "/tutos/etape1-2-code-barre.webp" },
-      { titre: "Coller la puce RFID", texte: "Au fond de la boîte, à l'intérieur.", image: "/tutos/etape1-3-puce-rfid.webp" },
-    ] },
+  { num: 1, id: "etape_plastifier",   colonnes: ["etape_plastifier", "etape_equiper"], nom: "Plastification et équiper", detail: "Plastification, code-barre et puce RFID",            hex: "#a8e063" },
   { num: 2, id: "etape_encoder",      colonnes: ["etape_encoder"],      nom: "Encoder",                   detail: "Encodage de la puce",                                 hex: "#f87171" },
   { num: 3, id: "etape_verification", colonnes: ["etape_verification"], nom: "Vérification et contenu",   detail: "Vérification des pièces et création du contenu sur LudoTool", hex: "#2dd4bf" },
   { num: 4, id: "etape_contenu",      colonnes: ["etape_contenu"],      nom: "Contenu",                   detail: "Impression et collage du contenu",                    hex: "#60a5fa" },
