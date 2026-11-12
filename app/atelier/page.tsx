@@ -108,6 +108,10 @@ export default function Home() {
   // Vignette / étiquette à compléter (pastilles 🖼 et 🏷)
   const [ficheOuverte, setFicheOuverte] = useState<{ jeu: JeuType; focus: FocusFiche } | null>(null);
   const ouvrirFiche = (jeu: JeuType, focus: FocusFiche) => setFicheOuverte({ jeu, focus });
+  // Validation groupée : on choisit des boîtes sur l'étagère, puis les étapes faites sur ces jeux.
+  const [modeGroupe, setModeGroupe] = useState(false);
+  const [groupe, setGroupe] = useState<(string | number)[]>([]);
+  const [isGroupeOpen, setIsGroupeOpen] = useState(false);
 
   const [isScanOpen,  setIsScanOpen]  = useState(false);
   const [scanQueue,   setScanQueue]   = useState<JeuType[]>([]);
@@ -454,6 +458,73 @@ export default function Home() {
     fetchDashboardData();
   };
 
+  // ── Validation groupée ──
+  const quitterModeGroupe = () => { setModeGroupe(false); setGroupe([]); setIsGroupeOpen(false); };
+  const basculerDansGroupe = (id: string | number) =>
+    setGroupe(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
+
+  /** Clic sur une boîte : en mode sélection (ou Ctrl/⌘ + clic), elle rejoint le groupe ; sinon on ouvre son étape. */
+  const clicBoite = (jeu: JeuType, etapeId: string, e: React.MouseEvent) => {
+    if (modeGroupe || e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      setModeGroupe(true);
+      basculerDansGroupe(jeu.id);
+    } else ouvrirEtape(etapeId, jeu.id);
+  };
+
+  /** En mode sélection, l'en-tête d'une étagère prend (ou retire) toutes ses boîtes. */
+  const clicEnteteEtagere = (etapeId: string) => {
+    if (!modeGroupe) { ouvrirEtape(etapeId); return; }
+    const ids = (jeuxParEtape[etapeId] ?? []).map(j => j.id);
+    const tous = ids.length > 0 && ids.every(id => groupe.includes(id));
+    setGroupe(prev => tous ? prev.filter(id => !ids.includes(id)) : [...new Set([...prev, ...ids])]);
+  };
+
+  const boutonGroupe = () => {
+    if (!modeGroupe) { setModeGroupe(true); return; }
+    if (groupe.length > 0) setIsGroupeOpen(true);
+  };
+
+  // Entrée ouvre la validation du groupe, Échap quitte le mode sélection.
+  useEffect(() => {
+    if (!modeGroupe || isGroupeOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+      if (e.key === 'Enter' && groupe.length > 0) { e.preventDefault(); setIsGroupeOpen(true); }
+      else if (e.key === 'Escape') quitterModeGroupe();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [modeGroupe, isGroupeOpen, groupe.length]);
+
+  /** Enregistre les étapes cochées / décochées dans la modal de validation groupée. */
+  const enregistrerGroupe = async (etats: Record<string, Record<string, boolean>>) => {
+    const aScanner: JeuType[] = [];
+    let erreurs = 0;
+    for (const jeu of jeuxEnPrepa.filter(j => groupe.includes(j.id))) {
+      const voulu = etats[String(jeu.id)];
+      if (!voulu) continue;
+      const maj: Record<string, number> = {};
+      for (const e of ETAPES_ATELIER) {
+        if (!etapeConcerne(jeu, e) || voulu[e.id] === undefined || voulu[e.id] === etapeFaite(jeu, e)) continue;
+        Object.assign(maj, colonnesEtape(e, voulu[e.id]));
+        if (e.num === 1 && voulu[e.id]) aScanner.push(jeu);
+      }
+      if (!Object.keys(maj).length) continue;
+      const ok = await fetch(`/api/jeux/${jeu.id}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...maj, statut: statutApres(jeu, maj) }),
+      }).then(r => r.ok).catch(() => false);
+      if (!ok) erreurs++;
+    }
+    quitterModeGroupe();
+    await fetchDashboardData();
+    if (erreurs) alert(`${erreurs} jeu${erreurs > 1 ? 'x n\'ont' : ' n\'a'} pas pu être enregistré${erreurs > 1 ? 's' : ''}.`);
+    // Étape 1 faite : le code-barre vient d'être collé, on scanne les codes Syracuse.
+    if (aScanner.length) { setScanQueue(aScanner); setScanIdx(0); setScanInput(""); setScanDone([]); setIsScanOpen(true); }
+  };
+
   const changerCouleurJeu = async (idJeu: string | number, ean: string, nom: string, nouvelleCouleur: string) => {
     setJeuxEnPrepa(prev => prev.map(j => j.id === idJeu ? { ...j, couleur: nouvelleCouleur } : j));
     await fetch('/api/catalogue', {
@@ -562,6 +633,8 @@ export default function Home() {
       <style>{`
         input[type="checkbox"].custom-cb { accent-color: #0d0d0d; width: 1.1rem; height: 1.1rem; cursor: pointer; }
         input[type="checkbox"].custom-cb:disabled { cursor: default; opacity: 0.5; }
+        .boite-jeu-choisie .boite-jeu-3d { transform: rotateX(-22deg) rotateY(-16deg) translateY(-10px) !important; filter: drop-shadow(0 0 0 var(--ink)) drop-shadow(0 6px 0 rgba(0,0,0,0.35)); }
+        .boite-jeu-choisie .boite-jeu-3d > span { outline: 3px solid var(--yellow); outline-offset: 0; }
         .pastille-fiche { transition: transform .12s; }
         .pastille-fiche:hover { transform: scale(1.25); box-shadow: 1px 1px 0 var(--ink); }
         .boite-jeu:hover .boite-jeu-3d { transform: rotateX(-22deg) rotateY(-16deg) translateY(-6px) !important; }
@@ -676,12 +749,26 @@ export default function Home() {
           <div style={{ position: 'relative', zIndex: 1 }}>
             <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 18, borderBottom: '3px solid rgba(255,255,255,0.1)', paddingBottom: 10 }}>
               <div className="bc" style={{ fontSize: 24, textTransform: 'uppercase', letterSpacing: '.04em', color: 'rgba(255,255,255,0.55)' }}>Préparations à faire</div>
-              <div style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.45)' }}>Dans l&apos;ordre : chaque jeu attend sur l&apos;étagère de sa prochaine étape.</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end', marginLeft: 'auto' }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: modeGroupe ? 'var(--yellow)' : 'rgba(255,255,255,0.45)' }}>
+                  {modeGroupe
+                    ? `${groupe.length} jeu${groupe.length > 1 ? 'x' : ''} sélectionné${groupe.length > 1 ? 's' : ''} · clique sur les boîtes ou un en-tête d'étagère${isMobile ? '' : ', Entrée pour valider, Échap pour annuler'}`
+                    : `Dans l'ordre : chaque jeu attend sur l'étagère de sa prochaine étape.${isMobile ? '' : ' Ctrl + clic pour sélectionner.'}`}
+                </span>
+                {modeGroupe && (
+                  <button className="pop-btn" onClick={quitterModeGroupe} style={{ background: 'var(--white)', fontSize: 13, padding: '6px 12px' }}>Annuler</button>
+                )}
+                <button className="pop-btn" onClick={boutonGroupe} disabled={modeGroupe && groupe.length === 0}
+                  style={{ background: modeGroupe ? 'var(--yellow)' : 'var(--white)', fontSize: 13, padding: '6px 14px', opacity: modeGroupe && groupe.length === 0 ? 0.5 : 1 }}>
+                  {modeGroupe ? `✓ Valider (${groupe.length})` : '☑ Validation'}
+                </button>
+              </div>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: isMobile ? 12 : 14 }}>
               {etapesVisuelles.map(etape => (
                 <Etagere key={etape.id} etape={etape} jeux={jeuxParEtape[etape.id]} isMobile={isMobile}
-                  onOuvrir={jeuId => ouvrirEtape(etape.id, jeuId)} onFiche={ouvrirFiche} />
+                  modeGroupe={modeGroupe} groupe={groupe}
+                  onEntete={() => clicEnteteEtagere(etape.id)} onBoite={(j, e) => clicBoite(j, etape.id, e)} onFiche={ouvrirFiche} />
               ))}
               {jeuxPrets.length > 0 && (
                 <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, background: 'rgba(168,224,99,0.15)', border: '2px dashed var(--vert)', borderRadius: 10, padding: '10px 12px' }}>
@@ -746,6 +833,12 @@ export default function Home() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ══ MODAL VALIDATION GROUPÉE ══ */}
+      {isGroupeOpen && (
+        <ModalValidationGroupe jeux={jeuxEnPrepa.filter(j => groupe.includes(j.id))} isMobile={isMobile}
+          onFermer={() => setIsGroupeOpen(false)} onEnregistrer={enregistrerGroupe} />
       )}
 
       {/* ══ MODAL VIGNETTE / ÉTIQUETTE ══ */}
@@ -1117,17 +1210,20 @@ function ModalCouleursReception({ reception, infos, isMobile, onChanger, onFerme
  * à cette étape posées sur sa planche. Cliquer sur l'en-tête ouvre la
  * validation ; cliquer sur une boîte l'ouvre avec ce jeu déjà coché.
  */
-function Etagere({ etape, jeux, isMobile, onOuvrir, onFiche }: {
-  etape: EtapeAtelier; jeux: JeuType[]; isMobile: boolean; onOuvrir: (jeuId?: string | number) => void;
+function Etagere({ etape, jeux, isMobile, modeGroupe, groupe, onEntete, onBoite, onFiche }: {
+  etape: EtapeAtelier; jeux: JeuType[]; isMobile: boolean;
+  modeGroupe: boolean; groupe: (string | number)[];
+  onEntete: () => void; onBoite: (jeu: JeuType, e: React.MouseEvent) => void;
   onFiche: (jeu: JeuType, focus: FocusFiche) => void;
 }) {
   const vide = jeux.length === 0;
+  const tousPris = !vide && jeux.every(j => groupe.includes(j.id));
   return (
     <div style={{ background: etape.hex, border: '2.5px solid var(--ink)', borderRadius: 12, boxShadow: '4px 4px 0 rgba(0,0,0,0.4)', overflow: 'hidden', position: 'relative', opacity: vide ? 0.6 : 1 }}>
       <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(circle,rgba(0,0,0,0.07) 1px,transparent 1px)', backgroundSize: '10px 10px', pointerEvents: 'none' }} />
 
       {/* En-tête de l'étagère */}
-      <button onClick={() => onOuvrir()} title={`Valider l'étape ${etape.num} : ${etape.detail}`}
+      <button onClick={onEntete} title={modeGroupe ? (tousPris ? 'Retirer toute l\'étagère de la sélection' : 'Sélectionner toute l\'étagère') : `Valider l'étape ${etape.num} : ${etape.detail}`}
         style={{ position: 'relative', width: '100%', display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 12, padding: isMobile ? '8px 12px 0' : '10px 16px 0',
           background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', color: 'var(--ink)' }}>
         <span className="bc" style={{ fontSize: isMobile ? 28 : 36, lineHeight: 1, flexShrink: 0 }}>{etape.num}</span>
@@ -1135,6 +1231,11 @@ function Etagere({ etape, jeux, isMobile, onOuvrir, onFiche }: {
           <span style={{ display: 'block', fontWeight: 800, fontSize: isMobile ? 13 : 15, textTransform: 'uppercase', letterSpacing: '.03em', lineHeight: 1.15 }}>{etape.nom}</span>
           <span style={{ display: 'block', fontSize: isMobile ? 11 : 12, fontWeight: 600, color: 'rgba(0,0,0,0.55)', lineHeight: 1.2 }}>{etape.detail}</span>
         </span>
+        {modeGroupe && !vide && (
+          <span style={{ fontSize: 12, fontWeight: 800, flexShrink: 0, background: tousPris ? 'var(--ink)' : 'rgba(255,255,255,0.6)', color: tousPris ? 'var(--white)' : 'var(--ink)', border: '2px solid var(--ink)', borderRadius: 20, padding: '3px 10px' }}>
+            {tousPris ? '✓ Toute l\'étagère' : '+ Toute l\'étagère'}
+          </span>
+        )}
         <span className="pop-sticker" style={{ background: 'var(--ink)', color: 'var(--white)', fontSize: 13, flexShrink: 0 }}>{jeux.length}</span>
       </button>
 
@@ -1144,7 +1245,10 @@ function Etagere({ etape, jeux, isMobile, onOuvrir, onFiche }: {
         <div style={{ display: 'flex', alignItems: 'flex-end', gap: isMobile ? 14 : 20, overflowX: 'auto', overflowY: 'hidden', padding: isMobile ? '14px 14px 10px' : '16px 22px 10px', minHeight: vide ? 56 : (isMobile ? 120 : 146), position: 'relative' }}>
           {vide ? (
             <span style={{ alignSelf: 'center', fontSize: 13, fontWeight: 700, color: 'rgba(0,0,0,0.4)', fontStyle: 'italic' }}>Étagère vide</span>
-          ) : jeux.map(j => <BoiteJeu key={j.id} jeu={j} isMobile={isMobile} onClick={() => onOuvrir(j.id)} onFiche={onFiche} />)}
+          ) : jeux.map(j => (
+            <BoiteJeu key={j.id} jeu={j} isMobile={isMobile} onClick={e => onBoite(j, e)} onFiche={onFiche}
+              modeGroupe={modeGroupe} selectionne={groupe.includes(j.id)} />
+          ))}
         </div>
       </div>
     </div>
@@ -1156,16 +1260,19 @@ function Etagere({ etape, jeux, isMobile, onOuvrir, onFiche }: {
  * du jeu avec son nom), tranche droite et dessus. Les pastilles restent à plat
  * par-dessus pour rester lisibles.
  */
-function BoiteJeu({ jeu, isMobile, onClick, onFiche }: {
-  jeu: JeuType; isMobile: boolean; onClick: () => void; onFiche: (jeu: JeuType, focus: FocusFiche) => void;
+function BoiteJeu({ jeu, isMobile, onClick, onFiche, modeGroupe = false, selectionne = false }: {
+  jeu: JeuType; isMobile: boolean; onClick: (e: React.MouseEvent) => void; onFiche: (jeu: JeuType, focus: FocusFiche) => void;
+  modeGroupe?: boolean; selectionne?: boolean;
 }) {
   const hex = hexCouleur(jeu.couleur);
   const fond = hex ?? '#e9e4d8';
   const w = isMobile ? 64 : 78, h = isMobile ? 82 : 100, d = isMobile ? 18 : 24;
   const face: React.CSSProperties = { position: 'absolute', border: '2px solid var(--ink)', boxSizing: 'border-box', backfaceVisibility: 'hidden' };
   return (
-    <button onClick={onClick} title={`${jeu.nom}${jeu.is_double ? ' (double)' : ''}`} className="boite-jeu"
-      style={{ position: 'relative', flexShrink: 0, width: w + d * 0.6, height: h + d * 0.4, padding: 0, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', perspective: 700 }}>
+    <button onClick={onClick} title={`${jeu.nom}${jeu.is_double ? ' (double)' : ''}`} className={`boite-jeu${selectionne ? ' boite-jeu-choisie' : ''}`}
+      aria-pressed={modeGroupe ? selectionne : undefined}
+      style={{ position: 'relative', flexShrink: 0, width: w + d * 0.6, height: h + d * 0.4, padding: 0, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', perspective: 700,
+        opacity: modeGroupe && !selectionne ? 0.7 : 1, transition: 'opacity .15s' }}>
       <span className="boite-jeu-3d" style={{ position: 'absolute', left: 0, bottom: 0, width: w, height: h, transformStyle: 'preserve-3d', transform: 'rotateX(-22deg) rotateY(-30deg)', transformOrigin: `50% 100% ${-d / 2}px`, transition: 'transform .18s ease' }}>
         {/* Face avant */}
         <span style={{ ...face, inset: 0, width: w, height: h, transform: `translateZ(${d / 2}px)`, background: jeu.image_url ? 'var(--white)' : fond, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 2 }}>
@@ -1183,6 +1290,11 @@ function BoiteJeu({ jeu, isMobile, onClick, onFiche }: {
       </span>
       {!!jeu.is_double && <span title="Double" style={{ position: 'absolute', top: 4, left: -6, zIndex: 2, ...pastilleStyle('var(--bleu)') }}>2×</span>}
       <PastillesJeu jeu={jeu} flottantes onFiche={onFiche} />
+      {modeGroupe && (
+        <span aria-hidden style={{ position: 'absolute', left: '50%', bottom: -4, transform: 'translateX(-50%)', zIndex: 3, width: 22, height: 22, borderRadius: '50%',
+          border: '2.5px solid var(--ink)', background: selectionne ? 'var(--ink)' : 'var(--white)', color: 'var(--yellow)', fontSize: 13, fontWeight: 900,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '2px 2px 0 rgba(0,0,0,0.35)' }}>{selectionne ? '✓' : ''}</span>
+      )}
     </button>
   );
 }
@@ -1223,4 +1335,143 @@ function PastillesJeu({ jeu, flottantes = false, onFiche }: {
   );
   if (flottantes) return <>{avance}{aFaire}</>;
   return <span style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>{avance}{aFaire}</span>;
+}
+
+// ─── Validation groupée ──────────────────────────────────────────────────────
+
+/**
+ * Les jeux choisis sur l'étagère, en lignes, et les étapes en colonnes. Chaque
+ * case se coche à la main ; l'en-tête d'une colonne valide cette étape et toutes
+ * les précédentes pour tous les jeux (un second clic, la colonne déjà pleine,
+ * la décoche). Rien n'est enregistré avant « Enregistrer ».
+ */
+function ModalValidationGroupe({ jeux, isMobile, onFermer, onEnregistrer }: {
+  jeux: JeuType[]; isMobile: boolean; onFermer: () => void;
+  onEnregistrer: (etats: Record<string, Record<string, boolean>>) => Promise<void>;
+}) {
+  const initial = () => Object.fromEntries(jeux.map(j => [String(j.id), Object.fromEntries(ETAPES_ATELIER.filter(e => etapeConcerne(j, e)).map(e => [e.id, etapeFaite(j, e)]))]));
+  const [etats, setEtats] = useState<Record<string, Record<string, boolean>>>(initial);
+  const [enCours, setEnCours] = useState(false);
+
+  const fait = (j: JeuType, e: EtapeAtelier) => !!etats[String(j.id)]?.[e.id];
+  const change = (j: JeuType, e: EtapeAtelier) => etapeConcerne(j, e) && fait(j, e) !== etapeFaite(j, e);
+  const nbChangements = jeux.reduce((n, j) => n + ETAPES_ATELIER.filter(e => change(j, e)).length, 0);
+
+  const basculer = (j: JeuType, e: EtapeAtelier) =>
+    setEtats(prev => ({ ...prev, [String(j.id)]: { ...prev[String(j.id)], [e.id]: !prev[String(j.id)]?.[e.id] } }));
+
+  const colonnePleine = (e: EtapeAtelier) => {
+    const concernes = jeux.filter(j => etapeConcerne(j, e));
+    return concernes.length > 0 && concernes.every(j => fait(j, e));
+  };
+
+  /** En-tête de colonne : l'étape et les précédentes pour tous ; colonne déjà pleine → on la décoche. */
+  const clicColonne = (e: EtapeAtelier) => {
+    const decocher = colonnePleine(e);
+    setEtats(prev => {
+      const n = { ...prev };
+      for (const j of jeux) {
+        const ligne = { ...n[String(j.id)] };
+        for (const x of ETAPES_ATELIER) {
+          if (!etapeConcerne(j, x)) continue;
+          if (decocher) { if (x.id === e.id) ligne[x.id] = false; }
+          else if (x.num <= e.num) ligne[x.id] = true;
+        }
+        n[String(j.id)] = ligne;
+      }
+      return n;
+    });
+  };
+
+  const fermer = () => { if (!nbChangements || confirm('Fermer sans enregistrer ?')) onFermer(); };
+  const enregistrer = async () => { setEnCours(true); await onEnregistrer(etats); setEnCours(false); };
+
+  const caseW = isMobile ? 40 : 64;
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'calc(var(--nav-h) + 12px) 12px 12px' }}
+      onClick={e => { if (e.target === e.currentTarget) fermer(); }}>
+      <div style={{ background: 'var(--cream)', border: '3px solid var(--ink)', borderRadius: 12, boxShadow: '8px 8px 0 var(--ink)', width: '100%', maxWidth: 1000, display: 'flex', flexDirection: 'column', maxHeight: 'calc(100dvh - var(--nav-h) - 36px)', overflow: 'hidden' }}>
+        <div style={{ padding: '16px 20px', borderBottom: '3px solid var(--ink)', background: 'var(--yellow)', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="bc" style={{ fontSize: 22, textTransform: 'uppercase' }}>Validation groupée</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'rgba(0,0,0,0.55)' }}>
+              {jeux.length} jeu{jeux.length > 1 ? 'x' : ''} · coche les étapes faites, ou clique sur une colonne pour la valider avec les précédentes
+            </div>
+          </div>
+          <button onClick={fermer} style={{ width: 32, height: 32, flexShrink: 0, background: 'var(--ink)', color: 'var(--white)', border: '2px solid var(--ink)', borderRadius: 6, fontWeight: 700, fontSize: 16, cursor: 'pointer' }}>✕</button>
+        </div>
+
+        <div style={{ flex: 1, overflow: 'auto', padding: isMobile ? 8 : 16 }}>
+          <table style={{ borderCollapse: 'separate', borderSpacing: 0, width: '100%', minWidth: (isMobile ? 130 : 220) + caseW * ETAPES_ATELIER.length }}>
+            <thead>
+              <tr>
+                <th style={{ position: 'sticky', top: 0, left: 0, zIndex: 3, background: 'var(--cream)', textAlign: 'left', padding: '0 8px 8px 4px', fontSize: 12, fontWeight: 800, textTransform: 'uppercase', color: 'rgba(0,0,0,0.45)', verticalAlign: 'bottom' }}>Jeu</th>
+                {ETAPES_ATELIER.map(e => {
+                  const pleine = colonnePleine(e);
+                  return (
+                    <th key={e.id} style={{ position: 'sticky', top: 0, zIndex: 2, background: 'var(--cream)', padding: '0 3px 8px', width: caseW, verticalAlign: 'bottom' }}>
+                      <button onClick={() => clicColonne(e)}
+                        title={pleine ? `Décocher l'étape ${e.num} pour tous` : `Valider les étapes 1 à ${e.num} pour tous : ${e.detail}`}
+                        style={{ width: '100%', minHeight: isMobile ? 44 : 64, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2,
+                          background: e.hex, border: '2.5px solid var(--ink)', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', color: 'var(--ink)', padding: '4px 2px',
+                          boxShadow: pleine ? 'inset 0 0 0 2px var(--ink)' : '2px 2px 0 var(--ink)' }}>
+                        <span className="bc" style={{ fontSize: isMobile ? 18 : 22, lineHeight: 1 }}>{e.num}</span>
+                        {!isMobile && <span style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', lineHeight: 1.1, textAlign: 'center' }}>{e.nom}</span>}
+                        <span style={{ fontSize: 10, fontWeight: 900 }}>{pleine ? '✓ tous' : '→ tous'}</span>
+                      </button>
+                    </th>
+                  );
+                })}
+              </tr>
+            </thead>
+            <tbody>
+              {jeux.map(j => (
+                <tr key={j.id}>
+                  <td style={{ position: 'sticky', left: 0, zIndex: 1, background: 'var(--cream)', padding: '5px 8px 5px 4px', borderTop: '1.5px solid var(--cream2)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                      <span style={{ width: 28, height: 36, flexShrink: 0, borderRadius: 3, border: '2px solid var(--ink)', overflow: 'hidden', background: hexCouleur(j.couleur) ?? '#e9e4d8', display: 'flex' }}>
+                        {j.image_url && <img src={j.image_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+                      </span>
+                      <span style={{ minWidth: 0 }}>
+                        <span style={{ display: 'block', fontWeight: 700, fontSize: isMobile ? 12 : 14, lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: isMobile ? 'normal' : 'nowrap', maxWidth: isMobile ? 110 : 260 }}>{j.nom}</span>
+                        {!!j.is_double && <span style={{ fontSize: 10, fontWeight: 800, color: 'rgba(0,0,0,0.45)' }}>Double</span>}
+                      </span>
+                    </div>
+                  </td>
+                  {ETAPES_ATELIER.map(e => {
+                    if (!etapeConcerne(j, e)) {
+                      return <td key={e.id} title="Pas pour un double" style={{ textAlign: 'center', borderTop: '1.5px solid var(--cream2)', color: 'rgba(0,0,0,0.25)', fontSize: 12, fontWeight: 800 }}>—</td>;
+                    }
+                    const coche = fait(j, e), modifie = change(j, e);
+                    return (
+                      <td key={e.id} style={{ textAlign: 'center', padding: '5px 3px', borderTop: '1.5px solid var(--cream2)' }}>
+                        <button onClick={() => basculer(j, e)} aria-pressed={coche}
+                          title={`${e.num}. ${e.nom}${modifie ? (coche ? ' : sera validée' : ' : sera décochée') : coche ? ' : déjà faite' : ''}`}
+                          style={{ width: isMobile ? 30 : 34, height: isMobile ? 30 : 34, borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', fontSize: 16, fontWeight: 900,
+                            border: modifie ? '2.5px dashed var(--ink)' : '2px solid var(--ink)',
+                            background: coche ? e.hex : 'var(--white)', color: 'var(--ink)',
+                            opacity: coche && !modifie ? 0.55 : 1, boxShadow: modifie ? '2px 2px 0 var(--ink)' : 'none' }}>
+                          {coche ? '✓' : ''}
+                        </button>
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div style={{ padding: '12px 20px', borderTop: '3px solid var(--ink)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: 'rgba(0,0,0,0.5)', flex: '1 1 220px' }}>
+            Cases pâles : déjà faites · cases en pointillés : modifiées.{nbChangements ? ` ${nbChangements} changement${nbChangements > 1 ? 's' : ''}.` : ''}
+          </span>
+          <button className="pop-btn pop-btn-outline" onClick={fermer}>Retour</button>
+          <button className="pop-btn pop-btn-dark" onClick={enregistrer} disabled={!nbChangements || enCours} style={{ opacity: !nbChangements ? 0.4 : 1 }}>
+            {enCours ? 'Enregistrement…' : '✓ Enregistrer'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
