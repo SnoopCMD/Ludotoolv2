@@ -647,6 +647,11 @@ export default function Home() {
         .boite-jeu-choisie .boite-jeu-3d { transform: rotateX(-22deg) rotateY(-16deg) translateY(-10px) !important; filter: drop-shadow(0 0 0 var(--ink)) drop-shadow(0 6px 0 rgba(0,0,0,0.35)); }
         .boite-jeu-choisie .boite-jeu-3d > span { outline: 3px solid var(--yellow); outline-offset: 0; }
         .pastille-fiche { transition: transform .12s; }
+        .bouton-tuto { opacity: .45; transition: opacity .15s, background .15s, color .15s; }
+        .bouton-tuto:hover, .bouton-tuto:focus-visible, .bouton-tuto.ouvert { opacity: 1; }
+        .tuto-tiroir { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows .35s ease, opacity .25s ease; }
+        .tuto-tiroir.ouvert { grid-template-rows: 1fr; opacity: 1; }
+        @media (prefers-reduced-motion: reduce) { .tuto-tiroir { transition: none; } }
         .pastille-fiche:hover { transform: scale(1.25); box-shadow: 1px 1px 0 var(--ink); }
         .boite-jeu:hover .boite-jeu-3d { transform: rotateX(-22deg) rotateY(-16deg) translateY(-6px) !important; }
         .reception-tuile .reception-retirer { opacity: 0; transition: opacity .15s; }
@@ -1271,17 +1276,23 @@ function Etagere({ etape, jeux, isMobile, modeGroupe, groupe, onEntete, onBoite,
           </button>
         )}
         {!!tuto?.length && (
-          <button onClick={() => setTutoOuvert(o => !o)} aria-expanded={tutoOuvert} title={tutoOuvert ? 'Replier le tuto' : `Comment faire l'étape ${etape.num}`}
-            style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 5, fontFamily: 'inherit', fontSize: 12, fontWeight: 800, cursor: 'pointer',
-              border: '2px solid var(--ink)', borderRadius: 20, padding: '4px 11px', color: tutoOuvert ? 'var(--white)' : 'var(--ink)',
-              background: tutoOuvert ? 'var(--ink)' : 'rgba(255,255,255,0.75)', boxShadow: tutoOuvert ? 'none' : '2px 2px 0 var(--ink)' }}>
-            📖 {isMobile ? 'Tuto' : (tutoOuvert ? 'Replier le tuto' : 'Tuto')}
-          </button>
+          <button onClick={() => setTutoOuvert(o => !o)} aria-expanded={tutoOuvert} className={`bouton-tuto${tutoOuvert ? ' ouvert' : ''}`}
+            title={tutoOuvert ? 'Replier le tuto' : `Comment faire l'étape ${etape.num}`} aria-label={tutoOuvert ? 'Replier le tuto' : `Tuto de l'étape ${etape.num}`}
+            style={{ flexShrink: 0, width: 28, height: 28, borderRadius: '50%', border: '2.5px solid var(--ink)', padding: 0, cursor: 'pointer', fontFamily: 'inherit',
+              fontSize: 15, fontWeight: 900, lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: tutoOuvert ? 'var(--ink)' : 'transparent', color: tutoOuvert ? 'var(--white)' : 'var(--ink)' }}>?</button>
         )}
         <span className="pop-sticker" style={{ background: 'var(--ink)', color: 'var(--white)', fontSize: 13, flexShrink: 0 }}>{jeux.length}</span>
       </div>
 
-      {!!tuto?.length && tutoOuvert && <TutoEtape etape={etape} gestes={tuto} isMobile={isMobile} onFermer={() => setTutoOuvert(false)} />}
+      {!!tuto?.length && (
+        // Glissement : la ligne de grille passe de 0 à la hauteur du contenu.
+        <div className={`tuto-tiroir${tutoOuvert ? ' ouvert' : ''}`} aria-hidden={!tutoOuvert} inert={!tutoOuvert}>
+          <div style={{ overflow: 'hidden', minHeight: 0 }}>
+            <TutoEtape etape={etape} gestes={tuto} isMobile={isMobile} onFermer={() => setTutoOuvert(false)} />
+          </div>
+        </div>
+      )}
 
       {/* Les boîtes, posées sur la planche (estompée quand elle est vide) */}
       <div style={{ position: 'relative', opacity: vide ? 0.6 : 1 }}>
@@ -1308,11 +1319,11 @@ function TutoEtape({ etape, gestes, isMobile, onFermer }: { etape: EtapeAtelier;
   const cote = isMobile ? 170 : 240;
   return (
     <div style={{ position: 'relative', margin: isMobile ? '10px 10px 4px' : '12px 16px 6px', background: 'var(--cream)', border: '2.5px solid var(--ink)', borderRadius: 12, boxShadow: '4px 4px 0 rgba(0,0,0,0.35)', padding: isMobile ? '12px 10px' : '14px 18px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 2 }}>
         <span className="bc" style={{ fontSize: isMobile ? 16 : 19, textTransform: 'uppercase', flex: 1, minWidth: 0 }}>📖 Tuto · étape {etape.num}</span>
         <button onClick={onFermer} title="Replier le tuto" style={{ width: 28, height: 28, flexShrink: 0, background: 'var(--ink)', color: 'var(--white)', border: '2px solid var(--ink)', borderRadius: 6, fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>✕</button>
       </div>
-      <ol style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', alignItems: 'stretch', gap: isMobile ? 10 : 6, overflowX: 'auto', paddingBottom: 4 }}>
+      <ol style={{ listStyle: 'none', margin: 0, display: 'flex', alignItems: 'stretch', gap: isMobile ? 10 : 6, overflowX: 'auto', padding: '12px 4px 4px 12px' }}>
         {gestes.map((g, i) => (
           <li key={g.image} style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 10 : 6, flex: isMobile ? '0 0 auto' : '1 1 0', minWidth: isMobile ? cote + 30 : 0 }}>
             <figure style={{ margin: 0, flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, textAlign: 'center' }}>
