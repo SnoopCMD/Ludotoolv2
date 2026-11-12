@@ -5,6 +5,7 @@ import NavBar from "../../components/NavBar";
 import { useIsMobile } from "../../lib/useIsMobile";
 import { genererEanCustom } from "../../lib/eanCustom";
 import BoutonScan from "../../components/ScanCodeBarre";
+import ModalFicheAtelier, { type FocusFiche } from "../../components/ModalFicheAtelier";
 import {
   ETAPES_ATELIER, CHAMPS_ETIQUETTE, type EtapeAtelier,
   etapeCourante, etapeConcerne, etapeFaite, etapesEnAvance, etiquetteComplete, jeuTermine, colonnesEtape, statutApres,
@@ -104,6 +105,9 @@ export default function Home() {
   const [jeuxSelectionnes, setJeuxSelectionnes] = useState<(string | number)[]>([]);
 
   const [rechercheEtape, setRechercheEtape] = useState("");
+  // Vignette / étiquette à compléter (pastilles 🖼 et 🏷)
+  const [ficheOuverte, setFicheOuverte] = useState<{ jeu: JeuType; focus: FocusFiche } | null>(null);
+  const ouvrirFiche = (jeu: JeuType, focus: FocusFiche) => setFicheOuverte({ jeu, focus });
 
   const [isScanOpen,  setIsScanOpen]  = useState(false);
   const [scanQueue,   setScanQueue]   = useState<JeuType[]>([]);
@@ -558,6 +562,8 @@ export default function Home() {
       <style>{`
         input[type="checkbox"].custom-cb { accent-color: #0d0d0d; width: 1.1rem; height: 1.1rem; cursor: pointer; }
         input[type="checkbox"].custom-cb:disabled { cursor: default; opacity: 0.5; }
+        .pastille-fiche { transition: transform .12s; }
+        .pastille-fiche:hover { transform: scale(1.25); box-shadow: 1px 1px 0 var(--ink); }
         .boite-jeu:hover .boite-jeu-3d { transform: rotateX(-22deg) rotateY(-16deg) translateY(-6px) !important; }
         .reception-tuile .reception-retirer { opacity: 0; transition: opacity .15s; }
         .reception-tuile:hover .reception-retirer { opacity: 1; }
@@ -675,7 +681,7 @@ export default function Home() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: isMobile ? 12 : 14 }}>
               {etapesVisuelles.map(etape => (
                 <Etagere key={etape.id} etape={etape} jeux={jeuxParEtape[etape.id]} isMobile={isMobile}
-                  onOuvrir={jeuId => ouvrirEtape(etape.id, jeuId)} />
+                  onOuvrir={jeuId => ouvrirEtape(etape.id, jeuId)} onFiche={ouvrirFiche} />
               ))}
               {jeuxPrets.length > 0 && (
                 <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, background: 'rgba(168,224,99,0.15)', border: '2px dashed var(--vert)', borderRadius: 10, padding: '10px 12px' }}>
@@ -724,7 +730,7 @@ export default function Home() {
                       <span style={{ fontWeight: 700, fontSize: 16, display: 'block' }}>{jeu.nom}</span>
                       <span style={{ fontSize: 13, color: 'rgba(0,0,0,0.4)' }}>EAN: {jeu.ean}</span>
                     </div>
-                    <PastillesJeu jeu={jeu} />
+                    <PastillesJeu jeu={jeu} onFiche={ouvrirFiche} />
                   </label>
                 ))
               }
@@ -740,6 +746,12 @@ export default function Home() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ══ MODAL VIGNETTE / ÉTIQUETTE ══ */}
+      {ficheOuverte && (
+        <ModalFicheAtelier jeu={ficheOuverte.jeu} focus={ficheOuverte.focus}
+          onFermer={() => setFicheOuverte(null)} onEnregistre={fetchDashboardData} />
       )}
 
       {/* ══ MODAL SCAN CODES SYRACUSE ══ */}
@@ -1105,8 +1117,9 @@ function ModalCouleursReception({ reception, infos, isMobile, onChanger, onFerme
  * à cette étape posées sur sa planche. Cliquer sur l'en-tête ouvre la
  * validation ; cliquer sur une boîte l'ouvre avec ce jeu déjà coché.
  */
-function Etagere({ etape, jeux, isMobile, onOuvrir }: {
+function Etagere({ etape, jeux, isMobile, onOuvrir, onFiche }: {
   etape: EtapeAtelier; jeux: JeuType[]; isMobile: boolean; onOuvrir: (jeuId?: string | number) => void;
+  onFiche: (jeu: JeuType, focus: FocusFiche) => void;
 }) {
   const vide = jeux.length === 0;
   return (
@@ -1131,7 +1144,7 @@ function Etagere({ etape, jeux, isMobile, onOuvrir }: {
         <div style={{ display: 'flex', alignItems: 'flex-end', gap: isMobile ? 14 : 20, overflowX: 'auto', overflowY: 'hidden', padding: isMobile ? '14px 14px 10px' : '16px 22px 10px', minHeight: vide ? 56 : (isMobile ? 120 : 146), position: 'relative' }}>
           {vide ? (
             <span style={{ alignSelf: 'center', fontSize: 13, fontWeight: 700, color: 'rgba(0,0,0,0.4)', fontStyle: 'italic' }}>Étagère vide</span>
-          ) : jeux.map(j => <BoiteJeu key={j.id} jeu={j} isMobile={isMobile} onClick={() => onOuvrir(j.id)} />)}
+          ) : jeux.map(j => <BoiteJeu key={j.id} jeu={j} isMobile={isMobile} onClick={() => onOuvrir(j.id)} onFiche={onFiche} />)}
         </div>
       </div>
     </div>
@@ -1143,7 +1156,9 @@ function Etagere({ etape, jeux, isMobile, onOuvrir }: {
  * du jeu avec son nom), tranche droite et dessus. Les pastilles restent à plat
  * par-dessus pour rester lisibles.
  */
-function BoiteJeu({ jeu, isMobile, onClick }: { jeu: JeuType; isMobile: boolean; onClick: () => void }) {
+function BoiteJeu({ jeu, isMobile, onClick, onFiche }: {
+  jeu: JeuType; isMobile: boolean; onClick: () => void; onFiche: (jeu: JeuType, focus: FocusFiche) => void;
+}) {
   const hex = hexCouleur(jeu.couleur);
   const fond = hex ?? '#e9e4d8';
   const w = isMobile ? 64 : 78, h = isMobile ? 82 : 100, d = isMobile ? 18 : 24;
@@ -1167,7 +1182,7 @@ function BoiteJeu({ jeu, isMobile, onClick }: { jeu: JeuType; isMobile: boolean;
         <span style={{ ...face, backfaceVisibility: 'visible', left: 0, top: 0, width: w, height: d, transformOrigin: '50% 0', transform: `translateZ(${d / 2}px) rotateX(-90deg)`, background: fond, filter: 'brightness(1.12)' }} />
       </span>
       {!!jeu.is_double && <span title="Double" style={{ position: 'absolute', top: 4, left: -6, zIndex: 2, ...pastilleStyle('var(--bleu)') }}>2×</span>}
-      <PastillesJeu jeu={jeu} flottantes />
+      <PastillesJeu jeu={jeu} flottantes onFiche={onFiche} />
     </button>
   );
 }
@@ -1181,12 +1196,14 @@ const pastilleStyle = (bg: string): React.CSSProperties => ({
  * Pastilles d'un jeu : les numéros des étapes déjà faites en avance, et ce qui
  * reste à remplir à côté des étapes (vignette, étiquette).
  */
-function PastillesJeu({ jeu, flottantes = false }: { jeu: JeuType; flottantes?: boolean }) {
+function PastillesJeu({ jeu, flottantes = false, onFiche }: {
+  jeu: JeuType; flottantes?: boolean; onFiche: (jeu: JeuType, focus: FocusFiche) => void;
+}) {
   const enAvance = etapesEnAvance(jeu);
   const manques = [
-    !jeu.image_url && { cle: 'vignette', icone: '🖼', titre: 'Vignette à ajouter' },
-    !jeu.etiquette_ok && { cle: 'etiquette', icone: '🏷', titre: "Infos d'étiquette à compléter" },
-  ].filter(Boolean) as { cle: string; icone: string; titre: string }[];
+    !jeu.image_url && { cle: 'vignette' as const, icone: '🖼', titre: 'Vignette à ajouter' },
+    !jeu.etiquette_ok && { cle: 'etiquette' as const, icone: '🏷', titre: "Infos d'étiquette à compléter" },
+  ].filter(Boolean) as { cle: FocusFiche; icone: string; titre: string }[];
   if (!enAvance.length && !manques.length) return null;
 
   const avance = enAvance.length > 0 && (
@@ -1196,7 +1213,12 @@ function PastillesJeu({ jeu, flottantes = false }: { jeu: JeuType; flottantes?: 
   );
   const aFaire = manques.length > 0 && (
     <span style={{ display: 'flex', gap: 2, ...(flottantes ? { position: 'absolute', bottom: -6, right: -6, zIndex: 2 } : {}) }}>
-      {manques.map(m => <span key={m.cle} title={m.titre} style={{ ...pastilleStyle('var(--white)'), fontSize: 10 }}>{m.icone}</span>)}
+      {manques.map(m => (
+        <span key={m.cle} role="button" tabIndex={0} title={`${m.titre} (cliquer pour remplir)`} className="pastille-fiche"
+          onClick={e => { e.preventDefault(); e.stopPropagation(); onFiche(jeu, m.cle); }}
+          onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); onFiche(jeu, m.cle); } }}
+          style={{ ...pastilleStyle('var(--white)'), fontSize: 10, cursor: 'pointer' }}>{m.icone}</span>
+      ))}
     </span>
   );
   if (flottantes) return <>{avance}{aFaire}</>;
