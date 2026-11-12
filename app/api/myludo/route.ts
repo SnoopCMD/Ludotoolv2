@@ -95,11 +95,34 @@ function pickBest(list: MlGame[], nom: string): MlGame | null {
   return best;
 }
 
+const MAX_CANDIDATS = 8;
+
+const imageDe = (g: MlGame) => g.image?.S160 || g.image?.S300 || g.image?.S80 || g.image?.jpg || null;
+const urlJeu = (g: { code: string; id: string }) => `${BASE}/#!/game/${g.code}-${g.id}`;
+
+/** Résumé d'un résultat de recherche, pour laisser choisir le bon jeu. */
+const candidat = (g: MlGame) => ({ id: g.id, code: g.code, title: g.title, edition: g.edition ?? null, image: imageDe(g), url: urlJeu(g) });
+
+/** Plus grand nombre d'une durée MyLudo (« 30 », 30 ou « 30 — 60 »), en minutes. */
+const dureeMax = (...valeurs: unknown[]) => {
+  const n = valeurs.flatMap(v => String(v ?? "").match(/\d+/g) ?? []).map(Number).filter(x => x > 0);
+  return n.length ? Math.max(...n) : null;
+};
+
+/**
+ * Cherche un jeu sur MyLudo et renvoie sa fiche.
+ * - `ean` puis `nom` : recherche par code-barres, puis par nom ;
+ * - `id` + `code` : fiche d'un jeu précis (choisi parmi les candidats).
+ * La réponse porte aussi `candidats` (les résultats de la recherche par nom) et
+ * `trouve_par` (« code-barres », « nom » ou « choix »).
+ */
 export async function GET(req: NextRequest) {
   const nom = req.nextUrl.searchParams.get("nom");
   const ean = req.nextUrl.searchParams.get("ean");
-  if (!nom && !ean) {
-    return NextResponse.json({ error: "Paramètre nom ou ean requis" }, { status: 400 });
+  const idChoisi = req.nextUrl.searchParams.get("id");
+  const codeChoisi = req.nextUrl.searchParams.get("code");
+  if (!nom && !ean && !idChoisi) {
+    return NextResponse.json({ error: "Paramètre nom, ean ou id requis" }, { status: 400 });
   }
 
   try {
@@ -107,8 +130,15 @@ export async function GET(req: NextRequest) {
 
     // 1. Trouver l'id du jeu — d'abord par code-barres (EAN), puis par le nom
     let game: MlGame | null = null;
+    let trouvePar: "code-barres" | "nom" | "choix" | null = null;
+    let liste: MlGame[] = [];
 
-    if (ean) {
+    if (idChoisi) {
+      game = { id: idChoisi, code: codeChoisi ?? "", title: "" };
+      trouvePar = "choix";
+    }
+
+    if (!game && ean) {
       const bcResp = await fetch(`${BASE}/views/search/datas.php`, {
         method: "POST",
         headers: { ...apiHeaders(session), "Content-Type": "application/x-www-form-urlencoded" },
@@ -120,21 +150,26 @@ export async function GET(req: NextRequest) {
         // Le endpoint code-barres peut renvoyer un résultat approximatif : on ne
         // l'accepte que s'il n'y a pas de nom à confronter, ou si son titre partage
         // au moins un mot significatif avec le nom demandé.
-        if (first?.id && (!nom || titlesRelated(nom, first.title))) game = first;
+        if (first?.id && (!nom || titlesRelated(nom, first.title))) { game = first; trouvePar = "code-barres"; }
       }
     }
 
-    if (!game && nom) {
+    // La recherche par nom sert aussi à proposer d'autres jeux si le premier n'est pas le bon.
+    if (nom && !idChoisi) {
       const url = `${BASE}/views/search/datas.php?type=search&tab=games&page=1&words=${encodeURIComponent(nom)}`;
       const sResp = await fetch(url, { headers: apiHeaders(session) });
       if (sResp.ok) {
         const data = await sResp.json().catch(() => null) as any;
-        if (Array.isArray(data?.list)) game = pickBest(data.list as MlGame[], nom);
+        if (Array.isArray(data?.list)) liste = (data.list as MlGame[]).filter(g => g?.id && g?.code);
       }
+      if (!game) { game = pickBest(liste, nom); if (game) trouvePar = "nom"; }
     }
+    // Le jeu retenu en tête, puis les autres résultats.
+    const candidats = [...(game && game.code ? [game] : []), ...liste.filter(g => g.id !== game?.id)]
+      .slice(0, MAX_CANDIDATS).map(candidat);
 
     if (!game) {
-      return NextResponse.json({ notFound: true, message: "Aucun jeu trouvé sur MyLudo" });
+      return NextResponse.json({ notFound: true, message: "Aucun jeu trouvé sur MyLudo", candidats });
     }
 
     // 2. Récupérer la fiche détaillée (joueurs, âge, durée, note)
@@ -145,6 +180,7 @@ export async function GET(req: NextRequest) {
     const detail = dResp.ok ? await dResp.json().catch(() => null) as any : null;
     const d = detail ?? game;
 
+    if (!game.code && d.code) game.code = d.code;
     const image =
       d.image?.jpg || d.image?.S300 || d.image?.S160 || d.image?.S80 || game.image?.S300 || null;
 
@@ -161,7 +197,7 @@ export async function GET(req: NextRequest) {
     else if (dur) temps = `${dur} min`;
 
     return NextResponse.json({
-      url: `${BASE}/#!/game/${game.code}-${game.id}`,
+      url: game.code ? urlJeu(game) : null,
       id: game.id,
       title: d.title ?? game.title,
       edition: d.edition ?? game.edition ?? null,
@@ -175,6 +211,9 @@ export async function GET(req: NextRequest) {
       note: d.rating?.game?.note ?? null,
       nb_de_joueurs: nbJoueurs,
       temps_de_jeu: temps,
+      duree_max: dureeMax(tMax, dur, tMin),
+      trouve_par: trouvePar,
+      candidats,
     });
   } catch (err) {
     console.error("[myludo]", err);

@@ -5,7 +5,7 @@ import dynamic from "next/dynamic";
 import { useIsMobile } from "../../lib/useIsMobile";
 import BoutonScan from "../../components/ScanCodeBarre";
 import { ETAPES_A_ZERO, statutApres } from "../../lib/etapesAtelier";
-import { MECANIQUES, TEMPS_DE_JEU_OPTIONS, dureeVersPalier, joueursDepuisMyLudo } from "../../lib/etiquetteJeu";
+import { MECANIQUES, TEMPS_DE_JEU_OPTIONS, joueursDepuisMyLudo, tempsDepuisMyLudo } from "../../lib/etiquetteJeu";
 
 // react-pdf uniquement côté navigateur : jamais dans le bundle serveur du worker
 const LienPDFEtiquettes = dynamic(() => import("../../components/LienPDFEtiquettes"), { ssr: false });
@@ -205,8 +205,7 @@ export default function EtiquettesPage() {
       if (!data || data.notFound || data.error) return;
 
       const joueurs = joueursDepuisMyLudo(data.players_min, data.players_max);
-      const dureeMin = Number(data.duration);
-      const temps = Number.isFinite(dureeMin) && dureeMin > 0 ? dureeVersPalier(dureeMin) : "";
+      const temps = tempsDepuisMyLudo(data);
 
       setEtiquettes(prev => ({
         ...prev, [couleurId]: prev[couleurId].map(e => {

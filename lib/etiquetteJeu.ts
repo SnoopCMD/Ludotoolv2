@@ -41,3 +41,18 @@ export function dureeVersPalier(minutes: number): string {
 /** Nombre de joueurs MyLudo au format de l'étiquette (« 2-5 », « 4 »). */
 export const joueursDepuisMyLudo = (min?: number | null, max?: number | null) =>
   min ? (max && max !== min ? `${min}-${max}` : `${min}`) : "";
+
+/**
+ * Palier de temps de jeu depuis une fiche MyLudo. La durée y est un nombre (30)
+ * ou une fourchette (« 30 — 60 ») : on prend le haut de la fourchette.
+ */
+export function tempsDepuisMyLudo(data: { duree_max?: unknown; duration?: unknown; time_max?: unknown } | null | undefined): string {
+  if (!data) return "";
+  const nombres = [data.duree_max, data.time_max, data.duration]
+    .flatMap(v => String(v ?? "").match(/\d+/g) ?? []).map(Number).filter(n => n > 0);
+  return nombres.length ? dureeVersPalier(Math.max(...nombres)) : "";
+}
+
+/** Recherche du jeu sur myludo.fr via un moteur de recherche, quand MyLudo ne l'a pas trouvé lui-même. */
+export const urlRechercheMyLudo = (nom: string) =>
+  `https://www.google.com/search?q=${encodeURIComponent(`site:myludo.fr ${nom}`)}`;

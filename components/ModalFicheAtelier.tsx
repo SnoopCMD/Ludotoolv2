@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { COULEURS_JEU } from "../lib/couleursJeux";
 import {
   MECANIQUES, TEMPS_DE_JEU_OPTIONS, COOP_VERSUS_OPTIONS,
-  etoilesMax, dureeVersPalier, joueursDepuisMyLudo,
+  etoilesMax, joueursDepuisMyLudo, tempsDepuisMyLudo, urlRechercheMyLudo,
 } from "../lib/etiquetteJeu";
 
 /**
@@ -31,6 +31,23 @@ const COULEURS = [
   { id: "vert", label: "Vert" }, { id: "rose", label: "Rose" }, { id: "bleu", label: "Bleu" },
   { id: "rouge", label: "Rouge" }, { id: "jaune", label: "Jaune" },
 ];
+
+/** Un jeu proposé par la recherche MyLudo. */
+type CandidatMyLudo = { id: string; code: string; title: string; edition: number | null; image: string | null; url: string };
+
+/** Réponse de /api/myludo. */
+type ResultatMyLudo = {
+  notFound?: boolean; error?: string;
+  id?: string; url?: string | null; title?: string; edition?: number | null; image?: string | null;
+  age?: string | null; players?: string | null; players_min?: number | string | null; players_max?: number | string | null;
+  duration?: unknown; duree_max?: number | null; note?: string | null; temps_de_jeu?: string | null;
+  trouve_par?: "code-barres" | "nom" | "choix" | null;
+  candidats?: CandidatMyLudo[];
+};
+
+/** Champs que MyLudo peut proposer. */
+type ChampMyLudo = "image_url" | "nb_de_joueurs" | "temps_de_jeu";
+const NOMS_CHAMPS: Record<ChampMyLudo, string> = { image_url: "vignette", nb_de_joueurs: "joueurs", temps_de_jeu: "temps" };
 
 const str = (v: unknown) => (v === null || v === undefined ? "" : String(v));
 
@@ -62,6 +79,12 @@ export default function ModalFicheAtelier({ jeu, focus, onFermer, onEnregistre }
   const [enCours, setEnCours] = useState<"myludo" | "photo" | "enregistrer" | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [imageCassee, setImageCassee] = useState(false);
+  // MyLudo : le jeu trouvé, les autres résultats, et les champs qu'il a remplis
+  // (ceux-là, choisir un autre jeu les remplace ; les autres ne sont que suggérés).
+  const [ml, setMl] = useState<ResultatMyLudo | null>(null);
+  const [candidats, setCandidats] = useState<CandidatMyLudo[]>([]);
+  const [voirCandidats, setVoirCandidats] = useState(false);
+  const [remplisParMl, setRemplisParMl] = useState<Set<ChampMyLudo>>(new Set());
   const refEtiquette = useRef<HTMLDivElement>(null);
   const refPhoto = useRef<HTMLInputElement>(null);
 
@@ -88,23 +111,58 @@ export default function ModalFicheAtelier({ jeu, focus, onFermer, onEnregistre }
   const modifie = !!fiche && (Object.keys(FICHE_VIDE) as (keyof Fiche)[]).some(k => fiche[k] !== initiale[k]);
   const fermer = () => { if (!modifie || confirm("Fermer sans enregistrer ?")) onFermer(); };
 
-  /** MyLudo : vignette si elle manque, joueurs et temps s'ils sont vides. */
-  const completerMyLudo = async () => {
+  /** Ce que MyLudo propose pour chaque champ. */
+  const propositions = (data: ResultatMyLudo | null): Partial<Record<ChampMyLudo, string>> => {
+    if (!data || data.notFound || data.error) return {};
+    return {
+      image_url: data.image ?? "",
+      nb_de_joueurs: joueursDepuisMyLudo(Number(data.players_min) || null, Number(data.players_max) || null),
+      temps_de_jeu: tempsDepuisMyLudo(data),
+    };
+  };
+
+  /**
+   * Cherche le jeu sur MyLudo (par code-barres puis par nom), ou charge un jeu
+   * choisi parmi les résultats. Remplit les champs vides, et ceux que MyLudo
+   * avait remplis pour un autre jeu ; les autres valeurs ne sont que suggérées.
+   */
+  const chercherMyLudo = async (choix?: CandidatMyLudo) => {
     if (!fiche) return;
     setEnCours("myludo"); setMessage(null);
-    const params = new URLSearchParams({ ean: jeu.ean, nom: jeu.nom });
-    const data = await fetch(`/api/myludo?${params}`).then(r => r.json() as Promise<any>).catch(() => null);
+    const params = choix ? new URLSearchParams({ id: choix.id, code: choix.code }) : new URLSearchParams({ ean: jeu.ean, nom: jeu.nom });
+    const data = await fetch(`/api/myludo?${params}`).then(r => r.json() as Promise<ResultatMyLudo>).catch(() => null);
     setEnCours(null);
-    if (!data || data.notFound || data.error) { setMessage("Jeu introuvable sur MyLudo."); return; }
-    const joueurs = joueursDepuisMyLudo(data.players_min, data.players_max);
-    const duree = Number(data.duration);
-    const remplis: string[] = [];
+    setVoirCandidats(false);
+    if (!choix) setCandidats(data?.candidats ?? []);
+    if (!data || data.error) { setMl(null); setMessage("MyLudo ne répond pas, réessaie dans un moment."); return; }
+    setMl(data);
+    if (data.notFound) return;
+
+    const props = propositions(data);
     const n = { ...fiche };
-    if (data.image && (!fiche.image_url || imageCassee)) { n.image_url = data.image; remplis.push("vignette"); setImageCassee(false); }
-    if (joueurs && !fiche.nb_de_joueurs.trim()) { n.nb_de_joueurs = joueurs; remplis.push("joueurs"); }
-    if (Number.isFinite(duree) && duree > 0 && !fiche.temps_de_jeu) { n.temps_de_jeu = dureeVersPalier(duree); remplis.push("temps"); }
+    const remplis = new Set<ChampMyLudo>();
+    for (const champ of Object.keys(props) as ChampMyLudo[]) {
+      const v = props[champ];
+      if (!v) continue;
+      const vide = !fiche[champ].trim() || (champ === "image_url" && imageCassee);
+      if (vide || remplisParMl.has(champ)) { n[champ] = v; remplis.add(champ); }
+    }
+    if (remplis.has("image_url")) setImageCassee(false);
     setFiche(n);
-    setMessage(remplis.length ? `MyLudo : ${remplis.join(", ")} complété${remplis.length > 1 ? "s" : ""}.` : "MyLudo n'a rien de plus à apporter.");
+    setRemplisParMl(remplis);
+    setMessage(remplis.size ? `Complété depuis MyLudo : ${[...remplis].map(c => NOMS_CHAMPS[c]).join(", ")}.` : "Rien de vide à compléter : les valeurs de MyLudo qui diffèrent sont proposées sous les champs.");
+  };
+
+  /** Valeur de MyLudo pour un champ, quand elle diffère de la saisie. */
+  const suggestion = (champ: ChampMyLudo) => {
+    const v = propositions(ml)[champ];
+    return v && fiche && v !== fiche[champ] ? v : null;
+  };
+  const utiliserSuggestion = (champ: ChampMyLudo) => {
+    const v = suggestion(champ);
+    if (!v) return;
+    maj(champ, v);
+    if (champ === "image_url") setImageCassee(false);
   };
 
   const choisirPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -172,9 +230,8 @@ export default function ModalFicheAtelier({ jeu, focus, onFermer, onEnregistre }
           <p style={{ padding: 40, textAlign: "center", color: "rgba(0,0,0,0.4)", fontWeight: 600 }}>Chargement…</p>
         ) : (
           <div style={{ flex: 1, overflowY: "auto", padding: 20, display: "flex", flexDirection: "column", gap: 22 }}>
-            <button onClick={completerMyLudo} disabled={enCours !== null} className="pop-btn" style={{ alignSelf: "flex-start", background: "var(--white)", fontSize: 13 }}>
-              {enCours === "myludo" ? "Recherche sur MyLudo…" : "✨ Compléter avec MyLudo"}
-            </button>
+            <PanneauMyLudo nom={jeu.nom} ml={ml} candidats={candidats} voirCandidats={voirCandidats} enCours={enCours === "myludo"} desactive={enCours !== null}
+              onChercher={() => chercherMyLudo()} onChoisir={c => chercherMyLudo(c)} onVoirCandidats={() => setVoirCandidats(v => !v)} />
             {message && <div style={{ fontSize: 13, fontWeight: 700, background: "var(--cream2)", border: "2px solid var(--ink)", borderRadius: 8, padding: "8px 12px" }}>{message}</div>}
 
             {/* ── Vignette ── */}
@@ -202,6 +259,11 @@ export default function ModalFicheAtelier({ jeu, focus, onFermer, onEnregistre }
                     )}
                   </div>
                   <input ref={refPhoto} type="file" accept="image/*" capture="environment" onChange={choisirPhoto} style={{ display: "none" }} />
+                  {suggestion("image_url") && (
+                    <Suggestion onUtiliser={() => utiliserSuggestion("image_url")}>
+                      <img src={suggestion("image_url")!} alt="" style={{ width: 28, height: 28, objectFit: "contain", borderRadius: 4, border: "1.5px solid var(--ink)", background: "var(--white)" }} /> vignette de MyLudo
+                    </Suggestion>
+                  )}
                 </div>
               </div>
             </section>
@@ -237,6 +299,7 @@ export default function ModalFicheAtelier({ jeu, focus, onFermer, onEnregistre }
                     <label style={libelle}>Joueurs</label>
                     <input className="pop-input" type="text" placeholder="2-6" value={fiche.nb_de_joueurs} onChange={e => maj("nb_de_joueurs", e.target.value)}
                       style={{ width: "100%", fontWeight: 700, ...manque(!fiche.nb_de_joueurs.trim()) }} />
+                    {suggestion("nb_de_joueurs") && <Suggestion onUtiliser={() => utiliserSuggestion("nb_de_joueurs")}>{suggestion("nb_de_joueurs")}</Suggestion>}
                   </div>
                 </div>
 
@@ -256,6 +319,7 @@ export default function ModalFicheAtelier({ jeu, focus, onFermer, onEnregistre }
                       <button key={t} onClick={() => maj("temps_de_jeu", fiche.temps_de_jeu === t ? "" : t)} style={{ ...choix(fiche.temps_de_jeu === t), padding: "6px 10px", fontSize: 13 }}>{t}</button>
                     ))}
                   </div>
+                  {suggestion("temps_de_jeu") && <Suggestion onUtiliser={() => utiliserSuggestion("temps_de_jeu")}>{suggestion("temps_de_jeu")} min</Suggestion>}
                 </div>
 
                 <div>
@@ -279,6 +343,91 @@ export default function ModalFicheAtelier({ jeu, focus, onFermer, onEnregistre }
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** Valeur de MyLudo proposée sous un champ qui en a déjà une autre. */
+function Suggestion({ children, onUtiliser }: { children: React.ReactNode; onUtiliser: () => void }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6, fontSize: 12, fontWeight: 700, color: "rgba(0,0,0,0.6)", flexWrap: "wrap" }}>
+      <span>MyLudo :</span>
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>{children}</span>
+      <button onClick={onUtiliser} style={{ fontFamily: "inherit", fontSize: 12, fontWeight: 800, cursor: "pointer", border: "1.5px solid var(--ink)", borderRadius: 12, padding: "1px 9px", background: "var(--white)" }}>Utiliser</button>
+    </div>
+  );
+}
+
+/**
+ * Le bouton MyLudo et ce qu'il a trouvé : le jeu retenu (et comment), un lien
+ * vers sa fiche, les autres résultats si ce n'est pas le bon, et une recherche
+ * sur le site quand MyLudo ne l'a pas trouvé.
+ */
+function PanneauMyLudo({ nom, ml, candidats, voirCandidats, enCours, desactive, onChercher, onChoisir, onVoirCandidats }: {
+  nom: string; ml: ResultatMyLudo | null; candidats: CandidatMyLudo[]; voirCandidats: boolean; enCours: boolean; desactive: boolean;
+  onChercher: () => void; onChoisir: (c: CandidatMyLudo) => void; onVoirCandidats: () => void;
+}) {
+  const lien: React.CSSProperties = { fontSize: 12, fontWeight: 800, color: "var(--ink)", border: "2px solid var(--ink)", borderRadius: 14, padding: "3px 10px", background: "var(--white)", textDecoration: "none", whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", gap: 4 };
+  const autres = candidats.filter(c => c.id !== ml?.id);
+  const trouve = ml && !ml.notFound && !ml.error;
+  const confiance = ml?.trouve_par === "code-barres"
+    ? { texte: "✓ Trouvé par le code-barre", fond: "var(--vert)" }
+    : ml?.trouve_par === "choix"
+      ? { texte: "Jeu choisi", fond: "var(--bleu)" }
+      : { texte: "Trouvé par le nom : vérifie que c'est le bon jeu", fond: "var(--orange)" };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <button onClick={onChercher} disabled={desactive} className="pop-btn" style={{ background: "var(--white)", fontSize: 13 }}>
+          {enCours ? "Recherche sur MyLudo…" : trouve ? "↻ Relancer MyLudo" : "✨ Compléter avec MyLudo"}
+        </button>
+        {!trouve && <a href={urlRechercheMyLudo(nom)} target="_blank" rel="noopener noreferrer" style={lien} title="Recherche Google limitée à myludo.fr">🔎 Chercher sur MyLudo ↗</a>}
+      </div>
+
+      {ml?.notFound && (
+        <div style={{ fontSize: 13, fontWeight: 700, background: "#fff5f5", border: "2px solid var(--rouge)", borderRadius: 8, padding: "8px 12px" }}>
+          {`MyLudo ne trouve pas « ${nom} ». Essaie le lien de recherche${autres.length ? ", ou un des jeux ci-dessous" : ""}.`}
+        </div>
+      )}
+
+      {trouve && (
+        <div style={{ display: "flex", gap: 12, alignItems: "center", background: "var(--white)", border: "2px solid var(--ink)", borderRadius: 10, padding: 10, flexWrap: "wrap" }}>
+          <div style={{ width: 54, height: 54, flexShrink: 0, borderRadius: 6, border: "1.5px solid var(--ink)", overflow: "hidden", background: "var(--cream2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            {ml.image ? <img src={ml.image} alt="" style={{ width: "100%", height: "100%", objectFit: "contain" }} /> : "🎲"}
+          </div>
+          <div style={{ flex: "1 1 200px", minWidth: 0 }}>
+            <div style={{ fontWeight: 800, fontSize: 15, lineHeight: 1.2 }}>{ml.title}{ml.edition ? <span style={{ fontWeight: 600, color: "rgba(0,0,0,0.5)" }}> · {ml.edition}</span> : null}</div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: "rgba(0,0,0,0.6)", marginTop: 2 }}>
+              {[ml.players && `👥 ${ml.players}`, ml.duration != null && ml.duration !== "" && `⏱ ${ml.duration} min`, ml.age && `🎂 ${ml.age}`, ml.note && `★ ${ml.note}`].filter(Boolean).join("  ·  ")}
+            </div>
+            <span style={{ display: "inline-block", marginTop: 5, fontSize: 11, fontWeight: 800, background: confiance.fond, border: "1.5px solid var(--ink)", borderRadius: 10, padding: "1px 8px" }}>{confiance.texte}</span>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
+            {ml.url && <a href={ml.url} target="_blank" rel="noopener noreferrer" style={lien}>Voir sur MyLudo ↗</a>}
+            <button onClick={onVoirCandidats} style={{ ...lien, cursor: "pointer", fontFamily: "inherit", background: voirCandidats ? "var(--cream2)" : "var(--white)" }}>
+              {voirCandidats ? "Fermer" : "Pas le bon jeu ?"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {(voirCandidats || ml?.notFound) && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {autres.map(c => (
+            <button key={c.id} onClick={() => onChoisir(c)} disabled={desactive}
+              style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 10px", background: "var(--white)", border: "2px solid var(--ink)", borderRadius: 8, cursor: "pointer", fontFamily: "inherit", textAlign: "left" }}>
+              <span style={{ width: 34, height: 34, flexShrink: 0, borderRadius: 4, overflow: "hidden", background: "var(--cream2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                {c.image ? <img src={c.image} alt="" style={{ width: "100%", height: "100%", objectFit: "contain" }} /> : "🎲"}
+              </span>
+              <span style={{ flex: 1, minWidth: 0, fontWeight: 700, fontSize: 13 }}>{c.title}{c.edition ? <span style={{ fontWeight: 600, color: "rgba(0,0,0,0.5)" }}> · {c.edition}</span> : null}</span>
+              <span style={{ fontSize: 12, fontWeight: 800 }}>Choisir</span>
+            </button>
+          ))}
+          {voirCandidats && !autres.length && <span style={{ fontSize: 12, fontWeight: 600, color: "rgba(0,0,0,0.5)" }}>MyLudo ne propose pas d&apos;autre jeu pour ce nom.</span>}
+          {trouve && <a href={urlRechercheMyLudo(nom)} target="_blank" rel="noopener noreferrer" style={{ ...lien, alignSelf: "flex-start" }} title="Recherche Google limitée à myludo.fr">🔎 Chercher sur MyLudo ↗</a>}
+        </div>
+      )}
     </div>
   );
 }
