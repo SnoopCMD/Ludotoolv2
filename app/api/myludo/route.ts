@@ -71,6 +71,15 @@ type MlGame = {
   time_min?: string; time_max?: string;
 };
 
+/** Ressemblance d'un titre avec le nom demandé : identique, contenu, mots en commun. */
+function scoreTitre(titre: string, nom: string): number {
+  const t = norm(titre), n = norm(nom);
+  if (t === n) return 100;
+  if (t.startsWith(n) || n.startsWith(t)) return 70;
+  if (t.includes(n) || n.includes(t)) return 50;
+  return titlesRelated(nom, titre) ? 20 : 0;
+}
+
 /** Choisit le meilleur résultat en comparant le titre normalisé au nom demandé */
 function pickBest(list: MlGame[], nom: string): MlGame | null {
   if (!list.length) return null;
@@ -155,14 +164,26 @@ export async function GET(req: NextRequest) {
     }
 
     // La recherche par nom sert aussi à proposer d'autres jeux si le premier n'est pas le bon.
+    // MyLudo trie ses résultats du plus récent au plus ancien : un jeu sorti il y a
+    // longtemps (« Azul » derrière ses extensions) peut manquer en page 1. Sans titre
+    // identique au nom, on lit donc aussi les pages 2 et 3.
     if (nom && !idChoisi) {
-      const url = `${BASE}/views/search/datas.php?type=search&tab=games&page=1&words=${encodeURIComponent(nom)}`;
-      const sResp = await fetch(url, { headers: apiHeaders(session) });
-      if (sResp.ok) {
+      const page = async (n: number): Promise<MlGame[]> => {
+        const url = `${BASE}/views/search/datas.php?type=search&tab=games&page=${n}&words=${encodeURIComponent(nom)}`;
+        const sResp = await fetch(url, { headers: apiHeaders(session) }).catch(() => null);
+        if (!sResp?.ok) return [];
         const data = await sResp.json().catch(() => null) as any;
-        if (Array.isArray(data?.list)) liste = (data.list as MlGame[]).filter(g => g?.id && g?.code);
+        return Array.isArray(data?.list) ? (data.list as MlGame[]).filter(g => g?.id && g?.code) : [];
+      };
+      liste = await page(1);
+      if (liste.length && !liste.some(g => norm(g.title) === norm(nom))) {
+        const suite = (await Promise.all([page(2), page(3)])).flat();
+        const vus = new Set(liste.map(g => g.id));
+        liste.push(...suite.filter(g => !vus.has(g.id) && vus.add(g.id)));
       }
       if (!game) { game = pickBest(liste, nom); if (game) trouvePar = "nom"; }
+      // Les plus ressemblants d'abord, puis l'ordre de MyLudo.
+      liste = liste.map((g, i) => ({ g, s: scoreTitre(g.title, nom), i })).sort((a, b) => b.s - a.s || a.i - b.i).map(x => x.g);
     }
     // Le jeu retenu en tête, puis les autres résultats.
     const candidats = [...(game && game.code ? [game] : []), ...liste.filter(g => g.id !== game?.id)]
