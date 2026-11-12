@@ -5,6 +5,10 @@ import NavBar from "../../components/NavBar";
 import { useIsMobile } from "../../lib/useIsMobile";
 import { genererEanCustom } from "../../lib/eanCustom";
 import BoutonScan from "../../components/ScanCodeBarre";
+import {
+  ETAPES_ATELIER, CHAMPS_ETIQUETTE, type EtapeAtelier,
+  etapeCourante, etapeConcerne, etapeFaite, etapesEnAvance, etiquetteComplete, jeuTermine, colonnesEtape, statutApres,
+} from "../../lib/etapesAtelier";
 
 const BarcodeIcon = () => (
   <svg width="22" height="16" viewBox="0 0 24 18" fill="none" stroke="black" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="mr-1.5 opacity-80">
@@ -25,8 +29,13 @@ type JeuType = {
   etape_encoder: boolean;
   etape_notice: boolean;
   etape_nouveaute: boolean;
+  etape_verification: boolean;
   couleur?: string;
-  [key: string]: string | number | boolean | undefined;
+  /** Vignette (jaquette) au catalogue. */
+  image_url?: string | null;
+  /** Les champs de l'étiquette sont-ils tous remplis au catalogue ? */
+  etiquette_ok?: boolean;
+  [key: string]: string | number | boolean | null | undefined;
 };
 
 type JeuAttenteType = {
@@ -51,14 +60,10 @@ type ReceptionEntreeType = {
   date_reception: string | null;
 };
 
-const defaultEtapes = {
-  etape_plastifier: false,
-  etape_contenu: false,
-  etape_etiquette: false,
-  etape_equiper: false,
-  etape_encoder: false,
-  etape_notice: false
-};
+// Étapes cochables à l'ajout, par identifiant d'étape (la nouveauté se fait dans l'atelier).
+const defaultEtapes: Record<string, boolean> = Object.fromEntries(
+  ETAPES_ATELIER.filter(e => !e.nouveauteSeulement).map(e => [e.id, false])
+);
 
 // Couleurs de pastille du catalogue (mêmes identifiants que l'inventaire et
 // lib/couleursJeux.ts) : « jaune » est la pastille orangée, il n'y a pas d'« orange ».
@@ -113,7 +118,6 @@ export default function Home() {
   const [editingEanIndex, setEditingEanIndex] = useState<number | null>(null);
 
   const [totalEnPrepa, setTotalEnPrepa] = useState(0);
-  const [comptesEtapes, setComptesEtapes] = useState<Record<string, number>>({});
 
   const [rechercheJeu, setRechercheJeu] = useState("");
   const [isSearchDropdownOpen, setIsSearchDropdownOpen] = useState(false);
@@ -179,24 +183,21 @@ export default function Home() {
     const jeuxBruts = (jeuxData as JeuType[]).sort((a, b) => a.nom.localeCompare(b.nom));
     const eans = [...new Set(jeuxBruts.map(j => j.ean))];
 
-    let colorMap: Record<string, string> = {};
+    const catMap: Record<string, Record<string, any>> = {};
     if (eans.length > 0) {
-      const catData = await fetch(`/api/catalogue?eans=${encodeURIComponent(eans.join(','))}&fields=ean,couleur`).then(r => r.json() as Promise<any>).then(d => Array.isArray(d) ? d : []).catch(() => []);
-      (catData as any[]).forEach(item => { if (item.couleur) colorMap[item.ean] = item.couleur; });
+      const champs = ['ean', 'couleur', 'image_url', ...CHAMPS_ETIQUETTE].join(',');
+      const catData = await fetch(`/api/catalogue?eans=${encodeURIComponent(eans.join(','))}&fields=${champs}`).then(r => r.json() as Promise<any>).then(d => Array.isArray(d) ? d : []).catch(() => []);
+      (catData as any[]).forEach(item => { catMap[item.ean] = item; });
     }
 
-    const jeux = jeuxBruts.map(j => ({ ...j, couleur: couleurNormalisee(colorMap[j.ean]) }));
+    const jeux = jeuxBruts.map(j => ({
+      ...j,
+      couleur: couleurNormalisee(catMap[j.ean]?.couleur),
+      image_url: catMap[j.ean]?.image_url || null,
+      etiquette_ok: etiquetteComplete(catMap[j.ean]),
+    }));
     setJeuxEnPrepa(jeux);
     setTotalEnPrepa(jeux.length);
-    setComptesEtapes({
-      etape_plastifier: jeux.filter(j => !j.etape_plastifier).length,
-      etape_contenu:    jeux.filter(j => !j.etape_contenu).length,
-      etape_etiquette:  jeux.filter(j => !j.etape_etiquette).length,
-      etape_equiper:    jeux.filter(j => !j.etape_equiper).length,
-      etape_encoder:    jeux.filter(j => !j.etape_encoder).length,
-      etape_notice:     jeux.filter(j => !j.etape_notice).length,
-      etape_nouveaute:  jeux.filter(j => !j.is_double && !j.etape_nouveaute).length,
-    });
 
     const toArr = (d: any) => Array.isArray(d) ? d : [];
     const [repsData, manqData, orphData, detData] = await Promise.all([
@@ -214,15 +215,15 @@ export default function Home() {
 
   useEffect(() => { fetchDashboardData(); fetchHistorique(); }, []);
 
-  const etapesVisuelles = [
-    { nom: "Plastification", id: "etape_plastifier", hex: '#a8e063' },
-    { nom: "Contenu",        id: "etape_contenu",    hex: '#60a5fa' },
-    { nom: "Étiquette",      id: "etape_etiquette",  hex: '#c084fc' },
-    { nom: "Équiper",        id: "etape_equiper",    hex: '#f472b6' },
-    { nom: "Encoder",        id: "etape_encoder",    hex: '#f87171' },
-    { nom: "Notice",         id: "etape_notice",     hex: '#fb923c' },
-    { nom: "Nouveauté",      id: "etape_nouveaute",  hex: '#facc15' },
-  ];
+  const etapesVisuelles = ETAPES_ATELIER;
+
+  // L'étagère : chaque jeu est posé à sa première étape non faite.
+  const jeuxParEtape: Record<string, JeuType[]> = Object.fromEntries(ETAPES_ATELIER.map(e => [e.id, [] as JeuType[]]));
+  const jeuxPrets: JeuType[] = [];
+  for (const j of jeuxEnPrepa) {
+    const e = etapeCourante(j);
+    if (e) jeuxParEtape[e.id].push(j); else jeuxPrets.push(j);
+  }
 
   const formatNum = (num: number) => num < 10 ? `0${num}` : num;
 
@@ -288,7 +289,7 @@ export default function Home() {
       if (i !== index) return jeu;
       let nouvellesEtapes = { ...jeu.etapes };
       if (nouveauType === "existant") {
-        nouvellesEtapes = { etape_plastifier: true, etape_contenu: true, etape_etiquette: true, etape_equiper: true, etape_encoder: true, etape_notice: true };
+        nouvellesEtapes = Object.fromEntries(Object.keys(defaultEtapes).map(k => [k, true]));
       } else if (jeu.typeAjout === "existant") {
         nouvellesEtapes = { ...defaultEtapes };
       }
@@ -309,21 +310,14 @@ export default function Home() {
   const construireJeuxAInserer = (liste: JeuAttenteType[]) => liste.map(jeu => {
     const isExistant = jeu.typeAjout === "existant";
     const isDouble   = jeu.typeAjout === "double";
-    const basesOk    = Object.values(jeu.etapes).every(Boolean);
-    const isTermine  = isExistant || (isDouble && basesOk);
-    const b = (v: boolean) => v ? 1 : 0;
-    return {
-      nom: jeu.nom, ean: jeu.ean,
-      statut: isTermine ? "En stock" : "En préparation",
-      is_double: b(isDouble || isExistant),
-      etape_nouveaute: 0,
-      etape_plastifier: b(isExistant || jeu.etapes.etape_plastifier),
-      etape_contenu:    b(isExistant || jeu.etapes.etape_contenu),
-      etape_etiquette:  b(isExistant || jeu.etapes.etape_etiquette),
-      etape_equiper:    b(isExistant || jeu.etapes.etape_equiper),
-      etape_encoder:    b(isExistant || jeu.etapes.etape_encoder),
-      etape_notice:     b(isExistant || jeu.etapes.etape_notice),
-    };
+    const colonnes: Record<string, number> = {};
+    for (const e of ETAPES_ATELIER) {
+      Object.assign(colonnes, colonnesEtape(e, !e.nouveauteSeulement && (isExistant || !!jeu.etapes[e.id])));
+    }
+    const is_double = isDouble || isExistant ? 1 : 0;
+    // Un existant est en stock d'office ; un double l'est s'il a déjà tout fait.
+    const statut = isExistant ? "En stock" : statutApres({ is_double, ...colonnes });
+    return { nom: jeu.nom, ean: jeu.ean, statut, is_double, ...colonnes };
   });
 
   const validerEtEnvoyer = async () => {
@@ -377,20 +371,15 @@ export default function Home() {
     fetchHistorique();
   };
 
-  const verifierSiTermine = (jeu: JeuType) => {
-    const bases = jeu.etape_plastifier && jeu.etape_contenu && jeu.etape_etiquette &&
-                  jeu.etape_equiper && jeu.etape_encoder && jeu.etape_notice;
-    return jeu.is_double ? bases : (bases && jeu.etape_nouveaute);
-  };
-
-  const toggleEtapeUnique = async (id: string | number, colonne: string, valeurActuelle: boolean) => {
+  const toggleEtapeUnique = async (id: string | number, etape: EtapeAtelier, valeurActuelle: boolean) => {
     const jeuActuel = jeuxEnPrepa.find(j => j.id === id);
     if (!jeuActuel) return;
-    if (colonne === 'etape_nouveaute' && jeuActuel.is_double) return;
+    if (!etapeConcerne(jeuActuel, etape)) return;
 
     const updatedVal = !valeurActuelle;
-    const updatedJeu = { ...jeuActuel, [colonne]: updatedVal };
-    const estFini = verifierSiTermine(updatedJeu);
+    const maj = colonnesEtape(etape, updatedVal);
+    const updatedJeu = { ...jeuActuel, ...Object.fromEntries(Object.keys(maj).map(k => [k, updatedVal])) } as JeuType;
+    const estFini = jeuTermine(updatedJeu);
     const newStatut = estFini ? "En stock" : "En préparation";
 
     if (estFini) { setJeuxEnPrepa(prev => prev.filter(j => j.id !== id)); setTotalEnPrepa(prev => prev - 1); }
@@ -399,29 +388,30 @@ export default function Home() {
     const res = await fetch(`/api/jeux/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ [colonne]: updatedVal ? 1 : 0, statut: newStatut }),
+      body: JSON.stringify({ ...maj, statut: newStatut }),
     }).then(r => r.json() as Promise<any>).catch(() => ({ error: 'réseau' }));
     if (res.error) alert("Erreur de synchronisation !");
     fetchDashboardData();
   };
 
   const validerSelectionEtape = async () => {
-    if (!etapeActive || jeuxSelectionnes.length === 0) return;
+    const etape = ETAPES_ATELIER.find(e => e.id === etapeActive);
+    if (!etape || jeuxSelectionnes.length === 0) return;
+    const maj = colonnesEtape(etape, true);
     const jeuxValides: JeuType[] = [];
     for (const id of jeuxSelectionnes) {
       const jeuActuel = jeuxEnPrepa.find(j => j.id === id);
       if (!jeuActuel) continue;
-      const updatedJeu = { ...jeuActuel, [etapeActive]: true };
-      const estFini = verifierSiTermine(updatedJeu);
       await fetch(`/api/jeux/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ [etapeActive]: 1, statut: estFini ? "En stock" : "En préparation" }),
+        body: JSON.stringify({ ...maj, statut: statutApres(jeuActuel, maj) }),
       });
       jeuxValides.push(jeuActuel);
     }
     setEtapeActive(null); setJeuxSelectionnes([]); fetchDashboardData();
-    if (etapeActive === 'etape_equiper' && jeuxValides.length > 0) {
+    // Étape 1 : le code-barre vient d'être collé, on scanne les codes Syracuse.
+    if (etape.num === 1 && jeuxValides.length > 0) {
       setScanQueue(jeuxValides); setScanIdx(0); setScanInput(""); setScanDone([]); setIsScanOpen(true);
     }
   };
@@ -446,11 +436,19 @@ export default function Home() {
   const toggleSelection = (id: string | number) => setJeuxSelectionnes(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
 
   const etapeActiveInfo = etapesVisuelles.find(e => e.id === etapeActive);
-  const jeuxPourEtapeActive = jeuxEnPrepa.filter(j => {
-    if (!etapeActive) return false;
-    if (etapeActive === 'etape_nouveaute' && j.is_double) return false;
-    return !j[etapeActive];
-  });
+  // Les étapes se font dans l'ordre : seuls les jeux arrivés à cette étape la proposent.
+  const jeuxPourEtapeActive = etapeActive ? jeuxParEtape[etapeActive] ?? [] : [];
+
+  const ouvrirEtape = (etapeId: string, jeuId?: string | number) => {
+    setEtapeActive(etapeId); setRechercheEtape(""); setJeuxSelectionnes(jeuId !== undefined ? [jeuId] : []);
+  };
+
+  /** Un jeu a tout fait mais est resté « En préparation » (étape cochée depuis une autre page). */
+  const mettreEnStock = async (jeu: JeuType) => {
+    setJeuxEnPrepa(prev => prev.filter(j => j.id !== jeu.id)); setTotalEnPrepa(prev => prev - 1);
+    await fetch(`/api/jeux/${jeu.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ statut: 'En stock' }) });
+    fetchDashboardData();
+  };
 
   const changerCouleurJeu = async (idJeu: string | number, ean: string, nom: string, nouvelleCouleur: string) => {
     setJeuxEnPrepa(prev => prev.map(j => j.id === idJeu ? { ...j, couleur: nouvelleCouleur } : j));
@@ -534,8 +532,8 @@ export default function Home() {
           const isNouv = etape.id === 'etape_nouveaute';
           const disabled = isExistant || isNouv;
           let checked = jeu.etapes[etape.id];
-          let label = etape.nom;
-          if (isExistant) { checked = !isNouv; label = isNouv ? "🚫 Pas une nouveauté" : etape.nom; }
+          let label = `${etape.num}. ${etape.nom}`;
+          if (isExistant) { checked = !isNouv; label = isNouv ? "🚫 Pas une nouveauté" : label; }
           else if (jeu.typeAjout === 'double' && isNouv) { checked = false; label = "🔄 Double"; }
           else if (isNouv) { checked = false; label = "🌟 Nouveauté (Atelier)"; }
           return (
@@ -560,6 +558,7 @@ export default function Home() {
       <style>{`
         input[type="checkbox"].custom-cb { accent-color: #0d0d0d; width: 1.1rem; height: 1.1rem; cursor: pointer; }
         input[type="checkbox"].custom-cb:disabled { cursor: default; opacity: 0.5; }
+        .boite-jeu:hover .boite-jeu-3d { transform: rotateX(-22deg) rotateY(-16deg) translateY(-6px) !important; }
         .reception-tuile .reception-retirer { opacity: 0; transition: opacity .15s; }
         .reception-tuile:hover .reception-retirer { opacity: 1; }
       `}</style>
@@ -665,25 +664,28 @@ export default function Home() {
           </div>
         </div>
 
-        {/* ── ÉTAPES ── */}
-        <div className="pop-card" style={{ background: 'var(--ink)', padding: isMobile ? '18px 16px' : '28px 32px', position: 'relative', overflow: 'hidden' }}>
+        {/* ── ÉTAGÈRE DES PRÉPARATIONS ── */}
+        <div className="pop-card" style={{ background: 'var(--ink)', padding: isMobile ? '18px 14px' : '28px 32px', position: 'relative', overflow: 'hidden' }}>
           <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(circle,rgba(255,255,255,0.05) 1px,transparent 1px)', backgroundSize: '16px 16px', pointerEvents: 'none' }} />
           <div style={{ position: 'relative', zIndex: 1 }}>
-            <div className="bc" style={{ fontSize: 24, textTransform: 'uppercase', letterSpacing: '.04em', color: 'rgba(255,255,255,0.55)', marginBottom: 18, borderBottom: '3px solid rgba(255,255,255,0.1)', paddingBottom: 10 }}>Préparations à faire</div>
-            {/* Sept étapes : trois par ligne sur téléphone. À sept colonnes
-                chaque carré ferait 40px de côté, chiffre compris. */}
-            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(3, 1fr)' : 'repeat(7, 1fr)', gap: isMobile ? 8 : 10 }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 18, borderBottom: '3px solid rgba(255,255,255,0.1)', paddingBottom: 10 }}>
+              <div className="bc" style={{ fontSize: 24, textTransform: 'uppercase', letterSpacing: '.04em', color: 'rgba(255,255,255,0.55)' }}>Préparations à faire</div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.45)' }}>Dans l&apos;ordre : chaque jeu attend sur l&apos;étagère de sa prochaine étape.</div>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: isMobile ? 12 : 14 }}>
               {etapesVisuelles.map(etape => (
-                <div key={etape.id}
-                  onClick={() => { setEtapeActive(etape.id); setRechercheEtape(""); setJeuxSelectionnes([]); }}
-                  style={{ background: etape.hex, border: '2.5px solid var(--ink)', borderRadius: 10, boxShadow: '4px 4px 0 rgba(0,0,0,0.4)', padding: isMobile ? '10px 10px' : '16px 14px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', aspectRatio: '1', cursor: 'pointer', transition: 'transform .12s, box-shadow .12s', position: 'relative', overflow: 'hidden' }}
-                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'translate(-2px,-2px)'; (e.currentTarget as HTMLElement).style.boxShadow = '6px 6px 0 rgba(0,0,0,0.4)'; }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = ''; (e.currentTarget as HTMLElement).style.boxShadow = '4px 4px 0 rgba(0,0,0,0.4)'; }}>
-                  <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(circle,rgba(0,0,0,0.07) 1px,transparent 1px)', backgroundSize: '10px 10px', pointerEvents: 'none' }} />
-                  <span style={{ fontWeight: 700, fontSize: isMobile ? 10 : 13, textTransform: 'uppercase', letterSpacing: '.04em', position: 'relative', zIndex: 1, lineHeight: 1.2 }}>{etape.nom}</span>
-                  <span className="bc" style={{ fontSize: isMobile ? 34 : 52, lineHeight: 1, letterSpacing: '-2px', position: 'relative', zIndex: 1 }}>{formatNum(comptesEtapes[etape.id] || 0)}</span>
-                </div>
+                <Etagere key={etape.id} etape={etape} jeux={jeuxParEtape[etape.id]} isMobile={isMobile}
+                  onOuvrir={jeuId => ouvrirEtape(etape.id, jeuId)} />
               ))}
+              {jeuxPrets.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, background: 'rgba(168,224,99,0.15)', border: '2px dashed var(--vert)', borderRadius: 10, padding: '10px 12px' }}>
+                  <span style={{ fontWeight: 800, fontSize: 13, color: 'var(--vert)', textTransform: 'uppercase', letterSpacing: '.05em' }}>✓ Prêts à sortir</span>
+                  {jeuxPrets.map(j => (
+                    <button key={j.id} onClick={() => mettreEnStock(j)} className="pop-btn" title="Toutes les étapes sont faites : passer en stock"
+                      style={{ background: 'var(--white)', fontSize: 12, padding: '4px 10px' }}>{j.nom} → En stock</button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -695,8 +697,12 @@ export default function Home() {
           <div style={{ ...S.modalBox, maxWidth: 860 }}>
             <div style={{ padding: '20px 24px', borderBottom: '3px solid var(--ink)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: etapeActiveInfo.hex }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <span className="bc" style={{ fontSize: 24, textTransform: 'uppercase' }}>{etapeActiveInfo.nom}</span>
-                <span className="pop-sticker" style={{ background: 'var(--ink)', color: 'var(--white)', fontSize: 13 }}>{jeuxPourEtapeActive.length} jeu(x)</span>
+                <span className="bc" style={{ fontSize: 34, lineHeight: 1 }}>{etapeActiveInfo.num}</span>
+                <div style={{ minWidth: 0 }}>
+                  <div className="bc" style={{ fontSize: 22, textTransform: 'uppercase', lineHeight: 1.1 }}>{etapeActiveInfo.nom}</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'rgba(0,0,0,0.6)' }}>{etapeActiveInfo.detail}</div>
+                </div>
+                <span className="pop-sticker" style={{ background: 'var(--ink)', color: 'var(--white)', fontSize: 13, flexShrink: 0 }}>{jeuxPourEtapeActive.length} jeu(x)</span>
               </div>
               <button style={S.closeBtn} onClick={() => { setEtapeActive(null); setRechercheEtape(""); }}>✕</button>
             </div>
@@ -708,16 +714,17 @@ export default function Home() {
             </div>
             <div style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 6 }}>
               {jeuxPourEtapeActive.length === 0 ? (
-                <p style={{ textAlign: 'center', color: 'rgba(0,0,0,0.4)', padding: '40px 0', fontSize: 15 }}>Tous les jeux ont validé cette étape !</p>
+                <p style={{ textAlign: 'center', color: 'rgba(0,0,0,0.4)', padding: '40px 0', fontSize: 15 }}>Aucun jeu n&apos;est arrivé à cette étape.</p>
               ) : jeuxPourEtapeActive
                 .filter(j => !rechercheEtape || j.nom.toLowerCase().includes(rechercheEtape.toLowerCase()) || j.ean.includes(rechercheEtape))
                 .map(jeu => (
                   <label key={jeu.id} className="pop-card" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', cursor: 'pointer', background: jeuxSelectionnes.includes(jeu.id) ? 'var(--cream2)' : 'var(--white)', boxShadow: jeuxSelectionnes.includes(jeu.id) ? '4px 4px 0 var(--ink)' : '2px 2px 0 var(--ink)' }}>
                     <input type="checkbox" className="custom-cb" checked={jeuxSelectionnes.includes(jeu.id)} onChange={() => toggleSelection(jeu.id)} />
-                    <div style={{ flex: 1 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
                       <span style={{ fontWeight: 700, fontSize: 16, display: 'block' }}>{jeu.nom}</span>
                       <span style={{ fontSize: 13, color: 'rgba(0,0,0,0.4)' }}>EAN: {jeu.ean}</span>
                     </div>
+                    <PastillesJeu jeu={jeu} />
                   </label>
                 ))
               }
@@ -824,14 +831,13 @@ export default function Home() {
                   </div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
                     {etapesVisuelles.map(etape => {
-                      const estFait = !!jeu[etape.id];
-                      const isNouv = etape.id === 'etape_nouveaute';
-                      const isDouble = isNouv && !!jeu.is_double;
+                      const estFait = etapeFaite(jeu, etape);
+                      const isDouble = !etapeConcerne(jeu, etape);
                       return (
-                        <button key={etape.id} disabled={isDouble}
-                          onClick={() => !isDouble && toggleEtapeUnique(jeu.id, etape.id, estFait)}
+                        <button key={etape.id} disabled={isDouble} title={etape.detail}
+                          onClick={() => !isDouble && toggleEtapeUnique(jeu.id, etape, estFait)}
                           style={{ background: estFait ? etape.hex : 'var(--cream2)', border: '2px solid var(--ink)', borderRadius: 6, padding: '4px 10px', fontSize: 13, fontWeight: 700, cursor: isDouble ? 'not-allowed' : 'pointer', opacity: isDouble ? 0.4 : 1, boxShadow: estFait ? '2px 2px 0 var(--ink)' : 'none', transition: 'all .1s' }}>
-                          {isDouble ? '🔄 Double' : estFait ? `✓ ${etape.nom}` : etape.nom}
+                          {isDouble ? '🔄 Double' : `${estFait ? '✓' : etape.num + '.'} ${etape.nom}`}
                         </button>
                       );
                     })}
@@ -1089,4 +1095,110 @@ function ModalCouleursReception({ reception, infos, isMobile, onChanger, onFerme
       </div>
     </div>
   );
+}
+
+// ─── Étagère des préparations ────────────────────────────────────────────────
+
+/**
+ * Une étagère par étape : un bloc de la couleur de l'étape, sur toute la
+ * largeur, avec son numéro et son nom en tête et les boîtes des jeux qui en sont
+ * à cette étape posées sur sa planche. Cliquer sur l'en-tête ouvre la
+ * validation ; cliquer sur une boîte l'ouvre avec ce jeu déjà coché.
+ */
+function Etagere({ etape, jeux, isMobile, onOuvrir }: {
+  etape: EtapeAtelier; jeux: JeuType[]; isMobile: boolean; onOuvrir: (jeuId?: string | number) => void;
+}) {
+  const vide = jeux.length === 0;
+  return (
+    <div style={{ background: etape.hex, border: '2.5px solid var(--ink)', borderRadius: 12, boxShadow: '4px 4px 0 rgba(0,0,0,0.4)', overflow: 'hidden', position: 'relative', opacity: vide ? 0.6 : 1 }}>
+      <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(circle,rgba(0,0,0,0.07) 1px,transparent 1px)', backgroundSize: '10px 10px', pointerEvents: 'none' }} />
+
+      {/* En-tête de l'étagère */}
+      <button onClick={() => onOuvrir()} title={`Valider l'étape ${etape.num} : ${etape.detail}`}
+        style={{ position: 'relative', width: '100%', display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 12, padding: isMobile ? '8px 12px 0' : '10px 16px 0',
+          background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', color: 'var(--ink)' }}>
+        <span className="bc" style={{ fontSize: isMobile ? 28 : 36, lineHeight: 1, flexShrink: 0 }}>{etape.num}</span>
+        <span style={{ minWidth: 0, flex: 1 }}>
+          <span style={{ display: 'block', fontWeight: 800, fontSize: isMobile ? 13 : 15, textTransform: 'uppercase', letterSpacing: '.03em', lineHeight: 1.15 }}>{etape.nom}</span>
+          <span style={{ display: 'block', fontSize: isMobile ? 11 : 12, fontWeight: 600, color: 'rgba(0,0,0,0.55)', lineHeight: 1.2 }}>{etape.detail}</span>
+        </span>
+        <span className="pop-sticker" style={{ background: 'var(--ink)', color: 'var(--white)', fontSize: 13, flexShrink: 0 }}>{jeux.length}</span>
+      </button>
+
+      {/* Les boîtes, posées sur la planche */}
+      <div style={{ position: 'relative' }}>
+        <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 14, background: 'rgba(0,0,0,0.22)', borderTop: '2.5px solid var(--ink)' }} />
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: isMobile ? 14 : 20, overflowX: 'auto', overflowY: 'hidden', padding: isMobile ? '14px 14px 10px' : '16px 22px 10px', minHeight: vide ? 56 : (isMobile ? 120 : 146), position: 'relative' }}>
+          {vide ? (
+            <span style={{ alignSelf: 'center', fontSize: 13, fontWeight: 700, color: 'rgba(0,0,0,0.4)', fontStyle: 'italic' }}>Étagère vide</span>
+          ) : jeux.map(j => <BoiteJeu key={j.id} jeu={j} isMobile={isMobile} onClick={() => onOuvrir(j.id)} />)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * La boîte d'un jeu, en 3D : face avant (vignette, ou boîte vierge de la couleur
+ * du jeu avec son nom), tranche droite et dessus. Les pastilles restent à plat
+ * par-dessus pour rester lisibles.
+ */
+function BoiteJeu({ jeu, isMobile, onClick }: { jeu: JeuType; isMobile: boolean; onClick: () => void }) {
+  const hex = hexCouleur(jeu.couleur);
+  const fond = hex ?? '#e9e4d8';
+  const w = isMobile ? 64 : 78, h = isMobile ? 82 : 100, d = isMobile ? 18 : 24;
+  const face: React.CSSProperties = { position: 'absolute', border: '2px solid var(--ink)', boxSizing: 'border-box', backfaceVisibility: 'hidden' };
+  return (
+    <button onClick={onClick} title={`${jeu.nom}${jeu.is_double ? ' (double)' : ''}`} className="boite-jeu"
+      style={{ position: 'relative', flexShrink: 0, width: w + d * 0.6, height: h + d * 0.4, padding: 0, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', perspective: 700 }}>
+      <span className="boite-jeu-3d" style={{ position: 'absolute', left: 0, bottom: 0, width: w, height: h, transformStyle: 'preserve-3d', transform: 'rotateX(-22deg) rotateY(-30deg)', transformOrigin: `50% 100% ${-d / 2}px`, transition: 'transform .18s ease' }}>
+        {/* Face avant */}
+        <span style={{ ...face, inset: 0, width: w, height: h, transform: `translateZ(${d / 2}px)`, background: jeu.image_url ? 'var(--white)' : fond, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 2 }}>
+          {jeu.image_url ? (
+            <img src={jeu.image_url} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          ) : (
+            <span style={{ padding: '4px 5px', fontSize: isMobile ? 10 : 11, fontWeight: 800, lineHeight: 1.15, color: 'var(--ink)', textAlign: 'center', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 5, WebkitBoxOrient: 'vertical', hyphens: 'auto', overflowWrap: 'anywhere' }} lang="fr">{jeu.nom}</span>
+          )}
+          {jeu.image_url && hex && <span style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 6, background: hex, borderTop: '1.5px solid var(--ink)' }} />}
+        </span>
+        {/* Tranche droite */}
+        <span style={{ ...face, top: 0, left: (w - d) / 2, width: d, height: h, transform: `rotateY(90deg) translateZ(${w / 2}px)`, background: fond, filter: 'brightness(0.72)' }} />
+        {/* Dessus */}
+        <span style={{ ...face, backfaceVisibility: 'visible', left: 0, top: 0, width: w, height: d, transformOrigin: '50% 0', transform: `translateZ(${d / 2}px) rotateX(-90deg)`, background: fond, filter: 'brightness(1.12)' }} />
+      </span>
+      {!!jeu.is_double && <span title="Double" style={{ position: 'absolute', top: 4, left: -6, zIndex: 2, ...pastilleStyle('var(--bleu)') }}>2×</span>}
+      <PastillesJeu jeu={jeu} flottantes />
+    </button>
+  );
+}
+
+const pastilleStyle = (bg: string): React.CSSProperties => ({
+  minWidth: 18, height: 18, padding: '0 4px', borderRadius: 9, background: bg, border: '1.5px solid var(--ink)',
+  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 900, lineHeight: 1, color: 'var(--ink)',
+});
+
+/**
+ * Pastilles d'un jeu : les numéros des étapes déjà faites en avance, et ce qui
+ * reste à remplir à côté des étapes (vignette, étiquette).
+ */
+function PastillesJeu({ jeu, flottantes = false }: { jeu: JeuType; flottantes?: boolean }) {
+  const enAvance = etapesEnAvance(jeu);
+  const manques = [
+    !jeu.image_url && { cle: 'vignette', icone: '🖼', titre: 'Vignette à ajouter' },
+    !jeu.etiquette_ok && { cle: 'etiquette', icone: '🏷', titre: "Infos d'étiquette à compléter" },
+  ].filter(Boolean) as { cle: string; icone: string; titre: string }[];
+  if (!enAvance.length && !manques.length) return null;
+
+  const avance = enAvance.length > 0 && (
+    <span style={{ display: 'flex', gap: 2, flexWrap: 'wrap', justifyContent: 'flex-end', ...(flottantes ? { position: 'absolute', top: 4, right: -4, zIndex: 2 } : {}) }}>
+      {enAvance.map(e => <span key={e.id} title={`Étape ${e.num} déjà faite : ${e.nom}`} style={pastilleStyle(e.hex)}>{e.num}</span>)}
+    </span>
+  );
+  const aFaire = manques.length > 0 && (
+    <span style={{ display: 'flex', gap: 2, ...(flottantes ? { position: 'absolute', bottom: -6, right: -6, zIndex: 2 } : {}) }}>
+      {manques.map(m => <span key={m.cle} title={m.titre} style={{ ...pastilleStyle('var(--white)'), fontSize: 10 }}>{m.icone}</span>)}
+    </span>
+  );
+  if (flottantes) return <>{avance}{aFaire}</>;
+  return <span style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>{avance}{aFaire}</span>;
 }

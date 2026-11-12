@@ -4,6 +4,7 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useIsMobile } from "../../lib/useIsMobile";
 import BoutonScan from "../../components/ScanCodeBarre";
+import { ETAPES_A_ZERO, statutApres } from "../../lib/etapesAtelier";
 
 // react-pdf uniquement côté navigateur : jamais dans le bundle serveur du worker
 const LienPDFEtiquettes = dynamic(() => import("../../components/LienPDFEtiquettes"), { ssr: false });
@@ -160,8 +161,7 @@ export default function EtiquettesPage() {
     if (!Array.isArray(jeuxExistants) || jeuxExistants.length === 0) {
       await fetch('/api/jeux', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
         ean: eti.ean, nom: eti.nom, statut: 'En préparation', is_double: 0,
-        etape_nouveaute: 0, etape_plastifier: 0, etape_contenu: 0,
-        etape_etiquette: 0, etape_equiper: 0, etape_encoder: 0, etape_notice: 0
+        ...ETAPES_A_ZERO
       }) }).catch(console.error);
     }
   };
@@ -279,8 +279,7 @@ export default function EtiquettesPage() {
       const jeuxEnPrepa = await fetch(`/api/jeux?eans=${encodeURIComponent(eansCompletsAImprimer.join(','))}&statut=En+pr%C3%A9paration`).then(r => r.json() as Promise<any>).catch(() => []);
       if (Array.isArray(jeuxEnPrepa) && jeuxEnPrepa.length > 0) {
         for (const jeu of jeuxEnPrepa) {
-          const isTermine = jeu.etape_plastifier && jeu.etape_contenu && jeu.etape_equiper && jeu.etape_encoder && jeu.etape_notice && jeu.etape_nouveaute;
-          await fetch(`/api/jeux/${jeu.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ etape_etiquette: 1, statut: isTermine ? 'En stock' : 'En préparation' }) });
+          await fetch(`/api/jeux/${jeu.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ etape_etiquette: 1, statut: statutApres(jeu, { etape_etiquette: 1 }) }) });
         }
       }
     }

@@ -67,16 +67,16 @@ export async function POST(request: Request) {
       statut = 'En préparation', nom = '',
       etape_notice = 0, etape_plastifier = 0, etape_contenu = 0,
       etape_etiquette = 0, etape_equiper = 0, etape_encoder = 0,
-      etape_nouveaute = 0, is_double = 0, code_syracuse = null,
+      etape_nouveaute = 0, etape_verification = 0, is_double = 0, code_syracuse = null,
       date_entree = null, date_sortie = null, notes = '[]', notes_rappel = 0
     } = body;
     const result = await db.prepare(
       `INSERT INTO jeux (ean,statut,nom,etape_notice,etape_plastifier,etape_contenu,
-       etape_etiquette,etape_equiper,etape_encoder,etape_nouveaute,is_double,
+       etape_etiquette,etape_equiper,etape_encoder,etape_nouveaute,etape_verification,is_double,
        code_syracuse,date_entree,date_sortie,notes,notes_rappel)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
     ).bind(ean, statut, nom, etape_notice, etape_plastifier, etape_contenu,
-      etape_etiquette, etape_equiper, etape_encoder, etape_nouveaute, is_double,
+      etape_etiquette, etape_equiper, etape_encoder, etape_nouveaute, etape_verification, is_double,
       code_syracuse, date_entree, date_sortie, notes, notes_rappel).run();
     return NextResponse.json({ id: result.meta.last_row_id, ean });
   } catch (e: any) {

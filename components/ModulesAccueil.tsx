@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { format, parseISO } from "date-fns";
 import { fr } from "date-fns/locale";
 import { COULEURS_JEU, chargerResolveurCouleur, type ResolveurCouleur } from "../lib/couleursJeux";
+import { COLONNES_ETAPES, etapeFaite, etapesDuJeu } from "../lib/etapesAtelier";
 
 // ─── Types partagés avec la page d'accueil ────────────────────────────────────
 
@@ -211,15 +212,6 @@ function ModuleReservationsJv({ ctx }: { ctx: ContexteAccueil }) {
 
 // ─── Module : jeux en préparation dans l'atelier ──────────────────────────────
 
-// Mêmes étapes et couleurs que app/atelier/page.tsx.
-const ETAPES_ATELIER = [
-  { id: "etape_plastifier", nom: "Plastification", hex: "#a8e063" },
-  { id: "etape_contenu",    nom: "Contenu",        hex: "#60a5fa" },
-  { id: "etape_etiquette",  nom: "Étiquette",      hex: "#c084fc" },
-  { id: "etape_equiper",    nom: "Équiper",        hex: "#f472b6" },
-  { id: "etape_encoder",    nom: "Encoder",        hex: "#f87171" },
-  { id: "etape_notice",     nom: "Notice",         hex: "#fb923c" },
-] as const;
 
 type JeuAtelier = { id: number; nom: string; ean: string; date_entree: string | null; image_url?: string } & Record<string, any>;
 
@@ -230,7 +222,7 @@ function ModuleAtelier({ ctx }: { ctx: ContexteAccueil }) {
 
   useEffect(() => {
     (async () => {
-      const champs = ["id", "nom", "ean", "date_entree", ...ETAPES_ATELIER.map(e => e.id)].join(",");
+      const champs = ["id", "nom", "ean", "date_entree", "is_double", ...COLONNES_ETAPES].join(",");
       const liste = await charger(`/api/jeux?fields=${champs}&statut=${encodeURIComponent("En préparation")}`) as JeuAtelier[];
       const eans = [...new Set(liste.map(j => j.ean).filter(Boolean))];
       const cat = eans.length ? await charger(`/api/catalogue?eans=${encodeURIComponent(eans.join(","))}&fields=ean,image_url`) : [];
@@ -242,7 +234,7 @@ function ModuleAtelier({ ctx }: { ctx: ContexteAccueil }) {
 
   // Les plus avancés d'abord : ce sont ceux qui sont près de sortir de l'atelier.
   const tries = useMemo(() => (jeux ?? [])
-    .map(j => ({ jeu: j, faites: ETAPES_ATELIER.filter(e => j[e.id]).length }))
+    .map(j => ({ jeu: j, etapes: etapesDuJeu(j), faites: etapesDuJeu(j).filter(e => etapeFaite(j, e)).length }))
     .sort((a, b) => b.faites - a.faites || a.jeu.nom.localeCompare(b.jeu.nom)),
   [jeux]);
 
@@ -251,19 +243,19 @@ function ModuleAtelier({ ctx }: { ctx: ContexteAccueil }) {
       <EnTeteModule titre="En préparation dans l'atelier" compteur={jeux ? jeux.length : undefined} lien="/atelier" libelleLien="Atelier" />
       {jeux === null ? <Chargement /> : jeux.length === 0 ? <Vide texte="Aucun jeu en préparation" /> : (
         <div style={{ display: "grid", gridTemplateColumns: ctx.isMobile ? "1fr" : "repeat(auto-fill, minmax(240px, 1fr))", gap: 10 }}>
-          {tries.slice(0, MAX_ATELIER).map(({ jeu, faites }) => (
+          {tries.slice(0, MAX_ATELIER).map(({ jeu, etapes, faites }) => (
             <div key={jeu.id} className="pop-card" style={{ padding: "10px 12px", display: "flex", gap: 10, alignItems: "center" }}>
               <div style={{ width: 44, height: 44, borderRadius: 8, overflow: "hidden", border: "2px solid var(--ink)", flexShrink: 0, background: "var(--cream2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>
                 {jeu.image_url ? <img src={jeu.image_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} loading="lazy" /> : "🧰"}
               </div>
               <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 6 }}>
                 <p style={{ fontSize: 13, fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={jeu.nom}>{jeu.nom}</p>
-                <div style={{ display: "flex", gap: 3 }} title={ETAPES_ATELIER.filter(e => !jeu[e.id]).map(e => e.nom).join(", ") || "Toutes les étapes faites"}>
-                  {ETAPES_ATELIER.map(e => (
-                    <span key={e.id} style={{ flex: 1, height: 8, borderRadius: 3, border: "1.5px solid var(--ink)", background: jeu[e.id] ? e.hex : "transparent" }} />
+                <div style={{ display: "flex", gap: 3 }} title={etapes.filter(e => !etapeFaite(jeu, e)).map(e => `${e.num}. ${e.nom}`).join(", ") || "Toutes les étapes faites"}>
+                  {etapes.map(e => (
+                    <span key={e.id} style={{ flex: 1, height: 8, borderRadius: 3, border: "1.5px solid var(--ink)", background: etapeFaite(jeu, e) ? e.hex : "transparent" }} />
                   ))}
                 </div>
-                <p style={{ fontSize: 11, fontWeight: 700, color: "rgba(0,0,0,0.45)" }}>{faites}/{ETAPES_ATELIER.length} étapes</p>
+                <p style={{ fontSize: 11, fontWeight: 700, color: "rgba(0,0,0,0.45)" }}>{faites}/{etapes.length} étapes</p>
               </div>
             </div>
           ))}
