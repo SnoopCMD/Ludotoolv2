@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { useIsMobile } from "../../lib/useIsMobile";
 import BoutonScan from "../../components/ScanCodeBarre";
 import { ETAPES_A_ZERO, statutApres } from "../../lib/etapesAtelier";
+import { MECANIQUES, TEMPS_DE_JEU_OPTIONS, dureeVersPalier, joueursDepuisMyLudo } from "../../lib/etiquetteJeu";
 
 // react-pdf uniquement côté navigateur : jamais dans le bundle serveur du worker
 const LienPDFEtiquettes = dynamic(() => import("../../components/LienPDFEtiquettes"), { ssr: false });
@@ -16,32 +17,6 @@ const CATEGORIES = [
   { id: "rouge", nom: "Rouge", hex: "#f87171", maxStars: 2 },
   { id: "jaune", nom: "Jaune", hex: "#fb923c", maxStars: 3 },
 ];
-
-const MECANIQUES = [
-  "(Dé)placement", "Adresse", "Bluff", "Casse-tête", "Collection",
-  "Combinaison", "Communication", "Connaissances", "Conquête", "Course",
-  "Deck building", "Déduction", "Dominos", "Draft", "Exploration",
-  "Gestion", "Gestion de main", "Gestion de ressources", "Imagination",
-  "Lancé de dés", "Livre-aventure", "Loto", "Manipulation", "Mémoire",
-  "Multijeux", "Négociation", "Observation", "Paris", "Placement de cartes",
-  "Placement de dés", "Placement de tuiles", "Placement d'ouvriers", "Plis",
-  "Programmation", "Puzzle", "Rapidité", "Rôles cachés", "Roll & write",
-  "Stop ou encore"
-];
-
-const TEMPS_DE_JEU_OPTIONS = ["5-10", "10-20", "20-30", "30-45", "45-60", "1h30", "2h", "4h+"];
-
-/** Convertit une durée MyLudo (en minutes) vers l'un des paliers d'étiquette */
-function dureeVersPalier(minutes: number): string {
-  if (minutes <= 10) return "5-10";
-  if (minutes <= 20) return "10-20";
-  if (minutes <= 30) return "20-30";
-  if (minutes <= 45) return "30-45";
-  if (minutes <= 60) return "45-60";
-  if (minutes <= 90) return "1h30";
-  if (minutes <= 120) return "2h";
-  return "4h+";
-}
 
 type Etiquette = {
   id: string | number;
@@ -229,9 +204,7 @@ export default function EtiquettesPage() {
       const data = await fetch(`/api/myludo?${params}`).then(r => r.json() as Promise<any>).catch(() => null);
       if (!data || data.notFound || data.error) return;
 
-      const joueurs = data.players_min
-        ? (data.players_max && data.players_max !== data.players_min ? `${data.players_min}-${data.players_max}` : `${data.players_min}`)
-        : "";
+      const joueurs = joueursDepuisMyLudo(data.players_min, data.players_max);
       const dureeMin = Number(data.duration);
       const temps = Number.isFinite(dureeMin) && dureeMin > 0 ? dureeVersPalier(dureeMin) : "";
 
