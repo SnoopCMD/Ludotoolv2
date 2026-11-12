@@ -558,6 +558,7 @@ export default function Home() {
       <style>{`
         input[type="checkbox"].custom-cb { accent-color: #0d0d0d; width: 1.1rem; height: 1.1rem; cursor: pointer; }
         input[type="checkbox"].custom-cb:disabled { cursor: default; opacity: 0.5; }
+        .boite-jeu:hover .boite-jeu-3d { transform: rotateX(-22deg) rotateY(-16deg) translateY(-6px) !important; }
         .reception-tuile .reception-retirer { opacity: 0; transition: opacity .15s; }
         .reception-tuile:hover .reception-retirer { opacity: 1; }
       `}</style>
@@ -671,7 +672,7 @@ export default function Home() {
               <div className="bc" style={{ fontSize: 24, textTransform: 'uppercase', letterSpacing: '.04em', color: 'rgba(255,255,255,0.55)' }}>Préparations à faire</div>
               <div style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.45)' }}>Dans l&apos;ordre : chaque jeu attend sur l&apos;étagère de sa prochaine étape.</div>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: isMobile ? 14 : 12 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: isMobile ? 12 : 14 }}>
               {etapesVisuelles.map(etape => (
                 <Etagere key={etape.id} etape={etape} jeux={jeuxParEtape[etape.id]} isMobile={isMobile}
                   onOuvrir={jeuId => ouvrirEtape(etape.id, jeuId)} />
@@ -1099,39 +1100,37 @@ function ModalCouleursReception({ reception, infos, isMobile, onChanger, onFerme
 // ─── Étagère des préparations ────────────────────────────────────────────────
 
 /**
- * Une étagère par étape : son numéro et son nom, puis les boîtes des jeux qui en
- * sont à cette étape. Cliquer sur l'étiquette de l'étagère ouvre la validation ;
- * cliquer sur une boîte l'ouvre avec ce jeu déjà coché.
+ * Une étagère par étape : un bloc de la couleur de l'étape, sur toute la
+ * largeur, avec son numéro et son nom en tête et les boîtes des jeux qui en sont
+ * à cette étape posées sur sa planche. Cliquer sur l'en-tête ouvre la
+ * validation ; cliquer sur une boîte l'ouvre avec ce jeu déjà coché.
  */
 function Etagere({ etape, jeux, isMobile, onOuvrir }: {
   etape: EtapeAtelier; jeux: JeuType[]; isMobile: boolean; onOuvrir: (jeuId?: string | number) => void;
 }) {
   const vide = jeux.length === 0;
   return (
-    <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: 'stretch', gap: isMobile ? 6 : 12 }}>
-      {/* Plaque de l'étagère */}
-      <button onClick={() => onOuvrir()} title={etape.detail}
-        style={{ flexShrink: 0, width: isMobile ? '100%' : 190, display: 'flex', flexDirection: isMobile ? 'row' : 'column', alignItems: isMobile ? 'center' : 'flex-start', justifyContent: 'space-between', gap: isMobile ? 10 : 4,
-          background: etape.hex, border: '2.5px solid var(--ink)', borderRadius: 10, boxShadow: '4px 4px 0 rgba(0,0,0,0.4)', padding: isMobile ? '8px 12px' : '10px 14px',
-          cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', color: 'var(--ink)', opacity: vide ? 0.55 : 1, transition: 'transform .12s, box-shadow .12s' }}
-        onMouseEnter={e => { e.currentTarget.style.transform = 'translate(-2px,-2px)'; e.currentTarget.style.boxShadow = '6px 6px 0 rgba(0,0,0,0.4)'; }}
-        onMouseLeave={e => { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = '4px 4px 0 rgba(0,0,0,0.4)'; }}>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-          <span className="bc" style={{ fontSize: isMobile ? 26 : 34, lineHeight: 1 }}>{etape.num}</span>
-          <span style={{ fontWeight: 800, fontSize: isMobile ? 12 : 13, textTransform: 'uppercase', letterSpacing: '.03em', lineHeight: 1.15 }}>{etape.nom}</span>
+    <div style={{ background: etape.hex, border: '2.5px solid var(--ink)', borderRadius: 12, boxShadow: '4px 4px 0 rgba(0,0,0,0.4)', overflow: 'hidden', position: 'relative', opacity: vide ? 0.6 : 1 }}>
+      <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(circle,rgba(0,0,0,0.07) 1px,transparent 1px)', backgroundSize: '10px 10px', pointerEvents: 'none' }} />
+
+      {/* En-tête de l'étagère */}
+      <button onClick={() => onOuvrir()} title={`Valider l'étape ${etape.num} : ${etape.detail}`}
+        style={{ position: 'relative', width: '100%', display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 12, padding: isMobile ? '8px 12px 0' : '10px 16px 0',
+          background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', color: 'var(--ink)' }}>
+        <span className="bc" style={{ fontSize: isMobile ? 28 : 36, lineHeight: 1, flexShrink: 0 }}>{etape.num}</span>
+        <span style={{ minWidth: 0, flex: 1 }}>
+          <span style={{ display: 'block', fontWeight: 800, fontSize: isMobile ? 13 : 15, textTransform: 'uppercase', letterSpacing: '.03em', lineHeight: 1.15 }}>{etape.nom}</span>
+          <span style={{ display: 'block', fontSize: isMobile ? 11 : 12, fontWeight: 600, color: 'rgba(0,0,0,0.55)', lineHeight: 1.2 }}>{etape.detail}</span>
         </span>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          {!isMobile && <span style={{ fontSize: 11, fontWeight: 600, color: 'rgba(0,0,0,0.55)', lineHeight: 1.2 }}>{etape.detail}</span>}
-          <span className="pop-sticker" style={{ background: 'var(--ink)', color: 'var(--white)', fontSize: 13, flexShrink: 0, marginLeft: 'auto' }}>{jeux.length}</span>
-        </span>
+        <span className="pop-sticker" style={{ background: 'var(--ink)', color: 'var(--white)', fontSize: 13, flexShrink: 0 }}>{jeux.length}</span>
       </button>
 
-      {/* Planche : les boîtes posées dessus */}
-      <div style={{ flex: 1, minWidth: 0, position: 'relative', display: 'flex', alignItems: 'flex-end' }}>
-        <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 10, background: 'linear-gradient(#8a6a46, #6b5034)', border: '2px solid #000', borderRadius: 3, boxShadow: '0 4px 0 rgba(0,0,0,0.5)' }} />
-        <div className="etagere-planche" style={{ display: 'flex', alignItems: 'flex-end', gap: 8, overflowX: 'auto', overflowY: 'hidden', padding: '10px 6px 10px', width: '100%', minHeight: isMobile ? 104 : 124, position: 'relative' }}>
+      {/* Les boîtes, posées sur la planche */}
+      <div style={{ position: 'relative' }}>
+        <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 14, background: 'rgba(0,0,0,0.22)', borderTop: '2.5px solid var(--ink)' }} />
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: isMobile ? 14 : 20, overflowX: 'auto', overflowY: 'hidden', padding: isMobile ? '14px 14px 10px' : '16px 22px 10px', minHeight: vide ? 56 : (isMobile ? 120 : 146), position: 'relative' }}>
           {vide ? (
-            <span style={{ alignSelf: 'center', fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,0.3)', fontStyle: 'italic', paddingLeft: 6 }}>Étagère vide</span>
+            <span style={{ alignSelf: 'center', fontSize: 13, fontWeight: 700, color: 'rgba(0,0,0,0.4)', fontStyle: 'italic' }}>Étagère vide</span>
           ) : jeux.map(j => <BoiteJeu key={j.id} jeu={j} isMobile={isMobile} onClick={() => onOuvrir(j.id)} />)}
         </div>
       </div>
@@ -1139,26 +1138,35 @@ function Etagere({ etape, jeux, isMobile, onOuvrir }: {
   );
 }
 
-/** La boîte d'un jeu : sa vignette, ou à défaut une boîte vierge de sa couleur avec son nom. */
+/**
+ * La boîte d'un jeu, en 3D : face avant (vignette, ou boîte vierge de la couleur
+ * du jeu avec son nom), tranche droite et dessus. Les pastilles restent à plat
+ * par-dessus pour rester lisibles.
+ */
 function BoiteJeu({ jeu, isMobile, onClick }: { jeu: JeuType; isMobile: boolean; onClick: () => void }) {
   const hex = hexCouleur(jeu.couleur);
-  const w = isMobile ? 66 : 80, h = isMobile ? 84 : 102;
+  const fond = hex ?? '#e9e4d8';
+  const w = isMobile ? 64 : 78, h = isMobile ? 82 : 100, d = isMobile ? 18 : 24;
+  const face: React.CSSProperties = { position: 'absolute', border: '2px solid var(--ink)', boxSizing: 'border-box', backfaceVisibility: 'hidden' };
   return (
-    <button onClick={onClick} title={`${jeu.nom}${jeu.is_double ? ' (double)' : ''}`}
-      style={{ position: 'relative', flexShrink: 0, width: w, height: h, padding: 0, border: '2.5px solid var(--ink)', borderRadius: 5, cursor: 'pointer', fontFamily: 'inherit',
-        background: jeu.image_url ? 'var(--white)' : (hex ?? '#e9e4d8'), boxShadow: '3px 0 0 rgba(0,0,0,0.35)', overflow: 'visible', transition: 'transform .12s' }}
-      onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-4px)'; }}
-      onMouseLeave={e => { e.currentTarget.style.transform = ''; }}>
-      <span style={{ position: 'absolute', inset: 0, borderRadius: 3, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        {jeu.image_url ? (
-          <img src={jeu.image_url} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-        ) : (
-          <span style={{ padding: '4px 5px', fontSize: isMobile ? 10 : 11, fontWeight: 800, lineHeight: 1.15, color: 'var(--ink)', textAlign: 'center', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 5, WebkitBoxOrient: 'vertical', wordBreak: 'break-word' }}>{jeu.nom}</span>
-        )}
-        {/* Liseré de la couleur du jeu sous la vignette */}
-        {jeu.image_url && hex && <span style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 6, background: hex, borderTop: '1.5px solid var(--ink)' }} />}
+    <button onClick={onClick} title={`${jeu.nom}${jeu.is_double ? ' (double)' : ''}`} className="boite-jeu"
+      style={{ position: 'relative', flexShrink: 0, width: w + d * 0.6, height: h + d * 0.4, padding: 0, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', perspective: 700 }}>
+      <span className="boite-jeu-3d" style={{ position: 'absolute', left: 0, bottom: 0, width: w, height: h, transformStyle: 'preserve-3d', transform: 'rotateX(-22deg) rotateY(-30deg)', transformOrigin: `50% 100% ${-d / 2}px`, transition: 'transform .18s ease' }}>
+        {/* Face avant */}
+        <span style={{ ...face, inset: 0, width: w, height: h, transform: `translateZ(${d / 2}px)`, background: jeu.image_url ? 'var(--white)' : fond, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 2 }}>
+          {jeu.image_url ? (
+            <img src={jeu.image_url} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          ) : (
+            <span style={{ padding: '4px 5px', fontSize: isMobile ? 10 : 11, fontWeight: 800, lineHeight: 1.15, color: 'var(--ink)', textAlign: 'center', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 5, WebkitBoxOrient: 'vertical', hyphens: 'auto', overflowWrap: 'anywhere' }} lang="fr">{jeu.nom}</span>
+          )}
+          {jeu.image_url && hex && <span style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 6, background: hex, borderTop: '1.5px solid var(--ink)' }} />}
+        </span>
+        {/* Tranche droite */}
+        <span style={{ ...face, top: 0, left: (w - d) / 2, width: d, height: h, transform: `rotateY(90deg) translateZ(${w / 2}px)`, background: fond, filter: 'brightness(0.72)' }} />
+        {/* Dessus */}
+        <span style={{ ...face, backfaceVisibility: 'visible', left: 0, top: 0, width: w, height: d, transformOrigin: '50% 0', transform: `translateZ(${d / 2}px) rotateX(-90deg)`, background: fond, filter: 'brightness(1.12)' }} />
       </span>
-      {!!jeu.is_double && <span title="Double" style={{ position: 'absolute', top: -7, left: -7, ...pastilleStyle('var(--bleu)') }}>2×</span>}
+      {!!jeu.is_double && <span title="Double" style={{ position: 'absolute', top: 4, left: -6, zIndex: 2, ...pastilleStyle('var(--bleu)') }}>2×</span>}
       <PastillesJeu jeu={jeu} flottantes />
     </button>
   );
@@ -1182,12 +1190,12 @@ function PastillesJeu({ jeu, flottantes = false }: { jeu: JeuType; flottantes?: 
   if (!enAvance.length && !manques.length) return null;
 
   const avance = enAvance.length > 0 && (
-    <span style={{ display: 'flex', gap: 2, flexWrap: 'wrap', justifyContent: 'flex-end', ...(flottantes ? { position: 'absolute', top: -7, right: -7 } : {}) }}>
+    <span style={{ display: 'flex', gap: 2, flexWrap: 'wrap', justifyContent: 'flex-end', ...(flottantes ? { position: 'absolute', top: 4, right: -4, zIndex: 2 } : {}) }}>
       {enAvance.map(e => <span key={e.id} title={`Étape ${e.num} déjà faite : ${e.nom}`} style={pastilleStyle(e.hex)}>{e.num}</span>)}
     </span>
   );
   const aFaire = manques.length > 0 && (
-    <span style={{ display: 'flex', gap: 2, ...(flottantes ? { position: 'absolute', bottom: -7, right: -7 } : {}) }}>
+    <span style={{ display: 'flex', gap: 2, ...(flottantes ? { position: 'absolute', bottom: -6, right: -6, zIndex: 2 } : {}) }}>
       {manques.map(m => <span key={m.cle} title={m.titre} style={{ ...pastilleStyle('var(--white)'), fontSize: 10 }}>{m.icone}</span>)}
     </span>
   );
