@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { MessageChat, ReactionChat, ReponseFlux } from "../../lib/chat";
+import type { MessageChat, PieceChat, ReactionChat, ReponseFlux } from "../../lib/chat";
 import { useDirect, useEvenementsChat } from "../../lib/chat-canal";
 
 /** Message affiché : enregistré, ou encore en cours d'envoi côté client. */
@@ -130,7 +130,7 @@ export function useConversation(conversation: string, moi: Moi | null) {
       const r = await fetch(`${base}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contenu: provisoire.contenu, client_id: provisoire.client_id }),
+        body: JSON.stringify({ contenu: provisoire.contenu, client_id: provisoire.client_id, piece: provisoire.piece }),
       });
       const d = await r.json() as MessageChat & { error?: string };
       if (!r.ok) throw new Error(d.error);
@@ -140,7 +140,8 @@ export function useConversation(conversation: string, moi: Moi | null) {
     }
   }, [base, recevoir]);
 
-  const envoyer = useCallback((contenu: string) => {
+  /** Envoie un texte, ou un GIF (`piece`, texte vide). */
+  const envoyer = useCallback((contenu: string, piece: PieceChat | null = null) => {
     if (!moi) return;
     const provisoire: MessageAffiche = {
       id: Number.MAX_SAFE_INTEGER,
@@ -151,6 +152,7 @@ export function useConversation(conversation: string, moi: Moi | null) {
       auteur_couleur: moi.couleur,
       auteur_groupe: moi.groupe,
       contenu,
+      piece,
       client_id: crypto.randomUUID(),
       cree_le: new Date().toISOString(),
       modifie_le: null,

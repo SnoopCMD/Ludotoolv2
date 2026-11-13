@@ -2,7 +2,11 @@ import { NextResponse } from 'next/server';
 import { getDB } from '../../../../lib/db';
 import { compteCourant } from '../../../../lib/auth';
 import { diffuser, idConversationPrivee } from '../../../../lib/chat-serveur';
-import type { CompteChat, ReponseConversations, ResumeConversation } from '../../../../lib/chat';
+import { libellePiece, pieceValide, type CompteChat, type ReponseConversations, type ResumeConversation } from '../../../../lib/chat';
+
+const lirePieceBrute = (brut: unknown) => {
+  try { return typeof brut === 'string' ? pieceValide(JSON.parse(brut)) : null; } catch { return null; }
+};
 
 export const dynamic = 'force-dynamic';
 
@@ -30,7 +34,7 @@ export async function GET() {
                   WHERE m.conversation_id = c.id AND m.auteur_id <> ?1 AND m.supprime = 0
                     AND m.id > COALESCE((SELECT dernier_lu FROM chat_lectures l WHERE l.utilisateur_id = ?1 AND l.conversation_id = c.id), 0)
                 ) AS non_lus,
-                d.auteur_id AS d_auteur, d.contenu AS d_contenu, d.cree_le AS d_cree_le, d.supprime AS d_supprime
+                d.auteur_id AS d_auteur, d.contenu AS d_contenu, d.piece AS d_piece, d.cree_le AS d_cree_le, d.supprime AS d_supprime
            FROM chat_conversations c
            LEFT JOIN chat_messages d ON d.id = (SELECT MAX(id) FROM chat_messages WHERE conversation_id = c.id)
           WHERE c.type = 'general'
@@ -66,7 +70,7 @@ export async function GET() {
         non_lus: Number(r.non_lus ?? 0),
         dernier: r.d_cree_le ? {
           auteur_id: String(r.d_auteur),
-          contenu: supprime ? '' : String(r.d_contenu ?? '').slice(0, 140),
+          contenu: supprime ? '' : (String(r.d_contenu ?? '') || libellePiece(lirePieceBrute(r.d_piece))).slice(0, 140),
           cree_le: String(r.d_cree_le),
           supprime,
         } : null,

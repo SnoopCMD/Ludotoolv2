@@ -35,6 +35,8 @@ export type MessageChat = {
   /** Dernier changement : suppression, ou réaction posée ou retirée. */
   modifie_le: string | null;
   supprime: boolean;
+  /** GIF (ou sticker) joint au message ; null pour un message texte. */
+  piece: PieceChat | null;
   /** Par émote, dans l'ordre où elle a été posée la première fois. */
   reactions: ReactionChat[];
 };
@@ -96,10 +98,14 @@ export type EvenementDirect =
    */
   | VolanteChat;
 
-export type VolanteChat = { type: "volante"; conversation_id: string; emoji: string; auteur_id: string; cle: string };
+export type VolanteChat = {
+  type: "volante"; conversation_id: string; auteur_id: string; cle: string;
+  /** Une émote, un GIF ou un sticker (un seul des trois). */
+  emoji?: string; gif?: MediaGif; sticker?: MediaSticker;
+};
 
 /** Ce qu'un poste envoie sur la WebSocket (l'auteur est ajouté par le serveur). */
-export type EnvoiDirect = { type: "volante"; conversation_id: string; emoji: string; cle: string };
+export type EnvoiDirect = { type: "volante"; conversation_id: string; cle: string; emoji?: string; gif?: MediaGif; sticker?: MediaSticker };
 
 /** Garde-fou du Durable Object : volantes au plus par compte et par fenêtre. */
 export const VOLANTES_MAX = 12;
@@ -149,6 +155,7 @@ export function versMessage(l: Record<string, unknown>): MessageChat {
     cree_le: String(l.cree_le),
     modifie_le: (l.modifie_le as string | null) ?? null,
     supprime,
+    piece: supprime ? null : lirePiece(l.piece),
     reactions: supprime ? [] : grouperReactions(l.reactions),
   };
 }
@@ -167,7 +174,7 @@ function grouperReactions(brut: unknown): ReactionChat[] {
 }
 
 export const SELECT_MESSAGE = `
-  SELECT m.id, m.conversation_id, m.auteur_id, m.contenu, m.client_id, m.cree_le, m.modifie_le, m.supprime,
+  SELECT m.id, m.conversation_id, m.auteur_id, m.contenu, m.piece, m.client_id, m.cree_le, m.modifie_le, m.supprime,
          e.id AS auteur_equipe_id, e.nom AS auteur_nom, e.groupe AS auteur_groupe,
          json_extract(e.horaires, '$.couleur') AS auteur_couleur,
          (SELECT json_group_array(json_object('e', x.emoji, 'u', x.utilisateur_id, 'n', x.nom))
@@ -183,3 +190,78 @@ export const SELECT_MESSAGE = `
 
 /** Horodatage ISO au même format que les colonnes (`strftime('%Y-%m-%dT%H:%M:%fZ')`). */
 export const maintenantIso = () => new Date().toISOString();
+
+// ── Pièces jointes : GIF ──────────────────────────────────────────────────
+
+/** Ce qu'il faut pour afficher un GIF (servi par GIPHY, jamais copié chez nous). */
+export type MediaGif = { url: string; mp4: string | null; largeur: number; hauteur: number };
+
+export type PieceGif = MediaGif & { type: "gif"; id: string; titre: string };
+/** Ce qu'un message peut porter en plus (ou à la place) du texte. */
+export type PieceChat = PieceGif | PieceSticker;
+
+/** Un résultat de recherche (`GET /api/chat/gifs`). */
+export type ResultatGif = MediaGif & { id: string; titre: string };
+export type ReponseGifs = { gifs: ResultatGif[]; suite: number | null };
+
+/** Seuls les fichiers de GIPHY sont acceptés : on n'affiche pas d'image venue de n'importe où. */
+const URL_GIPHY = /^https:\/\/(?:media[0-9]?|i)\.giphy\.com\/[^\s"'<>\\]{1,600}$/;
+const dimension = (n: unknown) => Number.isInteger(n) && (n as number) > 0 && (n as number) <= 2000;
+
+/** Un média GIF bien formé et hébergé par GIPHY, ou null. */
+export function mediaGifValide(g: unknown): MediaGif | null {
+  const o = g as Partial<MediaGif> | null;
+  if (!o || typeof o.url !== "string" || !URL_GIPHY.test(o.url)) return null;
+  if (o.mp4 != null && (typeof o.mp4 !== "string" || !URL_GIPHY.test(o.mp4))) return null;
+  if (!dimension(o.largeur) || !dimension(o.hauteur)) return null;
+  return { url: o.url, mp4: o.mp4 ?? null, largeur: o.largeur as number, hauteur: o.hauteur as number };
+}
+
+/** Pièce jointe envoyée par un client → version propre, ou null si invalide. */
+export function pieceValide(p: unknown): PieceChat | null {
+  if ((p as { type?: unknown } | null)?.type === "sticker") {
+    const media = mediaStickerValide(p);
+    return media ? { type: "sticker", ...media } : null;
+  }
+  const o = p as Partial<PieceGif> | null;
+  if (!o || o.type !== "gif" || typeof o.id !== "string" || !/^[A-Za-z0-9]{1,64}$/.test(o.id)) return null;
+  const media = mediaGifValide(o);
+  if (!media) return null;
+  return { type: "gif", id: o.id, titre: typeof o.titre === "string" ? o.titre.slice(0, 120) : "", ...media };
+}
+
+function lirePiece(brut: unknown): PieceChat | null {
+  if (typeof brut !== "string" || !brut) return null;
+  try { return pieceValide(JSON.parse(brut)); } catch { return null; }
+}
+
+/** Texte de remplacement d'une pièce (aperçus, notifications). */
+export function libellePiece(p: PieceChat | null): string {
+  return p?.type === "gif" ? "🎞️ GIF" : p?.type === "sticker" ? "🖼️ Sticker" : "";
+}
+
+// ── Pièces jointes : stickers ─────────────────────────────────────────────
+
+/** Un sticker de la bibliothèque de l'équipe (fichier dans R2). */
+export type MediaSticker = { id: string; largeur: number; hauteur: number };
+export type PieceSticker = MediaSticker & { type: "sticker" };
+
+/** Un sticker de la bibliothèque (`GET /api/chat/stickers`). */
+export type StickerChat = MediaSticker & { auteur_id: string; auteur_nom: string; cree_le: string };
+
+export const urlSticker = (id: string) => `/api/chat/stickers/${encodeURIComponent(id)}/image`;
+
+/** Formats acceptés à l'import, et poids maximal une fois préparé. */
+export const STICKER_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+export const STICKER_POIDS_MAX = 2 * 1024 * 1024;
+/** Côté le plus long d'un sticker fixe après redimensionnement (les GIF gardent leur taille). */
+export const STICKER_COTE_MAX = 320;
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+export function mediaStickerValide(s: unknown): MediaSticker | null {
+  const o = s as Partial<MediaSticker> | null;
+  if (!o || typeof o.id !== "string" || !UUID.test(o.id)) return null;
+  if (!dimension(o.largeur) || !dimension(o.hauteur)) return null;
+  return { id: o.id, largeur: o.largeur as number, hauteur: o.hauteur as number };
+}
