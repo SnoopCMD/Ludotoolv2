@@ -1,7 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
-import { CONVERSATION_GENERALE, VOLANTES_FENETRE_MS, VOLANTES_MAX, emojiValide, mediaGifValide, type EnvoiDirect, type VolanteChat } from "../lib/chat";
+import { CONVERSATION_GENERALE, VOLANTES_FENETRE_MS, VOLANTES_MAX, emojiValide, mediaGifValide, mediaStickerValide, type EnvoiDirect, type VolanteChat } from "../lib/chat";
 
-/** Un GIF volant pèse plus lourd qu'une émote dans le garde-fou anti-rafale. */
+/** Un GIF ou un sticker volant pèse plus lourd qu'une émote dans le garde-fou anti-rafale. */
 const POIDS_GIF = 3;
 
 /**
@@ -68,10 +68,11 @@ export class MessagerieDO extends DurableObject<CloudflareEnv> {
     let envoi: EnvoiDirect;
     try { envoi = JSON.parse(donnees); } catch { return; }
     if (envoi?.type !== "volante" || typeof envoi.cle !== "string" || envoi.cle.length > 64) return;
-    // Une émote ou un GIF hébergé par GIPHY, pas les deux.
+    // Une émote, un GIF hébergé par GIPHY ou un sticker de l'équipe : un seul.
     const gif = envoi.gif != null ? mediaGifValide(envoi.gif) : null;
+    const sticker = envoi.sticker != null ? mediaStickerValide(envoi.sticker) : null;
     const emoji = envoi.emoji != null && emojiValide(envoi.emoji) ? envoi.emoji : null;
-    if (!gif === !emoji) return;
+    if ([gif, sticker, emoji].filter(Boolean).length !== 1) return;
     const auteur = this.ctx.getTags(ws)[0];
     if (!auteur) return;
 
@@ -82,14 +83,14 @@ export class MessagerieDO extends DurableObject<CloudflareEnv> {
     // Au plus VOLANTES_MAX par fenêtre : au-delà, on ignore sans rien dire.
     const maintenant = Date.now();
     const recentes = (this.rafales.get(auteur) ?? []).filter(t => maintenant - t < VOLANTES_FENETRE_MS);
-    const poids = gif ? POIDS_GIF : 1;
+    const poids = gif || sticker ? POIDS_GIF : 1;
     if (recentes.length + poids > VOLANTES_MAX) return;
     for (let i = 0; i < poids; i++) recentes.push(maintenant);
     this.rafales.set(auteur, recentes);
 
     const evenement: VolanteChat = {
       type: "volante", conversation_id: envoi.conversation_id, auteur_id: auteur, cle: envoi.cle,
-      ...(gif ? { gif } : { emoji: emoji! }),
+      ...(gif ? { gif } : sticker ? { sticker } : { emoji: emoji! }),
     };
     await this.diffuser(evenement, null);
   }

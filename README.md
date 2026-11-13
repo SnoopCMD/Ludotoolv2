@@ -173,7 +173,7 @@ jeu, servi par `/api/regles/[ean]` ; `catalogue.pdf_url` pointe vers cette route
 | `jv_jeux`, `jv_selections`, `jv_reservations`, `jv_rotation_config`, `jv_notes`, `jv_standby` | Section jeux vidéo |
 | `pieces_manquantes`, `pieces_trouvees`, `reparations` | Suivi du matériel |
 | `pieces_detachees` | Stock de pièces de rechange, rangées par jeu |
-| `chat_conversations`, `chat_membres`, `chat_messages`, `chat_reactions`, `chat_lectures` | Messagerie : conversations (générale, privées) et leurs membres, messages, réactions, dernier message lu par compte |
+| `chat_conversations`, `chat_membres`, `chat_messages`, `chat_reactions`, `chat_stickers`, `chat_lectures` | Messagerie : conversations (générale, privées) et leurs membres, messages (et leur GIF ou sticker joint), réactions, bibliothèque de stickers, dernier message lu par compte |
 | `alertes`, `suggestions`, `selections` | Alertes, boîte à idées, sélections thématiques |
 | `utilisateurs`, `utilisateur_sessions` | Comptes (un par membre de `equipe`) et sessions ouvertes |
 | `utilisateur_preferences` | Modules choisis sur le tableau de bord, par compte |
@@ -451,6 +451,24 @@ navigateur ◀════════ WebSocket /api/chat/ws ══════
   et ignore son propre écho grâce à la `cle`. Chacun peut les couper sur son
   appareil depuis la palette (`localStorage`), et le mouvement réduit du
   système est respecté.
+- **GIF** (bouton « GIF » à gauche de la saisie, onglet GIF ; aussi dans la
+  palette ✨ pour les faire monter à l'écran) : recherche GIPHY via
+  `GET /api/chat/gifs`, qui garde la clé côté serveur (**secret
+  `GIPHY_API_KEY`** du Worker, à créer sur developers.giphy.com ; sans elle,
+  le sélecteur l'explique). `rating=pg`. Les fichiers restent chez GIPHY
+  (attribution « Powered by GIPHY »), en mp4 de préférence avec repli sur
+  l'image animée. Le GIF part comme un message dont `chat_messages.piece`
+  (migration 0029) décrit le média ; seules les URL `*.giphy.com` sont
+  acceptées, par la route comme par le Durable Object.
+- **Stickers** (même bouton, onglet Stickers ; aussi dans la palette ✨) :
+  bibliothèque commune (`chat_stickers`, migration 0030). Importer une image
+  la réduit dans le navigateur (côté le plus long 320 px, WebP, transparence
+  gardée) ; un GIF part tel quel pour rester animé (2 Mo au plus). Fichiers
+  dans R2, bucket des règles (binding `REGLES`), sous `chat/stickers/<id>`,
+  servis aux comptes connectés par `/api/chat/stickers/<id>/image` (cache
+  immuable). Chacun ne retire que les siens, et retirer ne fait que cacher :
+  les messages déjà envoyés gardent leur image. Un sticker s'affiche sans
+  bulle autour.
 - **Notifications** (`ToastChat`) : un message privé reçu, ou une réaction
   posée sur un de ses messages (événement `reaction`, envoyé à l'auteur seul,
   pas pour un retrait), quand la discussion n'est pas sous les yeux.

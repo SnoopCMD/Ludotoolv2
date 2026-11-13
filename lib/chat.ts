@@ -100,12 +100,12 @@ export type EvenementDirect =
 
 export type VolanteChat = {
   type: "volante"; conversation_id: string; auteur_id: string; cle: string;
-  /** Une émote, ou un GIF (l'un ou l'autre). */
-  emoji?: string; gif?: MediaGif;
+  /** Une émote, un GIF ou un sticker (un seul des trois). */
+  emoji?: string; gif?: MediaGif; sticker?: MediaSticker;
 };
 
 /** Ce qu'un poste envoie sur la WebSocket (l'auteur est ajouté par le serveur). */
-export type EnvoiDirect = { type: "volante"; conversation_id: string; cle: string; emoji?: string; gif?: MediaGif };
+export type EnvoiDirect = { type: "volante"; conversation_id: string; cle: string; emoji?: string; gif?: MediaGif; sticker?: MediaSticker };
 
 /** Garde-fou du Durable Object : volantes au plus par compte et par fenêtre. */
 export const VOLANTES_MAX = 12;
@@ -198,7 +198,7 @@ export type MediaGif = { url: string; mp4: string | null; largeur: number; haute
 
 export type PieceGif = MediaGif & { type: "gif"; id: string; titre: string };
 /** Ce qu'un message peut porter en plus (ou à la place) du texte. */
-export type PieceChat = PieceGif;
+export type PieceChat = PieceGif | PieceSticker;
 
 /** Un résultat de recherche (`GET /api/chat/gifs`). */
 export type ResultatGif = MediaGif & { id: string; titre: string };
@@ -219,6 +219,10 @@ export function mediaGifValide(g: unknown): MediaGif | null {
 
 /** Pièce jointe envoyée par un client → version propre, ou null si invalide. */
 export function pieceValide(p: unknown): PieceChat | null {
+  if ((p as { type?: unknown } | null)?.type === "sticker") {
+    const media = mediaStickerValide(p);
+    return media ? { type: "sticker", ...media } : null;
+  }
   const o = p as Partial<PieceGif> | null;
   if (!o || o.type !== "gif" || typeof o.id !== "string" || !/^[A-Za-z0-9]{1,64}$/.test(o.id)) return null;
   const media = mediaGifValide(o);
@@ -233,5 +237,31 @@ function lirePiece(brut: unknown): PieceChat | null {
 
 /** Texte de remplacement d'une pièce (aperçus, notifications). */
 export function libellePiece(p: PieceChat | null): string {
-  return p?.type === "gif" ? "🎞️ GIF" : "";
+  return p?.type === "gif" ? "🎞️ GIF" : p?.type === "sticker" ? "🖼️ Sticker" : "";
+}
+
+// ── Pièces jointes : stickers ─────────────────────────────────────────────
+
+/** Un sticker de la bibliothèque de l'équipe (fichier dans R2). */
+export type MediaSticker = { id: string; largeur: number; hauteur: number };
+export type PieceSticker = MediaSticker & { type: "sticker" };
+
+/** Un sticker de la bibliothèque (`GET /api/chat/stickers`). */
+export type StickerChat = MediaSticker & { auteur_id: string; auteur_nom: string; cree_le: string };
+
+export const urlSticker = (id: string) => `/api/chat/stickers/${encodeURIComponent(id)}/image`;
+
+/** Formats acceptés à l'import, et poids maximal une fois préparé. */
+export const STICKER_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+export const STICKER_POIDS_MAX = 2 * 1024 * 1024;
+/** Côté le plus long d'un sticker fixe après redimensionnement (les GIF gardent leur taille). */
+export const STICKER_COTE_MAX = 320;
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+export function mediaStickerValide(s: unknown): MediaSticker | null {
+  const o = s as Partial<MediaSticker> | null;
+  if (!o || typeof o.id !== "string" || !UUID.test(o.id)) return null;
+  if (!dimension(o.largeur) || !dimension(o.hauteur)) return null;
+  return { id: o.id, largeur: o.largeur as number, hauteur: o.hauteur as number };
 }

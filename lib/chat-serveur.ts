@@ -31,6 +31,9 @@ export async function destinataires(db: D1Database, conversation: Conversation):
   return results.map(r => r.utilisateur_id);
 }
 
+/** Emplacement d'un sticker dans R2 (bucket partagé avec les règles, binding REGLES). */
+export const cleR2Sticker = (id: string) => `chat/stickers/${id}`;
+
 /** Identifiant stable d'une conversation à deux. */
 export const idConversationPrivee = (a: string, b: string) => `prive-${[a, b].sort().join('-')}`;
 

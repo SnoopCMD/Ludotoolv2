@@ -5,8 +5,8 @@ import { conversationAccessible, destinataires, diffuser } from '../../../../../
 import { LONGUEUR_MAX_MESSAGE, SELECT_MESSAGE, pieceValide, versMessage } from '../../../../../lib/chat';
 
 /**
- * Envoie un message. Corps : `{ contenu, client_id, piece? }` (piece : un GIF,
- * voir `pieceValide` ; le texte peut alors être vide). Renvoie le message
+ * Envoie un message. Corps : `{ contenu, client_id, piece? }` (piece : un GIF ou
+ * un sticker, voir `pieceValide` ; le texte peut alors être vide). Renvoie le message
  * enregistré, après l'avoir poussé en direct aux membres de la conversation.
  */
 export async function POST(request: Request, { params }: { params: Promise<{ conversation: string }> }) {
@@ -27,6 +27,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ con
     const db = await getDB();
     const conv = await conversationAccessible(db, compte, conversation);
     if (!conv) return NextResponse.json({ error: 'Conversation introuvable.' }, { status: 404 });
+    // Un sticker doit venir de la bibliothèque de l'équipe.
+    if (piece?.type === 'sticker') {
+      const existe = await db.prepare('SELECT 1 FROM chat_stickers WHERE id = ? AND supprime = 0').bind(piece.id).first();
+      if (!existe) return NextResponse.json({ error: 'Ce sticker n’existe plus.' }, { status: 404 });
+    }
 
     // Renvoi du même message (client_id déjà vu) : on ne crée pas de doublon.
     await db.prepare(

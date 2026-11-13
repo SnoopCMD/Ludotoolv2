@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { envoyerDirect, useEvenementsChat } from "../../lib/chat-canal";
-import type { MediaGif } from "../../lib/chat";
+import { urlSticker, type MediaGif, type MediaSticker } from "../../lib/chat";
 import MediaGifVue from "./MediaGif";
 
 /**
@@ -17,7 +17,10 @@ import MediaGifVue from "./MediaGif";
  */
 
 /** Ce qui s'envole : une émote, ou un GIF. */
-export type ContenuVolant = { emoji: string; gif?: undefined } | { gif: MediaGif; emoji?: undefined };
+export type ContenuVolant =
+  | { emoji: string; gif?: undefined; sticker?: undefined }
+  | { gif: MediaGif; emoji?: undefined; sticker?: undefined }
+  | { sticker: MediaSticker; emoji?: undefined; gif?: undefined };
 
 type Volante = {
   id: number; contenu: ContenuVolant;
@@ -68,8 +71,9 @@ export default function CoucheVolantes({ actif, panneauOuvert }: { actif: boolea
     // Centrée sur la page visible : à gauche du panneau s'il est ouvert, sauf
     // sur téléphone où il prend toute la largeur.
     const panneau = c.panneauOuvert && larg > 640 ? Math.min(400, larg) : 0;
-    const demi = contenu.gif ? LARGEUR_GIF / 2 : 20;
-    const hauteurGif = contenu.gif ? Math.round(LARGEUR_GIF * contenu.gif.hauteur / contenu.gif.largeur) : 0;
+    const media = contenu.gif ?? contenu.sticker;
+    const demi = media ? LARGEUR_GIF / 2 : 20;
+    const hauteurGif = media ? Math.round(LARGEUR_GIF * media.hauteur / media.largeur) : 0;
     const v: Volante = {
       id: suivant.current++,
       contenu,
@@ -93,6 +97,7 @@ export default function CoucheVolantes({ actif, panneauOuvert }: { actif: boolea
   useEvenementsChat(actif, ev => {
     if (ev.type !== "volante" || mesCles.has(ev.cle)) return;
     if (ev.gif) afficher.current({ gif: ev.gif });
+    else if (ev.sticker) afficher.current({ sticker: ev.sticker });
     else if (ev.emoji) afficher.current({ emoji: ev.emoji });
   });
 
@@ -110,7 +115,11 @@ export default function CoucheVolantes({ actif, panneauOuvert }: { actif: boolea
           }}>
           {v.contenu.gif
             ? <MediaGifVue gif={v.contenu.gif} largeur={LARGEUR_GIF} className="chat-volante-gif" />
-            : <span className="chat-volante-emoji">{v.contenu.emoji}</span>}
+            : v.contenu.sticker
+              // eslint-disable-next-line @next/next/no-img-element
+              ? <img src={urlSticker(v.contenu.sticker.id)} alt="" className="chat-volante-sticker"
+                  style={{ width: LARGEUR_GIF, height: Math.round(LARGEUR_GIF * v.contenu.sticker.hauteur / v.contenu.sticker.largeur), display: "block" }} />
+              : <span className="chat-volante-emoji">{v.contenu.emoji}</span>}
         </div>
       ))}
     </div>

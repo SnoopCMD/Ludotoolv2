@@ -5,10 +5,11 @@ import Link from "next/link";
 import { useCompte } from "../AuthProvider";
 import { useChat } from "./ChatProvider";
 import { useConversation, type MessageAffiche } from "./useConversation";
-import { CONVERSATION_GENERALE, LONGUEUR_MAX_MESSAGE, REACTIONS_RAPIDES, REACTIONS_TOUTES, type ResultatGif, type ResumeConversation } from "../../lib/chat";
+import { CONVERSATION_GENERALE, LONGUEUR_MAX_MESSAGE, REACTIONS_RAPIDES, REACTIONS_TOUTES, type ResultatGif, type ResumeConversation, type StickerChat, urlSticker } from "../../lib/chat";
 import { useDirect } from "../../lib/chat-canal";
 import { changerMuet, lancerVolante, useVolantesMuettes } from "./CoucheVolantes";
 import ChoixGif from "./ChoixGif";
+import ChoixSticker from "./ChoixSticker";
 import MediaGifVue from "./MediaGif";
 import { couleurParDefaut } from "../../lib/couleurProfil";
 import { useCouleurProfil } from "../../lib/useCouleurProfil";
@@ -375,15 +376,21 @@ function Fil({ conversation, prive, nomAutre }: { conversation: string; prive: b
             {/* Réactions volantes : dans la générale seulement. */}
             {palette && !prive && <PaletteVolantes conversation={conversation} onFermer={() => setPalette(false)} />}
             {choixGif && (
-              <PanneauGif onFermer={() => setChoixGif(false)} onChoisir={g => {
-                conv.envoyer("", { type: "gif", id: g.id, titre: g.titre, url: g.url, mp4: g.mp4, largeur: g.largeur, hauteur: g.hauteur });
-                setChoixGif(false);
-                setEnBas(true);
-              }} />
+              <PanneauMedias onFermer={() => setChoixGif(false)}
+                onGif={g => {
+                  conv.envoyer("", { type: "gif", id: g.id, titre: g.titre, url: g.url, mp4: g.mp4, largeur: g.largeur, hauteur: g.hauteur });
+                  setChoixGif(false);
+                  setEnBas(true);
+                }}
+                onSticker={st => {
+                  conv.envoyer("", { type: "sticker", id: st.id, largeur: st.largeur, hauteur: st.hauteur });
+                  setChoixGif(false);
+                  setEnBas(true);
+                }} />
             )}
             <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
-              <button onClick={() => { setChoixGif(o => !o); setPalette(false); }} aria-label="Envoyer un GIF" aria-expanded={choixGif}
-                title="GIF" className="chat-bouton-gif" style={{
+              <button onClick={() => { setChoixGif(o => !o); setPalette(false); }} aria-label="Envoyer un GIF ou un sticker" aria-expanded={choixGif}
+                title="GIF et stickers" className="chat-bouton-gif" style={{
                   height: 40, width: 40, flexShrink: 0, borderRadius: 8, cursor: "pointer", padding: 0, fontFamily: "inherit",
                   fontSize: 12, fontWeight: 900, letterSpacing: "0.02em",
                   background: choixGif ? "var(--yellow)" : "transparent",
@@ -445,6 +452,8 @@ function Bulle({ m, moi, moiId, prive, suite, couleur, menu, onMenu, onReagir, o
   const [place, setPlace] = useState({ dessus: 999, dessous: 999 });
   const interactif = !m.etat && !m.supprime;
   const gif = !m.supprime && m.piece?.type === "gif" ? m.piece : null;
+  // Un sticker s'affiche seul, sans bulle autour.
+  const sticker = !m.supprime && m.piece?.type === "sticker" ? m.piece : null;
 
   const ouvrir = () => {
     if (!interactif) return;
@@ -493,13 +502,18 @@ function Bulle({ m, moi, moiId, prive, suite, couleur, menu, onMenu, onReagir, o
               whiteSpace: "pre-wrap", overflowWrap: "anywhere",
               overflow: gif ? "hidden" : undefined, maxWidth: "100%",
               ...(gif ? { background: "var(--cream2)", borderBottomRightRadius: 10, borderBottomLeftRadius: 10 } : {}),
+              ...(sticker ? { background: "transparent", border: "none", boxShadow: "none", padding: 0 } : {}),
               opacity: m.etat === "envoi" ? 0.55 : 1,
               fontStyle: m.supprime ? "italic" : "normal",
               color: m.supprime ? "rgba(0,0,0,0.45)" : "var(--ink)",
               cursor: interactif ? "pointer" : "default",
               transition: "box-shadow 0.1s, transform 0.1s",
             }}>
-            {m.supprime ? "Message supprimé" : gif ? (
+            {m.supprime ? "Message supprimé" : sticker ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={urlSticker(sticker.id)} alt="Sticker" className="chat-sticker"
+                style={{ width: Math.min(140, sticker.largeur), maxWidth: "100%", height: "auto", aspectRatio: `${sticker.largeur} / ${sticker.hauteur}`, display: "block" }} />
+            ) : gif ? (
               <MediaGifVue gif={gif} largeur={220} titre={gif.titre}
                 style={{ maxWidth: "100%", height: "auto", aspectRatio: `${gif.largeur} / ${gif.hauteur}` }} />
             ) : <Texte contenu={m.contenu} />}
@@ -565,7 +579,7 @@ function PaletteVolantes({ conversation, onFermer }: { conversation: string; onF
   const boite = useRef<HTMLDivElement>(null);
   const muet = useVolantesMuettes();
   const direct = useDirect();
-  const [onglet, setOnglet] = useState<"emotes" | "gif">("emotes");
+  const [onglet, setOnglet] = useState<"emotes" | "gif" | "stickers">("emotes");
   useFermerAuClicAilleurs(boite, ".chat-bouton-palette", onFermer);
 
   return (
@@ -573,8 +587,10 @@ function PaletteVolantes({ conversation, onFermer }: { conversation: string; onF
       position: "absolute", left: 10, right: 10, bottom: "calc(100% + 8px)", zIndex: 6, padding: "8px 8px 6px",
       boxShadow: "3px 3px 0 var(--ink)", borderRadius: 12,
     }}>
-      <Onglets valeur={onglet} onChange={setOnglet} options={[["emotes", "Émotes"], ["gif", "GIF"]]} />
-      {onglet === "emotes" ? (
+      <Onglets valeur={onglet} onChange={setOnglet} options={[["emotes", "Émotes"], ["gif", "GIF"], ["stickers", "Stickers"]]} />
+      {onglet === "stickers" ? (
+        <ChoixSticker hauteur={200} onChoisir={st => lancerVolante(conversation, { sticker: { id: st.id, largeur: st.largeur, hauteur: st.hauteur } })} />
+      ) : onglet === "emotes" ? (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 2, justifyContent: "space-between" }}>
           {VOLANTES_PROPOSEES.map(e => (
             <button key={e} onClick={() => lancerVolante(conversation, { emoji: e })} aria-label={`Lancer ${e}`}
@@ -597,16 +613,20 @@ function PaletteVolantes({ conversation, onFermer }: { conversation: string; onF
   );
 }
 
-/** Choix d'un GIF à envoyer dans la discussion, au-dessus de la saisie. */
-function PanneauGif({ onChoisir, onFermer }: { onChoisir: (g: ResultatGif) => void; onFermer: () => void }) {
+/** Choix d'un GIF ou d'un sticker à envoyer dans la discussion, au-dessus de la saisie. */
+function PanneauMedias({ onGif, onSticker, onFermer }: {
+  onGif: (g: ResultatGif) => void; onSticker: (s: StickerChat) => void; onFermer: () => void;
+}) {
   const boite = useRef<HTMLDivElement>(null);
+  const [onglet, setOnglet] = useState<"gif" | "stickers">("gif");
   useFermerAuClicAilleurs(boite, ".chat-bouton-gif", onFermer);
   return (
-    <div ref={boite} role="dialog" aria-label="Envoyer un GIF" className="pop-card chat-palette-volantes" style={{
+    <div ref={boite} role="dialog" aria-label="Envoyer un GIF ou un sticker" className="pop-card chat-palette-volantes" style={{
       position: "absolute", left: 10, right: 10, bottom: "calc(100% + 8px)", zIndex: 6, padding: 8,
       boxShadow: "3px 3px 0 var(--ink)", borderRadius: 12,
     }}>
-      <ChoixGif onChoisir={onChoisir} />
+      <Onglets valeur={onglet} onChange={setOnglet} options={[["gif", "GIF"], ["stickers", "Stickers"]]} />
+      {onglet === "gif" ? <ChoixGif onChoisir={onGif} /> : <ChoixSticker onChoisir={onSticker} />}
     </div>
   );
 }

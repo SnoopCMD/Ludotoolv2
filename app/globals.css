@@ -454,3 +454,16 @@ body::before {
 .chat-volante-gif { border-radius: 10px; border: 2px solid var(--ink); box-shadow: 0 6px 14px rgba(0, 0, 0, 0.25); background: var(--cream2); }
 .chat-gif-choix { transition: transform 0.08s, box-shadow 0.08s; }
 .chat-gif-choix:hover { transform: scale(1.03); box-shadow: 0 0 0 2px var(--ink); }
+.chat-sticker-choix { transition: transform 0.08s, background 0.1s; }
+.chat-sticker-choix:hover { transform: scale(1.06); background: var(--cream2) !important; }
+.chat-sticker-retirer {
+  position: absolute; top: -4px; right: -4px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px;
+  border: 1.5px solid var(--ink); background: var(--white); color: var(--ink); font-size: 12px; font-weight: 900;
+  line-height: 1; cursor: pointer; font-family: inherit; opacity: 0; transition: opacity 0.1s;
+}
+.chat-sticker-retirer.confirmer { background: #dc2626; color: #fff; font-size: 10px; opacity: 1; }
+.chat-sticker-case:hover .chat-sticker-retirer, .chat-sticker-retirer:focus-visible { opacity: 1; }
+@media (hover: none) { .chat-sticker-retirer { opacity: 1; } }
+.chat-volante-sticker { filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.25)); }
+.chat-sticker { filter: drop-shadow(0 3px 5px rgba(0, 0, 0, 0.18)); transition: transform 0.1s; }
+[aria-expanded="true"] > .chat-sticker { transform: scale(1.04); }
