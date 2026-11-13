@@ -1316,30 +1316,36 @@ function Etagere({ etape, jeux, isMobile, modeGroupe, groupe, onEntete, onBoite,
  */
 function TutoEtape({ etape, gestes, isMobile, onFermer }: { etape: EtapeAtelier; gestes: GesteTuto[]; isMobile: boolean; onFermer: () => void }) {
   // Illustrations carrées (1:1) ; une image d'un autre format y tient entière.
-  const cote = isMobile ? 170 : 240;
+  const cote = isMobile ? 160 : 210;
+  // Bulle ajustée à son contenu, calée à droite sous le bouton « ? » qu'elle pointe.
   return (
-    <div style={{ position: 'relative', margin: isMobile ? '10px 10px 4px' : '12px 16px 6px', background: 'var(--cream)', border: '2.5px solid var(--ink)', borderRadius: 12, boxShadow: '4px 4px 0 rgba(0,0,0,0.35)', padding: isMobile ? '12px 10px' : '14px 18px' }}>
+    <div style={{ display: 'flex', justifyContent: 'flex-end', padding: isMobile ? '12px 10px 4px' : '14px 16px 6px' }}>
+    <div style={{ position: 'relative', width: 'fit-content', maxWidth: '100%', minWidth: 0, background: 'var(--cream)', border: '2.5px solid var(--ink)', borderRadius: 16, boxShadow: '4px 4px 0 rgba(0,0,0,0.35)', padding: isMobile ? '10px 10px 12px' : '12px 16px 14px' }}>
+      {/* Queue de la bulle, vers le bouton « ? » */}
+      <span aria-hidden style={{ position: 'absolute', top: -13, right: isMobile ? 38 : 44, width: 0, height: 0, borderLeft: '11px solid transparent', borderRight: '11px solid transparent', borderBottom: '13px solid var(--ink)' }} />
+      <span aria-hidden style={{ position: 'absolute', top: -8.5, right: isMobile ? 41 : 47, width: 0, height: 0, borderLeft: '8px solid transparent', borderRight: '8px solid transparent', borderBottom: '9.5px solid var(--cream)' }} />
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 2 }}>
-        <span className="bc" style={{ fontSize: isMobile ? 16 : 19, textTransform: 'uppercase', flex: 1, minWidth: 0 }}>📖 Tuto · étape {etape.num}</span>
-        <button onClick={onFermer} title="Replier le tuto" style={{ width: 28, height: 28, flexShrink: 0, background: 'var(--ink)', color: 'var(--white)', border: '2px solid var(--ink)', borderRadius: 6, fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>✕</button>
+        <span className="bc" style={{ fontSize: isMobile ? 15 : 17, textTransform: 'uppercase', flex: 1, minWidth: 0 }}>📖 Tuto · étape {etape.num}</span>
+        <button onClick={onFermer} title="Replier le tuto" style={{ width: 26, height: 26, flexShrink: 0, background: 'var(--ink)', color: 'var(--white)', border: '2px solid var(--ink)', borderRadius: 6, fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>✕</button>
       </div>
-      <ol style={{ listStyle: 'none', margin: 0, display: 'flex', alignItems: 'stretch', gap: isMobile ? 10 : 6, overflowX: 'auto', padding: '12px 4px 4px 12px' }}>
+      <ol style={{ listStyle: 'none', margin: 0, display: 'flex', alignItems: 'stretch', gap: isMobile ? 8 : 12, overflowX: 'auto', padding: '12px 4px 4px 12px' }}>
         {gestes.map((g, i) => (
-          <li key={g.image} style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 10 : 6, flex: isMobile ? '0 0 auto' : '1 1 0', minWidth: isMobile ? cote + 30 : 0 }}>
-            <figure style={{ margin: 0, flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, textAlign: 'center' }}>
+          <li key={g.image} style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 12, flex: '0 0 auto' }}>
+            <figure style={{ margin: 0, width: cote, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, textAlign: 'center' }}>
               <div style={{ position: 'relative' }}>
                 <img src={g.image} alt={g.titre} loading="lazy" style={{ width: cote, height: cote, objectFit: 'contain', display: 'block', borderRadius: 14, border: '2.5px solid var(--ink)', background: '#f7f1e6' }} />
                 <span className="bc" style={{ position: 'absolute', top: -10, left: -10, width: 34, height: 34, borderRadius: '50%', background: etape.hex, border: '2.5px solid var(--ink)', boxShadow: '2px 2px 0 var(--ink)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>{i + 1}</span>
               </div>
-              <figcaption style={{ maxWidth: 240 }}>
+              <figcaption style={{ maxWidth: cote }}>
                 <span style={{ display: 'block', fontWeight: 800, fontSize: isMobile ? 13 : 15, lineHeight: 1.2 }}>{g.titre}</span>
                 {g.texte && <span style={{ display: 'block', fontSize: isMobile ? 11 : 12, fontWeight: 600, color: 'rgba(0,0,0,0.55)', marginTop: 2 }}>{g.texte}</span>}
               </figcaption>
             </figure>
-            {i < gestes.length - 1 && <span aria-hidden style={{ fontSize: isMobile ? 20 : 28, fontWeight: 900, color: 'rgba(0,0,0,0.35)', flexShrink: 0 }}>→</span>}
+            {i < gestes.length - 1 && <span aria-hidden style={{ fontSize: isMobile ? 18 : 24, fontWeight: 900, color: 'rgba(0,0,0,0.35)', flexShrink: 0 }}>→</span>}
           </li>
         ))}
       </ol>
+    </div>
     </div>
   );
 }
