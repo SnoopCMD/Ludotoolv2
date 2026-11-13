@@ -265,3 +265,12 @@ export function mediaStickerValide(s: unknown): MediaSticker | null {
   if (!dimension(o.largeur) || !dimension(o.hauteur)) return null;
   return { id: o.id, largeur: o.largeur as number, hauteur: o.hauteur as number };
 }
+
+// ── Favoris ───────────────────────────────────────────────────────────────
+
+/** Un GIF ou un sticker mis de côté par le compte : la pièce telle qu'on l'enverrait. */
+export type FavoriChat = PieceChat;
+export const FAVORIS_MAX = 200;
+
+/** Clé d'un favori : type + identifiant (celui de GIPHY ou du sticker). */
+export const cleFavori = (p: { type: string; id: string }) => `${p.type}:${p.id}`;

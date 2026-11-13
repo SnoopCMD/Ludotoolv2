@@ -457,7 +457,7 @@ body::before {
 .chat-sticker-choix { transition: transform 0.08s, background 0.1s; }
 .chat-sticker-choix:hover { transform: scale(1.06); background: var(--cream2) !important; }
 .chat-sticker-retirer {
-  position: absolute; top: -4px; right: -4px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px;
+  position: absolute; top: -4px; left: -4px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px;
   border: 1.5px solid var(--ink); background: var(--white); color: var(--ink); font-size: 12px; font-weight: 900;
   line-height: 1; cursor: pointer; font-family: inherit; opacity: 0; transition: opacity 0.1s;
 }
@@ -467,3 +467,17 @@ body::before {
 .chat-volante-sticker { filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.25)); }
 .chat-sticker { filter: drop-shadow(0 3px 5px rgba(0, 0, 0, 0.18)); transition: transform 0.1s; }
 [aria-expanded="true"] > .chat-sticker { transform: scale(1.04); }
+
+/* ── Messagerie : favoris ── */
+.chat-etoile {
+  position: absolute; top: 4px; right: 4px; width: 24px; height: 24px; border-radius: 12px; padding: 0;
+  display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 14px; line-height: 1;
+  border: 1.5px solid var(--ink); background: rgba(255, 255, 255, 0.85); color: var(--ink);
+  opacity: 0; transition: opacity 0.1s, transform 0.08s;
+}
+.chat-etoile.active { opacity: 1; background: var(--yellow); }
+.chat-etoile.erreur { background: #fecaca; opacity: 1; }
+.chat-etoile:active { transform: scale(0.88); }
+.chat-media-case:hover .chat-etoile, .chat-etoile:focus-visible { opacity: 1; }
+@media (hover: none) { .chat-etoile { opacity: 1; } }
+.chat-section-titre { font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.07em; color: rgba(0, 0, 0, 0.45); margin: 2px 2px 6px; }

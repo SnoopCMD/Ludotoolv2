@@ -1,12 +1,15 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { ReponseGifs, ResultatGif } from "../../lib/chat";
+import type { PieceGif, ReponseGifs, ResultatGif } from "../../lib/chat";
+import EtoileFavori from "./EtoileFavori";
+import { useFavoris } from "./favoris";
 import MediaGifVue from "./MediaGif";
 
 /**
  * Recherche et choix d'un GIF (GIPHY, via `GET /api/chat/gifs`). Sans
- * recherche : les GIF du moment. Sert à l'envoi dans une discussion comme aux
+ * recherche : ses GIF favoris, puis ceux du moment. Une étoile sur chaque GIF
+ * l'ajoute aux favoris ou l'en retire. Sert à l'envoi dans une discussion comme aux
  * réactions volantes.
  */
 export default function ChoixGif({ onChoisir, hauteur = 260 }: { onChoisir: (g: ResultatGif) => void; hauteur?: number }) {
@@ -17,6 +20,9 @@ export default function ChoixGif({ onChoisir, hauteur = 260 }: { onChoisir: (g: 
   const [erreur, setErreur] = useState<string | null>(null);
   const champ = useRef<HTMLInputElement>(null);
   const requete = useRef(0);
+  const { favoris } = useFavoris();
+  const favorisGif = favoris.filter((f): f is PieceGif => f.type === "gif");
+  const enRecherche = q.trim() !== "";
 
   const charger = async (texte: string, offset: number) => {
     const n = ++requete.current;
@@ -53,18 +59,14 @@ export default function ChoixGif({ onChoisir, hauteur = 260 }: { onChoisir: (g: 
           <div style={{ padding: 12, fontSize: 12, fontWeight: 700, color: "rgba(0,0,0,0.6)", textAlign: "center" }}>{erreur}</div>
         ) : (
           <>
-            {/* Deux colonnes façon mosaïque : chaque GIF garde ses proportions. */}
-            <div style={{ columnCount: 2, columnGap: 4 }}>
-              {gifs.map(g => (
-                <button key={g.id} onClick={() => onChoisir(g)} title={g.titre} aria-label={g.titre || "GIF"}
-                  className="chat-gif-choix" style={{
-                    display: "block", width: "100%", padding: 0, marginBottom: 4, border: "none", borderRadius: 6,
-                    overflow: "hidden", cursor: "pointer", background: "var(--cream2)", breakInside: "avoid",
-                  }}>
-                  <MediaGifVue gif={g} largeur={400} titre={g.titre} style={{ width: "100%", height: "auto", aspectRatio: `${g.largeur} / ${g.hauteur}` }} />
-                </button>
-              ))}
-            </div>
+            {!enRecherche && favorisGif.length > 0 && (
+              <>
+                <div className="chat-section-titre">★ Mes favoris</div>
+                <Mosaique gifs={favorisGif} onChoisir={onChoisir} />
+                <div className="chat-section-titre" style={{ marginTop: 8 }}>Du moment</div>
+              </>
+            )}
+            <Mosaique gifs={gifs} onChoisir={onChoisir} />
             {!chargement && gifs.length === 0 && (
               <div style={{ padding: 12, fontSize: 12, fontWeight: 600, color: "rgba(0,0,0,0.5)", textAlign: "center" }}>Aucun GIF trouvé.</div>
             )}
@@ -80,6 +82,26 @@ export default function ChoixGif({ onChoisir, hauteur = 260 }: { onChoisir: (g: 
       <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: "rgba(0,0,0,0.4)", textAlign: "right" }}>
         Powered by GIPHY
       </div>
+    </div>
+  );
+}
+
+/** Deux colonnes façon mosaïque : chaque GIF garde ses proportions. */
+function Mosaique({ gifs, onChoisir }: { gifs: ResultatGif[]; onChoisir: (g: ResultatGif) => void }) {
+  return (
+    <div style={{ columnCount: 2, columnGap: 4 }}>
+      {gifs.map(g => (
+        <div key={g.id} className="chat-media-case" style={{ position: "relative", marginBottom: 4, breakInside: "avoid" }}>
+          <button onClick={() => onChoisir(g)} title={g.titre} aria-label={g.titre || "GIF"}
+            className="chat-gif-choix" style={{
+              display: "block", width: "100%", padding: 0, border: "none", borderRadius: 6,
+              overflow: "hidden", cursor: "pointer", background: "var(--cream2)",
+            }}>
+            <MediaGifVue gif={g} largeur={400} titre={g.titre} style={{ width: "100%", height: "auto", aspectRatio: `${g.largeur} / ${g.hauteur}` }} />
+          </button>
+          <EtoileFavori piece={{ type: "gif", id: g.id, titre: g.titre, url: g.url, mp4: g.mp4, largeur: g.largeur, hauteur: g.hauteur }} />
+        </div>
+      ))}
     </div>
   );
 }

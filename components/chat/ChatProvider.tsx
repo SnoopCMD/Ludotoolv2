@@ -8,6 +8,7 @@ import { libellePiece, type CompteChat, type ReponseConversations, type ResumeCo
 import PanneauChat from "./PanneauChat";
 import ToastChat, { type Notification } from "./ToastChat";
 import CoucheVolantes from "./CoucheVolantes";
+import { oublierFavoris } from "./favoris";
 
 type ChatContextValue = {
   ouvert: boolean;
@@ -57,6 +58,8 @@ export default function ChatProvider({ children }: { children: React.ReactNode }
       .catch(() => {});
   }, [compteId]);
   useEffect(() => { rafraichir(); }, [rafraichir]);
+  // Changement de compte : les favoris de l'ancien ne doivent pas rester.
+  useEffect(() => { oublierFavoris(); }, [compteId]);
   // Filet de sécurité si le direct est coupé : le compteur « chat » de /api/maj.
   useTempsReel("chat", rafraichir);
 

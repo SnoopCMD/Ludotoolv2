@@ -2,14 +2,18 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useCompte } from "../AuthProvider";
-import { STICKER_COTE_MAX, STICKER_POIDS_MAX, STICKER_TYPES, urlSticker, type StickerChat } from "../../lib/chat";
+import { STICKER_COTE_MAX, STICKER_POIDS_MAX, STICKER_TYPES, urlSticker, type PieceSticker, type StickerChat } from "../../lib/chat";
+import EtoileFavori from "./EtoileFavori";
+import { useFavoris } from "./favoris";
 
 /**
- * Bibliothèque de stickers de l'équipe : choisir, importer une image, retirer
- * les siens. Sert à l'envoi dans une discussion comme aux réactions volantes.
+ * Bibliothèque de stickers de l'équipe : ses favoris d'abord, puis tous ;
+ * choisir, importer une image, retirer les siens, mettre en favori. Sert à l'envoi dans une discussion comme aux réactions volantes.
  */
-export default function ChoixSticker({ onChoisir, hauteur = 260 }: { onChoisir: (s: StickerChat) => void; hauteur?: number }) {
+export default function ChoixSticker({ onChoisir, hauteur = 260 }: { onChoisir: (s: StickerChat | PieceSticker) => void; hauteur?: number }) {
   const { compte } = useCompte();
+  const { favoris } = useFavoris();
+  const favorisSticker = favoris.filter((f): f is PieceSticker => f.type === "sticker");
   const [stickers, setStickers] = useState<StickerChat[] | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [envoi, setEnvoi] = useState(false);
@@ -55,6 +59,23 @@ export default function ChoixSticker({ onChoisir, hauteur = 260 }: { onChoisir: 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
       <div style={{ height: hauteur, overflowY: "auto" }}>
+        {favorisSticker.length > 0 && (
+          <>
+            <div className="chat-section-titre">★ Mes favoris</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6, marginBottom: 10 }}>
+              {favorisSticker.map(f => (
+                <div key={f.id} className="chat-media-case" style={{ position: "relative", aspectRatio: "1" }}>
+                  <button onClick={() => onChoisir(f)} aria-label="Sticker favori" className="chat-sticker-choix" style={caseSticker}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={urlSticker(f.id)} alt="" loading="lazy" style={imageSticker} />
+                  </button>
+                  <EtoileFavori piece={f} />
+                </div>
+              ))}
+            </div>
+            <div className="chat-section-titre">Bibliothèque de l&apos;équipe</div>
+          </>
+        )}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
           {/* Première case : importer une image. */}
           <button onClick={() => fichier.current?.click()} disabled={envoi} aria-label="Importer un sticker" title="Importer une image"
@@ -70,15 +91,13 @@ export default function ChoixSticker({ onChoisir, hauteur = 260 }: { onChoisir: 
           {(stickers ?? []).map(s => {
             const mien = s.auteur_id === compte?.id;
             return (
-              <div key={s.id} className="chat-sticker-case" style={{ position: "relative", aspectRatio: "1" }}>
+              <div key={s.id} className="chat-sticker-case chat-media-case" style={{ position: "relative", aspectRatio: "1" }}>
                 <button onClick={() => onChoisir(s)} title={`Importé par ${mien ? "toi" : s.auteur_nom}`} aria-label="Sticker"
-                  className="chat-sticker-choix" style={{
-                    width: "100%", height: "100%", padding: 4, borderRadius: 10, cursor: "pointer",
-                    border: "2px solid transparent", background: "transparent",
-                  }}>
+                  className="chat-sticker-choix" style={caseSticker}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={urlSticker(s.id)} alt="" loading="lazy" style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
+                  <img src={urlSticker(s.id)} alt="" loading="lazy" style={imageSticker} />
                 </button>
+                <EtoileFavori piece={{ type: "sticker", id: s.id, largeur: s.largeur, hauteur: s.hauteur }} />
                 {mien && (
                   aRetirer === s.id
                     ? <button onClick={() => retirer(s.id)} className="chat-sticker-retirer confirmer">Retirer ?</button>
@@ -103,6 +122,12 @@ export default function ChoixSticker({ onChoisir, hauteur = 260 }: { onChoisir: 
     </div>
   );
 }
+
+const caseSticker: React.CSSProperties = {
+  width: "100%", height: "100%", padding: 4, borderRadius: 10, cursor: "pointer",
+  border: "2px solid transparent", background: "transparent",
+};
+const imageSticker: React.CSSProperties = { width: "100%", height: "100%", objectFit: "contain", display: "block" };
 
 /**
  * Prépare une image avant l'envoi : les images fixes sont réduites

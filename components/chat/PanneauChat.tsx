@@ -5,11 +5,12 @@ import Link from "next/link";
 import { useCompte } from "../AuthProvider";
 import { useChat } from "./ChatProvider";
 import { useConversation, type MessageAffiche } from "./useConversation";
-import { CONVERSATION_GENERALE, LONGUEUR_MAX_MESSAGE, REACTIONS_RAPIDES, REACTIONS_TOUTES, type ResultatGif, type ResumeConversation, type StickerChat, urlSticker } from "../../lib/chat";
+import { CONVERSATION_GENERALE, LONGUEUR_MAX_MESSAGE, REACTIONS_RAPIDES, REACTIONS_TOUTES, type ResultatGif, type ResumeConversation, type MediaSticker, type PieceChat, urlSticker } from "../../lib/chat";
 import { useDirect } from "../../lib/chat-canal";
 import { changerMuet, lancerVolante, useVolantesMuettes } from "./CoucheVolantes";
 import ChoixGif from "./ChoixGif";
 import ChoixSticker from "./ChoixSticker";
+import { basculerFavori, useFavoris } from "./favoris";
 import MediaGifVue from "./MediaGif";
 import { couleurParDefaut } from "../../lib/couleurProfil";
 import { useCouleurProfil } from "../../lib/useCouleurProfil";
@@ -523,7 +524,7 @@ function Bulle({ m, moi, moiId, prive, suite, couleur, menu, onMenu, onReagir, o
             <button onClick={ouvrir} aria-label="Ajouter une réaction" title="Réagir" style={petitBouton("transparent", "var(--ink)")}>☺︎+</button>
           )}
           {menu && (
-            <BarreReactions moi={moi} cote={moi ? "droite" : "gauche"} place={place}
+            <BarreReactions moi={moi} cote={moi ? "droite" : "gauche"} place={place} piece={m.piece}
               dejaMises={m.reactions.filter(r => r.comptes.some(c => c.id === moiId)).map(r => r.emoji)}
               onChoisir={e => { onReagir(e); onMenu(false); }}
               onSupprimer={moi ? () => { onMenu(false); onSupprimer(); } : undefined}
@@ -615,7 +616,7 @@ function PaletteVolantes({ conversation, onFermer }: { conversation: string; onF
 
 /** Choix d'un GIF ou d'un sticker à envoyer dans la discussion, au-dessus de la saisie. */
 function PanneauMedias({ onGif, onSticker, onFermer }: {
-  onGif: (g: ResultatGif) => void; onSticker: (s: StickerChat) => void; onFermer: () => void;
+  onGif: (g: ResultatGif) => void; onSticker: (s: MediaSticker) => void; onFermer: () => void;
 }) {
   const boite = useRef<HTMLDivElement>(null);
   const [onglet, setOnglet] = useState<"gif" | "stickers">("gif");
@@ -668,13 +669,17 @@ const HAUTEUR_GRILLE = 230;
  * Barre flottante au-dessus (ou au-dessous) d'une bulle : réactions rapides,
  * « + » pour tout le choix, et la corbeille sur ses propres messages.
  */
-function BarreReactions({ moi, cote, place, dejaMises, onChoisir, onSupprimer, onFermer }: {
+function BarreReactions({ moi, cote, place, piece, dejaMises, onChoisir, onSupprimer, onFermer }: {
   moi: boolean; cote: "gauche" | "droite"; place: { dessus: number; dessous: number };
+  /** GIF ou sticker du message : on peut le mettre en favori d'ici. */
+  piece: PieceChat | null;
   dejaMises: string[]; onChoisir: (emoji: string) => void; onSupprimer?: () => void; onFermer: () => void;
 }) {
   const [grille, setGrille] = useState(false);
   const [confirmer, setConfirmer] = useState(false);
   const boite = useRef<HTMLDivElement>(null);
+  const { estFavori } = useFavoris();
+  const [erreurFavori, setErreurFavori] = useState<string | null>(null);
 
   // Clic ailleurs ou Échap : on referme (Échap ne ferme pas tout le panneau).
   useEffect(() => {
@@ -726,6 +731,21 @@ function BarreReactions({ moi, cote, place, dejaMises, onChoisir, onSupprimer, o
             width: 34, height: 34, borderRadius: 8, cursor: "pointer", flexShrink: 0, fontFamily: "inherit",
             background: "var(--cream)", border: "2px solid var(--ink)", fontSize: 18, fontWeight: 900, lineHeight: 1,
           }}>+</button>
+          {piece && (
+            <>
+              <span style={{ width: 1.5, height: 24, background: "rgba(0,0,0,0.12)", margin: "0 3px" }} />
+              <button onClick={() => { setErreurFavori(null); basculerFavori(piece).then(onFermer, e => setErreurFavori((e as Error).message)); }}
+                aria-pressed={estFavori(piece)}
+                aria-label={estFavori(piece) ? "Retirer des favoris" : `Ajouter ce ${piece.type === "gif" ? "GIF" : "sticker"} aux favoris`}
+                title={erreurFavori ?? (estFavori(piece) ? "Retirer des favoris" : "Ajouter aux favoris")}
+                style={{
+                  width: 34, height: 34, borderRadius: 8, cursor: "pointer", fontSize: 18, lineHeight: 1, padding: 0,
+                  background: estFavori(piece) ? "var(--yellow)" : "transparent",
+                  border: estFavori(piece) ? "2px solid var(--ink)" : "2px solid transparent",
+                  color: erreurFavori ? "#dc2626" : "var(--ink)",
+                }}>{estFavori(piece) ? "★" : "☆"}</button>
+            </>
+          )}
           {moi && onSupprimer && (
             <>
               <span style={{ width: 1.5, height: 24, background: "rgba(0,0,0,0.12)", margin: "0 3px" }} />

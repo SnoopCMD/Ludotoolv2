@@ -173,7 +173,7 @@ jeu, servi par `/api/regles/[ean]` ; `catalogue.pdf_url` pointe vers cette route
 | `jv_jeux`, `jv_selections`, `jv_reservations`, `jv_rotation_config`, `jv_notes`, `jv_standby` | Section jeux vidéo |
 | `pieces_manquantes`, `pieces_trouvees`, `reparations` | Suivi du matériel |
 | `pieces_detachees` | Stock de pièces de rechange, rangées par jeu |
-| `chat_conversations`, `chat_membres`, `chat_messages`, `chat_reactions`, `chat_stickers`, `chat_lectures` | Messagerie : conversations (générale, privées) et leurs membres, messages (et leur GIF ou sticker joint), réactions, bibliothèque de stickers, dernier message lu par compte |
+| `chat_conversations`, `chat_membres`, `chat_messages`, `chat_reactions`, `chat_stickers`, `chat_favoris`, `chat_lectures` | Messagerie : conversations (générale, privées) et leurs membres, messages (et leur GIF ou sticker joint), réactions, bibliothèque de stickers, favoris par compte, dernier message lu par compte |
 | `alertes`, `suggestions`, `selections` | Alertes, boîte à idées, sélections thématiques |
 | `utilisateurs`, `utilisateur_sessions` | Comptes (un par membre de `equipe`) et sessions ouvertes |
 | `utilisateur_preferences` | Modules choisis sur le tableau de bord, par compte |
@@ -469,6 +469,14 @@ navigateur ◀════════ WebSocket /api/chat/ws ══════
   immuable). Chacun ne retire que les siens, et retirer ne fait que cacher :
   les messages déjà envoyés gardent leur image. Un sticker s'affiche sans
   bulle autour.
+- **Favoris** (`chat_favoris`, migration 0031, par compte) : une étoile ☆
+  dans le coin de chaque GIF et sticker des sélecteurs, et dans la barre d'un
+  GIF ou sticker reçu, l'ajoute ou le retire. Les favoris passent en tête
+  (« ★ Mes favoris ») dans les sélecteurs d'envoi comme dans la palette ✨,
+  quand on ne cherche rien. La ligne garde la pièce complète (un GIF vit chez
+  GIPHY, pas chez nous) ; un sticker retiré de la bibliothèque reste dans les
+  favoris de ceux qui l'avaient. 200 favoris au plus. Côté navigateur, un seul
+  état partagé (`components/chat/favoris.ts`), mis à jour sur place.
 - **Notifications** (`ToastChat`) : un message privé reçu, ou une réaction
   posée sur un de ses messages (événement `reaction`, envoyé à l'auteur seul,
   pas pour un retrait), quand la discussion n'est pas sous les yeux.
