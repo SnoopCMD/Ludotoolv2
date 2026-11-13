@@ -1,5 +1,8 @@
 import { DurableObject } from "cloudflare:workers";
-import { CONVERSATION_GENERALE, VOLANTES_FENETRE_MS, VOLANTES_MAX, emojiValide, type EnvoiDirect, type VolanteChat } from "../lib/chat";
+import { CONVERSATION_GENERALE, VOLANTES_FENETRE_MS, VOLANTES_MAX, emojiValide, mediaGifValide, type EnvoiDirect, type VolanteChat } from "../lib/chat";
+
+/** Un GIF volant pèse plus lourd qu'une émote dans le garde-fou anti-rafale. */
+const POIDS_GIF = 3;
 
 /**
  * Le direct de la messagerie : un seul Durable Object pour toute l'équipe
@@ -61,10 +64,14 @@ export class MessagerieDO extends DurableObject<CloudflareEnv> {
    * base. L'auteur est l'étiquette du socket, jamais ce que dit le message.
    */
   async webSocketMessage(ws: WebSocket, donnees: string | ArrayBuffer): Promise<void> {
-    if (typeof donnees !== "string" || donnees.length > 500) return;
+    if (typeof donnees !== "string" || donnees.length > 2000) return;
     let envoi: EnvoiDirect;
     try { envoi = JSON.parse(donnees); } catch { return; }
-    if (envoi?.type !== "volante" || !emojiValide(envoi.emoji) || typeof envoi.cle !== "string" || envoi.cle.length > 64) return;
+    if (envoi?.type !== "volante" || typeof envoi.cle !== "string" || envoi.cle.length > 64) return;
+    // Une émote ou un GIF hébergé par GIPHY, pas les deux.
+    const gif = envoi.gif != null ? mediaGifValide(envoi.gif) : null;
+    const emoji = envoi.emoji != null && emojiValide(envoi.emoji) ? envoi.emoji : null;
+    if (!gif === !emoji) return;
     const auteur = this.ctx.getTags(ws)[0];
     if (!auteur) return;
 
@@ -75,11 +82,15 @@ export class MessagerieDO extends DurableObject<CloudflareEnv> {
     // Au plus VOLANTES_MAX par fenêtre : au-delà, on ignore sans rien dire.
     const maintenant = Date.now();
     const recentes = (this.rafales.get(auteur) ?? []).filter(t => maintenant - t < VOLANTES_FENETRE_MS);
-    if (recentes.length >= VOLANTES_MAX) return;
-    recentes.push(maintenant);
+    const poids = gif ? POIDS_GIF : 1;
+    if (recentes.length + poids > VOLANTES_MAX) return;
+    for (let i = 0; i < poids; i++) recentes.push(maintenant);
     this.rafales.set(auteur, recentes);
 
-    const evenement: VolanteChat = { type: "volante", conversation_id: envoi.conversation_id, emoji: envoi.emoji, auteur_id: auteur, cle: envoi.cle };
+    const evenement: VolanteChat = {
+      type: "volante", conversation_id: envoi.conversation_id, auteur_id: auteur, cle: envoi.cle,
+      ...(gif ? { gif } : { emoji: emoji! }),
+    };
     await this.diffuser(evenement, null);
   }
 

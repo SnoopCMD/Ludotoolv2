@@ -5,9 +5,11 @@ import Link from "next/link";
 import { useCompte } from "../AuthProvider";
 import { useChat } from "./ChatProvider";
 import { useConversation, type MessageAffiche } from "./useConversation";
-import { CONVERSATION_GENERALE, LONGUEUR_MAX_MESSAGE, REACTIONS_RAPIDES, REACTIONS_TOUTES, type ResumeConversation } from "../../lib/chat";
+import { CONVERSATION_GENERALE, LONGUEUR_MAX_MESSAGE, REACTIONS_RAPIDES, REACTIONS_TOUTES, type ResultatGif, type ResumeConversation } from "../../lib/chat";
 import { useDirect } from "../../lib/chat-canal";
 import { changerMuet, lancerVolante, useVolantesMuettes } from "./CoucheVolantes";
+import ChoixGif from "./ChoixGif";
+import MediaGifVue from "./MediaGif";
 import { couleurParDefaut } from "../../lib/couleurProfil";
 import { useCouleurProfil } from "../../lib/useCouleurProfil";
 
@@ -242,6 +244,8 @@ function Fil({ conversation, prive, nomAutre }: { conversation: string; prive: b
   const [menu, setMenu] = useState<number | null>(null);
   /** Palette des réactions volantes, au-dessus de la saisie. */
   const [palette, setPalette] = useState(false);
+  /** Choix d'un GIF à envoyer. */
+  const [choixGif, setChoixGif] = useState(false);
 
   // ── Défilement : on suit le bas tant qu'on y est ; sinon, une pastille
   //    « nouveaux messages ». Charger l'historique garde la position de lecture.
@@ -370,8 +374,23 @@ function Fil({ conversation, prive, nomAutre }: { conversation: string; prive: b
           <div style={{ position: "relative", borderTop: "2.5px solid var(--ink)", background: "var(--white)", padding: "10px 12px calc(10px + env(safe-area-inset-bottom))", flexShrink: 0 }}>
             {/* Réactions volantes : dans la générale seulement. */}
             {palette && !prive && <PaletteVolantes conversation={conversation} onFermer={() => setPalette(false)} />}
+            {choixGif && (
+              <PanneauGif onFermer={() => setChoixGif(false)} onChoisir={g => {
+                conv.envoyer("", { type: "gif", id: g.id, titre: g.titre, url: g.url, mp4: g.mp4, largeur: g.largeur, hauteur: g.hauteur });
+                setChoixGif(false);
+                setEnBas(true);
+              }} />
+            )}
             <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
-              {!prive && <button onClick={() => setPalette(p => !p)} aria-label="Envoyer une réaction volante" aria-expanded={palette}
+              <button onClick={() => { setChoixGif(o => !o); setPalette(false); }} aria-label="Envoyer un GIF" aria-expanded={choixGif}
+                title="GIF" className="chat-bouton-gif" style={{
+                  height: 40, width: 40, flexShrink: 0, borderRadius: 8, cursor: "pointer", padding: 0, fontFamily: "inherit",
+                  fontSize: 12, fontWeight: 900, letterSpacing: "0.02em",
+                  background: choixGif ? "var(--yellow)" : "transparent",
+                  border: "2.5px solid var(--ink)",
+                  boxShadow: choixGif ? "2px 2px 0 var(--ink)" : "none",
+                }}>GIF</button>
+              {!prive && <button onClick={() => { setPalette(p => !p); setChoixGif(false); }} aria-label="Envoyer une réaction volante" aria-expanded={palette}
                 title="Réaction volante" className="chat-bouton-palette" style={{
                   height: 40, width: 40, flexShrink: 0, borderRadius: 8, cursor: "pointer", fontSize: 19, padding: 0,
                   background: palette ? "var(--yellow)" : "transparent",
@@ -425,6 +444,7 @@ function Bulle({ m, moi, moiId, prive, suite, couleur, menu, onMenu, onReagir, o
   // barre s'ouvre du côté où elle tient (le fil défile et coupe ce qui déborde).
   const [place, setPlace] = useState({ dessus: 999, dessous: 999 });
   const interactif = !m.etat && !m.supprime;
+  const gif = !m.supprime && m.piece?.type === "gif" ? m.piece : null;
 
   const ouvrir = () => {
     if (!interactif) return;
@@ -469,15 +489,20 @@ function Bulle({ m, moi, moiId, prive, suite, couleur, menu, onMenu, onReagir, o
               borderBottomLeftRadius: !moi && !m.supprime ? 3 : 10,
               boxShadow: m.supprime ? "none" : menu ? "3px 3px 0 var(--ink)" : "2px 2px 0 var(--ink)",
               transform: menu ? "translate(-1px, -1px)" : "none",
-              padding: "6px 10px", fontSize: 13.5, lineHeight: 1.4,
+              padding: gif ? 0 : "6px 10px", fontSize: 13.5, lineHeight: 1.4,
               whiteSpace: "pre-wrap", overflowWrap: "anywhere",
+              overflow: gif ? "hidden" : undefined, maxWidth: "100%",
+              ...(gif ? { background: "var(--cream2)", borderBottomRightRadius: 10, borderBottomLeftRadius: 10 } : {}),
               opacity: m.etat === "envoi" ? 0.55 : 1,
               fontStyle: m.supprime ? "italic" : "normal",
               color: m.supprime ? "rgba(0,0,0,0.45)" : "var(--ink)",
               cursor: interactif ? "pointer" : "default",
               transition: "box-shadow 0.1s, transform 0.1s",
             }}>
-            {m.supprime ? "Message supprimé" : <Texte contenu={m.contenu} />}
+            {m.supprime ? "Message supprimé" : gif ? (
+              <MediaGifVue gif={gif} largeur={220} titre={gif.titre}
+                style={{ maxWidth: "100%", height: "auto", aspectRatio: `${gif.largeur} / ${gif.hauteur}` }} />
+            ) : <Texte contenu={m.contenu} />}
           </div>
           {/* Au survol (souris), un rappel discret qu'on peut réagir. */}
           {interactif && survol && !menu && (
@@ -540,39 +565,77 @@ function PaletteVolantes({ conversation, onFermer }: { conversation: string; onF
   const boite = useRef<HTMLDivElement>(null);
   const muet = useVolantesMuettes();
   const direct = useDirect();
-
-  useEffect(() => {
-    const clic = (e: MouseEvent) => {
-      const cible = e.target as HTMLElement;
-      if (boite.current?.contains(cible) || cible.closest?.(".chat-bouton-palette")) return;
-      onFermer();
-    };
-    const touche = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); onFermer(); } };
-    document.addEventListener("mousedown", clic);
-    document.addEventListener("keydown", touche, true);
-    return () => { document.removeEventListener("mousedown", clic); document.removeEventListener("keydown", touche, true); };
-  }, [onFermer]);
+  const [onglet, setOnglet] = useState<"emotes" | "gif">("emotes");
+  useFermerAuClicAilleurs(boite, ".chat-bouton-palette", onFermer);
 
   return (
     <div ref={boite} role="dialog" aria-label="Réactions volantes" className="pop-card chat-palette-volantes" style={{
       position: "absolute", left: 10, right: 10, bottom: "calc(100% + 8px)", zIndex: 6, padding: "8px 8px 6px",
       boxShadow: "3px 3px 0 var(--ink)", borderRadius: 12,
     }}>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 2, justifyContent: "space-between" }}>
-        {VOLANTES_PROPOSEES.map(e => (
-          <button key={e} onClick={() => lancerVolante(conversation, e)} aria-label={`Lancer ${e}`}
-            className="chat-emote" style={{
-              width: 32, height: 32, borderRadius: 8, cursor: "pointer", padding: 0, fontSize: 21, lineHeight: 1,
-              background: "transparent", border: "2px solid transparent",
-            }}>{e}</button>
-        ))}
-      </div>
+      <Onglets valeur={onglet} onChange={setOnglet} options={[["emotes", "Émotes"], ["gif", "GIF"]]} />
+      {onglet === "emotes" ? (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 2, justifyContent: "space-between" }}>
+          {VOLANTES_PROPOSEES.map(e => (
+            <button key={e} onClick={() => lancerVolante(conversation, { emoji: e })} aria-label={`Lancer ${e}`}
+              className="chat-emote" style={{
+                width: 32, height: 32, borderRadius: 8, cursor: "pointer", padding: 0, fontSize: 21, lineHeight: 1,
+                background: "transparent", border: "2px solid transparent",
+              }}>{e}</button>
+          ))}
+        </div>
+      ) : (
+        <ChoixGif hauteur={200} onChoisir={g => lancerVolante(conversation, { gif: { url: g.url, mp4: g.mp4, largeur: g.largeur, hauteur: g.hauteur } })} />
+      )}
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6, paddingTop: 6, borderTop: "1.5px solid rgba(0,0,0,0.08)", fontSize: 11, fontWeight: 600, color: "rgba(0,0,0,0.5)" }}>
         <span style={{ flex: 1 }}>{direct ? "Elles montent sur l'écran de toute l'équipe." : "Direct coupé : toi seul les vois."}</span>
         <button onClick={() => changerMuet(!muet)} style={{ ...lienBouton, fontSize: 11, color: "rgba(0,0,0,0.6)" }}>
           {muet ? "🔕 Réactivées chez moi" : "🔔 Les couper chez moi"}
         </button>
       </div>
+    </div>
+  );
+}
+
+/** Choix d'un GIF à envoyer dans la discussion, au-dessus de la saisie. */
+function PanneauGif({ onChoisir, onFermer }: { onChoisir: (g: ResultatGif) => void; onFermer: () => void }) {
+  const boite = useRef<HTMLDivElement>(null);
+  useFermerAuClicAilleurs(boite, ".chat-bouton-gif", onFermer);
+  return (
+    <div ref={boite} role="dialog" aria-label="Envoyer un GIF" className="pop-card chat-palette-volantes" style={{
+      position: "absolute", left: 10, right: 10, bottom: "calc(100% + 8px)", zIndex: 6, padding: 8,
+      boxShadow: "3px 3px 0 var(--ink)", borderRadius: 12,
+    }}>
+      <ChoixGif onChoisir={onChoisir} />
+    </div>
+  );
+}
+
+/** Referme un menu flottant au clic ailleurs (hors de son bouton) ou sur Échap. */
+function useFermerAuClicAilleurs(boite: React.RefObject<HTMLDivElement | null>, bouton: string, onFermer: () => void) {
+  useEffect(() => {
+    const clic = (e: MouseEvent) => {
+      const cible = e.target as HTMLElement;
+      if (boite.current?.contains(cible) || cible.closest?.(bouton)) return;
+      onFermer();
+    };
+    const touche = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); onFermer(); } };
+    document.addEventListener("mousedown", clic);
+    document.addEventListener("keydown", touche, true);
+    return () => { document.removeEventListener("mousedown", clic); document.removeEventListener("keydown", touche, true); };
+  }, [boite, bouton, onFermer]);
+}
+
+function Onglets<T extends string>({ valeur, onChange, options }: { valeur: T; onChange: (v: T) => void; options: [T, string][] }) {
+  return (
+    <div role="tablist" style={{ display: "flex", gap: 4, marginBottom: 8 }}>
+      {options.map(([v, libelle]) => (
+        <button key={v} role="tab" aria-selected={valeur === v} onClick={() => onChange(v)} style={{
+          flex: 1, height: 26, borderRadius: 7, cursor: "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 800,
+          background: valeur === v ? "var(--ink)" : "transparent", color: valeur === v ? "var(--cream)" : "rgba(0,0,0,0.55)",
+          border: "2px solid var(--ink)",
+        }}>{libelle}</button>
+      ))}
     </div>
   );
 }

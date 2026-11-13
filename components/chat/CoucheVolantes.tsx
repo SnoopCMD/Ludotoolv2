@@ -2,9 +2,11 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { envoyerDirect, useEvenementsChat } from "../../lib/chat-canal";
+import type { MediaGif } from "../../lib/chat";
+import MediaGifVue from "./MediaGif";
 
 /**
- * Réactions volantes : des émotes qui montent en fontaine au milieu de
+ * Réactions volantes : des émotes (ou des GIF) qui montent en fontaine au milieu de
  * l'écran, par-dessus la page, chez toute l'équipe (conversation générale
  * seulement). Éphémères : rien en base, elles
  * passent par la WebSocket et le Durable Object, qui vérifie et relaie.
@@ -14,25 +16,30 @@ import { envoyerDirect, useEvenementsChat } from "../../lib/chat-canal";
  * sa `cle` et ignoré.
  */
 
+/** Ce qui s'envole : une émote, ou un GIF. */
+export type ContenuVolant = { emoji: string; gif?: undefined } | { gif: MediaGif; emoji?: undefined };
+
 type Volante = {
-  id: number; emoji: string;
+  id: number; contenu: ContenuVolant;
   /** Position de départ et trajectoire, tirées au hasard. */
   x: number; y: number; derive: number; duree: number; taille: number;
 };
 
 const MAX_A_L_ECRAN = 40;
+/** Largeur d'un GIF qui s'envole, en pixels. */
+const LARGEUR_GIF = 130;
 
 // ── Bus local : ce que cet onglet lance lui-même.
-type Lancement = { emoji: string };
+type Lancement = ContenuVolant;
 const lancements = new Set<(l: Lancement) => void>();
 const mesCles = new Set<string>();
 
-export function lancerVolante(conversation_id: string, emoji: string) {
+export function lancerVolante(conversation_id: string, contenu: ContenuVolant) {
   const cle = crypto.randomUUID();
   mesCles.add(cle);
   if (mesCles.size > 200) mesCles.delete(mesCles.values().next().value!);
-  lancements.forEach(fn => fn({ emoji }));
-  envoyerDirect({ type: "volante", conversation_id, emoji, cle });
+  lancements.forEach(fn => fn(contenu));
+  envoyerDirect({ type: "volante", conversation_id, cle, ...contenu });
 }
 
 // ── Couper les volantes (préférence de cet appareil).
@@ -54,18 +61,20 @@ export default function CoucheVolantes({ actif, panneauOuvert }: { actif: boolea
   const contexte = useRef({ panneauOuvert, muet });
   useEffect(() => { contexte.current = { panneauOuvert, muet }; });
 
-  const afficher = useRef((emoji: string) => {
+  const afficher = useRef((contenu: ContenuVolant) => {
     const c = contexte.current;
     if (c.muet) return;
     const larg = window.innerWidth, haut = window.innerHeight;
     // Centrée sur la page visible : à gauche du panneau s'il est ouvert, sauf
     // sur téléphone où il prend toute la largeur.
     const panneau = c.panneauOuvert && larg > 640 ? Math.min(400, larg) : 0;
+    const demi = contenu.gif ? LARGEUR_GIF / 2 : 20;
+    const hauteurGif = contenu.gif ? Math.round(LARGEUR_GIF * contenu.gif.hauteur / contenu.gif.largeur) : 0;
     const v: Volante = {
       id: suivant.current++,
-      emoji,
-      x: (larg - panneau) / 2 - 20 + (Math.random() - 0.5) * 140,
-      y: haut - 40,
+      contenu,
+      x: (larg - panneau) / 2 - demi + (Math.random() - 0.5) * 140,
+      y: haut - 40 - hauteurGif,
       derive: (Math.random() - 0.5) * 90,
       duree: 2600 + Math.random() * 1400,
       taille: 30 + Math.random() * 16,
@@ -75,7 +84,7 @@ export default function CoucheVolantes({ actif, panneauOuvert }: { actif: boolea
 
   // Ce que je lance moi-même.
   useEffect(() => {
-    const fn = (l: Lancement) => afficher.current(l.emoji);
+    const fn = (l: Lancement) => afficher.current(l);
     lancements.add(fn);
     return () => { lancements.delete(fn); };
   }, []);
@@ -83,7 +92,8 @@ export default function CoucheVolantes({ actif, panneauOuvert }: { actif: boolea
   // Ce que les autres lancent (mon propre écho est ignoré).
   useEvenementsChat(actif, ev => {
     if (ev.type !== "volante" || mesCles.has(ev.cle)) return;
-    afficher.current(ev.emoji);
+    if (ev.gif) afficher.current({ gif: ev.gif });
+    else if (ev.emoji) afficher.current({ emoji: ev.emoji });
   });
 
   const retirer = (id: number) => setVolantes(vs => vs.filter(v => v.id !== id));
@@ -98,7 +108,9 @@ export default function CoucheVolantes({ actif, panneauOuvert }: { actif: boolea
             animationDuration: `${v.duree}ms`,
             ["--derive" as string]: `${v.derive}px`,
           }}>
-          <span className="chat-volante-emoji">{v.emoji}</span>
+          {v.contenu.gif
+            ? <MediaGifVue gif={v.contenu.gif} largeur={LARGEUR_GIF} className="chat-volante-gif" />
+            : <span className="chat-volante-emoji">{v.contenu.emoji}</span>}
         </div>
       ))}
     </div>

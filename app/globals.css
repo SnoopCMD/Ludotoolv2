@@ -451,3 +451,6 @@ body::before {
 
 /* Palette d'envoi au-dessus de la saisie. */
 .chat-palette-volantes { animation: chatBarre 0.12s ease-out; }
+.chat-volante-gif { border-radius: 10px; border: 2px solid var(--ink); box-shadow: 0 6px 14px rgba(0, 0, 0, 0.25); background: var(--cream2); }
+.chat-gif-choix { transition: transform 0.08s, box-shadow 0.08s; }
+.chat-gif-choix:hover { transform: scale(1.03); box-shadow: 0 0 0 2px var(--ink); }

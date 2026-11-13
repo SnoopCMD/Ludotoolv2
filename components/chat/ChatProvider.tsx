@@ -4,7 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import { useCompte } from "../AuthProvider";
 import { useTempsReel } from "../../lib/temps-reel";
 import { useEvenementsChat } from "../../lib/chat-canal";
-import type { CompteChat, ReponseConversations, ResumeConversation } from "../../lib/chat";
+import { libellePiece, type CompteChat, type ReponseConversations, type ResumeConversation } from "../../lib/chat";
 import PanneauChat from "./PanneauChat";
 import ToastChat, { type Notification } from "./ToastChat";
 import CoucheVolantes from "./CoucheVolantes";
@@ -81,7 +81,7 @@ export default function ChatProvider({ children }: { children: React.ReactNode }
       if (prive && m.auteur_id !== compteId && !m.supprime && !m.modifie_le && m.conversation_id !== visible.current) {
         setToast({
           cle: `m-${m.id}`, conversation_id: m.conversation_id, nom: m.auteur_nom,
-          couleur: m.auteur_couleur, groupe: m.auteur_groupe, sousTitre: "message privé", texte: m.contenu,
+          couleur: m.auteur_couleur, groupe: m.auteur_groupe, sousTitre: "message privé", texte: m.contenu || libellePiece(m.piece),
         });
       }
     } else if (ev.type === "reaction") {

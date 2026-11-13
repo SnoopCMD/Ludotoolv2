@@ -2,10 +2,11 @@ import { NextResponse } from 'next/server';
 import { getDB } from '../../../../../lib/db';
 import { compteCourant } from '../../../../../lib/auth';
 import { conversationAccessible, destinataires, diffuser } from '../../../../../lib/chat-serveur';
-import { LONGUEUR_MAX_MESSAGE, SELECT_MESSAGE, versMessage } from '../../../../../lib/chat';
+import { LONGUEUR_MAX_MESSAGE, SELECT_MESSAGE, pieceValide, versMessage } from '../../../../../lib/chat';
 
 /**
- * Envoie un message. Corps : `{ contenu, client_id }`. Renvoie le message
+ * Envoie un message. Corps : `{ contenu, client_id, piece? }` (piece : un GIF,
+ * voir `pieceValide` ; le texte peut alors être vide). Renvoie le message
  * enregistré, après l'avoir poussé en direct aux membres de la conversation.
  */
 export async function POST(request: Request, { params }: { params: Promise<{ conversation: string }> }) {
@@ -13,10 +14,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ con
     const compte = await compteCourant();
     if (!compte) return NextResponse.json({ error: 'Connecte-toi pour écrire.' }, { status: 401 });
     const { conversation } = await params;
-    const body = await request.json().catch(() => ({})) as { contenu?: unknown; client_id?: unknown };
+    const body = await request.json().catch(() => ({})) as { contenu?: unknown; client_id?: unknown; piece?: unknown };
     const contenu = typeof body.contenu === 'string' ? body.contenu.trim() : '';
     const clientId = typeof body.client_id === 'string' && body.client_id.length <= 64 ? body.client_id : null;
-    if (!contenu) return NextResponse.json({ error: 'Message vide.' }, { status: 400 });
+    const piece = body.piece == null ? null : pieceValide(body.piece);
+    if (body.piece != null && !piece) return NextResponse.json({ error: 'Pièce jointe invalide.' }, { status: 400 });
+    if (!contenu && !piece) return NextResponse.json({ error: 'Message vide.' }, { status: 400 });
     if (contenu.length > LONGUEUR_MAX_MESSAGE) {
       return NextResponse.json({ error: `Message trop long (${LONGUEUR_MAX_MESSAGE} caractères au plus).` }, { status: 400 });
     }
@@ -27,9 +30,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ con
 
     // Renvoi du même message (client_id déjà vu) : on ne crée pas de doublon.
     await db.prepare(
-      `INSERT INTO chat_messages (conversation_id, auteur_id, contenu, client_id) VALUES (?, ?, ?, ?)
+      `INSERT INTO chat_messages (conversation_id, auteur_id, contenu, client_id, piece) VALUES (?, ?, ?, ?, ?)
        ON CONFLICT (auteur_id, client_id) DO NOTHING`
-    ).bind(conversation, compte.id, contenu, clientId).run();
+    ).bind(conversation, compte.id, contenu, clientId, piece ? JSON.stringify(piece) : null).run();
 
     const ligne = clientId
       ? await db.prepare(`${SELECT_MESSAGE} WHERE m.auteur_id = ? AND m.client_id = ?`).bind(compte.id, clientId).first<Record<string, unknown>>()

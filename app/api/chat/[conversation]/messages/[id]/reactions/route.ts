@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getDB } from '../../../../../../../lib/db';
 import { compteCourant } from '../../../../../../../lib/auth';
-import { REACTIONS_MAX_PAR_MESSAGE, SELECT_MESSAGE, emojiValide, maintenantIso, versMessage } from '../../../../../../../lib/chat';
+import { REACTIONS_MAX_PAR_MESSAGE, SELECT_MESSAGE, emojiValide, libellePiece, maintenantIso, versMessage } from '../../../../../../../lib/chat';
 import { conversationAccessible, destinataires, diffuser } from '../../../../../../../lib/chat-serveur';
 
 /**
@@ -58,7 +58,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ con
       await diffuser({
         type: 'reaction', conversation_id: conversation, message_id: messageId, emoji,
         par: { id: compte.id, equipe_id: compte.equipe_id, nom: compte.nom, groupe: compte.groupe, couleur: compte.couleur },
-        extrait: maj.contenu.slice(0, 100),
+        extrait: (maj.contenu || libellePiece(maj.piece)).slice(0, 100),
       }, [maj.auteur_id]);
     }
     return NextResponse.json(maj);
