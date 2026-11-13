@@ -1249,8 +1249,8 @@ function Etagere({ etape, jeux, isMobile, modeGroupe, groupe, onEntete, onBoite,
   const tousPris = !vide && jeux.every(j => groupe.includes(j.id));
   const [tutoOuvert, setTutoOuvert] = useState(false);
   return (
-    <div style={{ background: etape.hex, border: '2.5px solid var(--ink)', borderRadius: 12, boxShadow: '4px 4px 0 rgba(0,0,0,0.4)', overflow: 'hidden', position: 'relative' }}>
-      <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(circle,rgba(0,0,0,0.07) 1px,transparent 1px)', backgroundSize: '10px 10px', pointerEvents: 'none' }} />
+    <div style={{ background: etape.hex, border: '2.5px solid var(--ink)', borderRadius: 12, boxShadow: '4px 4px 0 rgba(0,0,0,0.4)', position: 'relative', zIndex: tutoOuvert ? 5 : undefined }}>
+      <div style={{ position: 'absolute', inset: 0, borderRadius: 10, backgroundImage: 'radial-gradient(circle,rgba(0,0,0,0.07) 1px,transparent 1px)', backgroundSize: '10px 10px', pointerEvents: 'none' }} />
 
       {/* En-tête de l'étagère */}
       <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: isMobile ? 6 : 10, padding: isMobile ? '8px 12px 0' : '10px 16px 0' }}>
@@ -1285,27 +1285,36 @@ function Etagere({ etape, jeux, isMobile, modeGroupe, groupe, onEntete, onBoite,
         <span className="pop-sticker" style={{ background: 'var(--ink)', color: 'var(--white)', fontSize: 13, flexShrink: 0 }}>{jeux.length}</span>
       </div>
 
-      {!!tuto?.length && (
-        // Glissement : la ligne de grille passe de 0 à la hauteur du contenu.
-        <div className={`tuto-tiroir${tutoOuvert ? ' ouvert' : ''}`} aria-hidden={!tutoOuvert} inert={!tutoOuvert}>
-          <div style={{ overflow: 'hidden', minHeight: 0 }}>
-            <TutoEtape etape={etape} gestes={tuto} isMobile={isMobile} onFermer={() => setTutoOuvert(false)} />
+      {(() => {
+        const V = (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('tuto')) || 'c';
+        const boites = (
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: isMobile ? 14 : 20, overflowX: 'auto', overflowY: 'hidden', padding: isMobile ? '14px 14px 10px' : '16px 22px 10px', minHeight: vide ? 56 : (isMobile ? 120 : 146), position: 'relative', flex: 1, minWidth: 0 }}>
+            {vide ? (
+              <span style={{ alignSelf: 'center', fontSize: 13, fontWeight: 700, color: 'rgba(0,0,0,0.4)', fontStyle: 'italic' }}>Étagère vide</span>
+            ) : jeux.map(j => (
+              <BoiteJeu key={j.id} jeu={j} isMobile={isMobile} onClick={e => onBoite(j, e)} onFiche={onFiche}
+                modeGroupe={modeGroupe} selectionne={groupe.includes(j.id)} />
+            ))}
           </div>
-        </div>
-      )}
-
-      {/* Les boîtes, posées sur la planche (estompée quand elle est vide) */}
-      <div style={{ position: 'relative', opacity: vide ? 0.6 : 1 }}>
-        <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 14, background: 'rgba(0,0,0,0.22)', borderTop: '2.5px solid var(--ink)' }} />
-        <div style={{ display: 'flex', alignItems: 'flex-end', gap: isMobile ? 14 : 20, overflowX: 'auto', overflowY: 'hidden', padding: isMobile ? '14px 14px 10px' : '16px 22px 10px', minHeight: vide ? 56 : (isMobile ? 120 : 146), position: 'relative' }}>
-          {vide ? (
-            <span style={{ alignSelf: 'center', fontSize: 13, fontWeight: 700, color: 'rgba(0,0,0,0.4)', fontStyle: 'italic' }}>Étagère vide</span>
-          ) : jeux.map(j => (
-            <BoiteJeu key={j.id} jeu={j} isMobile={isMobile} onClick={e => onBoite(j, e)} onFiche={onFiche}
-              modeGroupe={modeGroupe} selectionne={groupe.includes(j.id)} />
-          ))}
-        </div>
-      </div>
+        );
+        const planche = <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 14, background: 'rgba(0,0,0,0.22)', borderTop: '2.5px solid var(--ink)', borderRadius: '0 0 10px 10px' }} />;
+        const bulle = !!tuto?.length && tutoOuvert && (
+          <TutoEtape etape={etape} gestes={tuto} isMobile={isMobile} compacte={V === 'c'} onFermer={() => setTutoOuvert(false)} />
+        );
+        if (V === 'a') return (
+          <>
+            {bulle && <div style={{ position: 'absolute', top: isMobile ? 46 : 54, right: 16, zIndex: 30, maxWidth: 'calc(100% - 32px)' }}>{bulle}</div>}
+            <div style={{ position: 'relative', opacity: vide ? 0.6 : 1 }}>{planche}{boites}</div>
+          </>
+        );
+        return (
+          <div style={{ position: 'relative', display: 'flex', alignItems: 'flex-end' }}>
+            {planche}
+            <div style={{ flex: 1, minWidth: 0, display: 'flex', opacity: vide ? 0.6 : 1 }}>{boites}</div>
+            {bulle && <div style={{ flexShrink: 1, minWidth: 0, maxWidth: '70%', padding: '14px 16px 24px 0', position: 'relative' }}>{bulle}</div>}
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -1314,30 +1323,29 @@ function Etagere({ etape, jeux, isMobile, modeGroupe, groupe, onEntete, onBoite,
  * Le tuto d'une étape, déplié dans son étagère : les gestes dans l'ordre, chacun
  * avec son illustration.
  */
-function TutoEtape({ etape, gestes, isMobile, onFermer }: { etape: EtapeAtelier; gestes: GesteTuto[]; isMobile: boolean; onFermer: () => void }) {
+function TutoEtape({ etape, gestes, isMobile, compacte = false, onFermer }: { etape: EtapeAtelier; gestes: GesteTuto[]; isMobile: boolean; compacte?: boolean; onFermer: () => void }) {
   // Illustrations carrées (1:1) ; une image d'un autre format y tient entière.
-  const cote = isMobile ? 160 : 210;
-  // Bulle ajustée à son contenu, calée à droite sous le bouton « ? » qu'elle pointe.
+  const cote = compacte ? (isMobile ? 78 : 96) : (isMobile ? 160 : 210);
+  const pastille = compacte ? 26 : 34;
   return (
-    <div style={{ display: 'flex', justifyContent: 'flex-end', padding: isMobile ? '12px 10px 4px' : '14px 16px 6px' }}>
-    <div style={{ position: 'relative', width: 'fit-content', maxWidth: '100%', minWidth: 0, background: 'var(--cream)', border: '2.5px solid var(--ink)', borderRadius: 16, boxShadow: '4px 4px 0 rgba(0,0,0,0.35)', padding: isMobile ? '10px 10px 12px' : '12px 16px 14px' }}>
+    <div style={{ position: 'relative', width: 'fit-content', maxWidth: '100%', minWidth: 0, background: 'var(--cream)', border: '2.5px solid var(--ink)', borderRadius: 16, boxShadow: '4px 4px 0 rgba(0,0,0,0.35)', padding: compacte ? '8px 12px 10px' : (isMobile ? '10px 10px 12px' : '12px 16px 14px') }}>
       {/* Queue de la bulle, vers le bouton « ? » */}
-      <span aria-hidden style={{ position: 'absolute', top: -13, right: isMobile ? 38 : 44, width: 0, height: 0, borderLeft: '11px solid transparent', borderRight: '11px solid transparent', borderBottom: '13px solid var(--ink)' }} />
-      <span aria-hidden style={{ position: 'absolute', top: -8.5, right: isMobile ? 41 : 47, width: 0, height: 0, borderLeft: '8px solid transparent', borderRight: '8px solid transparent', borderBottom: '9.5px solid var(--cream)' }} />
+      <span aria-hidden style={{ position: 'absolute', top: -13, right: isMobile ? 40 : 50, width: 0, height: 0, borderLeft: '11px solid transparent', borderRight: '11px solid transparent', borderBottom: '13px solid var(--ink)' }} />
+      <span aria-hidden style={{ position: 'absolute', top: -8.5, right: isMobile ? 43 : 53, width: 0, height: 0, borderLeft: '8px solid transparent', borderRight: '8px solid transparent', borderBottom: '9.5px solid var(--cream)' }} />
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 2 }}>
-        <span className="bc" style={{ fontSize: isMobile ? 15 : 17, textTransform: 'uppercase', flex: 1, minWidth: 0 }}>📖 Tuto · étape {etape.num}</span>
-        <button onClick={onFermer} title="Replier le tuto" style={{ width: 26, height: 26, flexShrink: 0, background: 'var(--ink)', color: 'var(--white)', border: '2px solid var(--ink)', borderRadius: 6, fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>✕</button>
+        <span className="bc" style={{ fontSize: compacte ? 14 : (isMobile ? 15 : 17), textTransform: 'uppercase', flex: 1, minWidth: 0 }}>📖 Tuto · étape {etape.num}</span>
+        <button onClick={onFermer} title="Replier le tuto" style={{ width: 24, height: 24, flexShrink: 0, background: 'var(--ink)', color: 'var(--white)', border: '2px solid var(--ink)', borderRadius: 6, fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>✕</button>
       </div>
-      <ol style={{ listStyle: 'none', margin: 0, display: 'flex', alignItems: 'stretch', gap: isMobile ? 8 : 12, overflowX: 'auto', padding: '12px 4px 4px 12px' }}>
+      <ol style={{ listStyle: 'none', margin: 0, display: 'flex', alignItems: compacte ? 'center' : 'stretch', gap: isMobile ? 8 : 12, overflowX: 'auto', padding: compacte ? '10px 4px 2px 10px' : '12px 4px 4px 12px' }}>
         {gestes.map((g, i) => (
           <li key={g.image} style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 12, flex: '0 0 auto' }}>
-            <figure style={{ margin: 0, width: cote, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, textAlign: 'center' }}>
-              <div style={{ position: 'relative' }}>
-                <img src={g.image} alt={g.titre} loading="lazy" style={{ width: cote, height: cote, objectFit: 'contain', display: 'block', borderRadius: 14, border: '2.5px solid var(--ink)', background: '#f7f1e6' }} />
-                <span className="bc" style={{ position: 'absolute', top: -10, left: -10, width: 34, height: 34, borderRadius: '50%', background: etape.hex, border: '2.5px solid var(--ink)', boxShadow: '2px 2px 0 var(--ink)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>{i + 1}</span>
+            <figure style={{ margin: 0, width: compacte ? undefined : cote, display: 'flex', flexDirection: compacte ? 'row' : 'column', alignItems: 'center', gap: compacte ? 10 : 8, textAlign: compacte ? 'left' : 'center' }}>
+              <div style={{ position: 'relative', flexShrink: 0 }}>
+                <img src={g.image} alt={g.titre} loading="lazy" style={{ width: cote, height: cote, objectFit: 'contain', display: 'block', borderRadius: compacte ? 10 : 14, border: '2.5px solid var(--ink)', background: '#f7f1e6' }} />
+                <span className="bc" style={{ position: 'absolute', top: -9, left: -9, width: pastille, height: pastille, borderRadius: '50%', background: etape.hex, border: '2.5px solid var(--ink)', boxShadow: '2px 2px 0 var(--ink)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: compacte ? 14 : 18 }}>{i + 1}</span>
               </div>
-              <figcaption style={{ maxWidth: cote }}>
-                <span style={{ display: 'block', fontWeight: 800, fontSize: isMobile ? 13 : 15, lineHeight: 1.2 }}>{g.titre}</span>
+              <figcaption style={{ width: compacte ? 150 : undefined, maxWidth: cote > 150 ? cote : 150 }}>
+                <span style={{ display: 'block', fontWeight: 800, fontSize: compacte ? 13 : (isMobile ? 13 : 15), lineHeight: 1.2 }}>{g.titre}</span>
                 {g.texte && <span style={{ display: 'block', fontSize: isMobile ? 11 : 12, fontWeight: 600, color: 'rgba(0,0,0,0.55)', marginTop: 2 }}>{g.texte}</span>}
               </figcaption>
             </figure>
@@ -1345,7 +1353,6 @@ function TutoEtape({ etape, gestes, isMobile, onFermer }: { etape: EtapeAtelier;
           </li>
         ))}
       </ol>
-    </div>
     </div>
   );
 }
