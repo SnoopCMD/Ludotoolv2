@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useLayoutEffect, useRef } from "react";
 import Link from "next/link";
 import NavBar from "../../components/NavBar";
 import { useIsMobile } from "../../lib/useIsMobile";
@@ -650,6 +650,7 @@ export default function Home() {
         .bouton-tuto { opacity: .45; transition: opacity .15s, background .15s, color .15s; }
         .bouton-tuto:hover, .bouton-tuto:focus-visible, .bouton-tuto.ouvert { opacity: 1; }
         .tuto-bulle { transform-origin: calc(100% - 60px) 0; animation: tuto-pop .18s ease-out; }
+        .tuto-bulle.vers-le-haut { transform-origin: calc(100% - 60px) 100%; }
         @keyframes tuto-pop { from { opacity: 0; transform: scale(.92) translateY(-6px); } to { opacity: 1; transform: none; } }
         @media (prefers-reduced-motion: reduce) { .tuto-bulle { animation: none; } }
         .pastille-fiche:hover { transform: scale(1.25); box-shadow: 1px 1px 0 var(--ink); }
@@ -1262,6 +1263,22 @@ function Etagere({ etape, jeux, isMobile, modeGroupe, groupe, onEntete, onBoite,
     document.addEventListener('keydown', touche);
     return () => { document.removeEventListener('pointerdown', clic); document.removeEventListener('keydown', touche); };
   }, [tutoOuvert]);
+  // En bas de la liste, la bulle déborderait du cadre noir qui la rogne : elle
+  // s'ouvre alors au-dessus de l'étagère, la queue vers le bas.
+  const [versLeHaut, setVersLeHaut] = useState(false);
+  useLayoutEffect(() => {
+    if (!tutoOuvert) { setVersLeHaut(false); return; }
+    const bulle = bulleRef.current, etagere = bulle?.parentElement;
+    const cadre = etagere?.closest('.pop-card') ?? null;
+    if (!bulle || !etagere) return;
+    const h = bulle.offsetHeight;
+    const r = etagere.getBoundingClientRect();
+    const bas = cadre ? cadre.getBoundingClientRect().bottom : window.innerHeight;
+    const haut = cadre ? cadre.getBoundingClientRect().top : 0;
+    const placeDessous = bas - (r.top + (isMobile ? 46 : 54)) - 8;
+    const placeDessus = r.top - haut - 8;
+    setVersLeHaut(h > placeDessous && placeDessus > placeDessous);
+  }, [tutoOuvert, isMobile]);
   return (
     <div style={{ background: etape.hex, border: '2.5px solid var(--ink)', borderRadius: 12, boxShadow: '4px 4px 0 rgba(0,0,0,0.4)', position: 'relative', zIndex: tutoOuvert ? 5 : undefined }}>
       <div style={{ position: 'absolute', inset: 0, borderRadius: 10, backgroundImage: 'radial-gradient(circle,rgba(0,0,0,0.07) 1px,transparent 1px)', backgroundSize: '10px 10px', pointerEvents: 'none' }} />
@@ -1301,8 +1318,8 @@ function Etagere({ etape, jeux, isMobile, modeGroupe, groupe, onEntete, onBoite,
 
       {/* Le tuto flotte par-dessus l'étagère (et la suivante) sans la faire grandir. */}
       {!!tuto?.length && tutoOuvert && (
-        <div ref={bulleRef} className="tuto-bulle" style={{ position: 'absolute', top: isMobile ? 46 : 54, right: isMobile ? 8 : 16, zIndex: 30, maxWidth: isMobile ? 'calc(100% - 16px)' : 'calc(100% - 32px)' }}>
-          <TutoEtape etape={etape} gestes={tuto} isMobile={isMobile} onFermer={() => setTutoOuvert(false)} />
+        <div ref={bulleRef} className={`tuto-bulle${versLeHaut ? ' vers-le-haut' : ''}`} style={{ position: 'absolute', ...(versLeHaut ? { bottom: 'calc(100% - 6px)' } : { top: isMobile ? 46 : 54 }), right: isMobile ? 8 : 16, zIndex: 30, maxWidth: isMobile ? 'calc(100% - 16px)' : 'calc(100% - 32px)' }}>
+          <TutoEtape etape={etape} gestes={tuto} isMobile={isMobile} versLeHaut={versLeHaut} onFermer={() => setTutoOuvert(false)} />
         </div>
       )}
 
@@ -1326,14 +1343,19 @@ function Etagere({ etape, jeux, isMobile, modeGroupe, groupe, onEntete, onBoite,
  * Le tuto d'une étape, déplié dans son étagère : les gestes dans l'ordre, chacun
  * avec son illustration.
  */
-function TutoEtape({ etape, gestes, isMobile, onFermer }: { etape: EtapeAtelier; gestes: GesteTuto[]; isMobile: boolean; onFermer: () => void }) {
+function TutoEtape({ etape, gestes, isMobile, versLeHaut = false, onFermer }: { etape: EtapeAtelier; gestes: GesteTuto[]; isMobile: boolean; versLeHaut?: boolean; onFermer: () => void }) {
   // Illustrations carrées (1:1) ; une image d'un autre format y tient entière.
   const cote = isMobile ? 160 : 210;
   return (
     <div style={{ position: 'relative', width: 'fit-content', maxWidth: '100%', minWidth: 0, background: 'var(--cream)', border: '2.5px solid var(--ink)', borderRadius: 16, boxShadow: '4px 4px 0 rgba(0,0,0,0.35)', padding: isMobile ? '10px 10px 12px' : '12px 16px 14px' }}>
-      {/* Queue de la bulle, vers le bouton « ? » */}
-      <span aria-hidden style={{ position: 'absolute', top: -13, right: isMobile ? 40 : 50, width: 0, height: 0, borderLeft: '11px solid transparent', borderRight: '11px solid transparent', borderBottom: '13px solid var(--ink)' }} />
-      <span aria-hidden style={{ position: 'absolute', top: -8.5, right: isMobile ? 43 : 53, width: 0, height: 0, borderLeft: '8px solid transparent', borderRight: '8px solid transparent', borderBottom: '9.5px solid var(--cream)' }} />
+      {/* Queue de la bulle, vers le bouton « ? » (dessus ou dessous selon le sens) */}
+      {versLeHaut ? (<>
+        <span aria-hidden style={{ position: 'absolute', bottom: -13, right: isMobile ? 40 : 50, width: 0, height: 0, borderLeft: '11px solid transparent', borderRight: '11px solid transparent', borderTop: '13px solid var(--ink)' }} />
+        <span aria-hidden style={{ position: 'absolute', bottom: -8.5, right: isMobile ? 43 : 53, width: 0, height: 0, borderLeft: '8px solid transparent', borderRight: '8px solid transparent', borderTop: '9.5px solid var(--cream)' }} />
+      </>) : (<>
+        <span aria-hidden style={{ position: 'absolute', top: -13, right: isMobile ? 40 : 50, width: 0, height: 0, borderLeft: '11px solid transparent', borderRight: '11px solid transparent', borderBottom: '13px solid var(--ink)' }} />
+        <span aria-hidden style={{ position: 'absolute', top: -8.5, right: isMobile ? 43 : 53, width: 0, height: 0, borderLeft: '8px solid transparent', borderRight: '8px solid transparent', borderBottom: '9.5px solid var(--cream)' }} />
+      </>)}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 2 }}>
         <span className="bc" style={{ fontSize: isMobile ? 15 : 17, textTransform: 'uppercase', flex: 1, minWidth: 0 }}>📖 Tuto · étape {etape.num}</span>
         <button onClick={onFermer} title="Replier le tuto" style={{ width: 24, height: 24, flexShrink: 0, background: 'var(--ink)', color: 'var(--white)', border: '2px solid var(--ink)', borderRadius: 6, fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>✕</button>
