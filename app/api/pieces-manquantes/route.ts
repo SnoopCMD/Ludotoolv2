@@ -9,16 +9,17 @@ export async function GET(request: Request) {
     // ?avec_editeur=1 : joint l'éditeur du catalogue en une seule requête (au lieu
     // de 2 à 4 appels par pièce côté client). Même logique que l'ancienne recherche :
     // jeu trouvé par code Syracuse, sinon par nom ; on garde le premier éditeur non vide.
+    // instr() plutôt que LIKE : D1 refuse les motifs LIKE de plus de 50 octets.
     const avecEditeur = searchParams.get('avec_editeur') === '1';
     const editeurSql = `,
       COALESCE(
         NULLIF((SELECT c.editeur FROM catalogue c WHERE c.ean = (
           SELECT j.ean FROM jeux j
-          WHERE pm.ean IS NOT NULL AND pm.ean != '' AND j.code_syracuse LIKE '%' || pm.ean || '%'
+          WHERE pm.ean IS NOT NULL AND pm.ean != '' AND instr(j.code_syracuse, pm.ean) > 0
           ORDER BY j.nom LIMIT 1)), ''),
         NULLIF((SELECT c.editeur FROM catalogue c WHERE c.ean = (
           SELECT j.ean FROM jeux j
-          WHERE pm.nom IS NOT NULL AND pm.nom != '' AND j.nom LIKE '%' || pm.nom || '%'
+          WHERE pm.nom IS NOT NULL AND pm.nom != '' AND instr(lower(j.nom), lower(pm.nom)) > 0
           ORDER BY j.nom LIMIT 1)), '')
       ) AS editeur_catalogue`;
     let sql = avecEditeur

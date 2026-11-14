@@ -140,7 +140,10 @@ export default function PiecesPage() {
   const chargerDonnees = async () => {
     const toArr = (d: any) => Array.isArray(d) ? d : [];
     const [d1, d2] = await Promise.all([
-      fetch('/api/pieces-manquantes?avec_editeur=1').then(r => r.json() as Promise<any>).then(toArr).catch(() => []),
+      // Si la jointure éditeur échoue, on charge quand même la liste (sans éditeurs).
+      fetch('/api/pieces-manquantes?avec_editeur=1').then(r => r.ok ? r.json() as Promise<any> : Promise.reject())
+        .catch(() => fetch('/api/pieces-manquantes').then(r => r.json() as Promise<any>))
+        .then(toArr).catch(() => []),
       fetch('/api/pieces-trouvees').then(r => r.json() as Promise<any>).then(toArr).catch(() => []),
     ]);
     const manq = (d1 as any[]).filter(p => ['Manquant', 'Commandé'].includes(p.statut));
