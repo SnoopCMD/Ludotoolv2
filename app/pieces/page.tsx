@@ -1,12 +1,16 @@
 "use client";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import { useIsMobile } from "../../lib/useIsMobile";
 import BoutonScan from "../../components/ScanCodeBarre";
+import {
+  TYPES_PIECES, AUTRES, typeDePiece, correspondRecherche, piecesCorrespondent,
+  extraireQte, formaterTexte, formaterNomJeu,
+} from "../../lib/piecesTexte";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type PieceManquante = { id: number; ean: string; nom: string; element_manquant: string; statut: string; };
+type PieceManquante = { id: number; ean: string; nom: string; element_manquant: string; statut: string; editeur_catalogue?: string | null; };
 type PieceTrouvee   = { id: number; description: string; nom_suppose: string; statut: string; };
 
 type Editeur = {
@@ -28,15 +32,15 @@ type CommandeGroupe = {
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
-const TYPES_PIECES = [
-  { id: "carte",   label: "Cartes",   keywords: ["carte", "cartes"] },
-  { id: "pion",    label: "Pions",    keywords: ["pion", "pions", "meeple", "figurine", "personnage", "jeton personnage"] },
-  { id: "jeton",   label: "Jetons",   keywords: ["jeton", "jetons", "pièce", "piece", "ressource", "marqueur"] },
-  { id: "de",      label: "Dés",      keywords: ["dé", "dés", "de", "des"] },
-  { id: "plateau", label: "Plateaux", keywords: ["plateau", "plateaux", "support", "tuile", "tuiles", "planche"] },
-  { id: "regle",   label: "Règles",   keywords: ["règle", "regle", "livret", "notice"] },
-  { id: "cube",    label: "Cubes",    keywords: ["cube", "cubes", "bloc"] },
-  { id: "bille",   label: "Billes",   keywords: ["bille", "billes", "boule"] },
+
+type FiltreStatut = "tous" | "a_commander" | "commandes" | "match" | "indisponible";
+
+const FILTRES_STATUT: { id: FiltreStatut; label: string }[] = [
+  { id: "tous",         label: "Tous" },
+  { id: "a_commander",  label: "À commander" },
+  { id: "commandes",    label: "Commandés" },
+  { id: "match",        label: "Avec match" },
+  { id: "indisponible", label: "Indisponibles" },
 ];
 
 const TYPE_LABELS: Record<Editeur["type_commande"], string> = {
@@ -64,9 +68,6 @@ Pourriez-vous nous indiquer la procédure à suivre ou directement traiter cette
 Merci d'avance,
 La Ludothèque`;
 
-const normaliser = (str: string) =>
-  str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/s$/, "").trim();
-
 const normaliserEditeur = (str: string) =>
   str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 
@@ -77,6 +78,11 @@ export default function PiecesPage() {
   const [manquantes,     setManquantes]     = useState<PieceManquante[]>([]);
   const [trouvees,       setTrouvees]       = useState<PieceTrouvee[]>([]);
   const [filtreType,     setFiltreType]     = useState<string | null>(null);
+  const [rechercheManq,  setRechercheManq]  = useState("");
+  const [rechercheTrouv, setRechercheTrouv] = useState("");
+  const [filtreStatut,   setFiltreStatut]   = useState<FiltreStatut>("tous");
+  const listeTrouveesRef    = useRef<HTMLDivElement>(null);
+  const colonneTrouveesRef  = useRef<HTMLDivElement>(null);
 
   // Ajout pièce manquante
   const [codeManq,       setCodeManq]       = useState("");
@@ -134,7 +140,7 @@ export default function PiecesPage() {
   const chargerDonnees = async () => {
     const toArr = (d: any) => Array.isArray(d) ? d : [];
     const [d1, d2] = await Promise.all([
-      fetch('/api/pieces-manquantes').then(r => r.json() as Promise<any>).then(toArr).catch(() => []),
+      fetch('/api/pieces-manquantes?avec_editeur=1').then(r => r.json() as Promise<any>).then(toArr).catch(() => []),
       fetch('/api/pieces-trouvees').then(r => r.json() as Promise<any>).then(toArr).catch(() => []),
     ]);
     const manq = (d1 as any[]).filter(p => ['Manquant', 'Commandé'].includes(p.statut));
@@ -148,11 +154,11 @@ export default function PiecesPage() {
     const editeursData = await fetch('/api/editeurs').then(r => r.json() as Promise<any>).then(d => Array.isArray(d) ? d : []).catch(() => []);
     const listeEditeurs = editeursData as Editeur[];
     const types: Record<number, Editeur["type_commande"] | null> = {};
-    await Promise.all(pieces.filter(p => p.statut === "Manquant").map(async p => {
-      const nomCat = await trouverEditeurPourPiece(p);
+    for (const p of pieces.filter(p => p.statut === "Manquant")) {
+      const nomCat = trouverEditeurPourPiece(p);
       const ed = nomCat ? matcherEditeur(nomCat, listeEditeurs) : null;
       types[p.id] = ed?.type_commande ?? null;
-    }));
+    }
     setEditeurTypeParPiece(types);
   };
 
@@ -163,23 +169,9 @@ export default function PiecesPage() {
 
   // ─── Recherche éditeur pour une pièce ────────────────────────────────────
 
-  const trouverEditeurPourPiece = async (piece: PieceManquante): Promise<string | null> => {
-    if (piece.ean) {
-      const jeux = await fetch(`/api/jeux?fields=ean&code_syracuse=${encodeURIComponent(piece.ean)}&limit=1`).then(r => r.json() as Promise<any>).then(d => Array.isArray(d) ? d : []).catch(() => []);
-      const jeuEan = (jeux as any[])[0]?.ean;
-      if (jeuEan) {
-        const cat = await fetch(`/api/catalogue/${encodeURIComponent(jeuEan)}?fields=editeur`).then(r => r.json() as Promise<any>).catch(() => null);
-        if (cat?.editeur) return cat.editeur;
-      }
-    }
-    const jeux2 = await fetch(`/api/jeux?fields=ean&nom_like=${encodeURIComponent(piece.nom)}&limit=1`).then(r => r.json() as Promise<any>).then(d => Array.isArray(d) ? d : []).catch(() => []);
-    const jeuEan2 = (jeux2 as any[])[0]?.ean;
-    if (jeuEan2) {
-      const cat = await fetch(`/api/catalogue/${encodeURIComponent(jeuEan2)}?fields=editeur`).then(r => r.json() as Promise<any>).catch(() => null);
-      if (cat?.editeur) return cat.editeur;
-    }
-    return null;
-  };
+  // L'éditeur du catalogue est joint côté serveur au chargement (?avec_editeur=1).
+  const trouverEditeurPourPiece = (piece: PieceManquante): string | null =>
+    piece.editeur_catalogue || null;
 
   const matcherEditeur = (nomEditeurCat: string, listeEditeurs: Editeur[]): Editeur | null => {
     const norm = normaliserEditeur(nomEditeurCat);
@@ -200,7 +192,7 @@ export default function PiecesPage() {
     // Résoudre l'éditeur pour chaque pièce
     const resolved: { piece: PieceManquante; nomEditeur: string; editeur: Editeur | null }[] = [];
     await Promise.all(piecesMandantes.map(async piece => {
-      const nomEditeurCat = await trouverEditeurPourPiece(piece);
+      const nomEditeurCat = trouverEditeurPourPiece(piece);
       const nomEditeur = nomEditeurCat ?? "Éditeur inconnu";
       const editeur = nomEditeurCat ? matcherEditeur(nomEditeurCat, listeEditeurs) : null;
       resolved.push({ piece, nomEditeur, editeur });
@@ -396,44 +388,87 @@ export default function PiecesPage() {
 
   // ─── Helpers existants ────────────────────────────────────────────────────
 
-  const verifierMatch = (m: PieceManquante, t: PieceTrouvee) => {
-    const matchNom  = t.nom_suppose && normaliser(m.nom).includes(normaliser(t.nom_suppose));
-    const mNum = parseInt(m.element_manquant) || 0;
-    const tNum = parseInt(t.description) || 0;
-    const mTexte = normaliser(m.element_manquant.replace(/^\d+\s*/, ""));
-    const tTexte = normaliser(t.description.replace(/^\d+\s*/, ""));
-    const matchPiece = (mNum === tNum) && mNum > 0 && (mTexte.includes(tTexte) || tTexte.includes(mTexte));
-    return matchNom || matchPiece;
+  const verifierMatch = (m: PieceManquante, t: PieceTrouvee) => piecesCorrespondent(m, t);
+
+  const editeurImpossible = (m: PieceManquante) => editeurTypeParPiece[m.id] === "impossible";
+
+  // Statut d'affichage de chaque jeu incomplet (pour les filtres de gauche).
+  const manquantesEnrichies = useMemo(() => manquantes.map(m => {
+    const idsMatch = m.statut === "Commandé" ? [] : trouvees.filter(t => verifierMatch(m, t)).map(t => t.id);
+    return { ...m, idsMatch, hasMatch: idsMatch.length > 0 };
+  }), [manquantes, trouvees]);
+
+  const correspondStatut = (m: typeof manquantesEnrichies[number], f: FiltreStatut) => {
+    switch (f) {
+      case "tous":         return true;
+      case "a_commander":  return m.statut === "Manquant" && !editeurImpossible(m);
+      case "commandes":    return m.statut === "Commandé";
+      case "match":        return m.hasMatch;
+      case "indisponible": return m.statut === "Manquant" && editeurImpossible(m);
+    }
   };
 
+  const manquantesRecherchees = useMemo(() =>
+    manquantesEnrichies.filter(m => correspondRecherche(rechercheManq, m.nom, m.ean, m.element_manquant)),
+  [manquantesEnrichies, rechercheManq]);
+
+  const compteParStatut = useMemo(() => {
+    const c = {} as Record<FiltreStatut, number>;
+    for (const f of FILTRES_STATUT) c[f.id] = manquantesRecherchees.filter(m => correspondStatut(m, f.id)).length;
+    return c;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [manquantesRecherchees, editeurTypeParPiece]);
+
   const manquantesTriees = useMemo(() => {
-    return manquantes.map(m => {
-      const aUnMatchGeneral = trouvees.some(t => verifierMatch(m, t));
-      const isSuggestion = selectedTrouvees.length > 0
-        ? selectedTrouvees.some(tId => { const t = trouvees.find(tr => tr.id === tId); return t ? verifierMatch(m, t) : false; })
-        : false;
-      return { ...m, hasMatch: aUnMatchGeneral, isSuggestion };
-    }).sort((a, b) => {
-      if (a.statut === "Commandé" && b.statut !== "Commandé") return 1;
-      if (a.statut !== "Commandé" && b.statut === "Commandé") return -1;
-      if (selectedTrouvees.length > 0) return Number(b.isSuggestion) - Number(a.isSuggestion);
-      return 0;
-    });
-  }, [manquantes, trouvees, selectedTrouvees]);
+    return manquantesRecherchees
+      .filter(m => correspondStatut(m, filtreStatut))
+      .map(m => {
+        const isSuggestion = selectedTrouvees.length > 0 && m.idsMatch.some(id => selectedTrouvees.includes(id));
+        return { ...m, isSuggestion };
+      }).sort((a, b) => {
+        if (a.statut === "Commandé" && b.statut !== "Commandé") return 1;
+        if (a.statut !== "Commandé" && b.statut === "Commandé") return -1;
+        if (selectedTrouvees.length > 0 && a.isSuggestion !== b.isSuggestion) return Number(b.isSuggestion) - Number(a.isSuggestion);
+        return Number(b.hasMatch) - Number(a.hasMatch);
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [manquantesRecherchees, filtreStatut, selectedTrouvees, editeurTypeParPiece]);
+
+  // Type de chaque pièce orpheline, calculé une fois.
+  const typeParTrouvee = useMemo(() => {
+    const r: Record<number, string> = {};
+    for (const t of trouvees) r[t.id] = typeDePiece(t.description);
+    return r;
+  }, [trouvees]);
+
+  const trouveesRecherchees = useMemo(() =>
+    trouvees.filter(t => correspondRecherche(rechercheTrouv, t.description, t.nom_suppose)),
+  [trouvees, rechercheTrouv]);
+
+  const compteParType = useMemo(() => {
+    const c: Record<string, number> = {};
+    for (const t of trouveesRecherchees) c[typeParTrouvee[t.id]] = (c[typeParTrouvee[t.id]] ?? 0) + 1;
+    return c;
+  }, [trouveesRecherchees, typeParTrouvee]);
 
   const trouveesTriees = useMemo(() => {
-    let liste = [...trouvees];
-    if (filtreType) {
-      const cat = TYPES_PIECES.find(t => t.id === filtreType);
-      if (cat) liste = liste.filter(t => cat.keywords.some(kw => normaliser(t.description).includes(kw)));
-    }
-    return liste.map(t => {
-      const isSuggestion = selectedManquant
-        ? (() => { const m = manquantes.find(ma => ma.id === selectedManquant); return m ? verifierMatch(m, t) : false; })()
-        : false;
-      return { ...t, isSuggestion };
-    }).sort((a, b) => selectedManquant ? Number(b.isSuggestion) - Number(a.isSuggestion) : 0);
-  }, [trouvees, manquantes, selectedManquant, filtreType]);
+    const m = selectedManquant ? manquantes.find(ma => ma.id === selectedManquant) : undefined;
+    return trouveesRecherchees
+      .filter(t => !filtreType || typeParTrouvee[t.id] === filtreType)
+      .map(t => ({ ...t, isSuggestion: m ? verifierMatch(m, t) : false }))
+      .sort((a, b) => Number(b.isSuggestion) - Number(a.isSuggestion));
+  }, [trouveesRecherchees, typeParTrouvee, manquantes, selectedManquant, filtreType]);
+
+  // Clic sur « Match » : sélectionne le jeu et fait remonter ses pièces orphelines.
+  const voirMatch = (id: number) => {
+    setSelectedManquant(id);
+    setFiltreType(null);
+    setRechercheTrouv("");
+    requestAnimationFrame(() => {
+      listeTrouveesRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+      if (isMobile) colonneTrouveesRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  };
 
   const fetchContenuJeu = async (ean: string) => {
     if (!ean) { setContenuJeu([]); return; }
@@ -502,7 +537,7 @@ export default function PiecesPage() {
   const commanderPieceDirecte = async (piece: PieceManquante) => {
     const editeursData = await fetch('/api/editeurs').then(r => r.json() as Promise<any>).then(d => Array.isArray(d) ? d : []).catch(() => []);
     const listeEditeurs = editeursData as Editeur[];
-    const nomEditeurCat = await trouverEditeurPourPiece(piece);
+    const nomEditeurCat = trouverEditeurPourPiece(piece);
     const editeur = nomEditeurCat ? matcherEditeur(nomEditeurCat, listeEditeurs) : null;
 
     if (editeur?.type_commande === "impossible") {
@@ -554,11 +589,6 @@ export default function PiecesPage() {
     });
     setSelectedTrouvees(prev => prev.filter(tId => tId !== id));
     chargerDonnees();
-  };
-
-  const extraireQte = (texte: string): { qte: number; nom: string } => {
-    const m = texte.trim().match(/^(\d+)\s*(.*)/);
-    return m ? { qte: parseInt(m[1]), nom: m[2].trim() } : { qte: 1, nom: texte.trim() };
   };
 
   const lierElements = () => {
@@ -670,7 +700,7 @@ export default function PiecesPage() {
           flex: 1, minWidth: isMobile ? 0 : 340, width: isMobile ? "100%" : undefined, display: "flex", flexDirection: "column", gap: 16,
           borderTop: "4px solid var(--rouge)", padding: isMobile ? "16px 14px" : "20px 22px",
         }}>
-          <p className="bc" style={{ fontSize: 22, margin: 0, letterSpacing: "0.02em" }}>Jeux incomplets</p>
+          <p className="bc" style={{ fontSize: 22, margin: 0, letterSpacing: "0.02em" }}>Jeux incomplets <span style={{ fontSize: 16, color: "rgba(0,0,0,0.4)" }}>({manquantesTriees.length !== manquantes.length ? `${manquantesTriees.length} / ${manquantes.length}` : manquantes.length})</span></p>
 
           {/* Formulaire ajout */}
           <div style={{ background: "var(--cream2)", border: "2px solid var(--ink)", borderRadius: 10, padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
@@ -734,13 +764,28 @@ export default function PiecesPage() {
             </div>
           </div>
 
+          {/* Recherche + filtres statut */}
+          <BarreRecherche value={rechercheManq} onChange={setRechercheManq} placeholder="Rechercher un jeu, un code, une pièce…" inp={inp} />
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {FILTRES_STATUT.map(f => {
+              const n = compteParStatut[f.id] ?? 0;
+              const actif = filtreStatut === f.id;
+              return (
+                <button key={f.id} onClick={() => setFiltreStatut(actif && f.id !== "tous" ? "tous" : f.id)}
+                  style={{ ...pillBtn(actif, "var(--rouge)"), opacity: n === 0 && !actif ? 0.4 : 1 }}>
+                  {f.label} <span style={{ opacity: 0.6 }}>({n})</span>
+                </button>
+              );
+            })}
+          </div>
+
           {/* Liste */}
           <div style={{ display: "flex", flexDirection: "column", gap: 8, overflowY: "auto", maxHeight: 520 }}>
             {manquantesTriees.map(m => {
               const isSelected   = selectedManquant === m.id;
               const isSuggestion = m.isSuggestion && selectedTrouvees.length > 0 && !isSelected;
               const isCommande   = m.statut === "Commandé";
-              const isImpossible = editeurTypeParPiece[m.id] === "impossible";
+              const isImpossible = m.statut === "Manquant" && editeurImpossible(m);
               return (
                 <div key={m.id}
                   onClick={() => !isCommande && setSelectedManquant(isSelected ? null : m.id)}
@@ -759,10 +804,16 @@ export default function PiecesPage() {
                       {m.ean && <span style={{ fontSize: 12, color: "rgba(0,0,0,0.35)" }}>{m.ean.slice(-4)}</span>}
                       {isImpossible && <span style={{ fontSize: 12, fontWeight: 800, background: "#fff0f0", color: "var(--rouge)", border: "1.5px solid var(--rouge)", borderRadius: 6, padding: "1px 7px" }}>🚫 Indisponible</span>}
                       {isCommande && <span style={{ fontSize: 12, fontWeight: 800, background: "var(--orange)", color: "var(--ink)", border: "1.5px solid var(--ink)", borderRadius: 6, padding: "1px 7px", boxShadow: "1px 1px 0 var(--ink)" }}>Commandé</span>}
-                      {m.hasMatch && !isSuggestion && !isCommande && <span title="Une pièce correspondante a été trouvée !" style={{ fontSize: 11, fontWeight: 700, color: "var(--vert)", border: "1.5px solid var(--vert)", borderRadius: 4, padding: "1px 6px" }}>Match</span>}
+                      {m.hasMatch && !isSuggestion && !isCommande && (
+                        <button type="button" title="Voir les pièces orphelines correspondantes"
+                          onClick={e => { e.stopPropagation(); voirMatch(m.id); }}
+                          style={{ fontSize: 11, fontWeight: 700, color: "var(--vert)", background: "var(--white)", border: "1.5px solid var(--vert)", borderRadius: 4, padding: "1px 6px", cursor: "pointer", fontFamily: "inherit" }}>
+                          Match{m.idsMatch.length > 1 ? ` ×${m.idsMatch.length}` : ""} →
+                        </button>
+                      )}
                       {isSuggestion && !isCommande && <span style={{ fontSize: 12, fontWeight: 800, background: "var(--white)", color: "var(--rouge)", border: "1.5px solid var(--rouge)", borderRadius: 20, padding: "1px 8px" }}>✨ Suggestion</span>}
                     </div>
-                    <p style={{ color: isCommande ? "rgba(0,0,0,0.4)" : "var(--rouge)", fontWeight: 700, fontSize: 14, margin: 0 }}>{m.element_manquant}</p>
+                    <p style={{ color: isCommande ? "rgba(0,0,0,0.4)" : "var(--rouge)", fontWeight: 700, fontSize: 14, margin: 0 }}>{formaterTexte(m.element_manquant)}</p>
                   </div>
                   <div style={{ display: "flex", gap: 6, flexShrink: 0, flexWrap: "wrap" }}>
                     {pendingConfirmId === m.id ? (
@@ -791,15 +842,21 @@ export default function PiecesPage() {
               );
             })}
             {manquantes.length === 0 && <p style={{ textAlign: "center", color: "rgba(0,0,0,0.35)", fontWeight: 700, padding: "24px 0" }}>Aucun jeu incomplet !</p>}
+            {manquantes.length > 0 && manquantesTriees.length === 0 && (
+              <p style={{ textAlign: "center", color: "rgba(0,0,0,0.35)", fontWeight: 700, padding: "24px 0" }}>
+                Aucun jeu ne correspond.{" "}
+                <button onClick={() => { setRechercheManq(""); setFiltreStatut("tous"); }} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ink)", fontWeight: 700, textDecoration: "underline", fontFamily: "inherit", fontSize: "inherit" }}>Tout afficher</button>
+              </p>
+            )}
           </div>
         </div>
 
         {/* ── PIÈCES ORPHELINES ── */}
-        <div className="pop-card" style={{
+        <div ref={colonneTrouveesRef} className="pop-card" style={{
           flex: 1, minWidth: isMobile ? 0 : 340, width: isMobile ? "100%" : undefined, display: "flex", flexDirection: "column", gap: 16,
           borderTop: "4px solid var(--vert)", padding: isMobile ? "16px 14px" : "20px 22px",
         }}>
-          <p className="bc" style={{ fontSize: 22, margin: 0, letterSpacing: "0.02em" }}>Pièces orphelines</p>
+          <p className="bc" style={{ fontSize: 22, margin: 0, letterSpacing: "0.02em" }}>Pièces orphelines <span style={{ fontSize: 16, color: "rgba(0,0,0,0.4)" }}>({trouveesTriees.length !== trouvees.length ? `${trouveesTriees.length} / ${trouvees.length}` : trouvees.length})</span></p>
 
           {/* Formulaire ajout */}
           <div style={{ background: "var(--cream2)", border: "2px solid var(--ink)", borderRadius: 10, padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
@@ -818,19 +875,26 @@ export default function PiecesPage() {
             </div>
           </div>
 
-          {/* Filtres type */}
+          {/* Recherche + filtres type */}
+          <BarreRecherche value={rechercheTrouv} onChange={setRechercheTrouv} placeholder="Rechercher une pièce, un jeu supposé…" inp={inp} />
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            <button onClick={() => setFiltreType(null)} style={pillBtn(filtreType === null, "var(--vert)")}>Tous</button>
-            {TYPES_PIECES.map(type => (
-              <button key={type.id} onClick={() => setFiltreType(type.id === filtreType ? null : type.id)}
-                style={pillBtn(filtreType === type.id, "var(--vert)")}>
-                {type.label}
-              </button>
-            ))}
+            <button onClick={() => setFiltreType(null)} style={pillBtn(filtreType === null, "var(--vert)")}>
+              Tous <span style={{ opacity: 0.6 }}>({trouveesRecherchees.length})</span>
+            </button>
+            {[...TYPES_PIECES, { id: AUTRES, label: "Autres" }].map(type => {
+              const n = compteParType[type.id] ?? 0;
+              const actif = filtreType === type.id;
+              return (
+                <button key={type.id} onClick={() => setFiltreType(actif ? null : type.id)}
+                  style={{ ...pillBtn(actif, "var(--vert)"), opacity: n === 0 && !actif ? 0.4 : 1 }}>
+                  {type.label} <span style={{ opacity: 0.6 }}>({n})</span>
+                </button>
+              );
+            })}
           </div>
 
           {/* Liste */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 8, overflowY: "auto", maxHeight: 520 }}>
+          <div ref={listeTrouveesRef} style={{ display: "flex", flexDirection: "column", gap: 8, overflowY: "auto", maxHeight: 520 }}>
             {trouveesTriees.map(t => {
               const isSelected   = selectedTrouvees.includes(t.id);
               const isSuggestion = t.isSuggestion && selectedManquant !== null && !isSelected;
@@ -847,10 +911,10 @@ export default function PiecesPage() {
                   }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                      <span style={{ fontWeight: 700, fontSize: 16 }}>{t.description}</span>
+                      <span style={{ fontWeight: 700, fontSize: 16 }}>{formaterTexte(t.description)}</span>
                       {isSuggestion && <span style={{ fontSize: 12, fontWeight: 800, background: "var(--white)", color: "var(--vert)", border: "1.5px solid var(--vert)", borderRadius: 20, padding: "1px 8px" }}>✨ Suggestion</span>}
                     </div>
-                    {t.nom_suppose && <p style={{ color: "rgba(0,0,0,0.45)", fontSize: 14, margin: "3px 0 0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Peut-être : <em>{t.nom_suppose}</em></p>}
+                    {t.nom_suppose && <p style={{ color: "rgba(0,0,0,0.45)", fontSize: 14, margin: "3px 0 0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Peut-être : <em>{formaterNomJeu(t.nom_suppose)}</em></p>}
                   </div>
                   <button onClick={e => { e.stopPropagation(); resoudreTrouve(t.id); }}
                     style={{ background: "var(--cream2)", border: "2px solid var(--ink)", borderRadius: 6, padding: "5px 10px", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}>
@@ -860,7 +924,9 @@ export default function PiecesPage() {
               );
             })}
             {trouvees.length === 0 && <p style={{ textAlign: "center", color: "rgba(0,0,0,0.35)", fontWeight: 700, padding: "24px 0" }}>Le bac des pièces seules est vide !</p>}
-            {trouvees.length > 0 && trouveesTriees.length === 0 && <p style={{ textAlign: "center", color: "rgba(0,0,0,0.35)", fontWeight: 700, padding: "24px 0" }}>Aucune pièce ne correspond à ce filtre.</p>}
+            {trouvees.length > 0 && trouveesTriees.length === 0 && <p style={{ textAlign: "center", color: "rgba(0,0,0,0.35)", fontWeight: 700, padding: "24px 0" }}>Aucune pièce ne correspond.{" "}
+              <button onClick={() => { setRechercheTrouv(""); setFiltreType(null); }} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ink)", fontWeight: 700, textDecoration: "underline", fontFamily: "inherit", fontSize: "inherit" }}>Tout afficher</button>
+            </p>}
           </div>
         </div>
       </main>
@@ -1232,6 +1298,28 @@ export default function PiecesPage() {
             </div>
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Barre de recherche ───────────────────────────────────────────────────────
+
+function BarreRecherche({ value, onChange, placeholder, inp }: {
+  value: string; onChange: (v: string) => void; placeholder: string; inp: React.CSSProperties;
+}) {
+  return (
+    <div style={{ position: "relative" }}>
+      <span aria-hidden style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", fontSize: 15, opacity: 0.45, pointerEvents: "none" }}>🔍</span>
+      <input type="search" value={value} placeholder={placeholder}
+        onChange={e => onChange(e.target.value)}
+        onKeyDown={e => { if (e.key === "Escape") onChange(""); }}
+        style={{ ...inp, paddingLeft: 38, paddingRight: value ? 38 : 14 }} />
+      {value && (
+        <button type="button" aria-label="Effacer la recherche" onClick={() => onChange("")}
+          style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", background: "var(--cream2)", border: "1.5px solid var(--ink)", borderRadius: 6, width: 24, height: 24, cursor: "pointer", fontWeight: 700, fontSize: 12, lineHeight: 1, fontFamily: "inherit" }}>
+          ✕
+        </button>
       )}
     </div>
   );
