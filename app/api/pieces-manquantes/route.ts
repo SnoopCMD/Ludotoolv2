@@ -6,10 +6,27 @@ export async function GET(request: Request) {
     const db = await getDB();
     const { searchParams } = new URL(request.url);
     const ean = searchParams.get('ean');
-    let sql = 'SELECT * FROM pieces_manquantes WHERE 1=1';
+    // ?avec_editeur=1 : joint l'éditeur du catalogue en une seule requête (au lieu
+    // de 2 à 4 appels par pièce côté client). Même logique que l'ancienne recherche :
+    // jeu trouvé par code Syracuse, sinon par nom ; on garde le premier éditeur non vide.
+    const avecEditeur = searchParams.get('avec_editeur') === '1';
+    const editeurSql = `,
+      COALESCE(
+        NULLIF((SELECT c.editeur FROM catalogue c WHERE c.ean = (
+          SELECT j.ean FROM jeux j
+          WHERE pm.ean IS NOT NULL AND pm.ean != '' AND j.code_syracuse LIKE '%' || pm.ean || '%'
+          ORDER BY j.nom LIMIT 1)), ''),
+        NULLIF((SELECT c.editeur FROM catalogue c WHERE c.ean = (
+          SELECT j.ean FROM jeux j
+          WHERE pm.nom IS NOT NULL AND pm.nom != '' AND j.nom LIKE '%' || pm.nom || '%'
+          ORDER BY j.nom LIMIT 1)), '')
+      ) AS editeur_catalogue`;
+    let sql = avecEditeur
+      ? `SELECT pm.*${editeurSql} FROM pieces_manquantes pm WHERE pm.statut IN ('Manquant', 'Commandé')`
+      : 'SELECT * FROM pieces_manquantes pm WHERE 1=1';
     const params: string[] = [];
-    if (ean) { sql += ' AND ean = ?'; params.push(ean); }
-    sql += ' ORDER BY id DESC';
+    if (ean) { sql += ' AND pm.ean = ?'; params.push(ean); }
+    sql += ' ORDER BY pm.id DESC';
     const stmt = params.length ? db.prepare(sql).bind(...params) : db.prepare(sql);
     const result = await stmt.all();
     return NextResponse.json(result.results);
