@@ -746,6 +746,22 @@ function plagesTravail(m: MembreEquipe, dk: string, evs: Evenement[], slotIgnore
   return mergeIntervals(intervals).map(i => ({ debut: i.start, fin: i.end }));
 }
 
+/**
+ * Absence qui empêche de placer le membre sur [debut, fin] ce jour-là. Une
+ * absence à l'heure (demi-journée, récup…) ne bloque que ses horaires ; sans
+ * horaires, elle bloque la journée entière.
+ */
+function absenceBloquante(evs: Evenement[], membreId: string, dk: string, debut?: string, fin?: string): boolean {
+  return evs.some(ev => {
+    if (!ABSENCE_TYPES.includes(ev.type)) return false;
+    if (!(ev.date_debut <= dk && ev.date_fin >= dk)) return false;
+    if (ev.membres?.length && !ev.membres.includes(membreId)) return false;
+    if (!ev.heure_debut || !ev.heure_fin) return true;
+    if (!debut || !fin) return false;
+    return timeToMins(ev.heure_debut) < timeToMins(fin, true) && timeToMins(ev.heure_fin, true) > timeToMins(debut);
+  });
+}
+
 /** Ce qui, dans [debut, fin], tombe hors des plages données. */
 function horsPlages(plages: Plage[], debut: number, fin: number): Plage[] {
   const out: Plage[] = [];
@@ -1176,12 +1192,8 @@ useEffect(() => {
             blocked = true;
           } else {
             const allIds = multiDragRef.current.ids;
-            const ids = allIds.filter(mid => !evenementsRef.current.some(ev =>
-              ABSENCE_TYPES.includes(ev.type) &&
-              ev.date_debut <= slotDateKey && ev.date_fin >= slotDateKey &&
-              (!ev.membres || ev.membres.length === 0 || ev.membres.includes(mid))
-            ));
             const slot = planningSlotsRef.current.find(s => s.id === slotId);
+            const ids = slot ? allIds.filter(mid => !absenceBloquante(evenementsRef.current, mid, slotDateKey, slot.debut, slot.fin)) : [];
             if (ids.length > 0 && slot) {
               placerMembresRef.current(slot, ids);
             } else {
@@ -1411,6 +1423,9 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
       if (ev.id === nouvelEvent.id) return; 
       if (ABSENCE_TYPES.includes(ev.type)) {
         if (ev.date_debut <= end && ev.date_fin >= start) {
+          // Absence à l'heure et événement d'un seul jour à horaires : seul le chevauchement compte.
+          if (ev.heure_debut && ev.heure_fin && start === end && nouvelEvent.heure_debut && nouvelEvent.heure_fin
+            && !(timeToMins(ev.heure_debut) < timeToMins(nouvelEvent.heure_fin, true) && timeToMins(ev.heure_fin, true) > timeToMins(nouvelEvent.heure_debut))) return;
           if (!ev.membres || ev.membres.length === 0) {
             activeEquipe.forEach(m => absents.add(m.id)); 
           } else {
@@ -1420,7 +1435,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
       }
     });
     return Array.from(absents);
-  }, [nouvelEvent.date_debut, nouvelEvent.date_fin, nouvelEvent.id, activeEvenements, activeEquipe]);
+  }, [nouvelEvent.date_debut, nouvelEvent.date_fin, nouvelEvent.heure_debut, nouvelEvent.heure_fin, nouvelEvent.id, activeEvenements, activeEquipe]);
 
   const fillHorairesException = (dateStr: string) => {
     const dateObj = new Date(dateStr);
@@ -3460,7 +3475,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
                         setDragSelectionIds([m.id]);
                         const absentSet = new Set(planningDays.filter(jour => {
                           const dk = format(jour, 'yyyy-MM-dd');
-                          return evenements.some(ev => ABSENCE_TYPES.includes(ev.type) && ev.date_debut <= dk && ev.date_fin >= dk && (!ev.membres || ev.membres.length === 0 || ev.membres.includes(m.id)));
+                          return absenceBloquante(evenements, m.id, dk);
                         }).map(j => format(j, 'yyyy-MM-dd')));
                         setDragAbsentDays(absentSet);
                         const ghost = document.createElement('div');
