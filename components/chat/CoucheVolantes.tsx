@@ -29,6 +29,12 @@ type Volante = {
 };
 
 const MAX_A_L_ECRAN = 40;
+/** Durée de la montée : entre 5 et 7 s, pour qu'on ait le temps de les voir. */
+const DUREE_MIN = 5000;
+const DUREE_ALEA = 2000;
+/** Largeur de la bande d'apparition, centrée : la moitié de la page visible, 900 px au plus. */
+const BANDE_PART = 0.5;
+const BANDE_MAX = 900;
 /** Largeur d'un GIF qui s'envole, en pixels. */
 const LARGEUR_GIF = 130;
 
@@ -77,10 +83,10 @@ export default function CoucheVolantes({ actif, panneauOuvert }: { actif: boolea
     const v: Volante = {
       id: suivant.current++,
       contenu,
-      x: (larg - panneau) / 2 - demi + (Math.random() - 0.5) * 140,
+      x: (larg - panneau) / 2 - demi + (Math.random() - 0.5) * Math.min(BANDE_MAX, (larg - panneau) * BANDE_PART),
       y: haut - 40 - hauteurGif,
-      derive: (Math.random() - 0.5) * 90,
-      duree: 2600 + Math.random() * 1400,
+      derive: (Math.random() - 0.5) * 120,
+      duree: DUREE_MIN + Math.random() * DUREE_ALEA,
       taille: 30 + Math.random() * 16,
     };
     setVolantes(vs => [...vs.slice(-(MAX_A_L_ECRAN - 1)), v]);
