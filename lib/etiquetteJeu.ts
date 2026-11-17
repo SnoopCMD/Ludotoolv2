@@ -8,7 +8,7 @@ export const MECANIQUES = [
   "Combinaison", "Communication", "Connaissances", "Conquête", "Course",
   "Deck building", "Déduction", "Dominos", "Draft", "Exploration",
   "Gestion", "Gestion de main", "Gestion de ressources", "Imagination",
-  "Lancé de dés", "Livre-aventure", "Loto", "Manipulation", "Mémoire",
+  "Jeu de rôle", "Lancé de dés", "Livre-aventure", "Loto", "Manipulation", "Mémoire",
   "Multijeux", "Négociation", "Observation", "Paris", "Placement de cartes",
   "Placement de dés", "Placement de tuiles", "Placement d'ouvriers", "Plis",
   "Programmation", "Puzzle", "Rapidité", "Rôles cachés", "Roll & write",

@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useMemo, useRef } from "react";
+import { MECANIQUES } from "../../lib/etiquetteJeu";
 import Link from "next/link";
 import NavBar from "../../components/NavBar";
 import { useIsMobile } from "../../lib/useIsMobile";
@@ -112,18 +113,8 @@ const COULEURS = [
   { id: 'jaune', bg: 'bg-[#ffa600]', text: 'text-black', border: 'border-[#ffa600]', shadow: 'shadow-[#ffa600]/50', label: 'Jaune', hex: '#fb923c' }
 ];
 
-// LISTE OFFICIELLE DES MÉCANIQUES
-const MECANIQUES_OFFICIELLES = [
-  "(Dé)placement", "Adresse", "Bluff", "Casse-tête", "Collection", 
-  "Combinaison", "Communication", "Connaissances", "Conquête", "Course", 
-  "Deck building", "Déduction", "Dominos", "Draft", "Exploration", 
-  "Gestion", "Gestion de main", "Gestion de ressources", "Imagination", 
-  "Lancé de dés", "Livre-aventure", "Loto", "Manipulation", "Mémoire", 
-  "Multijeux", "Négociation", "Observation", "Paris", "Placement de cartes", 
-  "Placement de dés", "Placement de tuiles", "Placement d'ouvriers", "Plis", 
-  "Programmation", "Puzzle", "Rapidité", "Rôles cachés", "Roll & write", 
-  "Stop ou encore"
-].sort();
+// Liste officielle des mécaniques : celle de l'étiquette (lib/etiquetteJeu.ts).
+const MECANIQUES_OFFICIELLES = [...MECANIQUES].sort();
 
 const getDuree = (temps?: string) => {
   if (!temps) return { label: "", level: 0 };
