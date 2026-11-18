@@ -5,6 +5,9 @@ import {
   MECANIQUES, TEMPS_DE_JEU_OPTIONS, COOP_VERSUS_OPTIONS,
   etoilesMax, joueursDepuisMyLudo, tempsDepuisMyLudo, urlRechercheMyLudo,
 } from "../lib/etiquetteJeu";
+import {
+  LARGEUR_MODAL, MARGE_MODAL, allerA, comparaisonPossible, ecrireComparaison, fermerFenetreMyLudo, lireComparaison, ouvrirFenetreMyLudo,
+} from "../lib/fenetreMyLudo";
 
 /**
  * Compléter, depuis l'atelier, ce qui se fait à côté des étapes : la vignette
@@ -85,6 +88,10 @@ export default function ModalFicheAtelier({ jeu, focus, onFermer, onEnregistre }
   const [candidats, setCandidats] = useState<CandidatMyLudo[]>([]);
   const [voirCandidats, setVoirCandidats] = useState(false);
   const [remplisParMl, setRemplisParMl] = useState<Set<ChampMyLudo>>(new Set());
+  // Fenêtre MyLudo à côté de la modal, pour comparer (voir lib/fenetreMyLudo.ts).
+  const [comparaison, setComparaison] = useState(false);
+  const [fenetreActive, setFenetreActive] = useState(false);
+  const fenetreMl = useRef<Window | null>(null);
   const refEtiquette = useRef<HTMLDivElement>(null);
   const refPhoto = useRef<HTMLInputElement>(null);
 
@@ -111,6 +118,40 @@ export default function ModalFicheAtelier({ jeu, focus, onFermer, onEnregistre }
   const modifie = !!fiche && (Object.keys(FICHE_VIDE) as (keyof Fiche)[]).some(k => fiche[k] !== initiale[k]);
   const fermer = () => { if (!modifie || confirm("Fermer sans enregistrer ?")) onFermer(); };
 
+  useEffect(() => { setComparaison(lireComparaison() && comparaisonPossible()); }, []);
+  // La fenêtre MyLudo se ferme avec la modal ; fermée à la main, la modal se recentre.
+  useEffect(() => {
+    if (!fenetreActive) return;
+    const t = setInterval(() => { if (!fenetreMl.current || fenetreMl.current.closed) setFenetreActive(false); }, 800);
+    return () => clearInterval(t);
+  }, [fenetreActive]);
+  useEffect(() => () => fermerFenetreMyLudo(fenetreMl.current), []);
+
+  /** Ouvre la fenêtre MyLudo à côté (pendant un clic). Faux si elle n'est pas voulue ou a été bloquée. */
+  const ouvrirComparaison = (url: string | null): boolean => {
+    if (!comparaison || !comparaisonPossible()) return false;
+    // Déjà ouverte : on la réutilise (une fois coupée de LudoTool, le navigateur
+    // ne la retrouve plus par son nom et en ouvrirait une seconde).
+    const ouverte = fenetreMl.current;
+    if (ouverte && !ouverte.closed) {
+      if (url) allerA(ouverte, url);
+      try { ouverte.focus(); } catch { /* rien */ }
+      setFenetreActive(true);
+      return true;
+    }
+    const f = ouvrirFenetreMyLudo(url);
+    if (!f) { setMessage("Le navigateur a bloqué la fenêtre MyLudo : autorise les fenêtres surgissantes pour LudoTool."); return false; }
+    fenetreMl.current = f;
+    setFenetreActive(true);
+    return true;
+  };
+  const changerComparaison = (v: boolean) => {
+    setComparaison(v); ecrireComparaison(v);
+    if (!v) { fermerFenetreMyLudo(fenetreMl.current); setFenetreActive(false); }
+  };
+  /** Lien vers MyLudo : dans la fenêtre d'à côté si elle est voulue, sinon dans un nouvel onglet. */
+  const ouvrirLien = (e: React.MouseEvent, url: string) => { if (ouvrirComparaison(url)) e.preventDefault(); };
+
   /** Ce que MyLudo propose pour chaque champ. */
   const propositions = (data: ResultatMyLudo | null): Partial<Record<ChampMyLudo, string>> => {
     if (!data || data.notFound || data.error) return {};
@@ -129,11 +170,17 @@ export default function ModalFicheAtelier({ jeu, focus, onFermer, onEnregistre }
   const chercherMyLudo = async (choix?: CandidatMyLudo) => {
     if (!fiche) return;
     setEnCours("myludo"); setMessage(null);
+    // Ouverte tout de suite (le navigateur l'exige pendant le clic) : sur le jeu choisi, ou en attente du résultat.
+    const fenetre = ouvrirComparaison(choix ? choix.url : null);
     const params = choix ? new URLSearchParams({ id: choix.id, code: choix.code }) : new URLSearchParams({ ean: jeu.ean, nom: jeu.nom });
     const data = await fetch(`/api/myludo?${params}`).then(r => r.json() as Promise<ResultatMyLudo>).catch(() => null);
     setEnCours(null);
     setVoirCandidats(false);
     if (!choix) setCandidats(data?.candidats ?? []);
+    if (fenetre && !choix) {
+      const url = data?.url || (data?.notFound ? urlRechercheMyLudo(jeu.nom) : null);
+      if (url) allerA(fenetreMl.current, url); else { fermerFenetreMyLudo(fenetreMl.current); setFenetreActive(false); }
+    }
     if (!data || data.error) { setMl(null); setMessage("MyLudo ne répond pas, réessaie dans un moment."); return; }
     setMl(data);
     if (data.notFound) return;
@@ -214,9 +261,12 @@ export default function ModalFicheAtelier({ jeu, focus, onFermer, onEnregistre }
   const etiquetteComplete = !!fiche && !!(fiche.mecanique && fiche.nb_de_joueurs.trim() && fiche.coop_versus && fiche.temps_de_jeu && fiche.etoiles !== "");
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 80, display: "flex", alignItems: "center", justifyContent: "center", padding: "calc(var(--nav-h) + 12px) 12px 12px" }}
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 80, display: "flex", alignItems: "center",
+      // Fenêtre MyLudo ouverte à droite : la modal se range à gauche.
+      justifyContent: fenetreActive ? "flex-start" : "center",
+      padding: fenetreActive ? `calc(var(--nav-h) + 12px) 12px 12px ${MARGE_MODAL}px` : "calc(var(--nav-h) + 12px) 12px 12px", transition: "padding .2s" }}
       onClick={e => { if (e.target === e.currentTarget) fermer(); }}>
-      <div style={{ background: "var(--cream)", border: "3px solid var(--ink)", borderRadius: 12, boxShadow: "8px 8px 0 var(--ink)", width: "100%", maxWidth: 620, display: "flex", flexDirection: "column", maxHeight: "calc(100dvh - var(--nav-h) - 36px)", overflow: "hidden" }}>
+      <div style={{ background: "var(--cream)", border: "3px solid var(--ink)", borderRadius: 12, boxShadow: "8px 8px 0 var(--ink)", width: "100%", maxWidth: LARGEUR_MODAL, display: "flex", flexDirection: "column", maxHeight: "calc(100dvh - var(--nav-h) - 36px)", overflow: "hidden" }}>
         {/* En-tête */}
         <div style={{ padding: "16px 20px", borderBottom: "3px solid var(--ink)", background: hex ?? "var(--yellow)", display: "flex", alignItems: "center", gap: 12 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -231,7 +281,8 @@ export default function ModalFicheAtelier({ jeu, focus, onFermer, onEnregistre }
         ) : (
           <div style={{ flex: 1, overflowY: "auto", padding: 20, display: "flex", flexDirection: "column", gap: 22 }}>
             <PanneauMyLudo nom={jeu.nom} ml={ml} candidats={candidats} voirCandidats={voirCandidats} enCours={enCours === "myludo"} desactive={enCours !== null}
-              onChercher={() => chercherMyLudo()} onChoisir={c => chercherMyLudo(c)} onVoirCandidats={() => setVoirCandidats(v => !v)} />
+              onChercher={() => chercherMyLudo()} onChoisir={c => chercherMyLudo(c)} onVoirCandidats={() => setVoirCandidats(v => !v)}
+              onLien={ouvrirLien} comparaison={comparaison} onComparaison={comparaisonPossible() ? changerComparaison : undefined} />
             {message && <div style={{ fontSize: 13, fontWeight: 700, background: "var(--cream2)", border: "2px solid var(--ink)", borderRadius: 8, padding: "8px 12px" }}>{message}</div>}
 
             {/* ── Vignette ── */}
@@ -363,9 +414,14 @@ function Suggestion({ children, onUtiliser }: { children: React.ReactNode; onUti
  * vers sa fiche, les autres résultats si ce n'est pas le bon, et une recherche
  * sur le site quand MyLudo ne l'a pas trouvé.
  */
-function PanneauMyLudo({ nom, ml, candidats, voirCandidats, enCours, desactive, onChercher, onChoisir, onVoirCandidats }: {
+function PanneauMyLudo({ nom, ml, candidats, voirCandidats, enCours, desactive, onChercher, onChoisir, onVoirCandidats, onLien, comparaison, onComparaison }: {
   nom: string; ml: ResultatMyLudo | null; candidats: CandidatMyLudo[]; voirCandidats: boolean; enCours: boolean; desactive: boolean;
   onChercher: () => void; onChoisir: (c: CandidatMyLudo) => void; onVoirCandidats: () => void;
+  /** Clic sur un lien MyLudo : l'ouvre dans la fenêtre d'à côté si elle est voulue. */
+  onLien: (e: React.MouseEvent, url: string) => void;
+  comparaison: boolean;
+  /** Absent quand l'écran est trop petit pour la fenêtre d'à côté. */
+  onComparaison?: (v: boolean) => void;
 }) {
   const lien: React.CSSProperties = { fontSize: 12, fontWeight: 800, color: "var(--ink)", border: "2px solid var(--ink)", borderRadius: 14, padding: "3px 10px", background: "var(--white)", textDecoration: "none", whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", gap: 4 };
   const autres = candidats.filter(c => c.id !== ml?.id);
@@ -382,8 +438,14 @@ function PanneauMyLudo({ nom, ml, candidats, voirCandidats, enCours, desactive, 
         <button onClick={onChercher} disabled={desactive} className="pop-btn" style={{ background: "var(--white)", fontSize: 13 }}>
           {enCours ? "Recherche sur MyLudo…" : trouve ? "↻ Relancer MyLudo" : "✨ Compléter avec MyLudo"}
         </button>
-        {!trouve && <a href={urlRechercheMyLudo(nom)} target="_blank" rel="noopener noreferrer" style={lien} title="Recherche Google limitée à myludo.fr">🔎 Chercher sur MyLudo ↗</a>}
+        {!trouve && <a href={urlRechercheMyLudo(nom)} target="_blank" rel="noopener noreferrer" onClick={e => onLien(e, urlRechercheMyLudo(nom))} style={lien} title="Recherche Google limitée à myludo.fr">🔎 Chercher sur MyLudo ↗</a>}
       </div>
+      {onComparaison && (
+        <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12, fontWeight: 700, color: "rgba(0,0,0,0.6)", cursor: "pointer", width: "fit-content" }}>
+          <input type="checkbox" checked={comparaison} onChange={e => onComparaison(e.target.checked)} style={{ accentColor: "#0d0d0d", width: 15, height: 15, cursor: "pointer" }} />
+          Ouvrir la page MyLudo à côté pour comparer
+        </label>
+      )}
 
       {ml?.notFound && (
         <div style={{ fontSize: 13, fontWeight: 700, background: "#fff5f5", border: "2px solid var(--rouge)", borderRadius: 8, padding: "8px 12px" }}>
@@ -404,7 +466,7 @@ function PanneauMyLudo({ nom, ml, candidats, voirCandidats, enCours, desactive, 
             <span style={{ display: "inline-block", marginTop: 5, fontSize: 11, fontWeight: 800, background: confiance.fond, border: "1.5px solid var(--ink)", borderRadius: 10, padding: "1px 8px" }}>{confiance.texte}</span>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
-            {ml.url && <a href={ml.url} target="_blank" rel="noopener noreferrer" style={lien}>Voir sur MyLudo ↗</a>}
+            {ml.url && <a href={ml.url} target="_blank" rel="noopener noreferrer" onClick={e => onLien(e, ml.url!)} style={lien}>Voir sur MyLudo ↗</a>}
             <button onClick={onVoirCandidats} style={{ ...lien, cursor: "pointer", fontFamily: "inherit", background: voirCandidats ? "var(--cream2)" : "var(--white)" }}>
               {voirCandidats ? "Fermer" : "Pas le bon jeu ?"}
             </button>
@@ -425,7 +487,7 @@ function PanneauMyLudo({ nom, ml, candidats, voirCandidats, enCours, desactive, 
             </button>
           ))}
           {voirCandidats && !autres.length && <span style={{ fontSize: 12, fontWeight: 600, color: "rgba(0,0,0,0.5)" }}>MyLudo ne propose pas d&apos;autre jeu pour ce nom.</span>}
-          {trouve && <a href={urlRechercheMyLudo(nom)} target="_blank" rel="noopener noreferrer" style={{ ...lien, alignSelf: "flex-start" }} title="Recherche Google limitée à myludo.fr">🔎 Chercher sur MyLudo ↗</a>}
+          {trouve && <a href={urlRechercheMyLudo(nom)} target="_blank" rel="noopener noreferrer" onClick={e => onLien(e, urlRechercheMyLudo(nom))} style={{ ...lien, alignSelf: "flex-start" }} title="Recherche Google limitée à myludo.fr">🔎 Chercher sur MyLudo ↗</a>}
         </div>
       )}
     </div>
