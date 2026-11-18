@@ -7,7 +7,7 @@ import BoutonScan from "../../components/ScanCodeBarre";
 import { ETAPES_A_ZERO } from "../../lib/etapesAtelier";
 import EnteteImpression, { CaseImpressionDouble } from "../../components/EnteteImpression";
 import {
-  chargerCodesSyracuse, contenusPour, correspondance, lireImpressionDouble, ecrireImpressionDouble,
+  chargerCodesSyracuse, contenusPour, correspondance, eanDuCode, lireImpressionDouble, ecrireImpressionDouble,
   validerEtapeImpression, type JeuChoisi, type LigneCatalogue,
 } from "../../lib/impression";
 import { MECANIQUES, TEMPS_DE_JEU_OPTIONS, joueursDepuisMyLudo, tempsDepuisMyLudo } from "../../lib/etiquetteJeu";
@@ -178,6 +178,29 @@ function EtiquettesPageInner() {
   const modifierQuantite = (couleurId: string, id: string | number, delta: number) => {
     setEtiquettes(prev => ({ ...prev, [couleurId]: prev[couleurId].map(eti => eti.id === id ? { ...eti, quantity: Math.max(0, eti.quantity + delta) } : eti) }));
   };
+
+  // Scan (caméra ou douchette + Entrée) : le jeu reconnu est ajouté à la liste.
+  const [ajoutScan, setAjoutScan] = useState<{ texte: string; ok: boolean } | null>(null);
+  useEffect(() => {
+    if (!ajoutScan) return;
+    const t = setTimeout(() => setAjoutScan(null), 3500);
+    return () => clearTimeout(t);
+  }, [ajoutScan]);
+  const ajouterParScan = (code: string) => {
+    const ean = eanDuCode(code, Object.values(etiquettes).flat().map(x => x.ean).filter(Boolean), codesSyracuse);
+    const trouve = ean ? Object.entries(etiquettes).flatMap(([couleur, l]) => l.filter(x => x.ean === ean).map(x => ({ couleur, x }))) : [];
+    if (!trouve.length) {
+      // Un nom tapé puis Entrée reste une simple recherche ; un code inconnu est signalé.
+      setRecherche(code);
+      if (/^\d+$/.test(code.trim())) setAjoutScan({ texte: `Aucun jeu pour le code ${code.trim()} : recherche affichée.`, ok: false });
+      return;
+    }
+    const { couleur, x } = trouve[0];
+    modifierQuantite(couleur, x.id, 1);
+    setRecherche("");
+    setAjoutScan({ texte: `✓ ${x.nom || ean} ajouté (×${x.quantity + 1})`, ok: true });
+  };
+
 
   const supprimerLigne = (couleurId: string, id: string | number) => {
     setEtiquettes(prev => ({ ...prev, [couleurId]: prev[couleurId].filter(eti => eti.id !== id) }));
@@ -593,11 +616,16 @@ function EtiquettesPageInner() {
                 placeholder="🔍  Nom, EAN ou code Syracuse..."
                 value={recherche}
                 onChange={(e) => setRecherche(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter" && recherche.trim()) { e.preventDefault(); ajouterParScan(recherche); } }}
+                title="Entrée (ou douchette) : ajoute le jeu dont c'est l'EAN ou le code Syracuse"
                 className="pop-input"
                 style={{ flex: 1, minWidth: 0, fontSize: 15, boxSizing: "border-box" }}
               />
-              <BoutonScan onScan={code => setRecherche(code)} />
+              <BoutonScan onScan={ajouterParScan} />
             </div>
+            {ajoutScan && (
+              <div role="status" style={{ marginTop: 8, fontSize: 13, fontWeight: 800, borderRadius: 8, padding: '6px 10px', border: '2px solid var(--ink)', background: ajoutScan.ok ? 'var(--vert)' : 'var(--white)' }}>{ajoutScan.texte}</div>
+            )}
           </div>
 
           {/* Game list */}

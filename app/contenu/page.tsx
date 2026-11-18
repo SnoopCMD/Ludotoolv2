@@ -7,7 +7,7 @@ import BoutonScan from "../../components/ScanCodeBarre";
 import { ETAPES_A_ZERO } from "../../lib/etapesAtelier";
 import EnteteImpression, { CaseImpressionDouble } from "../../components/EnteteImpression";
 import {
-  chargerCodesSyracuse, correspondance, etiquettesPour, lireImpressionDouble, ecrireImpressionDouble,
+  chargerCodesSyracuse, correspondance, eanDuCode, etiquettesPour, lireImpressionDouble, ecrireImpressionDouble,
   validerEtapeImpression, type JeuChoisi, type LigneCatalogue,
 } from "../../lib/impression";
 
@@ -151,6 +151,29 @@ function ContenuPageInner() {
 
   const modifierQuantite = (couleurId: string, id: string | number, delta: number) => {
     setContenus(prev => ({ ...prev, [couleurId]: prev[couleurId].map(c => c.id === id ? { ...c, quantity: Math.max(0, c.quantity + delta) } : c) }));
+  };
+
+
+  // Scan (caméra ou douchette + Entrée) : le jeu reconnu est ajouté à la liste.
+  const [ajoutScan, setAjoutScan] = useState<{ texte: string; ok: boolean } | null>(null);
+  useEffect(() => {
+    if (!ajoutScan) return;
+    const t = setTimeout(() => setAjoutScan(null), 3500);
+    return () => clearTimeout(t);
+  }, [ajoutScan]);
+  const ajouterParScan = (code: string) => {
+    const ean = eanDuCode(code, Object.values(contenus).flat().map(x => x.ean).filter(Boolean), codesSyracuse);
+    const trouve = ean ? Object.entries(contenus).flatMap(([couleur, l]) => l.filter(x => x.ean === ean).map(x => ({ couleur, x }))) : [];
+    if (!trouve.length) {
+      // Un nom tapé puis Entrée reste une simple recherche ; un code inconnu est signalé.
+      setRecherche(code);
+      if (/^\d+$/.test(code.trim())) setAjoutScan({ texte: `Aucun jeu pour le code ${code.trim()} : recherche affichée.`, ok: false });
+      return;
+    }
+    const { couleur, x } = trouve[0];
+    modifierQuantite(couleur, x.id, 1);
+    setRecherche("");
+    setAjoutScan({ texte: `✓ ${x.nom || ean} ajouté (×${x.quantity + 1})`, ok: true });
   };
 
   const supprimerLigne = (couleurId: string, id: string | number) => {
@@ -299,9 +322,14 @@ function ContenuPageInner() {
           <div style={{ padding: '16px 18px', borderBottom: '2.5px solid var(--ink)', background: 'var(--cream2)' }}>
             <div className="bc" style={{ fontSize: 20, textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 10 }}>Générateur de fiches</div>
             <div style={{ display: 'flex', gap: 8 }}>
-              <input type="text" placeholder="🔍 Nom, EAN ou code Syracuse..." value={recherche} onChange={e => setRecherche(e.target.value)} className="pop-input" style={{ flex: 1, minWidth: 0, fontSize: 14 }} />
-              <BoutonScan onScan={code => setRecherche(code)} />
+              <input type="text" placeholder="🔍 Nom, EAN ou code Syracuse..." value={recherche} onChange={e => setRecherche(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && recherche.trim()) { e.preventDefault(); ajouterParScan(recherche); } }}
+                title="Entrée (ou douchette) : ajoute le jeu dont c'est l'EAN ou le code Syracuse" className="pop-input" style={{ flex: 1, minWidth: 0, fontSize: 14 }} />
+              <BoutonScan onScan={ajouterParScan} />
             </div>
+            {ajoutScan && (
+              <div role="status" style={{ marginTop: 8, fontSize: 13, fontWeight: 800, borderRadius: 8, padding: '6px 10px', border: '2px solid var(--ink)', background: ajoutScan.ok ? 'var(--vert)' : 'var(--white)' }}>{ajoutScan.texte}</div>
+            )}
           </div>
 
           <div style={{ flex: 1, overflowY: 'auto', padding: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>

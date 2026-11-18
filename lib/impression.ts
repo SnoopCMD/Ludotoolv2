@@ -50,6 +50,26 @@ export function correspondance(recherche: string, nom: string, ean: string, code
   return code ? { ok: true, code } : { ok: false };
 }
 
+/** Un code lu tel quel, puis sans les zéros de tête (un lecteur peut les perdre). */
+const variantesCode = (code: string) => {
+  const c = code.trim().toLowerCase();
+  return c ? [...new Set([c, c.replace(/^0+/, "")])].filter(Boolean) : [];
+};
+
+/**
+ * EAN du jeu correspondant exactement à un code scanné : son EAN, ou le code
+ * Syracuse d'un de ses exemplaires. null si aucun jeu, ou plusieurs, ne correspond.
+ */
+export function eanDuCode(code: string, eans: string[], codes: Record<string, string[]>): string | null {
+  const v = variantesCode(code);
+  if (!v.length) return null;
+  const parEan = eans.filter(e => variantesCode(e).some(x => v.includes(x)));
+  if (parEan.length === 1) return parEan[0];
+  if (parEan.length > 1) return null;
+  const parCode = [...new Set(eans.filter(e => (codes[e] ?? []).some(c => variantesCode(c).some(x => v.includes(x)))))];
+  return parCode.length === 1 ? parCode[0] : null;
+}
+
 // ── L'autre impression ─────────────────────────────────────────────────────────
 
 const etiquetteComplete = (c: LigneCatalogue) =>
