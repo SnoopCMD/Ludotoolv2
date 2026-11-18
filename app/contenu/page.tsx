@@ -1,14 +1,18 @@
 "use client";
 import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useIsMobile } from "../../lib/useIsMobile";
 import BoutonScan from "../../components/ScanCodeBarre";
-import { ETAPES_A_ZERO, statutApres } from "../../lib/etapesAtelier";
+import { ETAPES_A_ZERO } from "../../lib/etapesAtelier";
+import EnteteImpression, { CaseImpressionDouble } from "../../components/EnteteImpression";
+import {
+  chargerCodesSyracuse, correspondance, etiquettesPour, lireImpressionDouble, ecrireImpressionDouble,
+  validerEtapeImpression, type JeuChoisi, type LigneCatalogue,
+} from "../../lib/impression";
 
 // react-pdf uniquement côté navigateur : jamais dans le bundle serveur du worker
-const LienPDFContenu = dynamic(() => import("../../components/LienPDFContenu"), { ssr: false });
+const BoutonImpression = dynamic(() => import("../../components/BoutonImpression"), { ssr: false });
 
 const CATEGORIES = [
   { id: "vert",  nom: "Vert",  hex: "#a8e063" },
@@ -42,15 +46,22 @@ function ContenuPageInner() {
   });
 
   const [recherche, setRecherche] = useState(searchParams.get("nom") ?? "");
+  // Catalogue tel que chargé (pour imprimer aussi les étiquettes) et codes Syracuse par EAN (recherche).
+  const [catalogue, setCatalogue] = useState<Map<string, LigneCatalogue>>(new Map());
+  const [codesSyracuse, setCodesSyracuse] = useState<Record<string, string[]>>({});
+  const [impressionDouble, setImpressionDouble] = useState(false);
 
   useEffect(() => {
     setIsClient(true);
     chargerCatalogue();
+    chargerCodesSyracuse().then(setCodesSyracuse);
+    setImpressionDouble(lireImpressionDouble());
   }, []);
 
   const chargerCatalogue = async () => {
     const data = await fetch('/api/catalogue', { cache: 'no-store' }).then(r => r.json() as Promise<any>).catch(() => null);
     if (Array.isArray(data)) {
+      setCatalogue(new Map((data as LigneCatalogue[]).filter(c => c.ean).map(c => [c.ean, c])));
       const dbContenus: Record<string, ContenuType[]> = { vert: [], rose: [], bleu: [], rouge: [], jaune: [] };
       data.forEach(item => {
         const couleur = item.couleur && dbContenus[item.couleur] ? item.couleur : "vert";
@@ -146,6 +157,14 @@ function ContenuPageInner() {
     setContenus(prev => ({ ...prev, [couleurId]: prev[couleurId].filter(c => c.id !== id) }));
   };
 
+  /** Jeux choisis pour l'impression (quantité au-dessus de 0). */
+  const choisis = (): JeuChoisi[] => Object.entries(contenus).flatMap(([couleur, liste]) =>
+    liste.filter(c => c.quantity > 0 && c.ean).map(c => ({ ean: c.ean, nom: c.nom, quantity: c.quantity, couleur })));
+
+  /** Étiquettes des mêmes jeux, si l'impression double est cochée. */
+  const etiquettesAussi = () => etiquettesPour(choisis(), catalogue);
+
+  /** Impression du contenu : étape 4 des jeux en préparation (et étape 5 si les étiquettes suivent). */
   const genererPDF = async () => {
     const eansCompletsAImprimer: string[] = [];
     Object.values(contenus).forEach(liste => {
@@ -153,13 +172,10 @@ function ContenuPageInner() {
         if (!((!c.elements || c.elements.trim() === "")) && c.nom && c.ean && c.quantity > 0) eansCompletsAImprimer.push(c.ean);
       });
     });
-    if (eansCompletsAImprimer.length > 0) {
-      const jeuxEnPrepa = await fetch(`/api/jeux?eans=${encodeURIComponent(eansCompletsAImprimer.join(','))}&statut=En+pr%C3%A9paration`).then(r => r.json() as Promise<any>).catch(() => []);
-      if (Array.isArray(jeuxEnPrepa) && jeuxEnPrepa.length > 0) {
-        for (const jeu of jeuxEnPrepa) {
-          await fetch(`/api/jeux/${jeu.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ etape_contenu: 1, statut: statutApres(jeu, { etape_contenu: 1 }) }) });
-        }
-      }
+    await validerEtapeImpression("contenu", eansCompletsAImprimer);
+    if (impressionDouble) {
+      const { parCouleur } = etiquettesAussi();
+      await validerEtapeImpression("etiquettes", Object.values(parCouleur).flat().map(e => e.ean));
     }
   };
 
@@ -176,12 +192,7 @@ function ContenuPageInner() {
 
   return (
     <div style={{ minHeight: '100dvh' }}>
-      {/* Mini header retour */}
-      <div style={{ position: 'sticky', top: 0, zIndex: 100, background: 'var(--cream)', borderBottom: '3px solid var(--ink)', padding: '0 var(--page-pad-x)', height: 56, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Link href="/atelier" className="pop-sticker" style={{ background: 'var(--ink)', color: 'var(--white)', textDecoration: 'none', fontSize: 14 }}>← Atelier</Link>
-        <div className="bc" style={{ fontSize: isMobile ? 17 : 24, textTransform: 'uppercase', letterSpacing: '.04em', background: 'linear-gradient(135deg,#0d0d0d 40%,#60a5fa)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Impression contenu</div>
-        <div style={{ width: isMobile ? 0 : 80 }} />
-      </div>
+      <EnteteImpression actuelle="contenu" recherche={recherche} isMobile={isMobile} />
 
       <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: 16, padding: 'var(--page-pad-y) var(--page-pad-x)', alignItems: isMobile ? 'stretch' : 'flex-start' }}>
 
@@ -288,15 +299,16 @@ function ContenuPageInner() {
           <div style={{ padding: '16px 18px', borderBottom: '2.5px solid var(--ink)', background: 'var(--cream2)' }}>
             <div className="bc" style={{ fontSize: 20, textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 10 }}>Générateur de fiches</div>
             <div style={{ display: 'flex', gap: 8 }}>
-              <input type="text" placeholder="🔍 Rechercher un jeu..." value={recherche} onChange={e => setRecherche(e.target.value)} className="pop-input" style={{ flex: 1, minWidth: 0, fontSize: 14 }} />
+              <input type="text" placeholder="🔍 Nom, EAN ou code Syracuse..." value={recherche} onChange={e => setRecherche(e.target.value)} className="pop-input" style={{ flex: 1, minWidth: 0, fontSize: 14 }} />
               <BoutonScan onScan={code => setRecherche(code)} />
             </div>
           </div>
 
           <div style={{ flex: 1, overflowY: 'auto', padding: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
             {CATEGORIES.map(cat => {
-              const r = recherche.trim().toLowerCase();
-              const items = contenus[cat.id].filter(c => c.nom.toLowerCase().includes(r) || (r !== "" && c.ean.toLowerCase().includes(r)));
+              const items = contenus[cat.id]
+                .map(c => ({ c, m: correspondance(recherche, c.nom, c.ean, codesSyracuse[c.ean]) }))
+                .filter(x => x.m.ok);
               if (items.length === 0) return null;
               return (
                 <div key={`side-${cat.id}`} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -304,9 +316,12 @@ function ContenuPageInner() {
                     <div style={{ width: 10, height: 10, borderRadius: '50%', background: cat.hex, border: '1.5px solid var(--ink)', flexShrink: 0 }} />
                     <span style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: 'rgba(0,0,0,0.45)' }}>{cat.nom}</span>
                   </div>
-                  {items.map(c => (
+                  {items.map(({ c, m }) => (
                     <div key={`side-${c.id}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--cream2)', border: '2px solid var(--ink)', borderRadius: 6, padding: '6px 10px', boxShadow: '2px 2px 0 var(--ink)' }}>
-                      <span style={{ fontSize: 14, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, marginRight: 8 }}>{c.nom || "Sans nom"}</span>
+                      <span style={{ flex: 1, minWidth: 0, marginRight: 8 }}>
+                        <span style={{ display: 'block', fontSize: 14, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.nom || "Sans nom"}</span>
+                        {m.code && <span style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'rgba(0,0,0,0.5)', fontFamily: 'monospace' }}>Syracuse {m.code}</span>}
+                      </span>
                       <div style={{ display: 'flex', alignItems: 'center', border: '2px solid var(--ink)', borderRadius: 6, overflow: 'hidden', flexShrink: 0 }}>
                         <button onClick={() => modifierQuantite(cat.id, c.id, -1)} style={{ padding: '2px 8px', fontWeight: 700, fontSize: 16, background: 'var(--white)', border: 'none', borderRight: '1.5px solid var(--ink)', cursor: 'pointer' }}>−</button>
                         <span style={{ width: 28, textAlign: 'center', fontWeight: 700, fontSize: 14 }}>{c.quantity}</span>
@@ -321,14 +336,21 @@ function ContenuPageInner() {
 
           <div style={{ padding: '16px 18px', borderTop: '2.5px solid var(--ink)', background: 'var(--cream2)' }}>
             <div style={{ textAlign: 'center', fontSize: 14, fontWeight: 700, color: 'rgba(0,0,0,0.45)', marginBottom: 10 }}>{totalContenus} fiche(s) sélectionnée(s)</div>
+            <CaseImpressionDouble actuelle="contenu" coche={impressionDouble}
+              onChange={v => { setImpressionDouble(v); ecrireImpressionDouble(v); }}
+              resume={(() => {
+                if (!totalContenus) return null;
+                const { parCouleur, ignores } = etiquettesAussi();
+                const n = Object.values(parCouleur).flat().reduce((s, e) => s + e.quantity, 0);
+                return `${n} étiquette${n > 1 ? 's' : ''}${ignores.length ? ` · ${ignores.length} incomplète${ignores.length > 1 ? 's' : ''}, non imprimée${ignores.length > 1 ? 's' : ''} (${ignores.slice(0, 3).join(', ')}${ignores.length > 3 ? '…' : ''})` : ''}`;
+              })()} />
             {isClient ? (
-              <LienPDFContenu contenus={contenus} fileName="contenu_ludo.pdf">
-                {({ loading }) => (
-                  <button onClick={genererPDF} disabled={totalContenus === 0 || loading} className="pop-btn pop-btn-dark" style={{ width: '100%', justifyContent: 'center', opacity: totalContenus === 0 ? 0.4 : 1 }}>
-                    {loading ? 'PRÉPARATION...' : 'GÉNÉRER LES FICHES →'}
-                  </button>
-                )}
-              </LienPDFContenu>
+              <BoutonImpression desactive={totalContenus === 0} avant={genererPDF}
+                libelle={impressionDouble ? 'GÉNÉRER FICHES + ÉTIQUETTES →' : 'GÉNÉRER LES FICHES →'}
+                documents={() => [
+                  { type: 'contenu', fileName: 'contenu_ludo.pdf', contenus },
+                  ...(impressionDouble ? [{ type: 'etiquettes' as const, fileName: 'etiquettes_ludo.pdf', etiquettesParCouleur: etiquettesAussi().parCouleur }] : []),
+                ]} />
             ) : (
               <button disabled className="pop-btn" style={{ width: '100%', justifyContent: 'center', opacity: 0.4 }}>CHARGEMENT...</button>
             )}

@@ -1,14 +1,19 @@
 "use client";
-import { useState, useEffect } from "react";
-import Link from "next/link";
+import { useState, useEffect, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { useIsMobile } from "../../lib/useIsMobile";
 import BoutonScan from "../../components/ScanCodeBarre";
-import { ETAPES_A_ZERO, statutApres } from "../../lib/etapesAtelier";
+import { ETAPES_A_ZERO } from "../../lib/etapesAtelier";
+import EnteteImpression, { CaseImpressionDouble } from "../../components/EnteteImpression";
+import {
+  chargerCodesSyracuse, contenusPour, correspondance, lireImpressionDouble, ecrireImpressionDouble,
+  validerEtapeImpression, type JeuChoisi, type LigneCatalogue,
+} from "../../lib/impression";
 import { MECANIQUES, TEMPS_DE_JEU_OPTIONS, joueursDepuisMyLudo, tempsDepuisMyLudo } from "../../lib/etiquetteJeu";
 
 // react-pdf uniquement côté navigateur : jamais dans le bundle serveur du worker
-const LienPDFEtiquettes = dynamic(() => import("../../components/LienPDFEtiquettes"), { ssr: false });
+const BoutonImpression = dynamic(() => import("../../components/BoutonImpression"), { ssr: false });
 
 const CATEGORIES = [
   { id: "vert",  nom: "Vert",  hex: "#a8e063", maxStars: 3 },
@@ -59,7 +64,16 @@ const S = {
 };
 
 export default function EtiquettesPage() {
+  return (
+    <Suspense>
+      <EtiquettesPageInner />
+    </Suspense>
+  );
+}
+
+function EtiquettesPageInner() {
   const isMobile = useIsMobile();
+  const searchParams = useSearchParams();
   const [isClient, setIsClient] = useState(false);
 
   const [etiquettes, setEtiquettes] = useState<Record<string, Etiquette[]>>({
@@ -68,17 +82,24 @@ export default function EtiquettesPage() {
   const [sectionsOuvertes, setSectionsOuvertes] = useState<Record<string, boolean>>({
     vert: false, rose: false, bleu: false, rouge: false, jaune: false
   });
-  const [recherche, setRecherche] = useState("");
+  const [recherche, setRecherche] = useState(searchParams.get("nom") ?? "");
+  // Catalogue tel que chargé (pour imprimer aussi le contenu) et codes Syracuse par EAN (recherche).
+  const [catalogue, setCatalogue] = useState<Map<string, LigneCatalogue>>(new Map());
+  const [codesSyracuse, setCodesSyracuse] = useState<Record<string, string[]>>({});
+  const [impressionDouble, setImpressionDouble] = useState(false);
   const [mlLoading, setMlLoading] = useState<Set<string | number>>(new Set());
 
   useEffect(() => {
     setIsClient(true);
     chargerCatalogue();
+    chargerCodesSyracuse().then(setCodesSyracuse);
+    setImpressionDouble(lireImpressionDouble());
   }, []);
 
   const chargerCatalogue = async () => {
     const data = await fetch('/api/catalogue').then(r => r.json() as Promise<any>).catch(() => null);
     if (Array.isArray(data)) {
+      setCatalogue(new Map((data as LigneCatalogue[]).filter(c => c.ean).map(c => [c.ean, c])));
       const dbEtiquettes: Record<string, Etiquette[]> = { vert: [], rose: [], bleu: [], rouge: [], jaune: [] };
       data.forEach(item => {
         const couleur = item.couleur && dbEtiquettes[item.couleur] ? item.couleur : "vert";
@@ -247,15 +268,19 @@ export default function EtiquettesPage() {
       await fetch('/api/catalogue', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(uniqueCatalogue) });
     }
 
-    if (eansCompletsAImprimer.length > 0) {
-      const jeuxEnPrepa = await fetch(`/api/jeux?eans=${encodeURIComponent(eansCompletsAImprimer.join(','))}&statut=En+pr%C3%A9paration`).then(r => r.json() as Promise<any>).catch(() => []);
-      if (Array.isArray(jeuxEnPrepa) && jeuxEnPrepa.length > 0) {
-        for (const jeu of jeuxEnPrepa) {
-          await fetch(`/api/jeux/${jeu.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ etape_etiquette: 1, statut: statutApres(jeu, { etape_etiquette: 1 }) }) });
-        }
-      }
+    await validerEtapeImpression("etiquettes", eansCompletsAImprimer);
+    if (impressionDouble) {
+      const { parCouleur } = contenuAussi();
+      await validerEtapeImpression("contenu", Object.values(parCouleur).flat().map(c => c.ean));
     }
   };
+
+  /** Jeux choisis pour l'impression (quantité au-dessus de 0). */
+  const choisis = (): JeuChoisi[] => Object.entries(etiquettes).flatMap(([couleur, liste]) =>
+    liste.filter(e => e.quantity > 0 && e.ean).map(e => ({ ean: e.ean, nom: e.nom, quantity: e.quantity, couleur })));
+
+  /** Fiches contenu des mêmes jeux, si l'impression double est cochée. */
+  const contenuAussi = () => contenusPour(choisis(), catalogue);
 
   const scrollToLetter = (letter: string, catId: string) => {
     const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
@@ -271,31 +296,7 @@ export default function EtiquettesPage() {
   return (
     <div style={{ minHeight: "100dvh", background: "var(--cream)", display: "flex", flexDirection: "column" }}>
 
-      {/* Mini sticky header */}
-      <header style={{
-        position: "sticky", top: 0, zIndex: 200,
-        height: 56, background: "var(--cream)",
-        borderBottom: "2.5px solid var(--ink)",
-        display: "flex", alignItems: "center",
-        padding: "0 var(--page-pad-x)", gap: isMobile ? 8 : 16,
-      }}>
-        <Link href="/atelier" style={{
-          display: "inline-flex", alignItems: "center", gap: 6,
-          background: "var(--ink)", color: "var(--cream)",
-          border: "2px solid var(--ink)", borderRadius: 6,
-          padding: "4px 12px", fontWeight: 700, fontSize: 14,
-          textDecoration: "none", boxShadow: "2px 2px 0 rgba(0,0,0,0.3)",
-          fontFamily: "inherit",
-        }}>
-          ← Atelier
-        </Link>
-        <h1 className="bc" style={{ fontSize: isMobile ? 16 : 24, letterSpacing: "0.03em", margin: 0,
-          background: "linear-gradient(90deg, var(--rouge), var(--orange))",
-          WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
-        }}>
-          Impression étiquettes
-        </h1>
-      </header>
+      <EnteteImpression actuelle="etiquettes" recherche={recherche} isMobile={isMobile} />
 
       {/* Main layout */}
       <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 20, padding: "var(--page-pad-y) var(--page-pad-x)", alignItems: isMobile ? "stretch" : "flex-start", flex: 1 }}>
@@ -589,7 +590,7 @@ export default function EtiquettesPage() {
             <div style={{ display: "flex", gap: 8 }}>
               <input
                 type="text"
-                placeholder="🔍  Rechercher un jeu..."
+                placeholder="🔍  Nom, EAN ou code Syracuse..."
                 value={recherche}
                 onChange={(e) => setRecherche(e.target.value)}
                 className="pop-input"
@@ -602,8 +603,9 @@ export default function EtiquettesPage() {
           {/* Game list */}
           <div style={{ flex: 1, overflowY: "auto", padding: "12px 14px", display: "flex", flexDirection: "column", gap: 14 }}>
             {CATEGORIES.map(cat => {
-              const r = recherche.trim().toLowerCase();
-              const items = etiquettes[cat.id].filter(eti => eti.nom.toLowerCase().includes(r) || (r !== "" && eti.ean.toLowerCase().includes(r)));
+              const items = etiquettes[cat.id]
+                .map(eti => ({ eti, m: correspondance(recherche, eti.nom, eti.ean, codesSyracuse[eti.ean]) }))
+                .filter(x => x.m.ok);
               if (items.length === 0) return null;
               return (
                 <div key={`side-${cat.id}`} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -613,15 +615,18 @@ export default function EtiquettesPage() {
                     <span style={{ fontSize: 12, fontWeight: 700, color: "rgba(0,0,0,0.5)", textTransform: "uppercase", letterSpacing: "0.06em" }}>{cat.nom}</span>
                     <span style={{ fontSize: 12, color: "rgba(0,0,0,0.35)", fontWeight: 600 }}>({items.length})</span>
                   </div>
-                  {items.map(eti => (
+                  {items.map(({ eti, m }) => (
                     <div key={`side-item-${eti.id}`} style={{
                       display: "flex", alignItems: "center", justifyContent: "space-between",
                       background: "var(--cream2)", padding: "8px 10px",
                       borderRadius: 7, border: "2px solid var(--ink)",
                       boxShadow: "2px 2px 0 var(--ink)",
                     }}>
-                      <span style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)", flex: 1, marginRight: 8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {eti.nom || <span style={{ fontStyle: "italic", color: "rgba(0,0,0,0.35)" }}>Sans nom</span>}
+                      <span style={{ flex: 1, minWidth: 0, marginRight: 8 }}>
+                        <span style={{ display: "block", fontSize: 14, fontWeight: 700, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {eti.nom || <span style={{ fontStyle: "italic", color: "rgba(0,0,0,0.35)" }}>Sans nom</span>}
+                        </span>
+                        {m.code && <span style={{ display: "block", fontSize: 11, fontWeight: 700, color: "rgba(0,0,0,0.5)", fontFamily: "monospace" }}>Syracuse {m.code}</span>}
                       </span>
                       <div style={{ display: "flex", alignItems: "center", border: "2px solid var(--ink)", borderRadius: 6, background: "var(--white)", flexShrink: 0 }}>
                         <button onClick={() => modifierQuantite(cat.id, eti.id, -1)} style={{ padding: "4px 8px", background: "none", border: "none", cursor: "pointer", fontWeight: 900, fontSize: 16, lineHeight: 1, borderRight: "1.5px solid var(--ink)" }}>−</button>
@@ -640,26 +645,21 @@ export default function EtiquettesPage() {
             <p style={{ textAlign: "center", fontSize: 14, fontWeight: 700, color: "rgba(0,0,0,0.5)", margin: "0 0 10px" }}>
               {totalEtiquettes} étiquette(s)
             </p>
+            <CaseImpressionDouble actuelle="etiquettes" coche={impressionDouble}
+              onChange={v => { setImpressionDouble(v); ecrireImpressionDouble(v); }}
+              resume={(() => {
+                if (!totalEtiquettes) return null;
+                const { parCouleur, ignores } = contenuAussi();
+                const n = Object.values(parCouleur).flat().reduce((s, c) => s + c.quantity, 0);
+                return `${n} fiche${n > 1 ? "s" : ""} contenu${ignores.length ? ` · ${ignores.length} sans contenu, non imprimée${ignores.length > 1 ? "s" : ""} (${ignores.slice(0, 3).join(", ")}${ignores.length > 3 ? "…" : ""})` : ""}`;
+              })()} />
             {isClient ? (
-              <LienPDFEtiquettes etiquettesParCouleur={etiquettes} fileName="etiquettes_ludo.pdf">
-                {({ loading }) => (
-                  <button
-                    onClick={genererPDF}
-                    disabled={totalEtiquettes === 0 || loading}
-                    className="pop-btn pop-btn-dark"
-                    style={{
-                      width: "100%", padding: "12px 0",
-                      fontSize: 15, letterSpacing: "0.04em",
-                      opacity: (totalEtiquettes === 0 || loading) ? 0.45 : 1,
-                      cursor: (totalEtiquettes === 0 || loading) ? "not-allowed" : "pointer",
-                    }}
-                  >
-                    <span className="bc" style={{ fontSize: 16 }}>
-                      {loading ? "PRÉPARATION PDF..." : "GÉNÉRER LES ÉTIQUETTES"}
-                    </span>
-                  </button>
-                )}
-              </LienPDFEtiquettes>
+              <BoutonImpression desactive={totalEtiquettes === 0} avant={genererPDF} style={{ padding: "12px 0" }}
+                libelle={<span className="bc" style={{ fontSize: 16 }}>{impressionDouble ? "GÉNÉRER ÉTIQUETTES + CONTENU" : "GÉNÉRER LES ÉTIQUETTES"}</span>}
+                documents={() => [
+                  { type: "etiquettes", fileName: "etiquettes_ludo.pdf", etiquettesParCouleur: etiquettes },
+                  ...(impressionDouble ? [{ type: "contenu" as const, fileName: "contenu_ludo.pdf", contenus: contenuAussi().parCouleur }] : []),
+                ]} />
             ) : (
               <button disabled className="pop-btn pop-btn-dark" style={{ width: "100%", padding: "12px 0", opacity: 0.45, cursor: "not-allowed" }}>
                 <span className="bc" style={{ fontSize: 16 }}>CHARGEMENT...</span>
