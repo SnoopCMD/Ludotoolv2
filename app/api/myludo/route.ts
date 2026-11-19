@@ -203,6 +203,27 @@ export async function GET(req: NextRequest) {
     if (req.nextUrl.searchParams.get("brut") === "1") {
       return NextResponse.json({ recherche: game, detail });
     }
+    // ?sonde=1 : diagnostic temporaire. Cherche où MyLudo range les catégories,
+    // mécaniques et la description de la fiche (onglet « Infos ») : adresses de
+    // données citées dans le code du site, et quelques types de fiche probables.
+    if (req.nextUrl.searchParams.get("sonde") === "1") {
+      const html = await fetch(`${BASE}/`, { headers: HEADERS }).then(r => r.text()).catch(() => "");
+      const scripts = [...html.matchAll(/<script[^>]+src="([^"]+)"/g)].map(m => new URL(m[1], BASE).href).slice(0, 12);
+      const references = new Set<string>();
+      for (const src of scripts) {
+        const js = await fetch(src, { headers: HEADERS }).then(r => r.text()).catch(() => "");
+        for (const m of js.matchAll(/views\/[a-z_\/]+\.php[^"'`\s]{0,80}/g)) references.add(m[0]);
+        for (const m of js.matchAll(/type=([a-z_]+)/g)) references.add(`type=${m[1]}`);
+      }
+      const types = ["infos", "info", "description", "classification", "tags", "categories", "details", "game_infos", "fiche", "summary", "themes", "mechanics"];
+      const essais: Record<string, unknown> = {};
+      await Promise.all(types.map(async t => {
+        const r = await fetch(`${BASE}/views/game/datas.php?type=${t}&id=${encodeURIComponent(game!.id)}`, { headers: apiHeaders(session) }).catch(() => null);
+        const texte = r ? await r.text().catch(() => "") : "";
+        essais[t] = { statut: r?.status ?? null, debut: texte.slice(0, 400) };
+      }));
+      return NextResponse.json({ scripts, references: [...references].slice(0, 300), essais });
+    }
     const d = detail ?? game;
 
     if (!game.code && d.code) game.code = d.code;
