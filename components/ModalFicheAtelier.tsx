@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { COULEURS_JEU } from "../lib/couleursJeux";
 import {
   MECANIQUES, TEMPS_DE_JEU_OPTIONS, COOP_VERSUS_OPTIONS,
-  etoilesMax, ageMinDepuisMyLudo, couleurEtEtoilesDepuisAge, joueursDepuisMyLudo, tempsDepuisMyLudo, urlRechercheMyLudo,
+  etoilesMax, ageMinDepuisMyLudo, mecaniqueDuLibelle, type BanqueMecaniques, normaliserLibelle, couleurEtEtoilesDepuisAge, joueursDepuisMyLudo, tempsDepuisMyLudo, urlRechercheMyLudo,
 } from "../lib/etiquetteJeu";
 import {
   LARGEUR_MODAL, MARGE_MODAL, allerA, comparaisonPossible, ecrireComparaison, fermerFenetreMyLudo, lireComparaison, ouvrirFenetreMyLudo,
@@ -53,6 +53,10 @@ type ResultatMyLudo = {
   mecaniques?: string[];
   type_partie?: { valeur: "Coop" | "Versus" | "Solo"; sur: boolean } | null;
   complexite?: { note: number; votes: number } | null;
+  /** Mécanismes et catégories MyLudo sans mécanique connue (à apprendre dans la banque). */
+  sans_correspondance?: string[];
+  /** Mécanique de chaque étiquette reconnue (libellé MyLudo → mécanique). */
+  correspondances?: Record<string, string>;
 };
 
 /** Champs que MyLudo peut proposer. */
@@ -241,6 +245,21 @@ export default function ModalFicheAtelier({ jeu, focus, onFermer, onEnregistre }
     if (champ === "image_url") setImageCassee(false);
   };
 
+  /**
+   * Retient dans la banque de correspondances qu'un libellé MyLudo vaut une de
+   * nos mécaniques (pour les jeux suivants), et l'applique à ce jeu.
+   */
+  const [appris, setAppris] = useState<BanqueMecaniques>({});
+  const associer = async (libelle: string, mecanique: string) => {
+    const ok = await fetch("/api/mecaniques-correspondances", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ libelle, mecanique }) })
+      .then(r => r.ok).catch(() => false);
+    if (!ok) { setMessage("La correspondance n'a pas pu être enregistrée."); return; }
+    setAppris(a => ({ ...a, [normaliserLibelle(libelle)]: mecanique }));
+    setMl(prev => prev ? { ...prev, mecaniques: [...new Set([...(prev.mecaniques ?? []), mecanique])], sans_correspondance: (prev.sans_correspondance ?? []).filter(l => l !== libelle) } : prev);
+    if (fiche && !fiche.mecanique) maj("mecanique", mecanique);
+    setMessage(`« ${libelle} » → ${mecanique} : retenu pour les prochains jeux.`);
+  };
+
   const choisirPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const fichier = e.target.files?.[0];
     e.target.value = "";
@@ -311,7 +330,8 @@ export default function ModalFicheAtelier({ jeu, focus, onFermer, onEnregistre }
           <div style={{ flex: 1, overflowY: "auto", padding: 20, display: "flex", flexDirection: "column", gap: 22 }}>
             <PanneauMyLudo nom={jeu.nom} ml={ml} candidats={candidats} voirCandidats={voirCandidats} enCours={enCours === "myludo"} desactive={enCours !== null}
               onChercher={() => chercherMyLudo()} onChoisir={c => chercherMyLudo(c)} onVoirCandidats={() => setVoirCandidats(v => !v)}
-              onLien={ouvrirLien} comparaison={comparaison} onComparaison={comparaisonPossible() ? changerComparaison : undefined} />
+              onLien={ouvrirLien} comparaison={comparaison} onComparaison={comparaisonPossible() ? changerComparaison : undefined}
+              appris={appris} onAssocier={associer} />
             {message && <div style={{ fontSize: 13, fontWeight: 700, background: "var(--cream2)", border: "2px solid var(--ink)", borderRadius: 8, padding: "8px 12px" }}>{message}</div>}
 
             {/* ── Vignette ── */}
@@ -381,6 +401,18 @@ export default function ModalFicheAtelier({ jeu, focus, onFermer, onEnregistre }
                       {MECANIQUES.map(m => <option key={m} value={m}>{m}</option>)}
                     </select>
                     {suggestion("mecanique") && <Suggestion onUtiliser={() => utiliserSuggestion("mecanique")}>{suggestion("mecanique")}</Suggestion>}
+                    {/* Mécanique choisie à la main : la retenir pour un libellé MyLudo resté sans correspondance */}
+                    {fiche.mecanique && !ml?.mecaniques?.includes(fiche.mecanique) && !!ml?.sans_correspondance?.length && (
+                      <div style={{ marginTop: 6, fontSize: 12, fontWeight: 700, color: "rgba(0,0,0,0.6)", display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
+                        <span>Retenir pour les prochains jeux :</span>
+                        {ml.sans_correspondance.slice(0, 4).map(l => (
+                          <button key={l} onClick={() => associer(l, fiche.mecanique)} title={`Les jeux MyLudo « ${l} » seront proposés en ${fiche.mecanique}`}
+                            style={{ fontFamily: "inherit", fontSize: 11, fontWeight: 800, cursor: "pointer", border: "1.5px dashed var(--ink)", borderRadius: 12, padding: "1px 8px", background: "var(--white)" }}>
+                            « {l} » → {fiche.mecanique}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                     {/* Autres mécaniques reconnues sur MyLudo, à choisir d'un clic */}
                     {(ml?.mecaniques?.length ?? 0) > 1 && (
                       <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 6 }}>
@@ -461,7 +493,8 @@ function Suggestion({ children, onUtiliser }: { children: React.ReactNode; onUti
  * vers sa fiche, les autres résultats si ce n'est pas le bon, et une recherche
  * sur le site quand MyLudo ne l'a pas trouvé.
  */
-function PanneauMyLudo({ nom, ml, candidats, voirCandidats, enCours, desactive, onChercher, onChoisir, onVoirCandidats, onLien, comparaison, onComparaison }: {
+function PanneauMyLudo({ nom, ml, candidats, voirCandidats, enCours, desactive, onChercher, onChoisir, onVoirCandidats, onLien, comparaison, onComparaison, appris, onAssocier }: {
+  appris: BanqueMecaniques; onAssocier: (libelle: string, mecanique: string) => Promise<void>;
   nom: string; ml: ResultatMyLudo | null; candidats: CandidatMyLudo[]; voirCandidats: boolean; enCours: boolean; desactive: boolean;
   onChercher: () => void; onChoisir: (c: CandidatMyLudo) => void; onVoirCandidats: () => void;
   /** Clic sur un lien MyLudo : l'ouvre dans la fenêtre d'à côté si elle est voulue. */
@@ -521,7 +554,7 @@ function PanneauMyLudo({ nom, ml, candidats, voirCandidats, enCours, desactive, 
         </div>
       )}
 
-      {trouve && (ml.etiquettes?.length || ml.description) ? <InfosMyLudo ml={ml} /> : null}
+      {trouve && (ml.etiquettes?.length || ml.description) ? <InfosMyLudo ml={ml} appris={appris} onAssocier={onAssocier} /> : null}
 
       {(voirCandidats || ml?.notFound) && (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -543,22 +576,48 @@ function PanneauMyLudo({ nom, ml, candidats, voirCandidats, enCours, desactive, 
   );
 }
 
-/** Étiquettes et description de l'onglet « Infos » de MyLudo, pour comparer sans quitter la modal. */
-function InfosMyLudo({ ml }: { ml: ResultatMyLudo }) {
+/**
+ * Étiquettes et description de l'onglet « Infos » de MyLudo, pour comparer sans
+ * quitter la modal. Les mécaniques reconnues sont surlignées ; un mécanisme ou
+ * une catégorie sans correspondance peut être associé à une de nos mécaniques
+ * (retenu dans la banque pour les jeux suivants).
+ */
+function InfosMyLudo({ ml, appris, onAssocier }: { ml: ResultatMyLudo; appris: BanqueMecaniques; onAssocier: (libelle: string, mecanique: string) => Promise<void> }) {
   const [voirDescription, setVoirDescription] = useState(false);
-  const reconnues = new Set(ml.mecaniques ?? []);
+  const [aAssocier, setAAssocier] = useState<string | null>(null);
+  const [voirBanque, setVoirBanque] = useState(false);
+  const sansCorrespondance = new Set(ml.sans_correspondance ?? []);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8, background: "var(--white)", border: "2px solid var(--ink)", borderRadius: 10, padding: 10 }}>
       {!!ml.etiquettes?.length && (
         <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
           <span style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".06em", color: "rgba(0,0,0,0.45)", marginRight: 2 }}>MyLudo</span>
           {ml.etiquettes.map(e => {
-            const mecanique = [...reconnues].some(m => m.toLowerCase() === e.toLowerCase());
+            const mecanique = ml.correspondances?.[e] ?? mecaniqueDuLibelle(e, appris);
+            const associable = sansCorrespondance.has(e) && !mecanique;
+            const base: React.CSSProperties = { fontFamily: "inherit", fontSize: 12, fontWeight: 700, borderRadius: 12, padding: "2px 9px" };
+            if (associable) {
+              return (
+                <button key={e} onClick={() => setAAssocier(a => (a === e ? null : e))} title="Associer à une de nos mécaniques"
+                  style={{ ...base, cursor: "pointer", border: "1.5px dashed var(--ink)", background: aAssocier === e ? "var(--cream2)" : "var(--white)" }}>{e} ＋</button>
+              );
+            }
             return (
-              <span key={e} title={mecanique ? "Mécanique de la liste" : undefined}
-                style={{ fontSize: 12, fontWeight: 700, borderRadius: 12, padding: "2px 9px", border: mecanique ? "2px solid var(--ink)" : "1.5px solid rgba(0,0,0,0.25)", background: mecanique ? "var(--yellow)" : "var(--cream2)" }}>{e}</span>
+              <span key={e} title={mecanique ? `Mécanique : ${mecanique}` : undefined}
+                style={{ ...base, border: mecanique ? "2px solid var(--ink)" : "1.5px solid rgba(0,0,0,0.25)", background: mecanique ? "var(--yellow)" : "var(--cream2)" }}>{e}</span>
             );
           })}
+        </div>
+      )}
+      {aAssocier && (
+        <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", fontSize: 12, fontWeight: 700 }}>
+          <span>« {aAssocier} » correspond à</span>
+          <select className="pop-input" defaultValue="" style={{ fontSize: 13, padding: "3px 6px" }}
+            onChange={async ev => { const m = ev.target.value; if (!m) return; await onAssocier(aAssocier, m); setAAssocier(null); }}>
+            <option value="">choisir une mécanique…</option>
+            {MECANIQUES.map(m => <option key={m} value={m}>{m}</option>)}
+          </select>
+          <button onClick={() => setAAssocier(null)} style={{ fontFamily: "inherit", fontSize: 12, background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}>annuler</button>
         </div>
       )}
       {ml.description && (
@@ -569,6 +628,36 @@ function InfosMyLudo({ ml }: { ml: ResultatMyLudo }) {
           {voirDescription && <p style={{ margin: "6px 0 0", fontSize: 13, lineHeight: 1.45, whiteSpace: "pre-line", color: "rgba(0,0,0,0.75)", maxHeight: 220, overflowY: "auto" }}>{ml.description}</p>}
         </div>
       )}
+      <div>
+        <button onClick={() => setVoirBanque(v => !v)} style={{ fontFamily: "inherit", fontSize: 12, fontWeight: 800, background: "none", border: "none", padding: 0, cursor: "pointer", color: "var(--ink)" }}>
+          {voirBanque ? "▾" : "▸"} Correspondances enregistrées
+        </button>
+        {voirBanque && <BanqueCorrespondances majVersion={Object.keys(appris).length} />}
+      </div>
     </div>
+  );
+}
+
+/** Liste des correspondances libellé MyLudo → mécanique, avec suppression. */
+function BanqueCorrespondances({ majVersion }: { majVersion: number }) {
+  const [lignes, setLignes] = useState<{ cle: string; libelle: string; mecanique: string; cree_par: string | null }[] | null>(null);
+  useEffect(() => {
+    fetch("/api/mecaniques-correspondances").then(r => r.json() as Promise<any>).then(d => setLignes(Array.isArray(d) ? d : [])).catch(() => setLignes([]));
+  }, [majVersion]);
+  const retirer = async (cle: string) => {
+    setLignes(l => (l ?? []).filter(x => x.cle !== cle));
+    await fetch(`/api/mecaniques-correspondances?cle=${encodeURIComponent(cle)}`, { method: "DELETE" }).catch(() => {});
+  };
+  if (!lignes) return <p style={{ fontSize: 12, color: "rgba(0,0,0,0.5)", margin: "6px 0 0" }}>Chargement…</p>;
+  if (!lignes.length) return <p style={{ fontSize: 12, color: "rgba(0,0,0,0.5)", margin: "6px 0 0" }}>Aucune pour l&apos;instant : associe un libellé MyLudo en pointillés à une mécanique.</p>;
+  return (
+    <ul style={{ listStyle: "none", margin: "6px 0 0", padding: 0, display: "flex", flexDirection: "column", gap: 3, maxHeight: 180, overflowY: "auto" }}>
+      {lignes.map(l => (
+        <li key={l.cle} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontWeight: 600 }}>
+          <span style={{ flex: 1, minWidth: 0 }}>« {l.libelle} » → <strong>{l.mecanique}</strong>{l.cree_par ? <span style={{ color: "rgba(0,0,0,0.4)" }}> · {l.cree_par}</span> : null}</span>
+          <button onClick={() => retirer(l.cle)} title="Retirer cette correspondance" style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, color: "rgba(0,0,0,0.45)" }}>✕</button>
+        </li>
+      ))}
+    </ul>
   );
 }

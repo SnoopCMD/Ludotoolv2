@@ -59,7 +59,8 @@ export const urlRechercheMyLudo = (nom: string) =>
 
 // ── Étiquettes MyLudo → champs de l'étiquette ──────────────────────────────────
 
-const normal = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+/** Clé de comparaison d'un libellé : minuscules, sans accents ni ponctuation. */
+export const normaliserLibelle = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
 
 /** Libellés MyLudo écrits autrement que nos mécaniques. */
 const SYNONYMES_MECANIQUES: Record<string, string> = {
@@ -79,16 +80,25 @@ const SYNONYMES_MECANIQUES: Record<string, string> = {
   "pari": "Paris", "paris": "Paris", "jeu de role": "Jeu de rôle", "livre jeu": "Livre-aventure",
 };
 
+/** Banque de correspondances enregistrées : clé normalisée → mécanique (table mecaniques_correspondances). */
+export type BanqueMecaniques = Record<string, string>;
+
+/** Mécanique connue pour un libellé MyLudo : nom identique, synonyme, ou banque de correspondances. */
+export function mecaniqueDuLibelle(libelle: string, banque: BanqueMecaniques = {}): string | null {
+  const n = normaliserLibelle(libelle);
+  const exact = MECANIQUES.find(m => normaliserLibelle(m) === n);
+  const m = exact ?? SYNONYMES_MECANIQUES[n] ?? banque[n];
+  return m && MECANIQUES.includes(m) ? m : null;
+}
+
 /**
  * Mécaniques de notre liste reconnues parmi les étiquettes MyLudo, dans l'ordre
  * où MyLudo les donne. La première est celle qu'on propose.
  */
-export function mecaniquesDepuisEtiquettes(etiquettes: string[]): string[] {
-  const parNom = new Map(MECANIQUES.map(m => [normal(m), m]));
+export function mecaniquesDepuisEtiquettes(etiquettes: string[], banque: BanqueMecaniques = {}): string[] {
   const trouvees: string[] = [];
   for (const e of etiquettes) {
-    const n = normal(e);
-    const m = parNom.get(n) ?? SYNONYMES_MECANIQUES[n];
+    const m = mecaniqueDuLibelle(e, banque);
     if (m && !trouvees.includes(m)) trouvees.push(m);
   }
   return trouvees;
@@ -100,7 +110,7 @@ export function mecaniquesDepuisEtiquettes(etiquettes: string[]): string[] {
  * déduit par défaut (rien ne dit coopératif).
  */
 export function typePartieDepuisMyLudo(etiquettes: string[], joueursMax?: number | null): { valeur: "Coop" | "Versus" | "Solo"; sur: boolean } {
-  const n = etiquettes.map(normal);
+  const n = etiquettes.map(normaliserLibelle);
   if (n.some(e => e.includes("coop") || e.includes("collaboratif"))) return { valeur: "Coop", sur: true };
   if (joueursMax === 1 || n.some(e => e === "solo" || e === "jeu solo")) return { valeur: "Solo", sur: true };
   if (n.some(e => e.includes("competitif") || e.includes("affrontement") || e.includes("versus") || e.includes("equipe"))) return { valeur: "Versus", sur: true };

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { mecaniquesDepuisEtiquettes, typePartieDepuisMyLudo } from "../../../lib/etiquetteJeu";
+import { mecaniqueDuLibelle, mecaniquesDepuisEtiquettes, typePartieDepuisMyLudo, type BanqueMecaniques } from "../../../lib/etiquetteJeu";
+import { getDB } from "../../../lib/db";
 
 // ─── MyLudo — source de complément (joueurs, âge, durée, visuel) ───────────────
 // MyLudo est une SPA : ses données passent par des endpoints internes protégés par
@@ -118,6 +119,15 @@ const texteDepuisHtml = (html: unknown) => String(html ?? "")
  * { identifiant: libellé } — mecanisme, categorie, theme, gamme. Les mécanismes
  * d'abord (c'est là que sont nos mécaniques et « Coopération »).
  */
+/** Banque de correspondances (libellé MyLudo → mécanique), vide si la table n'existe pas encore. */
+async function chargerBanque(): Promise<BanqueMecaniques> {
+  try {
+    const db = await getDB();
+    const { results } = await db.prepare("SELECT cle, mecanique FROM mecaniques_correspondances").all<{ cle: string; mecanique: string }>();
+    return Object.fromEntries((results ?? []).map(r => [r.cle, r.mecanique]));
+  } catch { return {}; }
+}
+
 function etiquettesDepuisInfo(info: any): { mecanismes: string[]; categories: string[]; themes: string[]; toutes: string[] } {
   const groupe = (nom: string) => {
     const g = info?.themes?.[nom];
@@ -127,14 +137,6 @@ function etiquettesDepuisInfo(info: any): { mecanismes: string[]; categories: st
   return { mecanismes, categories, themes, toutes: [...new Set([...mecanismes, ...categories, ...themes])] };
 }
 
-/** Matériel de la boîte (info.content, liste HTML) en lignes « - 59 cartes Joueur ». */
-function contenuDepuisInfo(info: any): string | null {
-  const html = String(info?.content ?? "");
-  const lignes = [...html.matchAll(/<li[^>]*>([\s\S]*?)<\/li>/gi)].map(m => texteDepuisHtml(m[1]).replace(/\s+/g, " ").trim()).filter(Boolean);
-  if (lignes.length) return lignes.map(l => `- ${l}`).join("\n");
-  const texte = texteDepuisHtml(html);
-  return texte || null;
-}
 
 const imageDe = (g: MlGame) => g.image?.S160 || g.image?.S300 || g.image?.S80 || g.image?.jpg || null;
 const urlJeu = (g: { code: string; id: string }) => `${BASE}/#!/game/${g.code}-${g.id}`;
@@ -225,9 +227,10 @@ export async function GET(req: NextRequest) {
 
     // 2. Récupérer la fiche détaillée (joueurs, âge, durée, note)
     // La fiche (joueurs, âge, durée, notes) et l'onglet « Infos » (description, étiquettes).
-    const [dResp, iResp] = await Promise.all([
+    const [dResp, iResp, banque] = await Promise.all([
       fetch(`${BASE}/views/game/datas.php?type=game&id=${encodeURIComponent(game.id)}`, { headers: apiHeaders(session) }),
       fetch(`${BASE}/views/game/datas.php?type=info&id=${encodeURIComponent(game.id)}`, { headers: apiHeaders(session) }).catch(() => null),
+      chargerBanque(),
     ]);
     const detail = dResp.ok ? await dResp.json().catch(() => null) as any : null;
     const info = iResp?.ok ? await iResp.json().catch(() => null) as any : null;
@@ -274,9 +277,13 @@ export async function GET(req: NextRequest) {
       description: info?.description ? texteDepuisHtml(info.description) : null,
       etiquettes,
       // Nos mécaniques : d'abord parmi les mécanismes MyLudo, puis catégories et thèmes.
-      mecaniques: mecaniquesDepuisEtiquettes([...groupes.mecanismes, ...groupes.categories, ...groupes.themes]),
+      mecaniques: mecaniquesDepuisEtiquettes([...groupes.mecanismes, ...groupes.categories, ...groupes.themes], banque),
+      // Mécanique de chaque étiquette reconnue (nom identique, synonyme ou banque), pour la surligner.
+      correspondances: Object.fromEntries(etiquettes.map(l => [l, mecaniqueDuLibelle(l, banque)]).filter(([, m]) => m)),
+      // Mécanismes et catégories sans mécanique connue : ce que la banque peut apprendre.
+      sans_correspondance: [...groupes.mecanismes, ...groupes.categories].filter(l => !mecaniqueDuLibelle(l, banque)),
       type_partie: typePartieDepuisMyLudo(groupes.mecanismes.concat(groupes.categories), Number(pMax) || null),
-      contenu: contenuDepuisInfo(info),
+
       complexite: complexite,
       trouve_par: trouvePar,
       candidats,
