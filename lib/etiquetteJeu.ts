@@ -103,7 +103,7 @@ export function typePartieDepuisMyLudo(etiquettes: string[], joueursMax?: number
   const n = etiquettes.map(normal);
   if (n.some(e => e.includes("coop") || e.includes("collaboratif"))) return { valeur: "Coop", sur: true };
   if (joueursMax === 1 || n.some(e => e === "solo" || e === "jeu solo")) return { valeur: "Solo", sur: true };
-  if (n.some(e => e.includes("competitif") || e.includes("affrontement") || e.includes("versus") || e.includes("par equipe"))) return { valeur: "Versus", sur: true };
+  if (n.some(e => e.includes("competitif") || e.includes("affrontement") || e.includes("versus") || e.includes("equipe"))) return { valeur: "Versus", sur: true };
   return { valeur: "Versus", sur: false };
 }
 

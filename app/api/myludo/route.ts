@@ -113,38 +113,27 @@ const texteDepuisHtml = (html: unknown) => String(html ?? "")
   .replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#0?39;|&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
   .replace(/\r/g, "").replace(/\n{3,}/g, "\n\n").trim();
 
-/** Clés de la fiche « info » qui ne sont pas des étiquettes (textes, liens, réglages). */
-const CLES_IGNOREES = new Set(["description", "app", "campaign", "url", "link", "lien", "image", "images", "video", "videos", "code", "id", "slug", "date", "price", "prix", "shops", "boutiques"]);
-
 /**
- * Étiquettes de l'onglet « Infos » de MyLudo (type de jeu, mécaniques, thèmes…).
- * La forme exacte de la fiche n'étant pas documentée, on y ramasse les libellés
- * courts : chaînes des tableaux et champs name / label / title de leurs objets.
+ * Étiquettes de l'onglet « Infos » de MyLudo, dans info.themes : quatre groupes
+ * { identifiant: libellé } — mecanisme, categorie, theme, gamme. Les mécanismes
+ * d'abord (c'est là que sont nos mécaniques et « Coopération »).
  */
-function etiquettesDepuisInfo(info: unknown): string[] {
-  const vus = new Set<string>();
-  const ajouter = (v: unknown) => {
-    const t = texteDepuisHtml(v);
-    if (t.length >= 2 && t.length <= 40 && !/^https?:/.test(t) && !/^\d+$/.test(t)) vus.add(t);
+function etiquettesDepuisInfo(info: any): { mecanismes: string[]; categories: string[]; themes: string[]; toutes: string[] } {
+  const groupe = (nom: string) => {
+    const g = info?.themes?.[nom];
+    return g && typeof g === "object" ? Object.values(g as Record<string, unknown>).map(v => texteDepuisHtml(v)).filter(Boolean) : [];
   };
-  const parcourir = (v: unknown, cle: string, profondeur: number) => {
-    if (profondeur > 5 || v == null || CLES_IGNOREES.has(cle.toLowerCase())) return;
-    if (Array.isArray(v)) {
-      for (const x of v) {
-        if (typeof x === "string") ajouter(x);
-        else if (x && typeof x === "object") {
-          const o = x as Record<string, unknown>;
-          const libelle = o.name ?? o.label ?? o.title ?? o.nom ?? o.libelle ?? o.tag;
-          if (typeof libelle === "string") ajouter(libelle);
-          else parcourir(o, cle, profondeur + 1);
-        }
-      }
-    } else if (typeof v === "object") {
-      for (const [k, x] of Object.entries(v as Record<string, unknown>)) parcourir(x, k, profondeur + 1);
-    }
-  };
-  parcourir(info, "", 0);
-  return [...vus];
+  const mecanismes = groupe("mecanisme"), categories = groupe("categorie"), themes = groupe("theme");
+  return { mecanismes, categories, themes, toutes: [...new Set([...mecanismes, ...categories, ...themes])] };
+}
+
+/** Matériel de la boîte (info.content, liste HTML) en lignes « - 59 cartes Joueur ». */
+function contenuDepuisInfo(info: any): string | null {
+  const html = String(info?.content ?? "");
+  const lignes = [...html.matchAll(/<li[^>]*>([\s\S]*?)<\/li>/gi)].map(m => texteDepuisHtml(m[1]).replace(/\s+/g, " ").trim()).filter(Boolean);
+  if (lignes.length) return lignes.map(l => `- ${l}`).join("\n");
+  const texte = texteDepuisHtml(html);
+  return texte || null;
 }
 
 const imageDe = (g: MlGame) => g.image?.S160 || g.image?.S300 || g.image?.S80 || g.image?.jpg || null;
@@ -242,15 +231,12 @@ export async function GET(req: NextRequest) {
     ]);
     const detail = dResp.ok ? await dResp.json().catch(() => null) as any : null;
     const info = iResp?.ok ? await iResp.json().catch(() => null) as any : null;
-    // ?brut=1 : la fiche telle que MyLudo la renvoie (données publiques), pour voir ses champs.
-    if (req.nextUrl.searchParams.get("brut") === "1") {
-      return NextResponse.json({ recherche: game, detail, info });
-    }
 
     const d = detail ?? game;
 
     if (!game.code && d.code) game.code = d.code;
-    const etiquettes = etiquettesDepuisInfo(info && typeof info === "object" ? { ...info, description: undefined } : null);
+    const groupes = etiquettesDepuisInfo(info);
+    const etiquettes = groupes.toutes;
     const cx = d.rating?.complexity;
     const noteCx = Number(String(cx?.note ?? "").replace(",", "."));
     const complexite = cx && Number(cx.audience) > 0 && noteCx > 0 ? { note: noteCx, votes: Number(cx.audience) } : null;
@@ -287,8 +273,10 @@ export async function GET(req: NextRequest) {
       duree_max: dureeMax(tMax, dur, tMin),
       description: info?.description ? texteDepuisHtml(info.description) : null,
       etiquettes,
-      mecaniques: mecaniquesDepuisEtiquettes(etiquettes),
-      type_partie: typePartieDepuisMyLudo(etiquettes, Number(pMax) || null),
+      // Nos mécaniques : d'abord parmi les mécanismes MyLudo, puis catégories et thèmes.
+      mecaniques: mecaniquesDepuisEtiquettes([...groupes.mecanismes, ...groupes.categories, ...groupes.themes]),
+      type_partie: typePartieDepuisMyLudo(groupes.mecanismes.concat(groupes.categories), Number(pMax) || null),
+      contenu: contenuDepuisInfo(info),
       complexite: complexite,
       trouve_par: trouvePar,
       candidats,
