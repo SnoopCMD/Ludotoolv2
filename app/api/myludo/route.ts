@@ -199,6 +199,10 @@ export async function GET(req: NextRequest) {
       { headers: apiHeaders(session) },
     );
     const detail = dResp.ok ? await dResp.json().catch(() => null) as any : null;
+    // ?brut=1 : la fiche telle que MyLudo la renvoie (données publiques), pour voir ses champs.
+    if (req.nextUrl.searchParams.get("brut") === "1") {
+      return NextResponse.json({ recherche: game, detail });
+    }
     const d = detail ?? game;
 
     if (!game.code && d.code) game.code = d.code;
