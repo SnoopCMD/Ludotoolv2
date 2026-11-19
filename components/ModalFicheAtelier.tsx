@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { COULEURS_JEU } from "../lib/couleursJeux";
 import {
   MECANIQUES, TEMPS_DE_JEU_OPTIONS, COOP_VERSUS_OPTIONS,
-  etoilesMax, etoilesDepuisComplexite, joueursDepuisMyLudo, tempsDepuisMyLudo, urlRechercheMyLudo, VOTES_COMPLEXITE_MIN,
+  etoilesMax, ageMinDepuisMyLudo, couleurEtEtoilesDepuisAge, joueursDepuisMyLudo, tempsDepuisMyLudo, urlRechercheMyLudo,
 } from "../lib/etiquetteJeu";
 import {
   LARGEUR_MODAL, MARGE_MODAL, allerA, comparaisonPossible, ecrireComparaison, fermerFenetreMyLudo, lireComparaison, ouvrirFenetreMyLudo,
@@ -56,10 +56,10 @@ type ResultatMyLudo = {
 };
 
 /** Champs que MyLudo peut proposer. */
-type ChampMyLudo = "image_url" | "nb_de_joueurs" | "temps_de_jeu" | "mecanique" | "coop_versus" | "etoiles";
+type ChampMyLudo = "image_url" | "nb_de_joueurs" | "temps_de_jeu" | "mecanique" | "coop_versus" | "couleur" | "etoiles";
 const NOMS_CHAMPS: Record<ChampMyLudo, string> = {
   image_url: "vignette", nb_de_joueurs: "joueurs", temps_de_jeu: "temps",
-  mecanique: "mécanique", coop_versus: "type de partie", etoiles: "difficulté",
+  mecanique: "mécanique", coop_versus: "type de partie", couleur: "couleur", etoiles: "difficulté",
 };
 
 const str = (v: unknown) => (v === null || v === undefined ? "" : String(v));
@@ -163,15 +163,22 @@ export default function ModalFicheAtelier({ jeu, focus, onFermer, onEnregistre }
   const ouvrirLien = (e: React.MouseEvent, url: string) => { if (ouvrirComparaison(url)) e.preventDefault(); };
 
   /** Ce que MyLudo propose pour chaque champ. */
+  /** Couleur et étoiles selon l'âge minimum, la durée et les joueurs (règle de lib/etiquetteJeu.ts). */
+  const classement = (data: ResultatMyLudo | null) =>
+    data ? couleurEtEtoilesDepuisAge(ageMinDepuisMyLudo(data), Number(data.duree_max) || null,
+      { min: Number(data.players_min) || null, max: Number(data.players_max) || null }) : null;
+
   const propositions = (data: ResultatMyLudo | null): Partial<Record<ChampMyLudo, string>> => {
     if (!data || data.notFound || data.error) return {};
+    const c = classement(data);
     return {
       image_url: data.image ?? "",
       nb_de_joueurs: joueursDepuisMyLudo(Number(data.players_min) || null, Number(data.players_max) || null),
       temps_de_jeu: tempsDepuisMyLudo(data),
       mecanique: data.mecaniques?.[0] ?? "",
       coop_versus: data.type_partie?.valeur ?? "",
-      etoiles: String(etoilesDepuisComplexite(data.complexite?.note, data.complexite?.votes, fiche?.couleur) ?? ""),
+      couleur: c?.couleur ?? "",
+      etoiles: c ? String(c.etoiles) : "",
     };
   };
 
@@ -204,6 +211,8 @@ export default function ModalFicheAtelier({ jeu, focus, onFermer, onEnregistre }
     for (const champ of Object.keys(props) as ChampMyLudo[]) {
       const v = props[champ];
       if (!v) continue;
+      // Les étoiles de la règle valent pour sa couleur : pas de remplissage si la fiche en garde une autre.
+      if (champ === "etoiles" && props.couleur && (n.couleur || fiche.couleur) !== props.couleur && !remplis.has("couleur")) continue;
       const vide = !fiche[champ].trim() || (champ === "image_url" && imageCassee);
       if (vide || remplisParMl.has(champ)) { n[champ] = v; remplis.add(champ); }
     }
@@ -212,7 +221,7 @@ export default function ModalFicheAtelier({ jeu, focus, onFermer, onEnregistre }
     setRemplisParMl(remplis);
     const notes: string[] = [];
     if (remplis.has("coop_versus") && data.type_partie && !data.type_partie.sur) notes.push("type de partie « Versus » déduit : rien n'indique un jeu coopératif");
-    if (!props.etoiles) notes.push(data.complexite ? `difficulté à choisir : ${data.complexite.votes} vote${data.complexite.votes > 1 ? "s" : ""} de complexité sur MyLudo, pas assez pour s'y fier` : "difficulté à choisir : pas de complexité sur MyLudo");
+    if (!props.etoiles) notes.push("couleur et difficulté à choisir : pas d'âge sur MyLudo");
     if (!props.mecanique) notes.push("mécanique à choisir : aucune étiquette MyLudo ne correspond à la liste");
     setMessage((remplis.size ? `Complété depuis MyLudo : ${[...remplis].map(c => NOMS_CHAMPS[c]).join(", ")}.` : "Rien de vide à compléter : les valeurs de MyLudo qui diffèrent sont proposées sous les champs.")
       + (notes.length ? ` (${notes.join(" ; ")})` : ""));
@@ -227,6 +236,8 @@ export default function ModalFicheAtelier({ jeu, focus, onFermer, onEnregistre }
     const v = suggestion(champ);
     if (!v) return;
     maj(champ, v);
+    // La couleur et les étoiles vont ensemble : prendre la couleur prend aussi les étoiles.
+    if (champ === "couleur") { const e = propositions(ml).etoiles; if (e) maj("etoiles", e); }
     if (champ === "image_url") setImageCassee(false);
   };
 
@@ -354,6 +365,12 @@ export default function ModalFicheAtelier({ jeu, focus, onFermer, onEnregistre }
                       );
                     })}
                   </div>
+                  {suggestion("couleur") && (
+                    <Suggestion onUtiliser={() => utiliserSuggestion("couleur")}>
+                      <span style={{ width: 12, height: 12, borderRadius: "50%", background: COULEURS_JEU[suggestion("couleur")!], border: "1.5px solid var(--ink)" }} />
+                      {COULEURS.find(c => c.id === suggestion("couleur"))?.label} {"★".repeat(Number(propositions(ml).etoiles) || 0)} ({suggestion("couleur") === "jaune" ? "2 joueurs, " : ""}{ml?.age ?? "âge"}{Number(ml?.duree_max) ? `, ${ml?.duree_max} min` : ""})
+                    </Suggestion>
+                  )}
                 </div>
 
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
@@ -409,12 +426,7 @@ export default function ModalFicheAtelier({ jeu, focus, onFermer, onEnregistre }
                       <button key={n} onClick={() => maj("etoiles", fiche.etoiles === n ? "" : n)} style={{ ...choix(fiche.etoiles === n), fontSize: 16, letterSpacing: 2 }}>{"★".repeat(Number(n))}</button>
                     ))}
                   </div>
-                  {suggestion("etoiles") && <Suggestion onUtiliser={() => utiliserSuggestion("etoiles")}>{"★".repeat(Number(suggestion("etoiles")))} (complexité {ml?.complexite?.note.toLocaleString("fr-FR")}/5)</Suggestion>}
-                  {ml?.complexite && ml.complexite.votes < VOTES_COMPLEXITE_MIN && (
-                    <div style={{ marginTop: 6, fontSize: 12, fontWeight: 600, color: "rgba(0,0,0,0.55)" }}>
-                      MyLudo : complexité {ml.complexite.note.toLocaleString("fr-FR")}/5, sur {ml.complexite.votes} vote{ml.complexite.votes > 1 ? "s" : ""} seulement.
-                    </div>
-                  )}
+                  {suggestion("etoiles") && <Suggestion onUtiliser={() => utiliserSuggestion("etoiles")}>{"★".repeat(Number(suggestion("etoiles")))} ({ml?.age ?? "âge"}{Number(ml?.duree_max) ? `, ${ml?.duree_max} min` : ""})</Suggestion>}
                 </div>
               </div>
             </section>

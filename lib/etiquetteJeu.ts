@@ -107,16 +107,51 @@ export function typePartieDepuisMyLudo(etiquettes: string[], joueursMax?: number
   return { valeur: "Versus", sur: false };
 }
 
-/** Nombre de votes minimum pour se fier à la complexité MyLudo. */
-export const VOTES_COMPLEXITE_MIN = 3;
-
 /**
- * Étoiles depuis la complexité MyLudo (note sur 5) : jusqu'à 2 → ★, jusqu'à
- * 3,4 → ★★, au-delà → ★★★ (ramené au maximum de la couleur). Rien sans assez
- * de votes.
+ * Couleur et nombre d'étoiles d'un jeu, d'après son âge minimum, sa durée (en
+ * minutes, haut de la fourchette) et son nombre de joueurs — la règle de la
+ * ludothèque :
+ *
+ * | Âge minimum                                | Couleur | Étoiles |
+ * | ------------------------------------------ | ------- | ------- |
+ * | jusqu'à 3 ans                              | vert    | 1       |
+ * | 4 ans                                      | vert    | 2       |
+ * | 5 ans                                      | vert    | 3       |
+ * | 6 ans                                      | rose    | 1       |
+ * | 7 ans                                      | rose    | 2       |
+ * | 8-9 ans                                    | bleu    | 1       |
+ * | 8-9 ans et plus de 45 min, 10-11 ans       | bleu    | 2       |
+ * | 12-13 ans                                  | rouge   | 1       |
+ * | 12-13 ans et plus de 1h30, 14 ans et plus  | rouge   | 2       |
+ *
+ * Un jeu exclusivement à 2 joueurs est jaune, ses étoiles suivant la couleur
+ * que son âge lui donnerait : vert ou rose → 1, bleu → 2, rouge → 3.
  */
-export function etoilesDepuisComplexite(note: number | null | undefined, votes: number | null | undefined, couleur?: string | null): number | null {
-  if (!note || !votes || votes < VOTES_COMPLEXITE_MIN) return null;
-  const e = note <= 2 ? 1 : note <= 3.4 ? 2 : 3;
-  return Math.min(e, etoilesMax(couleur));
+export function couleurEtEtoilesDepuisAge(
+  ageMin: number | null | undefined, dureeMax?: number | null, joueurs?: { min?: number | null; max?: number | null },
+): { couleur: string; etoiles: number } | null {
+  if (ageMin === null || ageMin === undefined || !Number.isFinite(ageMin) || ageMin < 0) return null;
+  const parAge = classementParAge(ageMin, dureeMax ?? 0);
+  if (joueurs?.min === 2 && joueurs?.max === 2) {
+    return { couleur: "jaune", etoiles: parAge.couleur === "bleu" ? 2 : parAge.couleur === "rouge" ? 3 : 1 };
+  }
+  return parAge;
+}
+
+function classementParAge(ageMin: number, duree: number): { couleur: string; etoiles: number } {
+  if (ageMin <= 3) return { couleur: "vert", etoiles: 1 };
+  if (ageMin < 5) return { couleur: "vert", etoiles: 2 };
+  if (ageMin < 6) return { couleur: "vert", etoiles: 3 };
+  if (ageMin < 7) return { couleur: "rose", etoiles: 1 };
+  if (ageMin < 8) return { couleur: "rose", etoiles: 2 };
+  if (ageMin < 10) return { couleur: "bleu", etoiles: duree > 45 ? 2 : 1 };
+  if (ageMin < 12) return { couleur: "bleu", etoiles: 2 };
+  if (ageMin < 14) return { couleur: "rouge", etoiles: duree > 90 ? 2 : 1 };
+  return { couleur: "rouge", etoiles: 2 };
+}
+
+/** Âge minimum depuis une fiche MyLudo (« 5 », 5 ou « 5+ »). */
+export function ageMinDepuisMyLudo(data: { age_min?: unknown; age?: unknown } | null | undefined): number | null {
+  const m = String(data?.age_min ?? data?.age ?? "").match(/\d+/);
+  return m ? Number(m[0]) : null;
 }
