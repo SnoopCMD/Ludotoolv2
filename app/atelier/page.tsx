@@ -96,7 +96,6 @@ export default function Home() {
   const isMobile = useIsMobile();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isListeOpen, setIsListeOpen] = useState(false);
-  const [etapeActive, setEtapeActive] = useState<string | null>(null);
 
   const [nbReparations, setNbReparations] = useState(0);
   const [nbManquants, setNbManquants] = useState(0);
@@ -105,15 +104,14 @@ export default function Home() {
 
   const [jeuxAttente, setJeuxAttente] = useState<JeuAttenteType[]>([]);
   const [jeuxEnPrepa, setJeuxEnPrepa] = useState<JeuType[]>([]);
-  const [jeuxSelectionnes, setJeuxSelectionnes] = useState<(string | number)[]>([]);
 
-  const [rechercheEtape, setRechercheEtape] = useState("");
   // Vignette / étiquette à compléter (pastilles 🖼 et 🏷)
   const [ficheOuverte, setFicheOuverte] = useState<{ jeu: JeuType; focus: FocusFiche } | null>(null);
   const ouvrirFiche = (jeu: JeuType, focus: FocusFiche) => setFicheOuverte({ jeu, focus });
   // Validation groupée : on choisit des boîtes sur l'étagère, puis les étapes faites sur ces jeux.
-  const [modeGroupe, setModeGroupe] = useState(false);
+  // Un clic sur une boîte la sélectionne ; la sélection en cours fait le « mode » de validation.
   const [groupe, setGroupe] = useState<(string | number)[]>([]);
+  const modeGroupe = groupe.length > 0;
   const [isGroupeOpen, setIsGroupeOpen] = useState(false);
   // Tutos des étapes (en base) ; seuls certains comptes peuvent les modifier.
   const { compte } = useCompte();
@@ -413,26 +411,43 @@ export default function Home() {
     fetchDashboardData();
   };
 
-  const validerSelectionEtape = async () => {
-    const etape = ETAPES_ATELIER.find(e => e.id === etapeActive);
-    if (!etape || jeuxSelectionnes.length === 0) return;
-    const maj = colonnesEtape(etape, true);
-    const jeuxValides: JeuType[] = [];
-    for (const id of jeuxSelectionnes) {
-      const jeuActuel = jeuxEnPrepa.find(j => j.id === id);
-      if (!jeuActuel) continue;
-      await fetch(`/api/jeux/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...maj, statut: statutApres(jeuActuel, maj) }),
-      });
-      jeuxValides.push(jeuActuel);
+  /**
+   * Valide (ou retire) une étape pour des jeux. `jusquIci` valide aussi les
+   * étapes précédentes non faites. L'étape 1 enchaîne sur le scan des codes
+   * Syracuse des jeux qui viennent de la faire.
+   */
+  const validerEtapePour = async (etape: EtapeAtelier, jeux: JeuType[], valeur = true, jusquIci = false) => {
+    const aScanner: JeuType[] = [];
+    let erreurs = 0;
+    for (const jeu of jeux) {
+      const maj: Record<string, number> = {};
+      for (const e of ETAPES_ATELIER) {
+        if (!etapeConcerne(jeu, e)) continue;
+        if (e.id === etape.id || (valeur && jusquIci && e.num < etape.num && !etapeFaite(jeu, e))) {
+          Object.assign(maj, colonnesEtape(e, valeur));
+          if (valeur && e.num === 1 && !etapeFaite(jeu, e)) aScanner.push(jeu);
+        }
+      }
+      if (!Object.keys(maj).length) continue;
+      const ok = await fetch(`/api/jeux/${jeu.id}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...maj, statut: statutApres(jeu, maj) }),
+      }).then(r => r.ok).catch(() => false);
+      if (!ok) erreurs++;
+      // La fiche ouverte suit l'état du jeu.
+      setFicheOuverte(f => f && f.jeu.id === jeu.id ? { ...f, jeu: { ...f.jeu, ...Object.fromEntries(Object.keys(maj).map(k => [k, !!maj[k]])) } as JeuType } : f);
     }
-    setEtapeActive(null); setJeuxSelectionnes([]); fetchDashboardData();
-    // Étape 1 : le code-barre vient d'être collé, on scanne les codes Syracuse.
-    if (etape.num === 1 && jeuxValides.length > 0) {
-      setScanQueue(jeuxValides); setScanIdx(0); setScanInput(""); setScanDone([]); setIsScanOpen(true);
-    }
+    await fetchDashboardData();
+    if (erreurs) alert(`${erreurs} jeu${erreurs > 1 ? 'x n\'ont' : ' n\'a'} pas pu être enregistré${erreurs > 1 ? 's' : ''}.`);
+    if (aScanner.length) { setScanQueue(aScanner); setScanIdx(0); setScanInput(""); setScanDone([]); setIsScanOpen(true); }
+  };
+
+  /** « Étape suivante » d'une étagère : valide son étape pour les jeux sélectionnés dessus. */
+  const etapeSuivante = async (etape: EtapeAtelier) => {
+    const jeux = (jeuxParEtape[etape.id] ?? []).filter(j => groupe.includes(j.id));
+    if (!jeux.length) return;
+    setGroupe(prev => prev.filter(id => !jeux.some(j => j.id === id)));
+    await validerEtapePour(etape, jeux);
   };
 
   const scannerCode = async () => {
@@ -452,15 +467,7 @@ export default function Home() {
   };
 
   const passerScan = () => { setScanIdx(prev => prev + 1); setScanInput(""); setTimeout(() => scanInputRef.current?.focus(), 50); };
-  const toggleSelection = (id: string | number) => setJeuxSelectionnes(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
 
-  const etapeActiveInfo = etapesVisuelles.find(e => e.id === etapeActive);
-  // Les étapes se font dans l'ordre : seuls les jeux arrivés à cette étape la proposent.
-  const jeuxPourEtapeActive = etapeActive ? jeuxParEtape[etapeActive] ?? [] : [];
-
-  const ouvrirEtape = (etapeId: string, jeuId?: string | number) => {
-    setEtapeActive(etapeId); setRechercheEtape(""); setJeuxSelectionnes(jeuId !== undefined ? [jeuId] : []);
-  };
 
   /** Un jeu a tout fait mais est resté « En préparation » (étape cochée depuis une autre page). */
   const mettreEnStock = async (jeu: JeuType) => {
@@ -470,31 +477,25 @@ export default function Home() {
   };
 
   // ── Validation groupée ──
-  const quitterModeGroupe = () => { setModeGroupe(false); setGroupe([]); setIsGroupeOpen(false); };
+  const quitterModeGroupe = () => { setGroupe([]); setIsGroupeOpen(false); };
   const basculerDansGroupe = (id: string | number) =>
     setGroupe(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
 
-  /** Clic sur une boîte : en mode sélection (ou Ctrl/⌘ + clic), elle rejoint le groupe ; sinon on ouvre son étape. */
-  const clicBoite = (jeu: JeuType, etapeId: string, e: React.MouseEvent) => {
-    if (modeGroupe || e.ctrlKey || e.metaKey) {
-      e.preventDefault();
-      setModeGroupe(true);
-      basculerDansGroupe(jeu.id);
-    } else ouvrirEtape(etapeId, jeu.id);
+  /** Clic sur une boîte : elle rejoint (ou quitte) la sélection. Ctrl/⌘ + clic : sa fiche. */
+  const clicBoite = (jeu: JeuType, e: React.MouseEvent) => {
+    e.preventDefault();
+    if (e.ctrlKey || e.metaKey) ouvrirFiche(jeu, 'vignette');
+    else basculerDansGroupe(jeu.id);
   };
 
-  /** En mode sélection, l'en-tête d'une étagère prend (ou retire) toutes ses boîtes. */
+  /** L'en-tête d'une étagère prend (ou retire) toutes ses boîtes. */
   const clicEnteteEtagere = (etapeId: string) => {
-    if (!modeGroupe) { ouvrirEtape(etapeId); return; }
     const ids = (jeuxParEtape[etapeId] ?? []).map(j => j.id);
     const tous = ids.length > 0 && ids.every(id => groupe.includes(id));
     setGroupe(prev => tous ? prev.filter(id => !ids.includes(id)) : [...new Set([...prev, ...ids])]);
   };
 
-  const boutonGroupe = () => {
-    if (!modeGroupe) { setModeGroupe(true); return; }
-    if (groupe.length > 0) setIsGroupeOpen(true);
-  };
+  const boutonGroupe = () => { if (groupe.length > 0) setIsGroupeOpen(true); };
 
   // Entrée ouvre la validation du groupe, Échap quitte le mode sélection.
   useEffect(() => {
@@ -769,14 +770,19 @@ export default function Home() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end', marginLeft: 'auto' }}>
                 <span style={{ fontSize: 12, fontWeight: 600, color: modeGroupe ? 'var(--yellow)' : 'rgba(255,255,255,0.45)' }}>
                   {modeGroupe
-                    ? `${groupe.length} jeu${groupe.length > 1 ? 'x' : ''} sélectionné${groupe.length > 1 ? 's' : ''} · clique sur les boîtes ou un en-tête d'étagère${isMobile ? '' : ', Entrée pour valider, Échap pour annuler'}`
-                    : `Dans l'ordre : chaque jeu attend sur l'étagère de sa prochaine étape.${isMobile ? '' : ' Ctrl + clic pour sélectionner.'}`}
+                    ? `${groupe.length} jeu${groupe.length > 1 ? 'x' : ''} sélectionné${groupe.length > 1 ? 's' : ''}${isMobile ? '' : ' · Entrée : valider plusieurs étapes, Échap : tout désélectionner'}`
+                    : `Clic sur une boîte : la sélectionner.${isMobile ? '' : ' Ctrl + clic : sa fiche.'}`}
                 </span>
+                {groupe.length === 1 && (
+                  <button className="pop-btn" title="Fiche du jeu : vignette, étiquette et étapes"
+                    onClick={() => { const j = jeuxEnPrepa.find(x => x.id === groupe[0]); if (j) ouvrirFiche(j, 'vignette'); }}
+                    style={{ background: 'var(--white)', fontSize: 13, padding: '6px 12px' }}>🗂 Fiche</button>
+                )}
                 {modeGroupe && (
                   <button className="pop-btn" onClick={quitterModeGroupe} style={{ background: 'var(--white)', fontSize: 13, padding: '6px 12px' }}>Annuler</button>
                 )}
-                <button className="pop-btn" onClick={boutonGroupe} disabled={modeGroupe && groupe.length === 0}
-                  style={{ background: modeGroupe ? 'var(--yellow)' : 'var(--white)', fontSize: 13, padding: '6px 14px', opacity: modeGroupe && groupe.length === 0 ? 0.5 : 1 }}>
+                <button className="pop-btn" onClick={boutonGroupe} disabled={!modeGroupe} title={modeGroupe ? 'Cocher les étapes faites sur les jeux sélectionnés' : 'Sélectionne des boîtes d\'abord'}
+                  style={{ background: modeGroupe ? 'var(--yellow)' : 'var(--white)', fontSize: 13, padding: '6px 14px', opacity: modeGroupe ? 1 : 0.5 }}>
                   {modeGroupe ? `✓ Valider (${groupe.length})` : '☑ Validation'}
                 </button>
               </div>
@@ -786,7 +792,8 @@ export default function Home() {
                 <Etagere key={etape.id} etape={etape} jeux={jeuxParEtape[etape.id]} isMobile={isMobile}
                   modeGroupe={modeGroupe} groupe={groupe}
                   tuto={tutos[etape.id]} editeurTutos={editeurTutos} onEditerTuto={() => setTutoEdite(etape)}
-                  onEntete={() => clicEnteteEtagere(etape.id)} onBoite={(j, e) => clicBoite(j, etape.id, e)} onFiche={ouvrirFiche} />
+                  onEntete={() => clicEnteteEtagere(etape.id)} onBoite={clicBoite} onFiche={ouvrirFiche}
+                  onEtapeSuivante={() => etapeSuivante(etape)} />
               ))}
               {jeuxPrets.length > 0 && (
                 <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, background: 'rgba(168,224,99,0.15)', border: '2px dashed var(--vert)', borderRadius: 10, padding: '10px 12px' }}>
@@ -801,57 +808,6 @@ export default function Home() {
           </div>
         </div>
       </div>
-
-      {/* ══ MODAL ÉTAPE ══ */}
-      {etapeActive && etapeActiveInfo && (
-        <div style={S.modal}>
-          <div style={{ ...S.modalBox, maxWidth: 860 }}>
-            <div style={{ padding: '20px 24px', borderBottom: '3px solid var(--ink)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: etapeActiveInfo.hex }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <span className="bc" style={{ fontSize: 34, lineHeight: 1 }}>{etapeActiveInfo.num}</span>
-                <div style={{ minWidth: 0 }}>
-                  <div className="bc" style={{ fontSize: 22, textTransform: 'uppercase', lineHeight: 1.1 }}>{etapeActiveInfo.nom}</div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: 'rgba(0,0,0,0.6)' }}>{etapeActiveInfo.detail}</div>
-                </div>
-                <span className="pop-sticker" style={{ background: 'var(--ink)', color: 'var(--white)', fontSize: 13, flexShrink: 0 }}>{jeuxPourEtapeActive.length} jeu(x)</span>
-              </div>
-              <button style={S.closeBtn} onClick={() => { setEtapeActive(null); setRechercheEtape(""); }}>✕</button>
-            </div>
-            <div style={{ padding: '16px 24px', borderBottom: '2px solid var(--cream2)' }}>
-              <div style={{ display: "flex", gap: 8 }}>
-                <input type="text" placeholder="Rechercher par nom ou EAN…" value={rechercheEtape} onChange={e => setRechercheEtape(e.target.value)} className="pop-input" style={{ flex: 1, minWidth: 0 }} />
-                <BoutonScan onScan={code => setRechercheEtape(code)} />
-              </div>
-            </div>
-            <div style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {jeuxPourEtapeActive.length === 0 ? (
-                <p style={{ textAlign: 'center', color: 'rgba(0,0,0,0.4)', padding: '40px 0', fontSize: 15 }}>Aucun jeu n&apos;est arrivé à cette étape.</p>
-              ) : jeuxPourEtapeActive
-                .filter(j => !rechercheEtape || j.nom.toLowerCase().includes(rechercheEtape.toLowerCase()) || j.ean.includes(rechercheEtape))
-                .map(jeu => (
-                  <label key={jeu.id} className="pop-card" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', cursor: 'pointer', background: jeuxSelectionnes.includes(jeu.id) ? 'var(--cream2)' : 'var(--white)', boxShadow: jeuxSelectionnes.includes(jeu.id) ? '4px 4px 0 var(--ink)' : '2px 2px 0 var(--ink)' }}>
-                    <input type="checkbox" className="custom-cb" checked={jeuxSelectionnes.includes(jeu.id)} onChange={() => toggleSelection(jeu.id)} />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <span style={{ fontWeight: 700, fontSize: 16, display: 'block' }}>{jeu.nom}</span>
-                      <span style={{ fontSize: 13, color: 'rgba(0,0,0,0.4)' }}>EAN: {jeu.ean}</span>
-                    </div>
-                    <PastillesJeu jeu={jeu} onFiche={ouvrirFiche} />
-                  </label>
-                ))
-              }
-            </div>
-            <div style={{ padding: '16px 24px', borderTop: '3px solid var(--ink)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-              <button style={{ fontWeight: 700, fontSize: 15, background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(0,0,0,0.5)', textDecoration: 'underline' }}
-                onClick={() => setJeuxSelectionnes(jeuxPourEtapeActive.length === jeuxSelectionnes.length ? [] : jeuxPourEtapeActive.map(j => j.id))}>
-                {jeuxPourEtapeActive.length === jeuxSelectionnes.length ? "Tout désélectionner" : "Tout sélectionner"}
-              </button>
-              <button className="pop-btn pop-btn-dark" onClick={validerSelectionEtape} disabled={jeuxSelectionnes.length === 0} style={{ opacity: jeuxSelectionnes.length === 0 ? 0.4 : 1 }}>
-                ✓ Valider {jeuxSelectionnes.length > 0 ? `(${jeuxSelectionnes.length})` : ""}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ══ MODAL VALIDATION GROUPÉE ══ */}
       {isGroupeOpen && (
@@ -873,12 +829,13 @@ export default function Home() {
       {/* ══ MODAL VIGNETTE / ÉTIQUETTE ══ */}
       {ficheOuverte && (
         <ModalFicheAtelier jeu={ficheOuverte.jeu} focus={ficheOuverte.focus}
-          onFermer={() => setFicheOuverte(null)} onEnregistre={fetchDashboardData} />
+          onFermer={() => setFicheOuverte(null)} onEnregistre={fetchDashboardData}
+          etapes={{ jeu: ficheOuverte.jeu, tutos, onValider: (etape, valeur, jusquIci) => validerEtapePour(etape, [ficheOuverte.jeu], valeur, jusquIci) }} />
       )}
 
       {/* ══ MODAL SCAN CODES SYRACUSE ══ */}
       {isScanOpen && (
-        <div style={{ ...S.modal, zIndex: 70 }}>
+        <div style={{ ...S.modal, zIndex: 90 }}>
           <div style={{ ...S.modalBox, maxWidth: 480 }}>
             <div style={{ padding: '20px 24px', borderBottom: '3px solid var(--ink)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--rose)' }}>
               <div>
@@ -1239,7 +1196,8 @@ function ModalCouleursReception({ reception, infos, isMobile, onChanger, onFerme
  * à cette étape posées sur sa planche. Cliquer sur l'en-tête ouvre la
  * validation ; cliquer sur une boîte l'ouvre avec ce jeu déjà coché.
  */
-function Etagere({ etape, jeux, isMobile, modeGroupe, groupe, onEntete, onBoite, onFiche, tuto, editeurTutos, onEditerTuto }: {
+function Etagere({ etape, jeux, isMobile, modeGroupe, groupe, onEntete, onBoite, onFiche, tuto, editeurTutos, onEditerTuto, onEtapeSuivante }: {
+  onEtapeSuivante: () => void;
   etape: EtapeAtelier; jeux: JeuType[]; isMobile: boolean;
   modeGroupe: boolean; groupe: (string | number)[];
   tuto?: GesteTuto[]; editeurTutos: boolean; onEditerTuto: () => void;
@@ -1248,6 +1206,7 @@ function Etagere({ etape, jeux, isMobile, modeGroupe, groupe, onEntete, onBoite,
 }) {
   const vide = jeux.length === 0;
   const tousPris = !vide && jeux.every(j => groupe.includes(j.id));
+  const choisis = jeux.filter(j => groupe.includes(j.id)).length;
   const [tutoOuvert, setTutoOuvert] = useState(false);
   // La bulle couvre une partie de la page : un clic ailleurs ou Échap la referme.
   const bulleRef = useRef<HTMLDivElement>(null);
@@ -1299,6 +1258,12 @@ function Etagere({ etape, jeux, isMobile, modeGroupe, groupe, onEntete, onBoite,
             </span>
           )}
         </button>
+        {choisis > 0 && (
+          <button onClick={onEtapeSuivante} className="pop-btn" title={`Valider l'étape ${etape.num} pour ${choisis} jeu${choisis > 1 ? 'x' : ''} sélectionné${choisis > 1 ? 's' : ''}`}
+            style={{ flexShrink: 0, background: 'var(--ink)', color: 'var(--white)', fontSize: 12, padding: '5px 12px' }}>
+            ✓ Étape suivante ({choisis})
+          </button>
+        )}
         {editeurTutos && (
           <button onClick={onEditerTuto} title={tuto?.length ? `Modifier le tuto de l'étape ${etape.num}` : `Ajouter un tuto à l'étape ${etape.num}`}
             style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 5, fontFamily: 'inherit', fontSize: 12, fontWeight: 800, cursor: 'pointer',

@@ -5,6 +5,9 @@ import {
   MECANIQUES, TEMPS_DE_JEU_OPTIONS, COOP_VERSUS_OPTIONS,
   etoilesMax, ageMinDepuisMyLudo, mecaniqueDuLibelle, type BanqueMecaniques, normaliserLibelle, couleurEtEtoilesDepuisAge, joueursDepuisMyLudo, tempsDepuisMyLudo, urlRechercheMyLudo,
 } from "../lib/etiquetteJeu";
+import { useIsMobile } from "../lib/useIsMobile";
+import { ETAPES_ATELIER, etapeConcerne, etapeCourante, etapeFaite, type EtapeAtelier } from "../lib/etapesAtelier";
+import type { TutosAtelier } from "../lib/tutosAtelier";
 import {
   LARGEUR_MODAL, MARGE_MODAL, allerA, comparaisonPossible, ecrireComparaison, fermerFenetreMyLudo, lireComparaison, ouvrirFenetreMyLudo,
 } from "../lib/fenetreMyLudo";
@@ -88,9 +91,22 @@ function photoEnDataUrl(fichier: File): Promise<string> {
   });
 }
 
-export default function ModalFicheAtelier({ jeu, focus, onFermer, onEnregistre }: {
-  jeu: JeuFiche; focus: FocusFiche; onFermer: () => void; onEnregistre: () => void;
+/** Les étapes de préparation du jeu, en onglets sur le côté de la fiche. */
+export type EtapesFiche = {
+  /** Le jeu avec ses colonnes d'étape (etape_plastifier…, is_double). */
+  jeu: Record<string, unknown>;
+  tutos: TutosAtelier;
+  /** Valide (ou retire) une étape ; `jusquIci` valide aussi les précédentes. */
+  onValider: (etape: EtapeAtelier, valeur: boolean, jusquIci?: boolean) => Promise<void>;
+};
+
+export default function ModalFicheAtelier({ jeu, focus, onFermer, onEnregistre, etapes }: {
+  jeu: JeuFiche; focus: FocusFiche; onFermer: () => void; onEnregistre: () => void; etapes?: EtapesFiche;
 }) {
+  const etroit = useIsMobile();
+  // Onglet affiché : la fiche (vignette, étiquette) ou une étape de préparation.
+  const [onglet, setOnglet] = useState<string>("fiche");
+  const ongletEtape = etapes ? ETAPES_ATELIER.find(e => e.id === onglet && etapeConcerne(etapes.jeu, e)) ?? null : null;
   const [fiche, setFiche] = useState<Fiche | null>(null);
   const [initiale, setInitiale] = useState<Fiche>(FICHE_VIDE);
   const [enCours, setEnCours] = useState<"myludo" | "photo" | "enregistrer" | null>(null);
@@ -314,17 +330,25 @@ export default function ModalFicheAtelier({ jeu, focus, onFermer, onEnregistre }
       justifyContent: fenetreActive ? "flex-start" : "center",
       padding: fenetreActive ? `calc(var(--nav-h) + 12px) 12px 12px ${MARGE_MODAL}px` : "calc(var(--nav-h) + 12px) 12px 12px", transition: "padding .2s" }}
       onClick={e => { if (e.target === e.currentTarget) fermer(); }}>
-      <div style={{ background: "var(--cream)", border: "3px solid var(--ink)", borderRadius: 12, boxShadow: "8px 8px 0 var(--ink)", width: "100%", maxWidth: LARGEUR_MODAL, display: "flex", flexDirection: "column", maxHeight: "calc(100dvh - var(--nav-h) - 36px)", overflow: "hidden" }}>
+      <div style={{ position: "relative", width: "100%", maxWidth: LARGEUR_MODAL, display: "flex", flexDirection: "column", maxHeight: "calc(100dvh - var(--nav-h) - 36px)" }}>
+      {etapes && !etroit && <OngletsEtapes etapes={etapes} onglet={onglet} onOnglet={setOnglet} vertical />}
+      <div style={{ background: "var(--cream)", border: "3px solid var(--ink)", borderRadius: 12, boxShadow: "8px 8px 0 var(--ink)", width: "100%", display: "flex", flexDirection: "column", maxHeight: "calc(100dvh - var(--nav-h) - 36px)", overflow: "hidden", position: "relative", zIndex: 1 }}>
         {/* En-tête */}
         <div style={{ padding: "16px 20px", borderBottom: "3px solid var(--ink)", background: hex ?? "var(--yellow)", display: "flex", alignItems: "center", gap: 12 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div className="bc" style={{ fontSize: 22, textTransform: "uppercase", lineHeight: 1.1 }}>{jeu.nom}</div>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "rgba(0,0,0,0.55)" }}>Vignette et étiquette · EAN {jeu.ean}</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "rgba(0,0,0,0.55)" }}>
+              {ongletEtape ? `Étape ${ongletEtape.num} · ${ongletEtape.nom}` : "Vignette et étiquette"} · EAN {jeu.ean}
+            </div>
           </div>
           <button onClick={fermer} style={{ width: 32, height: 32, flexShrink: 0, background: "var(--ink)", color: "var(--white)", border: "2px solid var(--ink)", borderRadius: 6, fontWeight: 700, fontSize: 16, cursor: "pointer" }}>✕</button>
         </div>
 
-        {!fiche ? (
+        {etapes && etroit && <OngletsEtapes etapes={etapes} onglet={onglet} onOnglet={setOnglet} />}
+
+        {ongletEtape && etapes ? (
+          <PanneauEtape etape={ongletEtape} etapes={etapes} />
+        ) : !fiche ? (
           <p style={{ padding: 40, textAlign: "center", color: "rgba(0,0,0,0.4)", fontWeight: 600 }}>Chargement…</p>
         ) : (
           <div style={{ flex: 1, overflowY: "auto", padding: 20, display: "flex", flexDirection: "column", gap: 22 }}>
@@ -473,6 +497,118 @@ export default function ModalFicheAtelier({ jeu, focus, onFermer, onEnregistre }
           </button>
         </div>
       </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Onglets des étapes de préparation ───────────────────────────────────────
+
+/**
+ * Intercalaires de la fiche : « Fiche » (vignette, étiquette) puis chaque étape
+ * du jeu, à sa couleur, cochée quand elle est faite. Sur le bord droit de la
+ * modal (ou en rangée en haut sur un écran étroit).
+ */
+function OngletsEtapes({ etapes, onglet, onOnglet, vertical = false }: {
+  etapes: EtapesFiche; onglet: string; onOnglet: (id: string) => void; vertical?: boolean;
+}) {
+  const courante = etapeCourante(etapes.jeu);
+  const liste = ETAPES_ATELIER.filter(e => etapeConcerne(etapes.jeu, e));
+  const taille = vertical ? 46 : 38;
+  const onglets = [{ id: "fiche", libelle: "🏷", titre: "Fiche : vignette et étiquette", hex: "var(--white)", faite: false, courante: false }]
+    .concat(liste.map(e => ({ id: e.id, libelle: String(e.num), titre: `Étape ${e.num} : ${e.nom}`, hex: e.hex, faite: etapeFaite(etapes.jeu, e), courante: courante?.id === e.id })));
+  return (
+    <div role="tablist" aria-label="Fiche et étapes" aria-orientation={vertical ? "vertical" : "horizontal"}
+      style={vertical
+        ? { position: "absolute", left: "100%", top: 64, display: "flex", flexDirection: "column", gap: 5, zIndex: 0 }
+        : { display: "flex", gap: 4, padding: "8px 12px 0", borderBottom: "2px solid var(--ink)", overflowX: "auto", overflowY: "hidden", background: "var(--cream2)", flexShrink: 0 }}>
+      {onglets.map(o => {
+        const actif = onglet === o.id;
+        return (
+          <button key={o.id} role="tab" aria-selected={actif} onClick={() => onOnglet(o.id)}
+            title={`${o.titre}${o.faite ? " (faite)" : o.courante ? " (à faire maintenant)" : ""}`}
+            style={{
+              position: "relative", flexShrink: 0, width: vertical ? taille + (actif ? 8 : 0) : taille, height: taille,
+              marginLeft: vertical ? -3 : 0, background: o.hex, cursor: "pointer", fontFamily: "inherit",
+              border: "2.5px solid var(--ink)", borderLeft: vertical ? "none" : undefined, borderBottom: vertical ? undefined : actif ? "none" : undefined,
+              borderRadius: vertical ? "0 10px 10px 0" : "8px 8px 0 0",
+              boxShadow: vertical ? (actif ? "4px 3px 0 var(--ink)" : "2px 2px 0 rgba(0,0,0,0.45)") : "none",
+              filter: actif || o.courante || o.id === "fiche" ? "none" : "saturate(.55)",
+              transition: "width .12s", display: "flex", alignItems: "center", justifyContent: "center", padding: 0,
+            }}>
+            <span className="bc" style={{ fontSize: o.id === "fiche" ? 18 : 20, lineHeight: 1, color: "var(--ink)" }}>{o.libelle}</span>
+            {o.faite && <span aria-hidden style={{ position: "absolute", top: 2, right: 3, fontSize: 11, fontWeight: 900 }}>✓</span>}
+            {o.courante && <span aria-hidden style={{ position: "absolute", bottom: 3, left: "50%", transform: "translateX(-50%)", width: 6, height: 6, borderRadius: "50%", background: "var(--ink)" }} />}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Une étape du jeu : où il en est, le tuto, et la valider (ou la retirer). */
+function PanneauEtape({ etape, etapes }: { etape: EtapeAtelier; etapes: EtapesFiche }) {
+  const [enCours, setEnCours] = useState(false);
+  const faite = etapeFaite(etapes.jeu, etape);
+  const courante = etapeCourante(etapes.jeu);
+  const avant = ETAPES_ATELIER.filter(e => e.num < etape.num && etapeConcerne(etapes.jeu, e) && !etapeFaite(etapes.jeu, e));
+  const gestes = etapes.tutos[etape.id] ?? [];
+  const agir = async (valeur: boolean, jusquIci = false) => { setEnCours(true); await etapes.onValider(etape, valeur, jusquIci); setEnCours(false); };
+  const etat = faite
+    ? { texte: courante && courante.num < etape.num ? "Faite en avance" : "Faite", fond: "var(--vert)" }
+    : courante?.id === etape.id ? { texte: "À faire maintenant", fond: "var(--yellow)" }
+    : { texte: `À faire après l'étape ${courante?.num ?? "?"}`, fond: "var(--cream2)" };
+  return (
+    <div style={{ flex: 1, overflowY: "auto", padding: 20, display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, background: etape.hex, border: "2.5px solid var(--ink)", borderRadius: 10, padding: "12px 14px" }}>
+        <span className="bc" style={{ fontSize: 36, lineHeight: 1 }}>{etape.num}</span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="bc" style={{ fontSize: 18, textTransform: "uppercase", lineHeight: 1.15 }}>{etape.nom}</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: "rgba(0,0,0,0.6)" }}>{etape.detail}</div>
+        </div>
+        <span style={{ fontSize: 12, fontWeight: 800, background: etat.fond, border: "2px solid var(--ink)", borderRadius: 14, padding: "3px 10px", flexShrink: 0 }}>{etat.texte}</span>
+      </div>
+
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {faite ? (
+          <button className="pop-btn" disabled={enCours} onClick={() => agir(false)} style={{ background: "var(--white)" }}>↺ Annuler la validation</button>
+        ) : (
+          <>
+            <button className="pop-btn pop-btn-dark" disabled={enCours} onClick={() => agir(true)}>{enCours ? "Enregistrement…" : `✓ Valider l'étape ${etape.num}`}</button>
+            {avant.length > 0 && (
+              <button className="pop-btn" disabled={enCours} onClick={() => agir(true, true)} style={{ background: "var(--white)" }}
+                title={`Valide aussi l'étape ${avant.map(e => e.num).join(", ")}`}>
+                ✓ Valider jusqu&apos;ici (étapes {[...avant.map(e => e.num), etape.num].join(", ")})
+              </button>
+            )}
+          </>
+        )}
+      </div>
+      {!faite && avant.length > 0 && (
+        <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: "rgba(0,0,0,0.55)" }}>
+          Pas encore faite{avant.length > 1 ? "s" : ""} : étape{avant.length > 1 ? "s" : ""} {avant.map(e => e.num).join(", ")}. Valider seulement celle-ci la compte comme faite en avance.
+        </p>
+      )}
+
+      {gestes.length > 0 ? (
+        <section>
+          <div style={{ fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".08em", color: "rgba(0,0,0,0.5)", marginBottom: 10 }}>📖 Tuto</div>
+          <ol style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 12 }}>
+            {gestes.map((g, i) => (
+              <li key={g.image} style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "center", textAlign: "center" }}>
+                <div style={{ position: "relative", width: "100%" }}>
+                  <img src={g.image} alt={g.titre} loading="lazy" style={{ width: "100%", aspectRatio: "1", objectFit: "contain", display: "block", borderRadius: 10, border: "2px solid var(--ink)", background: "#f7f1e6" }} />
+                  <span className="bc" style={{ position: "absolute", top: -8, left: -8, width: 28, height: 28, borderRadius: "50%", background: etape.hex, border: "2px solid var(--ink)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15 }}>{i + 1}</span>
+                </div>
+                <span style={{ fontWeight: 800, fontSize: 13, lineHeight: 1.2 }}>{g.titre}</span>
+                {g.texte && <span style={{ fontSize: 12, fontWeight: 600, color: "rgba(0,0,0,0.55)" }}>{g.texte}</span>}
+              </li>
+            ))}
+          </ol>
+        </section>
+      ) : (
+        <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "rgba(0,0,0,0.45)" }}>Pas encore de tuto pour cette étape.</p>
+      )}
     </div>
   );
 }
