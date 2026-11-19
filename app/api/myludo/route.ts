@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { mecaniquesDepuisEtiquettes, typePartieDepuisMyLudo } from "../../../lib/etiquetteJeu";
 
 // ─── MyLudo — source de complément (joueurs, âge, durée, visuel) ───────────────
 // MyLudo est une SPA : ses données passent par des endpoints internes protégés par
@@ -106,6 +107,46 @@ function pickBest(list: MlGame[], nom: string): MlGame | null {
 
 const MAX_CANDIDATS = 8;
 
+/** Texte brut depuis le HTML de MyLudo (description). */
+const texteDepuisHtml = (html: unknown) => String(html ?? "")
+  .replace(/<br\s*\/?>/gi, "\n").replace(/<\/p>/gi, "\n").replace(/<[^>]+>/g, "")
+  .replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#0?39;|&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+  .replace(/\r/g, "").replace(/\n{3,}/g, "\n\n").trim();
+
+/** Clés de la fiche « info » qui ne sont pas des étiquettes (textes, liens, réglages). */
+const CLES_IGNOREES = new Set(["description", "app", "campaign", "url", "link", "lien", "image", "images", "video", "videos", "code", "id", "slug", "date", "price", "prix", "shops", "boutiques"]);
+
+/**
+ * Étiquettes de l'onglet « Infos » de MyLudo (type de jeu, mécaniques, thèmes…).
+ * La forme exacte de la fiche n'étant pas documentée, on y ramasse les libellés
+ * courts : chaînes des tableaux et champs name / label / title de leurs objets.
+ */
+function etiquettesDepuisInfo(info: unknown): string[] {
+  const vus = new Set<string>();
+  const ajouter = (v: unknown) => {
+    const t = texteDepuisHtml(v);
+    if (t.length >= 2 && t.length <= 40 && !/^https?:/.test(t) && !/^\d+$/.test(t)) vus.add(t);
+  };
+  const parcourir = (v: unknown, cle: string, profondeur: number) => {
+    if (profondeur > 5 || v == null || CLES_IGNOREES.has(cle.toLowerCase())) return;
+    if (Array.isArray(v)) {
+      for (const x of v) {
+        if (typeof x === "string") ajouter(x);
+        else if (x && typeof x === "object") {
+          const o = x as Record<string, unknown>;
+          const libelle = o.name ?? o.label ?? o.title ?? o.nom ?? o.libelle ?? o.tag;
+          if (typeof libelle === "string") ajouter(libelle);
+          else parcourir(o, cle, profondeur + 1);
+        }
+      }
+    } else if (typeof v === "object") {
+      for (const [k, x] of Object.entries(v as Record<string, unknown>)) parcourir(x, k, profondeur + 1);
+    }
+  };
+  parcourir(info, "", 0);
+  return [...vus];
+}
+
 const imageDe = (g: MlGame) => g.image?.S160 || g.image?.S300 || g.image?.S80 || g.image?.jpg || null;
 const urlJeu = (g: { code: string; id: string }) => `${BASE}/#!/game/${g.code}-${g.id}`;
 
@@ -194,39 +235,25 @@ export async function GET(req: NextRequest) {
     }
 
     // 2. Récupérer la fiche détaillée (joueurs, âge, durée, note)
-    const dResp = await fetch(
-      `${BASE}/views/game/datas.php?type=game&id=${encodeURIComponent(game.id)}`,
-      { headers: apiHeaders(session) },
-    );
+    // La fiche (joueurs, âge, durée, notes) et l'onglet « Infos » (description, étiquettes).
+    const [dResp, iResp] = await Promise.all([
+      fetch(`${BASE}/views/game/datas.php?type=game&id=${encodeURIComponent(game.id)}`, { headers: apiHeaders(session) }),
+      fetch(`${BASE}/views/game/datas.php?type=info&id=${encodeURIComponent(game.id)}`, { headers: apiHeaders(session) }).catch(() => null),
+    ]);
     const detail = dResp.ok ? await dResp.json().catch(() => null) as any : null;
+    const info = iResp?.ok ? await iResp.json().catch(() => null) as any : null;
     // ?brut=1 : la fiche telle que MyLudo la renvoie (données publiques), pour voir ses champs.
     if (req.nextUrl.searchParams.get("brut") === "1") {
-      return NextResponse.json({ recherche: game, detail });
+      return NextResponse.json({ recherche: game, detail, info });
     }
-    // ?sonde=1 : diagnostic temporaire. Cherche où MyLudo range les catégories,
-    // mécaniques et la description de la fiche (onglet « Infos ») : adresses de
-    // données citées dans le code du site, et quelques types de fiche probables.
-    if (req.nextUrl.searchParams.get("sonde") === "1") {
-      const html = await fetch(`${BASE}/`, { headers: HEADERS }).then(r => r.text()).catch(() => "");
-      const scripts = [...html.matchAll(/<script[^>]+src="([^"]+)"/g)].map(m => new URL(m[1], BASE).href).slice(0, 12);
-      const references = new Set<string>();
-      for (const src of scripts) {
-        const js = await fetch(src, { headers: HEADERS }).then(r => r.text()).catch(() => "");
-        for (const m of js.matchAll(/views\/[a-z_\/]+\.php[^"'`\s]{0,80}/g)) references.add(m[0]);
-        for (const m of js.matchAll(/type=([a-z_]+)/g)) references.add(`type=${m[1]}`);
-      }
-      const types = ["infos", "info", "description", "classification", "tags", "categories", "details", "game_infos", "fiche", "summary", "themes", "mechanics"];
-      const essais: Record<string, unknown> = {};
-      await Promise.all(types.map(async t => {
-        const r = await fetch(`${BASE}/views/game/datas.php?type=${t}&id=${encodeURIComponent(game!.id)}`, { headers: apiHeaders(session) }).catch(() => null);
-        const texte = r ? await r.text().catch(() => "") : "";
-        essais[t] = { statut: r?.status ?? null, debut: texte.slice(0, 400) };
-      }));
-      return NextResponse.json({ scripts, references: [...references].slice(0, 300), essais });
-    }
+
     const d = detail ?? game;
 
     if (!game.code && d.code) game.code = d.code;
+    const etiquettes = etiquettesDepuisInfo(info && typeof info === "object" ? { ...info, description: undefined } : null);
+    const cx = d.rating?.complexity;
+    const noteCx = Number(String(cx?.note ?? "").replace(",", "."));
+    const complexite = cx && Number(cx.audience) > 0 && noteCx > 0 ? { note: noteCx, votes: Number(cx.audience) } : null;
     const image =
       d.image?.jpg || d.image?.S300 || d.image?.S160 || d.image?.S80 || game.image?.S300 || null;
 
@@ -258,6 +285,11 @@ export async function GET(req: NextRequest) {
       nb_de_joueurs: nbJoueurs,
       temps_de_jeu: temps,
       duree_max: dureeMax(tMax, dur, tMin),
+      description: info?.description ? texteDepuisHtml(info.description) : null,
+      etiquettes,
+      mecaniques: mecaniquesDepuisEtiquettes(etiquettes),
+      type_partie: typePartieDepuisMyLudo(etiquettes, Number(pMax) || null),
+      complexite: complexite,
       trouve_par: trouvePar,
       candidats,
     });

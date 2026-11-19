@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { COULEURS_JEU } from "../lib/couleursJeux";
 import {
   MECANIQUES, TEMPS_DE_JEU_OPTIONS, COOP_VERSUS_OPTIONS,
-  etoilesMax, joueursDepuisMyLudo, tempsDepuisMyLudo, urlRechercheMyLudo,
+  etoilesMax, etoilesDepuisComplexite, joueursDepuisMyLudo, tempsDepuisMyLudo, urlRechercheMyLudo, VOTES_COMPLEXITE_MIN,
 } from "../lib/etiquetteJeu";
 import {
   LARGEUR_MODAL, MARGE_MODAL, allerA, comparaisonPossible, ecrireComparaison, fermerFenetreMyLudo, lireComparaison, ouvrirFenetreMyLudo,
@@ -46,11 +46,21 @@ type ResultatMyLudo = {
   duration?: unknown; duree_max?: number | null; note?: string | null; temps_de_jeu?: string | null;
   trouve_par?: "code-barres" | "nom" | "choix" | null;
   candidats?: CandidatMyLudo[];
+  /** Onglet « Infos » de MyLudo : description et étiquettes (type, mécaniques, thèmes). */
+  description?: string | null;
+  etiquettes?: string[];
+  /** Nos mécaniques reconnues parmi les étiquettes, la plus probable d'abord. */
+  mecaniques?: string[];
+  type_partie?: { valeur: "Coop" | "Versus" | "Solo"; sur: boolean } | null;
+  complexite?: { note: number; votes: number } | null;
 };
 
 /** Champs que MyLudo peut proposer. */
-type ChampMyLudo = "image_url" | "nb_de_joueurs" | "temps_de_jeu";
-const NOMS_CHAMPS: Record<ChampMyLudo, string> = { image_url: "vignette", nb_de_joueurs: "joueurs", temps_de_jeu: "temps" };
+type ChampMyLudo = "image_url" | "nb_de_joueurs" | "temps_de_jeu" | "mecanique" | "coop_versus" | "etoiles";
+const NOMS_CHAMPS: Record<ChampMyLudo, string> = {
+  image_url: "vignette", nb_de_joueurs: "joueurs", temps_de_jeu: "temps",
+  mecanique: "mécanique", coop_versus: "type de partie", etoiles: "difficulté",
+};
 
 const str = (v: unknown) => (v === null || v === undefined ? "" : String(v));
 
@@ -159,6 +169,9 @@ export default function ModalFicheAtelier({ jeu, focus, onFermer, onEnregistre }
       image_url: data.image ?? "",
       nb_de_joueurs: joueursDepuisMyLudo(Number(data.players_min) || null, Number(data.players_max) || null),
       temps_de_jeu: tempsDepuisMyLudo(data),
+      mecanique: data.mecaniques?.[0] ?? "",
+      coop_versus: data.type_partie?.valeur ?? "",
+      etoiles: String(etoilesDepuisComplexite(data.complexite?.note, data.complexite?.votes, fiche?.couleur) ?? ""),
     };
   };
 
@@ -197,7 +210,12 @@ export default function ModalFicheAtelier({ jeu, focus, onFermer, onEnregistre }
     if (remplis.has("image_url")) setImageCassee(false);
     setFiche(n);
     setRemplisParMl(remplis);
-    setMessage(remplis.size ? `Complété depuis MyLudo : ${[...remplis].map(c => NOMS_CHAMPS[c]).join(", ")}.` : "Rien de vide à compléter : les valeurs de MyLudo qui diffèrent sont proposées sous les champs.");
+    const notes: string[] = [];
+    if (remplis.has("coop_versus") && data.type_partie && !data.type_partie.sur) notes.push("type de partie « Versus » déduit : rien n'indique un jeu coopératif");
+    if (!props.etoiles) notes.push(data.complexite ? `difficulté à choisir : ${data.complexite.votes} vote${data.complexite.votes > 1 ? "s" : ""} de complexité sur MyLudo, pas assez pour s'y fier` : "difficulté à choisir : pas de complexité sur MyLudo");
+    if (!props.mecanique) notes.push("mécanique à choisir : aucune étiquette MyLudo ne correspond à la liste");
+    setMessage((remplis.size ? `Complété depuis MyLudo : ${[...remplis].map(c => NOMS_CHAMPS[c]).join(", ")}.` : "Rien de vide à compléter : les valeurs de MyLudo qui diffèrent sont proposées sous les champs.")
+      + (notes.length ? ` (${notes.join(" ; ")})` : ""));
   };
 
   /** Valeur de MyLudo pour un champ, quand elle diffère de la saisie. */
@@ -345,6 +363,16 @@ export default function ModalFicheAtelier({ jeu, focus, onFermer, onEnregistre }
                       <option value="">Sélectionner…</option>
                       {MECANIQUES.map(m => <option key={m} value={m}>{m}</option>)}
                     </select>
+                    {suggestion("mecanique") && <Suggestion onUtiliser={() => utiliserSuggestion("mecanique")}>{suggestion("mecanique")}</Suggestion>}
+                    {/* Autres mécaniques reconnues sur MyLudo, à choisir d'un clic */}
+                    {(ml?.mecaniques?.length ?? 0) > 1 && (
+                      <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 6 }}>
+                        {ml!.mecaniques!.filter(m => m !== fiche.mecanique).map(m => (
+                          <button key={m} onClick={() => maj("mecanique", m)} title="Mécanique repérée sur MyLudo"
+                            style={{ fontFamily: "inherit", fontSize: 11, fontWeight: 700, cursor: "pointer", border: "1.5px solid var(--ink)", borderRadius: 12, padding: "1px 8px", background: "var(--white)" }}>{m}</button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <div>
                     <label style={libelle}>Joueurs</label>
@@ -361,6 +389,7 @@ export default function ModalFicheAtelier({ jeu, focus, onFermer, onEnregistre }
                       <button key={o.id} onClick={() => maj("coop_versus", fiche.coop_versus === o.id ? "" : o.id)} style={choix(fiche.coop_versus === o.id)}>{o.label}</button>
                     ))}
                   </div>
+                  {suggestion("coop_versus") && <Suggestion onUtiliser={() => utiliserSuggestion("coop_versus")}>{suggestion("coop_versus")}{ml?.type_partie && !ml.type_partie.sur ? " (déduit)" : ""}</Suggestion>}
                 </div>
 
                 <div>
@@ -380,6 +409,12 @@ export default function ModalFicheAtelier({ jeu, focus, onFermer, onEnregistre }
                       <button key={n} onClick={() => maj("etoiles", fiche.etoiles === n ? "" : n)} style={{ ...choix(fiche.etoiles === n), fontSize: 16, letterSpacing: 2 }}>{"★".repeat(Number(n))}</button>
                     ))}
                   </div>
+                  {suggestion("etoiles") && <Suggestion onUtiliser={() => utiliserSuggestion("etoiles")}>{"★".repeat(Number(suggestion("etoiles")))} (complexité {ml?.complexite?.note.toLocaleString("fr-FR")}/5)</Suggestion>}
+                  {ml?.complexite && ml.complexite.votes < VOTES_COMPLEXITE_MIN && (
+                    <div style={{ marginTop: 6, fontSize: 12, fontWeight: 600, color: "rgba(0,0,0,0.55)" }}>
+                      MyLudo : complexité {ml.complexite.note.toLocaleString("fr-FR")}/5, sur {ml.complexite.votes} vote{ml.complexite.votes > 1 ? "s" : ""} seulement.
+                    </div>
+                  )}
                 </div>
               </div>
             </section>
@@ -474,6 +509,8 @@ function PanneauMyLudo({ nom, ml, candidats, voirCandidats, enCours, desactive, 
         </div>
       )}
 
+      {trouve && (ml.etiquettes?.length || ml.description) ? <InfosMyLudo ml={ml} /> : null}
+
       {(voirCandidats || ml?.notFound) && (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {autres.map(c => (
@@ -488,6 +525,36 @@ function PanneauMyLudo({ nom, ml, candidats, voirCandidats, enCours, desactive, 
           ))}
           {voirCandidats && !autres.length && <span style={{ fontSize: 12, fontWeight: 600, color: "rgba(0,0,0,0.5)" }}>MyLudo ne propose pas d&apos;autre jeu pour ce nom.</span>}
           {trouve && <a href={urlRechercheMyLudo(nom)} target="_blank" rel="noopener noreferrer" onClick={e => onLien(e, urlRechercheMyLudo(nom))} style={{ ...lien, alignSelf: "flex-start" }} title="Recherche Google limitée à myludo.fr">🔎 Chercher sur MyLudo ↗</a>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Étiquettes et description de l'onglet « Infos » de MyLudo, pour comparer sans quitter la modal. */
+function InfosMyLudo({ ml }: { ml: ResultatMyLudo }) {
+  const [voirDescription, setVoirDescription] = useState(false);
+  const reconnues = new Set(ml.mecaniques ?? []);
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8, background: "var(--white)", border: "2px solid var(--ink)", borderRadius: 10, padding: 10 }}>
+      {!!ml.etiquettes?.length && (
+        <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
+          <span style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".06em", color: "rgba(0,0,0,0.45)", marginRight: 2 }}>MyLudo</span>
+          {ml.etiquettes.map(e => {
+            const mecanique = [...reconnues].some(m => m.toLowerCase() === e.toLowerCase());
+            return (
+              <span key={e} title={mecanique ? "Mécanique de la liste" : undefined}
+                style={{ fontSize: 12, fontWeight: 700, borderRadius: 12, padding: "2px 9px", border: mecanique ? "2px solid var(--ink)" : "1.5px solid rgba(0,0,0,0.25)", background: mecanique ? "var(--yellow)" : "var(--cream2)" }}>{e}</span>
+            );
+          })}
+        </div>
+      )}
+      {ml.description && (
+        <div>
+          <button onClick={() => setVoirDescription(v => !v)} style={{ fontFamily: "inherit", fontSize: 12, fontWeight: 800, background: "none", border: "none", padding: 0, cursor: "pointer", color: "var(--ink)" }}>
+            {voirDescription ? "▾" : "▸"} Description
+          </button>
+          {voirDescription && <p style={{ margin: "6px 0 0", fontSize: 13, lineHeight: 1.45, whiteSpace: "pre-line", color: "rgba(0,0,0,0.75)", maxHeight: 220, overflowY: "auto" }}>{ml.description}</p>}
         </div>
       )}
     </div>
