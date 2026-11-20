@@ -926,8 +926,8 @@ useEffect(() => {
   const [pasteCalMonth, setPasteCalMonth] = useState(new Date());
   const [hoveredPasteWeek, setHoveredPasteWeek] = useState<string|null>(null);
   const [showPdfSelector, setShowPdfSelector] = useState(false);
-  // Calendrier mensuel imprimable : mois de départ, nombre de mois, horaires de l'équipe ou non.
-  const [calendrierPdf, setCalendrierPdf] = useState<{ debut: Date; nbMois: number; horaires: boolean } | null>(null);
+  // Calendrier mensuel imprimable : mois cochés ('yyyy-MM'), année affichée dans le choix, options.
+  const [calendrierPdf, setCalendrierPdf] = useState<{ mois: string[]; annee: number; horaires: boolean; sansLundiDimanche: boolean } | null>(null);
   const [pdfSemaines, setPdfSemaines] = useState<Date[]>([]);
   const [pdfNavDate, setPdfNavDate] = useState(new Date());
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
@@ -1940,7 +1940,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
    * Contenu de chaque jour pour le calendrier imprimable : mêmes règles que la
    * vue mois (horaires moins absences, fériés), mais en texte, sans couleur.
    */
-  const preparerCalendrier = (debut: Date, nbMois: number, horaires: boolean) => {
+  const preparerCalendrier = (moisCoches: string[], horaires: boolean, sansLundiDimanche: boolean) => {
     const prenom = (id: string) => activeEquipe.find(m => m.id === id)?.nom.trim().split(/\s+/)[0];
     const quiEvenement = (ids: string[]) => {
       if (!ids?.length) return null;
@@ -1949,8 +1949,11 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
     };
     const plage = (d?: string, f?: string) => d && f ? `${heureCourte(d)}–${heureCourte(f)}` : null;
 
-    return Array.from({ length: nbMois }, (_, i) => {
-      const mois = addMonths(startOfMonth(debut), i);
+    // Fermés le lundi et le dimanche : ces colonnes peuvent être retirées pour élargir les autres.
+    const joursVisibles = (sansLundiDimanche ? [2, 3, 4, 5, 6] : [1, 2, 3, 4, 5, 6, 0]);
+    const NOMS_JOURS = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
+    return [...moisCoches].sort().map(cle => {
+      const mois = new Date(`${cle}-01T12:00:00`);
       const feries: Record<string, string> = { ...getJoursFeriesLocaux(mois.getFullYear()), ...joursFeries };
       const jours = eachDayOfInterval({ start: startOfWeek(mois, { weekStartsOn: 1 }), end: endOfWeek(endOfMonth(mois), { weekStartsOn: 1 }) });
       const contenu: JourCalendrier[] = jours.map(jour => {
@@ -2000,14 +2003,18 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
         };
       });
       const semaines: JourCalendrier[][] = [];
-      for (let k = 0; k < contenu.length; k += 7) semaines.push(contenu.slice(k, k + 7));
+      for (let k = 0; k < contenu.length; k += 7) {
+        const semaine = contenu.slice(k, k + 7).filter(j => joursVisibles.includes(new Date(j.dateKey + 'T12:00:00').getDay()));
+        // Sans lundi ni dimanche, une semaine peut n'avoir que des jours du mois voisin : on la saute.
+        if (semaine.some(j => j.dansLeMois)) semaines.push(semaine);
+      }
       const titre = format(mois, 'MMMM yyyy', { locale: fr });
-      return { titre: titre.charAt(0).toUpperCase() + titre.slice(1), semaines };
+      return { titre: titre.charAt(0).toUpperCase() + titre.slice(1), jours: joursVisibles.map(d => NOMS_JOURS[d]), semaines };
     });
   };
 
-  const imprimerCalendrier = (debut: Date, nbMois: number, horaires: boolean) => {
-    const html = construireCalendrierHTML(preparerCalendrier(debut, nbMois, horaires));
+  const imprimerCalendrier = (moisCoches: string[], horaires: boolean, sansLundiDimanche: boolean) => {
+    const html = construireCalendrierHTML(preparerCalendrier(moisCoches, horaires, sansLundiDimanche));
     const w = window.open('', '_blank', 'width=1200,height=850');
     if (!w) { alert("La fenêtre d'impression a été bloquée par le navigateur."); return; }
     w.document.write(html); w.document.close(); w.focus();
@@ -2319,7 +2326,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
               </button>
             )}
             <button onClick={() => setShowEventsListPanel(true)} className="pop-btn pop-btn-outline" style={{ fontSize: isMobile ? 12 : 13, padding: isMobile ? "4px 10px" : undefined, minHeight: isMobile ? 34 : undefined }}>Événements</button>
-            <button onClick={() => setCalendrierPdf({ debut: startOfMonth(dateActuelle), nbMois: 1, horaires: true })} className="pop-btn pop-btn-outline" title="Calendrier du mois à imprimer (A4 paysage, noir et blanc)" style={{ fontSize: isMobile ? 12 : 13, padding: isMobile ? "4px 10px" : undefined, minHeight: isMobile ? 34 : undefined }}>Calendrier PDF</button>
+            <button onClick={() => setCalendrierPdf({ mois: [format(dateActuelle, 'yyyy-MM')], annee: dateActuelle.getFullYear(), horaires: true, sansLundiDimanche: true })} className="pop-btn pop-btn-outline" title="Calendrier du mois à imprimer (A4 paysage, noir et blanc)" style={{ fontSize: isMobile ? 12 : 13, padding: isMobile ? "4px 10px" : undefined, minHeight: isMobile ? 34 : undefined }}>Calendrier PDF</button>
             <button onClick={() => { setOngletMembre("profil"); setShowEquipePanel(true); }} className="pop-btn pop-btn-outline" style={{ fontSize: isMobile ? 12 : 13, padding: isMobile ? "4px 10px" : undefined, minHeight: isMobile ? 34 : undefined }}>Équipe</button>
             <button onClick={() => setShowSettings(!showSettings)} className="pop-btn pop-btn-outline" style={{ fontSize: isMobile ? 12 : 13, padding: isMobile ? "4px 10px" : "6px 10px", minHeight: isMobile ? 34 : undefined }}>Réglages</button>
             <button onClick={() => {
@@ -3949,33 +3956,50 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
             </div>
             <div style={{ padding: "18px 20px", display: "flex", flexDirection: "column", gap: 16 }}>
               <div>
-                <p style={{ fontSize: 10, fontWeight: 800, color: "rgba(0,0,0,0.4)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>À partir de</p>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <button onClick={() => setCalendrierPdf({ ...calendrierPdf, debut: subMonths(calendrierPdf.debut, 1) })} className="pop-btn pop-btn-outline" style={{ padding: "6px 10px" }}>◀</button>
-                  <div style={{ flex: 1, textAlign: "center", fontWeight: 800, fontSize: 14, background: "var(--cream2)", borderRadius: 8, padding: "8px 12px", border: "2px solid var(--ink)", textTransform: "capitalize" }}>
-                    {format(calendrierPdf.debut, 'MMMM yyyy', { locale: fr })}
-                  </div>
-                  <button onClick={() => setCalendrierPdf({ ...calendrierPdf, debut: addMonths(calendrierPdf.debut, 1) })} className="pop-btn pop-btn-outline" style={{ padding: "6px 10px" }}>▶</button>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                  <p style={{ fontSize: 10, fontWeight: 800, color: "rgba(0,0,0,0.4)", textTransform: "uppercase", letterSpacing: "0.08em", margin: 0 }}>Mois à imprimer (une page chacun)</p>
+                  {calendrierPdf.mois.length > 0 && (
+                    <button onClick={() => setCalendrierPdf({ ...calendrierPdf, mois: [] })} style={{ fontSize: 11, background: "none", border: "none", textDecoration: "underline", cursor: "pointer", color: "rgba(0,0,0,0.5)", fontFamily: "inherit" }}>Tout décocher</button>
+                  )}
                 </div>
-              </div>
-              <div>
-                <p style={{ fontSize: 10, fontWeight: 800, color: "rgba(0,0,0,0.4)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>Nombre de mois (une page par mois)</p>
-                <div style={{ display: "flex", gap: 6 }}>
-                  {[1, 2, 3, 4, 6].map(n => (
-                    <button key={n} onClick={() => setCalendrierPdf({ ...calendrierPdf, nbMois: n })} className="pop-btn" style={{ padding: "5px 12px", fontSize: 13, background: calendrierPdf.nbMois === n ? "var(--yellow)" : "var(--white)", border: calendrierPdf.nbMois === n ? "2px solid var(--ink)" : "2px solid rgba(0,0,0,0.15)", boxShadow: calendrierPdf.nbMois === n ? "2px 2px 0 var(--ink)" : "none" }}>{n}</button>
-                  ))}
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                  <button onClick={() => setCalendrierPdf({ ...calendrierPdf, annee: calendrierPdf.annee - 1 })} className="pop-btn pop-btn-outline" style={{ padding: "4px 10px" }}>◀</button>
+                  <div className="bc" style={{ flex: 1, textAlign: "center", fontSize: 18 }}>{calendrierPdf.annee}</div>
+                  <button onClick={() => setCalendrierPdf({ ...calendrierPdf, annee: calendrierPdf.annee + 1 })} className="pop-btn pop-btn-outline" style={{ padding: "4px 10px" }}>▶</button>
                 </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
+                  {Array.from({ length: 12 }, (_, m) => {
+                    const cle = `${calendrierPdf.annee}-${String(m + 1).padStart(2, '0')}`;
+                    const coche = calendrierPdf.mois.includes(cle);
+                    return (
+                      <button key={cle} onClick={() => setCalendrierPdf({ ...calendrierPdf, mois: coche ? calendrierPdf.mois.filter(x => x !== cle) : [...calendrierPdf.mois, cle] })}
+                        style={{ fontFamily: "inherit", cursor: "pointer", padding: "7px 4px", borderRadius: 8, fontSize: 13, fontWeight: coche ? 800 : 500, textTransform: "capitalize",
+                          background: coche ? "var(--yellow)" : "var(--white)", border: coche ? "2px solid var(--ink)" : "2px solid rgba(0,0,0,0.15)", boxShadow: coche ? "2px 2px 0 var(--ink)" : "none" }}>
+                        {coche ? '✓ ' : ''}{format(new Date(calendrierPdf.annee, m, 1), 'MMM', { locale: fr })}
+                      </button>
+                    );
+                  })}
+                </div>
+                {calendrierPdf.mois.length > 0 && (
+                  <p style={{ fontSize: 12, color: "rgba(0,0,0,0.6)", margin: "8px 0 0", textTransform: "capitalize" }}>
+                    {[...calendrierPdf.mois].sort().map(c => format(new Date(`${c}-01T12:00:00`), 'MMM yyyy', { locale: fr })).join(' · ')}
+                  </p>
+                )}
               </div>
               <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
                 <input type="checkbox" checked={calendrierPdf.horaires} onChange={e => setCalendrierPdf({ ...calendrierPdf, horaires: e.target.checked })} style={{ width: 16, height: 16 }} />
                 Inclure les horaires de l’équipe
               </label>
+              <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13, fontWeight: 600, cursor: "pointer", marginTop: -8 }}>
+                <input type="checkbox" checked={calendrierPdf.sansLundiDimanche} onChange={e => setCalendrierPdf({ ...calendrierPdf, sansLundiDimanche: e.target.checked })} style={{ width: 16, height: 16 }} />
+                Sans le lundi ni le dimanche
+              </label>
               <p style={{ fontSize: 12, color: "rgba(0,0,0,0.5)", margin: 0 }}>
                 A4 paysage, noir et blanc : choisis « Enregistrer au format PDF » dans la fenêtre d’impression.
               </p>
-              <button className="pop-btn pop-btn-dark" style={{ justifyContent: "center" }}
-                onClick={() => { imprimerCalendrier(calendrierPdf.debut, calendrierPdf.nbMois, calendrierPdf.horaires); setCalendrierPdf(null); }}>
-                Générer le calendrier
+              <button className="pop-btn pop-btn-dark" style={{ justifyContent: "center" }} disabled={calendrierPdf.mois.length === 0}
+                onClick={() => { imprimerCalendrier(calendrierPdf.mois, calendrierPdf.horaires, calendrierPdf.sansLundiDimanche); setCalendrierPdf(null); }}>
+                {calendrierPdf.mois.length > 1 ? `Générer les ${calendrierPdf.mois.length} mois` : 'Générer le calendrier'}
               </button>
             </div>
           </div>
