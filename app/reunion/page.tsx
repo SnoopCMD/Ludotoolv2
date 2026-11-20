@@ -1871,7 +1871,7 @@ function CarteCompteRendu({ s, equipe, fiches, q, onMaj, onSupprime, onOuvrirFic
 type ItemAVenir = { cle: string; date: string | null; titre: string; type: string; prep?: EvPrep; avancement?: [number, number] };
 
 function ApercuEvenements({ items, onOuvrir }: { items: ItemAVenir[]; onOuvrir: (e: EvPrep) => void }) {
-  if (!items.length) return <Vide>Rien de prévu pour les deux prochains mois.</Vide>;
+  if (!items.length) return <Vide>Rien de prévu pour l’instant.</Vide>;
   return (
     <div style={{ display: "flex", gap: 12, overflowX: "auto", padding: "2px 6px 8px 2px", margin: "0 -6px 0 0" }}>
       {items.map(it => {
@@ -2075,7 +2075,6 @@ export default function ReunionPage() {
 
   const aVenir = useMemo<ItemAVenir[]>(() => {
     const auj = aujourdhui();
-    const limite = format(addDays(new Date(), 60), "yyyy-MM-dd");
     const items: ItemAVenir[] = [];
     for (const e of evenements) {
       if (EV_ARCHIVE.includes(e.statut)) continue;
@@ -2084,8 +2083,10 @@ export default function ReunionPage() {
     }
     const suivis = new Set(evenements.map(e => e.agenda_id).filter(Boolean));
     const series = new Set<string>();
+    // Pas d'horizon : les événements du Bureau n'en ont pas non plus, et un trou
+    // dans la frise laisserait croire qu'un événement de l'agenda manque.
     for (const a of [...agenda].sort((x, y) => x.date_debut.localeCompare(y.date_debut))) {
-      if (!estEvenementAgenda(a.type) || suivis.has(a.id) || a.date_fin < auj || a.date_debut > limite) continue;
+      if (!estEvenementAgenda(a.type) || suivis.has(a.id) || a.date_fin < auj) continue;
       // Une série récurrente n'apparaît qu'une fois : sa prochaine occurrence.
       if (a.parent_id) { if (series.has(a.parent_id)) continue; series.add(a.parent_id); }
       items.push({ cle: `a-${a.id}`, date: a.date_debut < auj ? auj : a.date_debut, titre: a.titre || a.type, type: a.type });
