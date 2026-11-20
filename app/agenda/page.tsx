@@ -7,6 +7,7 @@ import { useIsMobile } from "../../lib/useIsMobile";
 import { format, addMonths, subMonths, addWeeks, subWeeks, startOfWeek, endOfWeek, eachDayOfInterval, startOfMonth, endOfMonth, isSameMonth, isToday, subDays, setMonth, setYear, getISOWeek, getYear, addDays } from "date-fns";
 import { fr } from "date-fns/locale";
 import { useCouleurProfil } from "../../lib/useCouleurProfil";
+import { construireCalendrierHTML, heureCourte, type JourCalendrier } from "../../lib/calendrierMensuel";
 
 type AbsenceHS = { debut: string; fin: string; type: 'conge' | 'rtt' | 'recup' };
 
@@ -925,6 +926,8 @@ useEffect(() => {
   const [pasteCalMonth, setPasteCalMonth] = useState(new Date());
   const [hoveredPasteWeek, setHoveredPasteWeek] = useState<string|null>(null);
   const [showPdfSelector, setShowPdfSelector] = useState(false);
+  // Calendrier mensuel imprimable : mois de départ, nombre de mois, horaires de l'équipe ou non.
+  const [calendrierPdf, setCalendrierPdf] = useState<{ debut: Date; nbMois: number; horaires: boolean } | null>(null);
   const [pdfSemaines, setPdfSemaines] = useState<Date[]>([]);
   const [pdfNavDate, setPdfNavDate] = useState(new Date());
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
@@ -1933,6 +1936,84 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
     return blocs;
   };
 
+  /**
+   * Contenu de chaque jour pour le calendrier imprimable : mêmes règles que la
+   * vue mois (horaires moins absences, fériés), mais en texte, sans couleur.
+   */
+  const preparerCalendrier = (debut: Date, nbMois: number, horaires: boolean) => {
+    const prenom = (id: string) => activeEquipe.find(m => m.id === id)?.nom.trim().split(/\s+/)[0];
+    const quiEvenement = (ids: string[]) => {
+      if (!ids?.length) return null;
+      if (activeEquipe.length > 1 && activeEquipe.every(m => ids.includes(m.id))) return 'toute l’équipe';
+      return ids.map(prenom).filter(Boolean).join(', ') || null;
+    };
+    const plage = (d?: string, f?: string) => d && f ? `${heureCourte(d)}–${heureCourte(f)}` : null;
+
+    return Array.from({ length: nbMois }, (_, i) => {
+      const mois = addMonths(startOfMonth(debut), i);
+      const feries: Record<string, string> = { ...getJoursFeriesLocaux(mois.getFullYear()), ...joursFeries };
+      const jours = eachDayOfInterval({ start: startOfWeek(mois, { weekStartsOn: 1 }), end: endOfWeek(endOfMonth(mois), { weekStartsOn: 1 }) });
+      const contenu: JourCalendrier[] = jours.map(jour => {
+        const dateKey = format(jour, 'yyyy-MM-dd');
+        const ferie = feries[dateKey] ?? null;
+        const evs = activeEvenements.filter(e => e.date_debut <= dateKey && e.date_fin >= dateKey);
+        const absEvs = evs.filter(e => ABSENCE_TYPES.includes(e.type));
+
+        const parHoraire = new Map<string, { debut: string; noms: string[] }>();
+        if (horaires && !ferie) {
+          const typeSemaine = getISOWeek(jour) % 2 !== 0 ? 'semaineA' : 'semaineB';
+          const nomJour = format(jour, 'EEEE', { locale: fr }).toLowerCase();
+          activeEquipe.forEach(m => {
+            const h = getHoraireForDay(m, dateKey, nomJour, typeSemaine);
+            if (!h) return;
+            let segments = [{ debut: h.debut as string, fin: h.fin as string }];
+            absEvs.filter(a => !a.membres?.length || a.membres.includes(m.id)).forEach(a => {
+              segments = a.heure_debut && a.heure_fin ? segments.flatMap(sg => soustraireHeures(sg.debut, sg.fin, a.heure_debut!, a.heure_fin!)) : [];
+            });
+            segments.forEach(sg => {
+              const cle = plage(sg.debut, sg.fin)!;
+              if (!parHoraire.has(cle)) parHoraire.set(cle, { debut: sg.debut, noms: [] });
+              parHoraire.get(cle)!.noms.push(m.nom.trim().split(/\s+/)[0]);
+            });
+          });
+        }
+
+        const absences = new Map<string, { type: string; horaire: string | null; noms: string[] }>();
+        absEvs.forEach(a => {
+          const type = a.type.replace('Demi-', '½ ');
+          const horaire = plage(a.heure_debut, a.heure_fin);
+          const cle = `${type}|${horaire}`;
+          if (!absences.has(cle)) absences.set(cle, { type, horaire, noms: [] });
+          const noms = a.membres?.length ? a.membres.map(prenom).filter((n): n is string => !!n) : ['toute l’équipe'];
+          absences.get(cle)!.noms.push(...noms);
+        });
+
+        return {
+          dateKey, dansLeMois: isSameMonth(jour, mois), ferie,
+          vacances: vacances[dateKey] ?? [],
+          presences: [...parHoraire.entries()].sort((a, b) => a[1].debut.localeCompare(b[1].debut)).map(([horaire, v]) => ({ horaire, noms: v.noms })),
+          evenements: evs.filter(e => !ABSENCE_TYPES.includes(e.type))
+            .sort((a, b) => (a.heure_debut || '').localeCompare(b.heure_debut || ''))
+            .map(e => ({ horaire: plage(e.heure_debut, e.heure_fin), type: e.type, titre: e.titre, qui: quiEvenement(e.membres) })),
+          // Toute l'équipe absente (fermeture) : une mention plutôt que six prénoms.
+          absences: [...absences.values()].map(a => activeEquipe.length > 1 && new Set(a.noms).size >= activeEquipe.length ? { ...a, noms: ['toute l’équipe'] } : a),
+        };
+      });
+      const semaines: JourCalendrier[][] = [];
+      for (let k = 0; k < contenu.length; k += 7) semaines.push(contenu.slice(k, k + 7));
+      const titre = format(mois, 'MMMM yyyy', { locale: fr });
+      return { titre: titre.charAt(0).toUpperCase() + titre.slice(1), semaines };
+    });
+  };
+
+  const imprimerCalendrier = (debut: Date, nbMois: number, horaires: boolean) => {
+    const html = construireCalendrierHTML(preparerCalendrier(debut, nbMois, horaires));
+    const w = window.open('', '_blank', 'width=1200,height=850');
+    if (!w) { alert("La fenêtre d'impression a été bloquée par le navigateur."); return; }
+    w.document.write(html); w.document.close(); w.focus();
+    setTimeout(() => w.print(), 600);
+  };
+
   const genererBlocsMensuels = (membresDuJour: any[]) => {
     const groupes: Record<string, any> = {};
     membresDuJour.forEach(m => {
@@ -2238,6 +2319,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
               </button>
             )}
             <button onClick={() => setShowEventsListPanel(true)} className="pop-btn pop-btn-outline" style={{ fontSize: isMobile ? 12 : 13, padding: isMobile ? "4px 10px" : undefined, minHeight: isMobile ? 34 : undefined }}>Événements</button>
+            <button onClick={() => setCalendrierPdf({ debut: startOfMonth(dateActuelle), nbMois: 1, horaires: true })} className="pop-btn pop-btn-outline" title="Calendrier du mois à imprimer (A4 paysage, noir et blanc)" style={{ fontSize: isMobile ? 12 : 13, padding: isMobile ? "4px 10px" : undefined, minHeight: isMobile ? 34 : undefined }}>Calendrier PDF</button>
             <button onClick={() => { setOngletMembre("profil"); setShowEquipePanel(true); }} className="pop-btn pop-btn-outline" style={{ fontSize: isMobile ? 12 : 13, padding: isMobile ? "4px 10px" : undefined, minHeight: isMobile ? 34 : undefined }}>Équipe</button>
             <button onClick={() => setShowSettings(!showSettings)} className="pop-btn pop-btn-outline" style={{ fontSize: isMobile ? 12 : 13, padding: isMobile ? "4px 10px" : "6px 10px", minHeight: isMobile ? 34 : undefined }}>Réglages</button>
             <button onClick={() => {
@@ -3852,6 +3934,49 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
             </div>
             <div style={{ padding: "8px 16px 14px", borderTop: "1.5px solid rgba(0,0,0,0.1)" }}>
               <p style={{ fontSize: 11, color: "rgba(0,0,0,0.45)", margin: 0 }}>Cliquez sur une semaine pour coller les {selectedSlotIds.size} créneaux sélectionnés.</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {calendrierPdf && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center", padding: "calc(var(--nav-h) + 12px) 12px 12px" }}
+          onClick={e => { if (e.target === e.currentTarget) setCalendrierPdf(null); }}>
+          <div className="pop-card" style={{ width: "100%", maxWidth: 400, overflow: "hidden" }}>
+            <div style={{ background: "var(--ink)", padding: "14px 20px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span className="bc" style={{ fontSize: 20, color: "var(--cream)" }}>Calendrier à imprimer</span>
+              <button onClick={() => setCalendrierPdf(null)} style={{ width: 28, height: 28, borderRadius: "50%", background: "rgba(255,255,255,0.12)", border: "none", cursor: "pointer", color: "var(--white)", fontSize: 15 }}>✕</button>
+            </div>
+            <div style={{ padding: "18px 20px", display: "flex", flexDirection: "column", gap: 16 }}>
+              <div>
+                <p style={{ fontSize: 10, fontWeight: 800, color: "rgba(0,0,0,0.4)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>À partir de</p>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <button onClick={() => setCalendrierPdf({ ...calendrierPdf, debut: subMonths(calendrierPdf.debut, 1) })} className="pop-btn pop-btn-outline" style={{ padding: "6px 10px" }}>◀</button>
+                  <div style={{ flex: 1, textAlign: "center", fontWeight: 800, fontSize: 14, background: "var(--cream2)", borderRadius: 8, padding: "8px 12px", border: "2px solid var(--ink)", textTransform: "capitalize" }}>
+                    {format(calendrierPdf.debut, 'MMMM yyyy', { locale: fr })}
+                  </div>
+                  <button onClick={() => setCalendrierPdf({ ...calendrierPdf, debut: addMonths(calendrierPdf.debut, 1) })} className="pop-btn pop-btn-outline" style={{ padding: "6px 10px" }}>▶</button>
+                </div>
+              </div>
+              <div>
+                <p style={{ fontSize: 10, fontWeight: 800, color: "rgba(0,0,0,0.4)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>Nombre de mois (une page par mois)</p>
+                <div style={{ display: "flex", gap: 6 }}>
+                  {[1, 2, 3, 4, 6].map(n => (
+                    <button key={n} onClick={() => setCalendrierPdf({ ...calendrierPdf, nbMois: n })} className="pop-btn" style={{ padding: "5px 12px", fontSize: 13, background: calendrierPdf.nbMois === n ? "var(--yellow)" : "var(--white)", border: calendrierPdf.nbMois === n ? "2px solid var(--ink)" : "2px solid rgba(0,0,0,0.15)", boxShadow: calendrierPdf.nbMois === n ? "2px 2px 0 var(--ink)" : "none" }}>{n}</button>
+                  ))}
+                </div>
+              </div>
+              <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+                <input type="checkbox" checked={calendrierPdf.horaires} onChange={e => setCalendrierPdf({ ...calendrierPdf, horaires: e.target.checked })} style={{ width: 16, height: 16 }} />
+                Inclure les horaires de l’équipe
+              </label>
+              <p style={{ fontSize: 12, color: "rgba(0,0,0,0.5)", margin: 0 }}>
+                A4 paysage, noir et blanc : choisis « Enregistrer au format PDF » dans la fenêtre d’impression.
+              </p>
+              <button className="pop-btn pop-btn-dark" style={{ justifyContent: "center" }}
+                onClick={() => { imprimerCalendrier(calendrierPdf.debut, calendrierPdf.nbMois, calendrierPdf.horaires); setCalendrierPdf(null); }}>
+                Générer le calendrier
+              </button>
             </div>
           </div>
         </div>

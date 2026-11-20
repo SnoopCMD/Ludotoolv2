@@ -518,6 +518,20 @@ Pour le vrai direct, le runtime Workers local :
 npm run build:cf && npx wrangler dev
 ```
 
+### Le calendrier mensuel imprimable
+
+Le bouton « Calendrier PDF » de l'agenda ouvre une page à imprimer (A4
+paysage, noir et blanc, une page par mois) : fériés en négatif, vacances
+scolaires, événements avec leur horaire et une étiquette de type en toutes
+lettres (pas de code couleur), absences en italique, puis en bas de case les
+horaires de l'équipe (facultatifs). La page agenda prépare le contenu de chaque
+jour (`preparerCalendrier`), `lib/calendrierMensuel.ts` le met en page.
+
+Pour qu'un mois tienne sur une page, la hauteur des semaines suit leur jour le
+plus chargé (une semaine débordant sur le mois voisin rétrécit), puis un petit
+script réduit la police de chaque case qui déborde encore, mesurée à la largeur
+réelle de la feuille.
+
 ## Les paniers communs : votes et vérification
 
 **Les votes sont nominatifs.** Une voix appartient à un compte
