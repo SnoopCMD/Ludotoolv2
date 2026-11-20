@@ -64,6 +64,17 @@ const HEURES_GRILLE = [8, 10, 12, 14, 16, 18, 20, 22];
 const HEURE_DEBUT = 7;
 const HEURE_FIN = 24; 
 
+/**
+ * Fermeture exceptionnelle : la ludothèque est fermée au public (journée
+ * entière, ou seulement sur ses horaires). Ce n'est pas une absence : les
+ * horaires de l'équipe ne bougent pas. Ce n'est pas non plus du temps de
+ * travail en plus, contrairement aux autres événements à horaires. Sur une
+ * journée entière, le planning bloque le jour comme un férié.
+ */
+const FERMETURE = 'Fermeture exceptionnelle';
+const estFermetureJournee = (e: { type: string; heure_debut?: string; heure_fin?: string }) =>
+  e.type === FERMETURE && !(e.heure_debut && e.heure_fin);
+
 const ABSENCE_TYPES = ['Congé', 'Demi-Congé', 'RTT', 'Demi-RTT', 'Récupération', 'Demi-Récupération', 'Formation', 'Demi-Formation'];
 
 const timeToMins = (t: string, isEnd: boolean = false) => {
@@ -288,6 +299,7 @@ const getEventColor = (type: string): string => {
   if (type === 'Animation') return 'var(--orange)';
   if (type === 'Soirée Jeux') return 'var(--purple)';
   if (type === 'Heures Exceptionnelles') return 'var(--yellow)';
+  if (type === FERMETURE) return '#a3a3a3';
   return 'var(--cream2)';
 };
 
@@ -303,6 +315,7 @@ const getEventIcon = (type: string) => {
   if (type === 'Animation') return '🎪';
   if (type === 'Soirée Jeux') return '🌙';
   if (type === 'Heures Exceptionnelles') return '⭐';
+  if (type === FERMETURE) return '🔒';
   return '📌';
 };
 
@@ -367,7 +380,7 @@ const getDailyMinutes = (membre: MembreEquipe, dateKey: string, nomJour: string,
   const intervals: {start: number, end: number}[] = [];
   
   const evsAbsence = evsDuJour.filter(e => ABSENCE_TYPES.includes(e.type) && (!e.membres.length || e.membres.includes(membre.id)));
-  const evsExtra = evsDuJour.filter(e => (!ABSENCE_TYPES.includes(e.type)) && (!e.membres.length || e.membres.includes(membre.id)) && e.heure_debut && e.heure_fin);
+  const evsExtra = evsDuJour.filter(e => (!ABSENCE_TYPES.includes(e.type)) && e.type !== FERMETURE && (!e.membres.length || e.membres.includes(membre.id)) && e.heure_debut && e.heure_fin);
 
   if (!isFerie) {
     const hDraft = getHoraireForDay(membre, dateKey, nomJour, typeSemaine);
@@ -443,7 +456,7 @@ function evenementsLiables(evs: Evenement[], dejaLie: string | null | undefined)
   const auj = format(new Date(), 'yyyy-MM-dd');
   const parCle = new Map<string, { cle: string; ev: Evenement; nb: number }>();
   for (const e of [...evs].sort((a, b) => a.date_debut.localeCompare(b.date_debut))) {
-    if (ABSENCE_TYPES.includes(e.type) || e.type === 'Heures Exceptionnelles') continue;
+    if (ABSENCE_TYPES.includes(e.type) || e.type === 'Heures Exceptionnelles' || e.type === FERMETURE) continue;
     const cle = e.parent_id || e.id;
     if (!cle || (e.date_fin < auj && cle !== dejaLie)) continue;
     const deja = parCle.get(cle);
@@ -741,7 +754,7 @@ function plagesTravail(m: MembreEquipe, dk: string, evs: Evenement[], slotIgnore
     });
     segments.forEach(s => intervals.push({ start: timeToMins(s.debut), end: timeToMins(s.fin, true) }));
   }
-  evs.filter(e => !ABSENCE_TYPES.includes(e.type) && concerne(e) && e.heure_debut && e.heure_fin
+  evs.filter(e => !ABSENCE_TYPES.includes(e.type) && e.type !== FERMETURE && concerne(e) && e.heure_debut && e.heure_fin
     && !(slotIgnore && e.id?.startsWith(prefixeHS(slotIgnore))))
     .forEach(e => intervals.push({ start: timeToMins(e.heure_debut!), end: timeToMins(e.heure_fin!, true) }));
   return mergeIntervals(intervals).map(i => ({ debut: i.start, fin: i.end }));
@@ -1410,7 +1423,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
     if (w) { w.document.write(html); w.document.close(); w.focus(); setTimeout(() => w.print(), 700); }
     setIsGeneratingPdf(false);
   };
-  const mainTypeUI = isAbsenceType ? 'Absence' : (['Réunion', 'Animation', 'Soirée Jeux', 'Heures Exceptionnelles'].includes(nouvelEvent.type) ? nouvelEvent.type : 'Autre');
+  const mainTypeUI = isAbsenceType ? 'Absence' : (['Réunion', 'Animation', 'Soirée Jeux', 'Heures Exceptionnelles', FERMETURE].includes(nouvelEvent.type) ? nouvelEvent.type : 'Autre');
   const absTypeUI = nouvelEvent.type.includes('RTT') ? 'RTT' : nouvelEvent.type.includes('Récupération') ? 'Récupération' : nouvelEvent.type.includes('Formation') ? 'Formation' : 'Congé';
   const isDemiUI = nouvelEvent.type.startsWith('Demi-');
 
@@ -1995,7 +2008,9 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
           dateKey, dansLeMois: isSameMonth(jour, mois), ferie,
           vacances: vacances[dateKey] ?? [],
           presences: [...parHoraire.entries()].sort((a, b) => a[1].debut.localeCompare(b[1].debut)).map(([horaire, v]) => ({ horaire, noms: v.noms })),
-          evenements: evs.filter(e => !ABSENCE_TYPES.includes(e.type))
+          fermetures: evs.filter(e => e.type === FERMETURE).map(e =>
+            [plage(e.heure_debut, e.heure_fin), e.titre && e.titre !== FERMETURE ? e.titre : null].filter(Boolean).join(' · ')),
+          evenements: evs.filter(e => !ABSENCE_TYPES.includes(e.type) && e.type !== FERMETURE)
             .sort((a, b) => (a.heure_debut || '').localeCompare(b.heure_debut || ''))
             .map(e => ({ horaire: plage(e.heure_debut, e.heure_fin), type: e.type, titre: e.titre, qui: quiEvenement(e.membres) })),
           // Toute l'équipe absente (fermeture) : une mention plutôt que six prénoms.
@@ -2078,12 +2093,23 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
     eachDayOfInterval({ start: startOfWeek(planningDate, { weekStartsOn: 1 }), end: endOfWeek(planningDate, { weekStartsOn: 1 }) }).slice(1, 6),
   [planningDate]);
 
+  // Fermetures d'une journée entière : bloquées dans le planning comme un férié.
+  const planningFermetures = useMemo(() => {
+    const out: Record<string, string> = {};
+    planningDays.forEach(d => {
+      const dk = format(d, 'yyyy-MM-dd');
+      const f = evenements.find(e => estFermetureJournee(e) && e.date_debut <= dk && e.date_fin >= dk);
+      if (f) out[dk] = f.titre && f.titre !== FERMETURE ? f.titre : 'Fermeture exceptionnelle';
+    });
+    return out;
+  }, [planningDays, evenements]);
+
   const planningJoursFeries = useMemo(() => {
     const years = [...new Set(planningDays.map(d => d.getFullYear()))];
-    const merged = Object.assign({}, ...years.map(y => getJoursFeriesLocaux(y)));
+    const merged: Record<string, string> = { ...planningFermetures, ...Object.assign({}, ...years.map(y => getJoursFeriesLocaux(y))) };
     planningFeriesRef.current = merged;
     return merged;
-  }, [planningDays]);
+  }, [planningDays, planningFermetures]);
   
   const [alertes, setAlertes] = useState<{amplitude: string[], heuresSupp: string[]}>({amplitude: [], heuresSupp: []});
   const [currentTimePct, setCurrentTimePct] = useState(() => {
@@ -2480,7 +2506,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
                     {/* Header row: event dots + vacation pastilles + day number */}
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: isMobile ? "4px 4px 2px" : "7px 7px 4px", zIndex: 20, pointerEvents: "none" }}>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 3, flex: 1, marginRight: 4, marginTop: 2 }}>
-                        {!nomFerie && evenementsDuJour.filter(e => !['Soirée Jeux', 'Heures Exceptionnelles'].includes(e.type)).map((ev, idx) => (
+                        {!nomFerie && evenementsDuJour.filter(e => !['Soirée Jeux', 'Heures Exceptionnelles', FERMETURE].includes(e.type)).map((ev, idx) => (
                           <div key={`dot-${idx}`} style={{ width: 9, height: 9, borderRadius: "50%", backgroundColor: getEventColor(ev.type), border: "1.5px solid var(--ink)", flexShrink: 0 }}></div>
                         ))}
                       </div>
@@ -2508,6 +2534,13 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
 
                     {/* Event blocks — overflow:visible so rotated stickers aren't clipped by the header */}
                     <div style={{ flex: 1, display: "flex", flexDirection: "column", padding: isMobile ? "0 3px 3px" : "0 5px 5px", gap: isMobile ? 2 : 4, zIndex: 10 }}>
+                      {evenementsDuJour.filter(e => e.type === FERMETURE).map((ev, idx) => (
+                        <div key={`ferm-${idx}`} className="bc" onClick={e => { e.stopPropagation(); ouvrirEditionEvenement(ev, 'single'); }}
+                          title={ev.titre || FERMETURE}
+                          style={{ background: "repeating-linear-gradient(-45deg, #d4d4d4 0 5px, #bdbdbd 5px 10px)", border: "2px solid var(--ink)", borderRadius: 6, padding: "4px 7px", fontWeight: 900, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.06em", boxShadow: "2px 2px 0 var(--ink)", lineHeight: 1.2, cursor: "pointer", pointerEvents: "auto", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          🔒 Fermé{ev.heure_debut && ev.heure_fin ? ` ${ev.heure_debut}–${ev.heure_fin}` : ''}{ev.titre && ev.titre !== FERMETURE ? ` · ${ev.titre}` : ''}
+                        </div>
+                      ))}
                       {nomFerie && (
                         <div className="bc" style={{ background: "var(--yellow)", border: "2px solid var(--ink)", borderRadius: 6, padding: "4px 7px", fontWeight: 900, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.06em", boxShadow: "2px 2px 0 var(--ink)", transform: "rotate(-2deg)", transformOrigin: "center", alignSelf: "stretch", lineHeight: 1.2 }}>
                           {nomFerie}
@@ -3362,6 +3395,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
                     { key: 'Animation', color: "var(--orange)" },
                     { key: 'Soirée Jeux', color: "var(--purple)" },
                     { key: 'Heures Exceptionnelles', label: 'H. Excep.', color: "var(--vert)" },
+                    { key: FERMETURE, label: '🔒 Fermeture', color: "#a3a3a3" },
                   ] as const).map(t => (
                     <button key={t.key} type="button" onClick={() => setMainType(t.key as any)}
                       className="pop-btn"
@@ -3699,7 +3733,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
                           <div key={dk} className={today ? 'today-hatch' : ''} style={{ position: "relative", borderRight: "1px solid rgba(0,0,0,0.08)", background: ferie && !today ? "repeating-linear-gradient(-45deg, rgba(0,0,0,0.025) 0 4px, transparent 4px 10px)" : undefined }}>
                             {ferie && (
                               <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, zIndex: 30, pointerEvents: "none" }}>
-                                <span className="bc" style={{ fontSize: 11, fontWeight: 900, color: "rgba(0,0,0,0.25)", textTransform: "uppercase", letterSpacing: "0.08em", textAlign: "center", padding: "0 4px" }}>Jour férié</span>
+                                <span className="bc" style={{ fontSize: 11, fontWeight: 900, color: "rgba(0,0,0,0.25)", textTransform: "uppercase", letterSpacing: "0.08em", textAlign: "center", padding: "0 4px" }}>{planningFermetures[dk] && !getJoursFeriesLocaux(jour.getFullYear())[dk] ? '🔒 Fermé' : 'Jour férié'}</span>
                                 <span style={{ fontSize: 10, color: "rgba(0,0,0,0.18)", fontWeight: 700, textAlign: "center", padding: "0 4px" }}>{ferie}</span>
                               </div>
                             )}

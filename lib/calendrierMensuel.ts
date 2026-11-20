@@ -13,6 +13,8 @@ export type JourCalendrier = {
   dateKey: string;
   dansLeMois: boolean;
   ferie: string | null;
+  /** Fermetures exceptionnelles du jour : horaire et/ou motif, vide pour une journée entière sans motif. */
+  fermetures: string[];
   vacances: string[];
   presences: { horaire: string; noms: string[] }[];
   evenements: { horaire: string | null; type: string; titre: string; qui: string | null }[];
@@ -63,7 +65,7 @@ function titreCourt(type: string, titre: string) {
  */
 function lignesEstimees(j: JourCalendrier, parLigne: number) {
   const n = (texte: string) => Math.max(1, Math.ceil(texte.length / parLigne));
-  return (j.ferie || j.vacances.length ? 1.3 : 0)
+  return (j.ferie || j.fermetures.length || j.vacances.length ? 1.3 : 0)
     // Un cartouche : sa ligne d'en-tête (horaire, type), puis le titre, plus son cadre.
     + j.evenements.reduce((t, e) => t + 1.5 + n(`${titreCourt(e.type, e.titre)} · ${e.qui ?? ''}`), 0)
     + j.absences.reduce((t, a) => t + 0.3 + n(`${a.type} ${a.horaire ?? ''} ${a.noms.join(', ')}`), 0)
@@ -99,6 +101,7 @@ function cellule(j: JourCalendrier, hauteurMm: number, parLigne: number) {
 
   const tete: string[] = [];
   if (j.ferie) tete.push(`<span class="pill ferie">${echapper(j.ferie)}</span>`);
+  for (const f of j.fermetures) tete.push(`<span class="pill ferie">Fermé${f ? ` · ${echapper(f)}` : ''}</span>`);
   if (j.vacances.length) tete.push(`<span class="pill vac">Vacances ${j.vacances.map(z => z.replace('Zone ', '')).join('·')}</span>`);
 
   const corps: string[] = [];

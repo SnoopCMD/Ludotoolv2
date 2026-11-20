@@ -96,7 +96,11 @@ const TYPES_EV: Record<string, { icone: string; couleur: string }> = {
   "Partenariat": { icone: "🤝", couleur: "var(--rose)" },
   "Autre":       { icone: "📌", couleur: "var(--cream2)" },
 };
-const typeEv = (t: string) => TYPES_EV[t] ?? TYPES_EV["Autre"];
+// Types qui n'existent que dans l'agenda : affichés ici (frise « À venir »), pas proposés pour un événement du Bureau.
+const TYPES_AGENDA: Record<string, { icone: string; couleur: string }> = {
+  "Fermeture exceptionnelle": { icone: "🔒", couleur: "#d4d4d4" },
+};
+const typeEv = (t: string) => TYPES_EV[t] ?? TYPES_AGENDA[t] ?? TYPES_EV["Autre"];
 
 const STATUTS_EV: { v: string; label: string; couleur: string }[] = [
   { v: "idee",        label: "💡 Idée",           couleur: "var(--cream2)" },
