@@ -26,7 +26,7 @@ type MembreEquipe = {
   absences_hs?: AbsenceHS[];
   horaires: any;
 };
-type Evenement = { id?: string; parent_id?: string; titre: string; type: string; date_debut: string; date_fin: string; heure_debut?: string; heure_fin?: string; membres: string[]; };
+type Evenement = { id?: string; parent_id?: string; titre: string; type: string; date_debut: string; date_fin: string; heure_debut?: string; heure_fin?: string; membres: string[]; non_travaille?: number | boolean; };
 /**
  * `room` : 'principale', ou l'id d'un bloc spécial (`planning_blocs`, 'jv' pour
  * les jeux vidéo). `bloc` garde le nom, l'icône, la couleur et l'effectif du
@@ -74,6 +74,8 @@ const HEURE_FIN = 24;
 const FERMETURE = 'Fermeture exceptionnelle';
 const estFermetureJournee = (e: { type: string; heure_debut?: string; heure_fin?: string }) =>
   e.type === FERMETURE && !(e.heure_debut && e.heure_fin);
+/** Fermeture d'une journée entière cochée « non travaillée » : elle compte comme un jour férié. */
+const estFermetureNonTravaillee = (e: Evenement) => estFermetureJournee(e) && !!Number(e.non_travaille);
 
 const ABSENCE_TYPES = ['Congé', 'Demi-Congé', 'RTT', 'Demi-RTT', 'Récupération', 'Demi-Récupération', 'Formation', 'Demi-Formation'];
 
@@ -807,7 +809,8 @@ export default function AgendaPage() {
   const isMobile = useIsMobile();
   const [vue, setVue] = useState<"Mois" | "Semaine">("Mois");
   const [dateActuelle, setDateActuelle] = useState(new Date());
-  const [joursFeries, setJoursFeries] = useState<Record<string, string>>({});
+  // Fériés officiels (API), puis `joursFeries` = ces fériés + les fermetures non travaillées, plus bas.
+  const [joursFeriesOfficiels, setJoursFeries] = useState<Record<string, string>>({});
   const [vacances, setVacances] = useState<Record<string, string[]>>({});
   
   const [showSettings, setShowSettings] = useState(false);
@@ -899,6 +902,20 @@ useEffect(() => {
   
   const activeEquipe = isDraftMode ? draftEquipe : equipe;
   const activeEvenements = isDraftMode ? draftEvenements : evenements;
+
+  // Fermetures non travaillées : traitées partout comme des fériés (présences,
+  // heures attendues, décompte des congés). Le nom officiel l'emporte s'il y a les deux.
+  const fermeturesNonTravaillees = useMemo(() => {
+    const out: Record<string, string> = {};
+    activeEvenements.filter(estFermetureNonTravaillee).forEach(e => {
+      try {
+        eachDayOfInterval({ start: new Date(e.date_debut + 'T12:00:00'), end: new Date(e.date_fin + 'T12:00:00') })
+          .forEach(d => { out[format(d, 'yyyy-MM-dd')] = e.titre && e.titre !== FERMETURE ? e.titre : 'Fermeture exceptionnelle'; });
+      } catch { /* dates invalides : ignorées */ }
+    });
+    return out;
+  }, [activeEvenements]);
+  const joursFeries = useMemo(() => ({ ...fermeturesNonTravaillees, ...joursFeriesOfficiels }), [fermeturesNonTravaillees, joursFeriesOfficiels]);
 
   const [showEquipePanel, setShowEquipePanel] = useState(false);
   const [membreActif, setMembreActif] = useState<MembreEquipe | null>(null);
@@ -1560,7 +1577,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
           const { id, ...rest } = ev;
           await fetch('/api/evenements', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(rest) });
         } else if (ev.id) {
-          await fetch(`/api/evenements/${ev.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ titre: ev.titre, type: ev.type, date_debut: ev.date_debut, date_fin: ev.date_fin, heure_debut: ev.heure_debut, heure_fin: ev.heure_fin, membres: ev.membres, parent_id: ev.parent_id }) });
+          await fetch(`/api/evenements/${ev.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ titre: ev.titre, type: ev.type, date_debut: ev.date_debut, date_fin: ev.date_fin, heure_debut: ev.heure_debut, heure_fin: ev.heure_fin, membres: ev.membres, parent_id: ev.parent_id, non_travaille: ev.non_travaille ? 1 : 0 }) });
         }
       }
       for (const delId of draftDeletedEvents) await fetch(`/api/evenements/${delId}`, { method: 'DELETE' });
@@ -1619,6 +1636,8 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
     if (!nouvelEvent.titre || !nouvelEvent.date_debut) return alert("Veuillez remplir au moins le titre et la date de début.");
     
     const occurrences: any[] = [];
+    // « Non travaillé » n'a de sens que pour une fermeture d'une journée entière.
+    const nonTravaille = nouvelEvent.type === FERMETURE && !(nouvelEvent.heure_debut && nouvelEvent.heure_fin) && !!Number(nouvelEvent.non_travaille) ? 1 : 0;
     const isActiveSeries = editMode === 'series' || (rep.active && !nouvelEvent.id);
     const parentId = isActiveSeries ? (nouvelEvent.parent_id || `grp-${Date.now()}`) : (editMode === 'single' ? nouvelEvent.parent_id : undefined);
 
@@ -1645,7 +1664,8 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
            date_fin: strFin,
            heure_debut: nouvelEvent.heure_debut || null,
            heure_fin: nouvelEvent.heure_fin || null,
-           membres: occMembres
+           membres: nouvelEvent.type === FERMETURE ? [] : occMembres,
+           non_travaille: nonTravaille,
          });
          
          if (rep.period === 'weeks') {
@@ -1669,7 +1689,9 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
            date_fin: nouvelEvent.date_fin,
            heure_debut: nouvelEvent.heure_debut || null,
            heure_fin: nouvelEvent.heure_fin || null,
-           membres: nouvelEvent.membres
+           // Une fermeture concerne la ludothèque, pas des personnes.
+           membres: nouvelEvent.type === FERMETURE ? [] : nouvelEvent.membres,
+           non_travaille: nonTravaille,
        });
     }
 
@@ -1967,7 +1989,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
     const NOMS_JOURS = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
     return [...moisCoches].sort().map(cle => {
       const mois = new Date(`${cle}-01T12:00:00`);
-      const feries: Record<string, string> = { ...getJoursFeriesLocaux(mois.getFullYear()), ...joursFeries };
+      const feries: Record<string, string> = { ...getJoursFeriesLocaux(mois.getFullYear()), ...joursFeriesOfficiels };
       const jours = eachDayOfInterval({ start: startOfWeek(mois, { weekStartsOn: 1 }), end: endOfWeek(endOfMonth(mois), { weekStartsOn: 1 }) });
       const contenu: JourCalendrier[] = jours.map(jour => {
         const dateKey = format(jour, 'yyyy-MM-dd');
@@ -1976,7 +1998,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
         const absEvs = evs.filter(e => ABSENCE_TYPES.includes(e.type));
 
         const parHoraire = new Map<string, { debut: string; noms: string[] }>();
-        if (horaires && !ferie) {
+        if (horaires && !ferie && !fermeturesNonTravaillees[dateKey]) {
           const typeSemaine = getISOWeek(jour) % 2 !== 0 ? 'semaineA' : 'semaineB';
           const nomJour = format(jour, 'EEEE', { locale: fr }).toLowerCase();
           activeEquipe.forEach(m => {
@@ -2541,7 +2563,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
                           🔒 Fermé{ev.heure_debut && ev.heure_fin ? ` ${ev.heure_debut}–${ev.heure_fin}` : ''}{ev.titre && ev.titre !== FERMETURE ? ` · ${ev.titre}` : ''}
                         </div>
                       ))}
-                      {nomFerie && (
+                      {nomFerie && joursFeriesOfficiels[dateKey] && (
                         <div className="bc" style={{ background: "var(--yellow)", border: "2px solid var(--ink)", borderRadius: 6, padding: "4px 7px", fontWeight: 900, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.06em", boxShadow: "2px 2px 0 var(--ink)", transform: "rotate(-2deg)", transformOrigin: "center", alignSelf: "stretch", lineHeight: 1.2 }}>
                           {nomFerie}
                         </div>
@@ -2686,7 +2708,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
                       <VacancePastilles zones={zonesVacances} size={16} style={{ position: "absolute", top: 6, right: 6, zIndex: 30 }} />
 
                       {/* Ferie block — full column */}
-                      {nomFerie && (
+                      {nomFerie && joursFeriesOfficiels[dateKey] && (
                         <div style={{ position: "absolute", top: 6, left: 4, right: 4, bottom: 6, zIndex: 25, pointerEvents: "none", display: "flex", alignItems: "center", justifyContent: "center" }}>
                           <div className="bc" style={{ width: "100%", height: "100%", background: "var(--yellow)", border: "2px solid var(--ink)", borderRadius: 8, boxShadow: "2px 2px 0 var(--ink)", display: "flex", alignItems: "center", justifyContent: "center", transform: "rotate(-2deg)", padding: 8 }}>
                             <span style={{ fontWeight: 900, fontSize: 12, textTransform: "uppercase", letterSpacing: "0.07em", textAlign: "center", lineHeight: 1.3 }}>{nomFerie}</span>
@@ -3450,8 +3472,27 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
                 </div>
               </div>
 
+              {/* Fermeture : pas de personnes, mais « jour non travaillé » (journée entière seulement) */}
+              {mainTypeUI === FERMETURE && (
+                nouvelEvent.heure_debut && nouvelEvent.heure_fin ? (
+                  <p style={{ fontSize: 12, color: "rgba(0,0,0,0.5)", margin: 0 }}>
+                    Fermeture sur ces horaires seulement : l’équipe garde ses horaires habituels.
+                  </p>
+                ) : (
+                  <label className="pop-card" style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "10px 12px", cursor: "pointer", background: Number(nouvelEvent.non_travaille) ? "var(--yellow)" : "var(--white)" }}>
+                    <input type="checkbox" checked={!!Number(nouvelEvent.non_travaille)} onChange={e => setNouvelEvent({ ...nouvelEvent, non_travaille: e.target.checked ? 1 : 0 })} style={{ width: 16, height: 16, marginTop: 2, accentColor: "var(--ink)", flexShrink: 0 }} />
+                    <span>
+                      <span style={{ fontWeight: 800, fontSize: 13 }}>Jour non travaillé</span>
+                      <span style={{ display: "block", fontSize: 11, color: "rgba(0,0,0,0.55)", marginTop: 2 }}>
+                        Compte comme un jour férié : pas d’horaires d’équipe, pas d’heures attendues, pas décompté des congés. Décoché, l’équipe travaille en interne.
+                      </span>
+                    </span>
+                  </label>
+                )
+              )}
+
               {/* Personnes */}
-              <div>
+              {mainTypeUI !== FERMETURE && <div>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
                   <span style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.07em", color: "rgba(0,0,0,0.4)" }}>Personnes concernées</span>
                   <div style={{ display: "flex", gap: 5 }}>
@@ -3476,7 +3517,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
                     );
                   })}
                 </div>
-              </div>
+              </div>}
 
               {/* Horaires exceptionnels */}
               {((mainTypeUI === 'Soirée Jeux' || isDemiUI) && nouvelEvent.membres.length > 0) && (
@@ -4158,7 +4199,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
               <div style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
                 {nomFerieHov && (
                   <div className="bc" style={{ background: "var(--yellow)", border: "2px solid var(--ink)", borderRadius: 6, padding: "4px 8px", fontSize: 11, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.05em", boxShadow: "2px 2px 0 var(--ink)", transform: "rotate(-1deg)", alignSelf: "flex-start" }}>
-                    🎉 {nomFerieHov}
+                    {joursFeriesOfficiels[hoveredDay] ? '🎉' : '🔒'} {nomFerieHov}
                   </div>
                 )}
                 {blocsHov.map((bloc: any, idx: number) => {
@@ -4250,7 +4291,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
               <div style={{ padding: "20px", display: "flex", flexDirection: "column", gap: 14, overflowY: "auto" }}>
                 {nomFerieSel && (
                   <div className="bc" style={{ background: "var(--yellow)", border: "2.5px solid var(--ink)", borderRadius: 8, padding: "8px 14px", fontWeight: 900, fontSize: 14, textTransform: "uppercase", letterSpacing: "0.06em", boxShadow: "3px 3px 0 var(--ink)", transform: "rotate(-1.5deg)", alignSelf: "flex-start" }}>
-                    🎉 {nomFerieSel}
+                    {joursFeriesOfficiels[selectedDay] ? '🎉' : '🔒'} {nomFerieSel}
                   </div>
                 )}
 
