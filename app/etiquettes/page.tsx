@@ -412,7 +412,7 @@ function EtiquettesPageInner() {
 
                     {/* Alpha scroll sidebar — masquée sur téléphone : 28px de
                         large pour 26 lettres, ce n'est pas visable au doigt. */}
-                    {!isMobile && (
+                    {!isMobile && !filtreActif && (
                     <div style={{
                       display: "flex", flexDirection: "column", alignItems: "center",
                       justifyContent: "space-between",

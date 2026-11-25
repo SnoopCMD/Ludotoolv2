@@ -338,7 +338,7 @@ function ContenuPageInner() {
                     {/* Alpha scroll — retiré sur téléphone : 22px de large
                         pour 26 lettres, ce n'est pas visable au doigt et ça
                         prend une colonne sur une largeur déjà comptée. */}
-                    {!isMobile && (
+                    {!isMobile && !filtreActif && (
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 112, height: 'calc(100dvh - 160px)', background: 'var(--white)', border: '2px solid var(--ink)', borderRadius: 20, padding: '6px 3px', boxShadow: '2px 2px 0 var(--ink)', width: 22, flexShrink: 0 }}>
                       {"ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").map(l => (
                         <button key={l} onClick={() => scrollToLetter(l, cat.id)} style={{ fontSize: 8, fontWeight: 900, color: 'rgba(0,0,0,0.35)', background: 'none', border: 'none', cursor: 'pointer', flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%' }}
