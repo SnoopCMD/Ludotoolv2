@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+  # Relance à la main depuis l'onglet Actions (si un push n'a pas déclenché de déploiement).
+  workflow_dispatch:
 
 jobs:
   deploy:
