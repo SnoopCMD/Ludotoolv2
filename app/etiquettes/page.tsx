@@ -83,6 +83,8 @@ function EtiquettesPageInner() {
     vert: false, rose: false, bleu: false, rouge: false, jaune: false
   });
   const [recherche, setRecherche] = useState(searchParams.get("nom") ?? "");
+  // Filtre des lignes des tableaux (distinct de la recherche du générateur, à droite).
+  const [filtre, setFiltre] = useState("");
   // Catalogue tel que chargé (pour imprimer aussi le contenu) et codes Syracuse par EAN (recherche).
   const [catalogue, setCatalogue] = useState<Map<string, LigneCatalogue>>(new Map());
   const [codesSyracuse, setCodesSyracuse] = useState<Record<string, string[]>>({});
@@ -316,6 +318,10 @@ function EtiquettesPageInner() {
 
   const totalEtiquettes = Object.values(etiquettes).flat().reduce((sum, eti) => sum + eti.quantity, 0);
 
+  /** Lignes d'une couleur qui passent le filtre (une étiquette toute neuve, sans nom ni EAN, reste visible). */
+  const lignesFiltrees = (couleurId: string) => etiquettes[couleurId].filter(e =>
+    (!e.nom && !e.ean) || correspondance(filtre, e.nom, e.ean, codesSyracuse[e.ean]).ok);
+
   return (
     <div style={{ minHeight: "100dvh", background: "var(--cream)", display: "flex", flexDirection: "column" }}>
 
@@ -326,11 +332,24 @@ function EtiquettesPageInner() {
 
         {/* Accordions */}
         <main style={{ flex: 1, display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
+          <div style={{ position: "relative" }}>
+            <input type="text" value={filtre} onChange={e => setFiltre(e.target.value)} placeholder="🔍 Filtrer les étiquettes : nom, EAN ou code Syracuse…"
+              className="pop-input" style={{ width: "100%", fontSize: 15, paddingRight: filtre ? 40 : undefined }} />
+            {filtre && <button onClick={() => setFiltre("")} title="Effacer le filtre" style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", fontSize: 16, fontWeight: 900, cursor: "pointer" }}>✕</button>}
+          </div>
+
+          {filtre.trim() && CATEGORIES.every(cat => lignesFiltrees(cat.id).length === 0) && (
+            <p style={{ textAlign: "center", color: "rgba(0,0,0,0.45)", padding: "16px 0", fontSize: 15, fontWeight: 700 }}>Aucune étiquette ne correspond à « {filtre.trim()} ».</p>
+          )}
+
           {CATEGORIES.map((cat) => {
-            const nbIncomplets = etiquettes[cat.id].filter(eti =>
+            const lignes = lignesFiltrees(cat.id);
+            const filtreActif = !!filtre.trim();
+            if (filtreActif && lignes.length === 0) return null;
+            const nbIncomplets = lignes.filter(eti =>
               !eti.nom || !eti.mecanique || !eti.nb_de_joueurs || !eti.coop_versus || !eti.temps_de_jeu || eti.etoiles === ""
             ).length;
-            const isOpen = sectionsOuvertes[cat.id];
+            const isOpen = sectionsOuvertes[cat.id] || filtreActif;
 
             return (
               <div key={cat.id} id={`category-${cat.id}`} className="pop-card" style={{ borderRadius: 10, overflow: "visible", position: "relative", zIndex: 20 }}>
@@ -354,7 +373,7 @@ function EtiquettesPageInner() {
                     <span style={{
                       background: "rgba(0,0,0,0.12)", color: "var(--ink)",
                       borderRadius: 20, padding: "2px 10px", fontSize: 13, fontWeight: 700,
-                    }}>{etiquettes[cat.id].length} jeu(x)</span>
+                    }}>{filtreActif ? `${lignes.length} / ${etiquettes[cat.id].length}` : etiquettes[cat.id].length} jeu(x)</span>
                     {nbIncomplets > 0 && (
                       <span style={{
                         background: "var(--rouge)", color: "var(--white)",
@@ -439,14 +458,14 @@ function EtiquettesPageInner() {
                           </tr>
                         </thead>
                         <tbody>
-                          {etiquettes[cat.id].length === 0 ? (
+                          {lignes.length === 0 ? (
                             <tr>
                               <td colSpan={9} style={{ textAlign: "center", padding: "32px 0", color: "rgba(0,0,0,0.35)", fontWeight: 700, fontSize: 15 }}>
                                 Aucune étiquette — appuyez sur + dans l'en-tête.
                               </td>
                             </tr>
                           ) : (
-                            etiquettes[cat.id].map((eti) => {
+                            lignes.map((eti) => {
                               const isIncomplet = !eti.nom || !eti.mecanique || !eti.nb_de_joueurs || !eti.coop_versus || !eti.temps_de_jeu || eti.etoiles === "";
                               const startLetter = eti.nom ? eti.nom.charAt(0).toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "") : "";
                               const rowBg = eti.quantity > 0

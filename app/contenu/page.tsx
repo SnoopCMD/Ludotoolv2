@@ -4,7 +4,7 @@ import { useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { useIsMobile } from "../../lib/useIsMobile";
 import BoutonScan from "../../components/ScanCodeBarre";
-import { ETAPES_A_ZERO } from "../../lib/etapesAtelier";
+import { ETAPES_A_ZERO, ETAPES_ATELIER, COLONNES_ETAPES, etapeCourante } from "../../lib/etapesAtelier";
 import EnteteImpression, { CaseImpressionDouble } from "../../components/EnteteImpression";
 import {
   chargerCodesSyracuse, correspondance, eanDuCode, etiquettesPour, lireImpressionDouble, ecrireImpressionDouble,
@@ -21,6 +21,9 @@ const CATEGORIES = [
   { id: "rouge", nom: "Rouge", hex: "#f87171" },
   { id: "jaune", nom: "Jaune", hex: "#fb923c" },
 ];
+
+/** Étape 3 de l'atelier : vérification des pièces et création du contenu sur LudoTool. */
+const ETAPE_CONTENU = ETAPES_ATELIER.find(e => e.id === "etape_verification")!;
 
 export type ContenuType = {
   id: string | number;
@@ -50,12 +53,27 @@ function ContenuPageInner() {
   const [catalogue, setCatalogue] = useState<Map<string, LigneCatalogue>>(new Map());
   const [codesSyracuse, setCodesSyracuse] = useState<Record<string, string[]>>({});
   const [impressionDouble, setImpressionDouble] = useState(false);
+  // Filtre des lignes des tableaux (distinct de la recherche du générateur, à droite).
+  const [filtre, setFiltre] = useState("");
+  // Jeux de l'atelier arrivés à l'étape « Vérification et contenu » : leur fiche est à faire ici.
+  const [jeuxEtapeContenu, setJeuxEtapeContenu] = useState<{ ean: string; nom: string }[]>([]);
 
   useEffect(() => {
     setIsClient(true);
     chargerCatalogue();
     chargerCodesSyracuse().then(setCodesSyracuse);
     setImpressionDouble(lireImpressionDouble());
+    const champs = ['ean', 'nom', 'is_double', ...COLONNES_ETAPES].join(',');
+    fetch(`/api/jeux?statut=${encodeURIComponent('En préparation')}&fields=${champs}`, { cache: 'no-store' })
+      .then(r => r.json() as Promise<Record<string, unknown>[]>).catch(() => null)
+      .then(data => {
+        if (!Array.isArray(data)) return;
+        const vus = new Set<string>();
+        setJeuxEtapeContenu(data
+          .filter(j => j.ean && etapeCourante(j)?.id === ETAPE_CONTENU.id)
+          .filter(j => !vus.has(String(j.ean)) && !!vus.add(String(j.ean)))
+          .map(j => ({ ean: String(j.ean), nom: String(j.nom || j.ean) })));
+      });
   }, []);
 
   const chargerCatalogue = async () => {
@@ -176,6 +194,23 @@ function ContenuPageInner() {
     setAjoutScan({ texte: `✓ ${x.nom || ean} ajouté (×${x.quantity + 1})`, ok: true });
   };
 
+  /** Ouvre la fiche d'un jeu (section et ligne) et la fait défiler à l'écran. */
+  const allerALaFiche = (couleurId: string, id: string | number) => {
+    setFiltre("");
+    setSectionsOuvertes(prev => ({ ...prev, [couleurId]: true }));
+    setContenus(prev => ({ ...prev, [couleurId]: prev[couleurId].map(c => c.id === id ? { ...c, isOpen: true } : c) }));
+    setTimeout(() => {
+      document.querySelector(`[data-fiche="${CSS.escape(String(id))}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 150);
+  };
+
+  /** Jeu de l'atelier sans fiche au catalogue : on la crée dans la couleur choisie, déjà ouverte. */
+  const creerFiche = (couleurId: string, jeu: { ean: string; nom: string }) => {
+    const id = `nouveau-${jeu.ean}`;
+    setContenus(prev => ({ ...prev, [couleurId]: [{ id, ean: jeu.ean, nom: jeu.nom, elements: "", quantity: 0, isOpen: true }, ...prev[couleurId]] }));
+    allerALaFiche(couleurId, id);
+  };
+
   const supprimerLigne = (couleurId: string, id: string | number) => {
     setContenus(prev => ({ ...prev, [couleurId]: prev[couleurId].filter(c => c.id !== id) }));
   };
@@ -211,6 +246,10 @@ function ContenuPageInner() {
     }
   };
 
+  /** Lignes d'une couleur qui passent le filtre (une fiche toute neuve, sans nom ni EAN, reste visible). */
+  const lignesFiltrees = (couleurId: string) => contenus[couleurId].filter(c =>
+    (!c.nom && !c.ean) || correspondance(filtre, c.nom, c.ean, codesSyracuse[c.ean]).ok);
+
   const totalContenus = Object.values(contenus).flat().reduce((sum, c) => sum + c.quantity, 0);
 
   return (
@@ -221,9 +260,62 @@ function ContenuPageInner() {
 
         {/* ── MAIN ── */}
         <main style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
+          <div style={{ position: 'relative' }}>
+            <input type="text" value={filtre} onChange={e => setFiltre(e.target.value)} placeholder="🔍 Filtrer les fiches : nom, EAN ou code Syracuse…"
+              className="pop-input" style={{ width: '100%', fontSize: 15, paddingRight: filtre ? 40 : undefined }} />
+            {filtre && <button onClick={() => setFiltre("")} title="Effacer le filtre" style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', fontSize: 16, fontWeight: 900, cursor: 'pointer' }}>✕</button>}
+          </div>
+
+          {/* Jeux à l'étape 3 de l'atelier dont le contenu reste à écrire */}
+          {(() => {
+            const parEan = new Map(Object.entries(contenus).flatMap(([couleur, l]) => l.filter(c => c.ean).map(c => [c.ean, { couleur, c }] as const)));
+            const aFaire = jeuxEtapeContenu
+              .map(j => ({ j, fiche: parEan.get(j.ean) }))
+              .filter(({ fiche }) => !fiche || !fiche.c.elements || fiche.c.elements.trim() === "");
+            if (!aFaire.length) return null;
+            return (
+              <div style={{ background: 'var(--white)', border: '2.5px solid var(--ink)', borderRadius: 10, boxShadow: '4px 4px 0 var(--ink)', overflow: 'hidden' }}>
+                <div style={{ background: ETAPE_CONTENU.hex, borderBottom: '2.5px solid var(--ink)', padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <span className="bc" style={{ fontSize: 18, textTransform: 'uppercase' }}>Contenu à créer</span>
+                  <span className="pop-sticker" style={{ background: 'var(--white)', fontSize: 12, boxShadow: 'none' }}>{aFaire.length} jeu{aFaire.length > 1 ? 'x' : ''}</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, opacity: 0.7 }}>Atelier · étape {ETAPE_CONTENU.num} « {ETAPE_CONTENU.nom} »</span>
+                </div>
+                <div style={{ padding: 12, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  {aFaire.map(({ j, fiche }) => {
+                    const cat = fiche ? CATEGORIES.find(k => k.id === fiche.couleur) : null;
+                    return fiche ? (
+                      <button key={j.ean} onClick={() => allerALaFiche(fiche.couleur, fiche.c.id)} title="Ouvrir la fiche pour écrire le contenu"
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#fff7ed', border: '2px solid var(--ink)', borderRadius: 8, padding: '6px 10px', boxShadow: '2px 2px 0 var(--ink)', cursor: 'pointer', fontWeight: 700, fontSize: 14, fontFamily: 'inherit' }}>
+                        <span style={{ width: 10, height: 10, borderRadius: '50%', background: cat?.hex, border: '1.5px solid var(--ink)', flexShrink: 0 }} />
+                        {fiche.c.nom || j.nom} <span style={{ opacity: 0.45 }}>✎</span>
+                      </button>
+                    ) : (
+                      <span key={j.ean} title="Pas encore de fiche : choisir sa couleur pour la créer"
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--white)', border: '2px dashed var(--ink)', borderRadius: 8, padding: '5px 8px 5px 10px', fontWeight: 700, fontSize: 14 }}>
+                        {j.nom}
+                        <span style={{ fontSize: 11, fontWeight: 600, opacity: 0.5 }}>créer en</span>
+                        {CATEGORIES.map(k => (
+                          <button key={k.id} onClick={() => creerFiche(k.id, j)} title={`Créer la fiche en ${k.nom}`} aria-label={`Créer la fiche en ${k.nom}`}
+                            style={{ width: 16, height: 16, borderRadius: '50%', background: k.hex, border: '1.5px solid var(--ink)', cursor: 'pointer', padding: 0 }} />
+                        ))}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
+
+          {filtre.trim() && CATEGORIES.every(cat => lignesFiltrees(cat.id).length === 0) && (
+            <p style={{ textAlign: 'center', color: 'rgba(0,0,0,0.45)', padding: '16px 0', fontSize: 15, fontWeight: 700 }}>Aucune fiche ne correspond à « {filtre.trim()} ».</p>
+          )}
+
           {CATEGORIES.map(cat => {
-            const nbIncomplets = contenus[cat.id].filter(c => !c.elements || c.elements.trim() === "").length;
-            const isOpen = sectionsOuvertes[cat.id];
+            const lignes = lignesFiltrees(cat.id);
+            const filtreActif = !!filtre.trim();
+            if (filtreActif && lignes.length === 0) return null;
+            const nbIncomplets = lignes.filter(c => !c.elements || c.elements.trim() === "").length;
+            const isOpen = sectionsOuvertes[cat.id] || filtreActif;
             return (
               <div key={cat.id} id={`category-${cat.id}`} style={{ borderRadius: 10, position: 'relative', zIndex: 20 }}>
 
@@ -231,7 +323,7 @@ function ContenuPageInner() {
                 <div onClick={() => toggleSection(cat.id)} style={{ position: 'sticky', top: 56, zIndex: 40, background: cat.hex, border: '2.5px solid var(--ink)', borderRadius: isOpen ? '10px 10px 0 0' : 10, boxShadow: isOpen ? 'none' : '4px 4px 0 var(--ink)', padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', userSelect: 'none' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     <span className="bc" style={{ fontSize: 22, textTransform: 'uppercase' }}>{cat.nom}</span>
-                    <span className="pop-sticker" style={{ background: 'rgba(0,0,0,0.15)', border: '2px solid rgba(0,0,0,0.2)', boxShadow: 'none', fontSize: 12 }}>{contenus[cat.id].length} jeu(x)</span>
+                    <span className="pop-sticker" style={{ background: 'rgba(0,0,0,0.15)', border: '2px solid rgba(0,0,0,0.2)', boxShadow: 'none', fontSize: 12 }}>{filtreActif ? `${lignes.length} / ${contenus[cat.id].length}` : contenus[cat.id].length} jeu(x)</span>
                     {nbIncomplets > 0 && <span className="pop-sticker" style={{ background: 'var(--rouge)', color: 'var(--white)', boxShadow: 'none', fontSize: 12 }}>{nbIncomplets} incomplet(s)</span>}
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -262,13 +354,13 @@ function ContenuPageInner() {
                         ➕ Ajouter une fiche {cat.nom}
                       </button>
 
-                      {contenus[cat.id].length === 0 ? (
+                      {lignes.length === 0 ? (
                         <p style={{ textAlign: 'center', color: 'rgba(0,0,0,0.35)', padding: '20px 0', fontSize: 15 }}>Aucune fiche.</p>
-                      ) : contenus[cat.id].map(c => {
+                      ) : lignes.map(c => {
                         const estVide = !c.elements || c.elements.trim() === "";
                         const startLetter = c.nom ? c.nom.charAt(0).toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "") : "";
                         return (
-                          <div key={c.id} data-letter={startLetter} data-category={cat.id}
+                          <div key={c.id} data-letter={startLetter} data-category={cat.id} data-fiche={String(c.id)}
                             style={{ background: estVide && !c.isOpen ? '#fff7ed' : 'var(--white)', border: `2.5px solid ${c.quantity > 0 ? 'var(--ink)' : 'rgba(0,0,0,0.12)'}`, borderRadius: 8, overflow: 'hidden', boxShadow: c.quantity > 0 ? '3px 3px 0 var(--ink)' : 'none', scrollMarginTop: 116 }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', cursor: 'pointer' }} onClick={() => toggleLigne(cat.id, c.id)}>
                               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, width: 52, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
