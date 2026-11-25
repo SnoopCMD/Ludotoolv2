@@ -21,6 +21,8 @@ const HEURE_DEBUT = 8;
 const HEURE_FIN = 21;
 const HEURES_GRILLE = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
 const ABSENCE_TYPES = ["Congé", "Demi-Congé", "RTT", "Demi-RTT", "Récupération", "Demi-Récupération", "Formation", "Demi-Formation"];
+/** Glissement horaire (voir l'agenda) : ses horaires remplacent ceux de la personne ce jour-là. */
+const GLISSEMENT = "Glissement horaire";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -86,8 +88,10 @@ const soustraireHeures = (
 };
 
 const getHoraireForDay = (
-  membre: MembreEquipe, dateKey: string, nomJour: string, typeSemaine: string
+  membre: MembreEquipe, dateKey: string, nomJour: string, typeSemaine: string, evs?: Evenement[]
 ): { debut: string; fin: string; pause: number } | null => {
+  const g = evs?.filter(e => e.type === GLISSEMENT && e.heure_debut && e.heure_fin && e.date_debut <= dateKey && e.date_fin >= dateKey && e.membres.includes(membre.id)).at(-1);
+  if (g) return { debut: g.heure_debut!, fin: g.heure_fin!, pause: 1 };
   if (membre.horaires?.exceptions?.[dateKey]) {
     const ex = membre.horaires.exceptions[dateKey];
     if (!ex.debut || !ex.fin) return null;
@@ -162,6 +166,7 @@ const getEventStyle = (type: string): React.CSSProperties => {
   if (type === "Animation") return { background: "var(--orange)", color: "var(--ink)", border: "1.5px solid var(--ink)" };
   if (type === "Soirée Jeux") return { background: "var(--purple)", color: "var(--ink)", border: "1.5px solid var(--ink)" };
   if (type === "Heures Exceptionnelles") return { background: "var(--yellow)", color: "var(--ink)", border: "1.5px solid var(--ink)" };
+  if (type === GLISSEMENT) return { background: "#c4b5fd", color: "var(--ink)", border: "1.5px solid var(--ink)" };
   return { background: "var(--cream2)", color: "var(--ink)", border: "1.5px solid var(--ink)" };
 };
 
@@ -173,6 +178,7 @@ const getEventBorderColor = (type: string): string => {
   if (type === "Animation") return "#fbbf24";
   if (type === "Soirée Jeux") return "#c084fc";
   if (type === "Heures Exceptionnelles") return "#2dd4bf";
+  if (type === GLISSEMENT) return "#a78bfa";
   return "#94a3b8";
 };
 
@@ -185,6 +191,7 @@ const getEventIcon = (type: string): string => {
   if (type === "Animation") return "🎪";
   if (type === "Soirée Jeux") return "🌙";
   if (type === "Heures Exceptionnelles") return "⭐";
+  if (type === GLISSEMENT) return "↔️";
   return "📌";
 };
 
@@ -519,11 +526,12 @@ export default function AccueilPage() {
       const typeSemaine = getISOWeek(jour) % 2 !== 0 ? "semaineA" : "semaineB";
       const evsDuJour = evenements.filter(ev => ev.date_debut <= dateKey && ev.date_fin >= dateKey);
       const absences = evsDuJour.filter(e => ABSENCE_TYPES.includes(e.type));
-      const eventsGrille = evsDuJour.filter(e => !ABSENCE_TYPES.includes(e.type) && e.heure_debut && e.heure_fin && e.date_debut === e.date_fin);
-      const eventsJournee = evsDuJour.filter(e => !ABSENCE_TYPES.includes(e.type) && (!e.heure_debut || !e.heure_fin || e.date_debut !== e.date_fin));
+      // Un glissement déplace déjà le bloc de présence : pas de carte à part.
+      const eventsGrille = evsDuJour.filter(e => !ABSENCE_TYPES.includes(e.type) && e.type !== GLISSEMENT && e.heure_debut && e.heure_fin && e.date_debut === e.date_fin);
+      const eventsJournee = evsDuJour.filter(e => !ABSENCE_TYPES.includes(e.type) && e.type !== GLISSEMENT && (!e.heure_debut || !e.heure_fin || e.date_debut !== e.date_fin));
       const presences: { nom: string; groupe?: string; debut: string; fin: string; id?: string; couleur?: string }[] = [];
       equipe.forEach(m => {
-        const h = getHoraireForDay(m, dateKey, nomJour, typeSemaine);
+        const h = getHoraireForDay(m, dateKey, nomJour, typeSemaine, evsDuJour);
         if (!h) return;
         let segments = [{ debut: h.debut, fin: h.fin }];
         absences.filter(e => !e.membres.length || e.membres.includes(m.id)).forEach(ev => {

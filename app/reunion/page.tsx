@@ -123,7 +123,7 @@ const A_REFAIRE: { v: "oui" | "a_voir" | "non"; label: string; couleur: string }
 
 // Côté agenda, ces types sont des absences ou des heures, pas des événements à préparer.
 const estEvenementAgenda = (type: string) =>
-  !/Congé|RTT|Récupération|Formation/.test(type) && type !== "Heures Exceptionnelles";
+  !/Congé|RTT|Récupération|Formation/.test(type) && type !== "Heures Exceptionnelles" && type !== "Glissement horaire";
 
 // ─── Dates ────────────────────────────────────────────────────────────────────
 

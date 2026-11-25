@@ -77,6 +77,22 @@ const estFermetureJournee = (e: { type: string; heure_debut?: string; heure_fin?
 /** Fermeture d'une journée entière cochée « non travaillée » : elle compte comme un jour férié. */
 const estFermetureNonTravaillee = (e: Evenement) => estFermetureJournee(e) && !!Number(e.non_travaille);
 
+/**
+ * Glissement horaire : une personne travaille sur d'autres horaires ce jour-là
+ * (« 10:15–19:15 au lieu de 09:00–18:00 »). Les horaires de l'événement
+ * remplacent ses horaires du jour partout (présences, planning, calendrier
+ * imprimable). Les heures attendues restent celles de sa semaine type : un
+ * glissement plus long ou plus court apparaît en heures supp. ou en heures
+ * en moins dans le décompte. Ce n'est ni une absence, ni du temps en plus.
+ */
+const GLISSEMENT = 'Glissement horaire';
+/** Glissement qui concerne ce membre ce jour-là (le dernier posé l'emporte). */
+const glissementDuJour = (evs: Evenement[] | undefined, membreId: string, dateKey: string) =>
+  evs?.filter(e => e.type === GLISSEMENT && e.heure_debut && e.heure_fin && e.date_debut <= dateKey && e.date_fin >= dateKey
+    && e.membres?.includes(membreId)).at(-1);
+/** Événements qui ajoutent du temps de travail quand ils ont des horaires (ni absence, ni fermeture, ni glissement). */
+const estTempsEnPlus = (type: string) => !ABSENCE_TYPES.includes(type) && type !== FERMETURE && type !== GLISSEMENT;
+
 const ABSENCE_TYPES = ['Congé', 'Demi-Congé', 'RTT', 'Demi-RTT', 'Récupération', 'Demi-Récupération', 'Formation', 'Demi-Formation'];
 
 const timeToMins = (t: string, isEnd: boolean = false) => {
@@ -302,7 +318,18 @@ const getEventColor = (type: string): string => {
   if (type === 'Soirée Jeux') return 'var(--purple)';
   if (type === 'Heures Exceptionnelles') return 'var(--yellow)';
   if (type === FERMETURE) return '#a3a3a3';
+  if (type === GLISSEMENT) return '#c4b5fd';
   return 'var(--cream2)';
+};
+
+/** Pastille posée sur un bloc de présence : type d'absence, ou glissement. */
+const etiquetteBadge = (type: string) => type === GLISSEMENT ? '↔ Décalé' : type.replace('Demi-', '½ ');
+
+/** « même durée », « +1h15 », « −30 min » : écart de durée d'un glissement. */
+const libelleEcart = (mins: number) => {
+  if (!mins) return 'même durée';
+  const a = Math.abs(mins), h = Math.floor(a / 60), m = a % 60;
+  return `${mins > 0 ? '+' : '−'}${h ? `${h}h${m ? String(m).padStart(2, '0') : ''}` : `${m} min`}`;
 };
 
 const getEventStyle = (type: string, _isOverlay = false) => getEventColor(type);
@@ -318,6 +345,7 @@ const getEventIcon = (type: string) => {
   if (type === 'Soirée Jeux') return '🌙';
   if (type === 'Heures Exceptionnelles') return '⭐';
   if (type === FERMETURE) return '🔒';
+  if (type === GLISSEMENT) return '↔️';
   return '📌';
 };
 
@@ -352,7 +380,25 @@ function compterJoursTravailles(debut: string, fin: string, membre: MembreEquipe
   } catch { return 0; }
 }
 
-const getHoraireForDay = (membre: MembreEquipe, dateKey: string, nomJour: string, typeSemaine: string) => {
+/**
+ * Horaires du membre ce jour-là : exception (échange, soirée…) sinon semaine
+ * type. Avec `evs`, un glissement horaire du jour remplace l'un comme l'autre
+ * (la pause du jour est gardée) ; `glissement` garde alors les horaires
+ * d'origine (null si le membre ne travaillait pas ce jour-là).
+ */
+const getHoraireForDay = (membre: MembreEquipe, dateKey: string, nomJour: string, typeSemaine: string, evs?: Evenement[]) => {
+  const base = horaireDeBase(membre, dateKey, nomJour, typeSemaine);
+  const g = glissementDuJour(evs, membre.id, dateKey);
+  if (!g) return base;
+  const duree = timeToMins(g.heure_fin!, true) - timeToMins(g.heure_debut!);
+  return {
+    ...(base ?? {}), debut: g.heure_debut!, fin: g.heure_fin!,
+    pause: base ? base.pause : (duree > 6 * 60 ? 1 : 0), isSwap: base?.isSwap ?? false,
+    glissement: { debut: base?.debut ?? null, fin: base?.fin ?? null, evId: g.id },
+  };
+};
+
+const horaireDeBase = (membre: MembreEquipe, dateKey: string, nomJour: string, typeSemaine: string) => {
   if (membre.horaires?.exceptions?.[dateKey]) {
     const ex = membre.horaires.exceptions[dateKey];
     if (!ex.debut || !ex.fin) return null; 
@@ -382,10 +428,10 @@ const getDailyMinutes = (membre: MembreEquipe, dateKey: string, nomJour: string,
   const intervals: {start: number, end: number}[] = [];
   
   const evsAbsence = evsDuJour.filter(e => ABSENCE_TYPES.includes(e.type) && (!e.membres.length || e.membres.includes(membre.id)));
-  const evsExtra = evsDuJour.filter(e => (!ABSENCE_TYPES.includes(e.type)) && e.type !== FERMETURE && (!e.membres.length || e.membres.includes(membre.id)) && e.heure_debut && e.heure_fin);
+  const evsExtra = evsDuJour.filter(e => estTempsEnPlus(e.type) && (!e.membres.length || e.membres.includes(membre.id)) && e.heure_debut && e.heure_fin);
 
   if (!isFerie) {
-    const hDraft = getHoraireForDay(membre, dateKey, nomJour, typeSemaine);
+    const hDraft = getHoraireForDay(membre, dateKey, nomJour, typeSemaine, evsDuJour);
     if (hDraft && hDraft.debut && hDraft.fin) {
        if (hDraft.isSwap) hasSwap = true;
        pauseDuJour = Number(hDraft.pause ?? 1) * 60;
@@ -458,7 +504,7 @@ function evenementsLiables(evs: Evenement[], dejaLie: string | null | undefined)
   const auj = format(new Date(), 'yyyy-MM-dd');
   const parCle = new Map<string, { cle: string; ev: Evenement; nb: number }>();
   for (const e of [...evs].sort((a, b) => a.date_debut.localeCompare(b.date_debut))) {
-    if (ABSENCE_TYPES.includes(e.type) || e.type === 'Heures Exceptionnelles' || e.type === FERMETURE) continue;
+    if (ABSENCE_TYPES.includes(e.type) || e.type === 'Heures Exceptionnelles' || e.type === FERMETURE || e.type === GLISSEMENT) continue;
     const cle = e.parent_id || e.id;
     if (!cle || (e.date_fin < auj && cle !== dejaLie)) continue;
     const deja = parCle.get(cle);
@@ -748,7 +794,7 @@ function plagesTravail(m: MembreEquipe, dk: string, evs: Evenement[], slotIgnore
   const typeSemaine = getISOWeek(d) % 2 !== 0 ? 'semaineA' : 'semaineB';
   const concerne = (e: Evenement) => e.date_debut <= dk && e.date_fin >= dk && (!e.membres?.length || e.membres.includes(m.id));
   const intervals: { start: number; end: number }[] = [];
-  const h = getHoraireForDay(m, dk, nomJour, typeSemaine);
+  const h = getHoraireForDay(m, dk, nomJour, typeSemaine, evs);
   if (h) {
     let segments = [{ debut: h.debut as string, fin: h.fin as string }];
     evs.filter(e => ABSENCE_TYPES.includes(e.type) && concerne(e) && e.heure_debut && e.heure_fin).forEach(a => {
@@ -756,7 +802,7 @@ function plagesTravail(m: MembreEquipe, dk: string, evs: Evenement[], slotIgnore
     });
     segments.forEach(s => intervals.push({ start: timeToMins(s.debut), end: timeToMins(s.fin, true) }));
   }
-  evs.filter(e => !ABSENCE_TYPES.includes(e.type) && e.type !== FERMETURE && concerne(e) && e.heure_debut && e.heure_fin
+  evs.filter(e => estTempsEnPlus(e.type) && concerne(e) && e.heure_debut && e.heure_fin
     && !(slotIgnore && e.id?.startsWith(prefixeHS(slotIgnore))))
     .forEach(e => intervals.push({ start: timeToMins(e.heure_debut!), end: timeToMins(e.heure_fin!, true) }));
   return mergeIntervals(intervals).map(i => ({ debut: i.start, fin: i.end }));
@@ -1440,7 +1486,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
     if (w) { w.document.write(html); w.document.close(); w.focus(); setTimeout(() => w.print(), 700); }
     setIsGeneratingPdf(false);
   };
-  const mainTypeUI = isAbsenceType ? 'Absence' : (['Réunion', 'Animation', 'Soirée Jeux', 'Heures Exceptionnelles', FERMETURE].includes(nouvelEvent.type) ? nouvelEvent.type : 'Autre');
+  const mainTypeUI = isAbsenceType ? 'Absence' : (['Réunion', 'Animation', 'Soirée Jeux', 'Heures Exceptionnelles', FERMETURE, GLISSEMENT].includes(nouvelEvent.type) ? nouvelEvent.type : 'Autre');
   const absTypeUI = nouvelEvent.type.includes('RTT') ? 'RTT' : nouvelEvent.type.includes('Récupération') ? 'Récupération' : nouvelEvent.type.includes('Formation') ? 'Formation' : 'Congé';
   const isDemiUI = nouvelEvent.type.startsWith('Demi-');
 
@@ -1633,7 +1679,15 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
   };
 
   const sauvegarderEvenement = async () => {
-    if (!nouvelEvent.titre || !nouvelEvent.date_debut) return alert("Veuillez remplir au moins le titre et la date de début.");
+    if (nouvelEvent.type === GLISSEMENT) {
+      if (!nouvelEvent.heure_debut || !nouvelEvent.heure_fin) return alert("Un glissement horaire a besoin des nouveaux horaires (de… à…).");
+      if (timeToMins(nouvelEvent.heure_fin, true) <= timeToMins(nouvelEvent.heure_debut)) return alert("L'heure de fin doit être après l'heure de début.");
+      if (!nouvelEvent.membres.length) return alert("Choisissez la ou les personnes dont les horaires glissent.");
+    }
+    // Sans titre, un glissement s'intitule « Glissement Pierre ».
+    const titre = nouvelEvent.titre || (nouvelEvent.type === GLISSEMENT
+      ? `Glissement ${activeEquipe.filter(m => nouvelEvent.membres.includes(m.id)).map(m => m.nom.trim().split(/\s+/)[0]).join(', ')}` : '');
+    if (!titre || !nouvelEvent.date_debut) return alert("Veuillez remplir au moins le titre et la date de début.");
     
     const occurrences: any[] = [];
     // « Non travaillé » n'a de sens que pour une fermeture d'une journée entière.
@@ -1658,7 +1712,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
          occurrences.push({
            id: (i === 0 && nouvelEvent.id) ? nouvelEvent.id : undefined,
            parent_id: parentId,
-           titre: nouvelEvent.titre,
+           titre,
            type: nouvelEvent.type,
            date_debut: strDeb,
            date_fin: strFin,
@@ -1683,7 +1737,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
        occurrences.push({
            id: nouvelEvent.id, 
            parent_id: parentId,
-           titre: nouvelEvent.titre,
+           titre,
            type: nouvelEvent.type,
            date_debut: nouvelEvent.date_debut,
            date_fin: nouvelEvent.date_fin,
@@ -1914,7 +1968,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
         if (ev.date_debut <= dateKey && ev.date_fin >= dateKey) {
           // Les absences (Congé, RTT…) restent attachées à la personne d'origine.
           // On ne les redistribue pas lors d'un échange de jours.
-          if (ABSENCE_TYPES.includes(ev.type)) return ev;
+          if (ABSENCE_TYPES.includes(ev.type) || ev.type === GLISSEMENT) return ev;
           const hasM1 = ev.membres.includes(swapSession.m1Id);
           const hasM2 = ev.membres.includes(swapSession.m2Id);
           if (hasM1 !== hasM2) {
@@ -2002,7 +2056,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
           const typeSemaine = getISOWeek(jour) % 2 !== 0 ? 'semaineA' : 'semaineB';
           const nomJour = format(jour, 'EEEE', { locale: fr }).toLowerCase();
           activeEquipe.forEach(m => {
-            const h = getHoraireForDay(m, dateKey, nomJour, typeSemaine);
+            const h = getHoraireForDay(m, dateKey, nomJour, typeSemaine, evs);
             if (!h) return;
             let segments = [{ debut: h.debut as string, fin: h.fin as string }];
             absEvs.filter(a => !a.membres?.length || a.membres.includes(m.id)).forEach(a => {
@@ -2032,7 +2086,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
           presences: [...parHoraire.entries()].sort((a, b) => a[1].debut.localeCompare(b[1].debut)).map(([horaire, v]) => ({ horaire, noms: v.noms })),
           fermetures: evs.filter(e => e.type === FERMETURE).map(e =>
             [plage(e.heure_debut, e.heure_fin), e.titre && e.titre !== FERMETURE ? e.titre : null].filter(Boolean).join(' · ')),
-          evenements: evs.filter(e => !ABSENCE_TYPES.includes(e.type) && e.type !== FERMETURE)
+          evenements: evs.filter(e => !ABSENCE_TYPES.includes(e.type) && e.type !== FERMETURE && e.type !== GLISSEMENT)
             .sort((a, b) => (a.heure_debut || '').localeCompare(b.heure_debut || ''))
             .map(e => ({ horaire: plage(e.heure_debut, e.heure_fin), type: e.type, titre: e.titre, qui: quiEvenement(e.membres) })),
           // Toute l'équipe absente (fermeture) : une mention plutôt que six prénoms.
@@ -2459,7 +2513,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
 
                 if (!nomFerie) {
                   activeEquipe.forEach(m => {
-                    const h = getHoraireForDay(m, dateKey, nomJour, typeSemaine);
+                    const h = getHoraireForDay(m, dateKey, nomJour, typeSemaine, evenementsDuJour);
                     if (h && h.debut && h.fin) {
                       let segments = [{ debut: h.debut, fin: h.fin }];
                       const eventsMembre = evenementsDuJour.filter(e => ABSENCE_TYPES.includes(e.type) && (!e.membres || e.membres.length === 0 || e.membres.includes(m.id)));
@@ -2570,7 +2624,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
                       )}
                       {blocsToShowMois.map((bloc: any, idx: number) => {
                         const bgColor = getBlocColor(bloc.membresInfos, activeEquipe);
-                        const absInBloc = evenementsDuJour.filter(e => ABSENCE_TYPES.includes(e.type) && e.membres.some(mId => bloc.membresInfos.find((m:any) => m.id === mId)));
+                        const absInBloc = evenementsDuJour.filter(e => (ABSENCE_TYPES.includes(e.type) || e.type === GLISSEMENT) && e.membres.some(mId => bloc.membresInfos.find((m:any) => m.id === mId)));
                         const isSingleBloc = blocsToShowMois.length === 1;
                         return (
                           <div key={idx} style={{ background: bgColor, border: "2px solid var(--ink)", borderRadius: 6, padding: isSingleBloc ? "5px 8px" : "3px 6px", display: "flex", flexDirection: "column", gap: isSingleBloc ? 2 : 1, boxShadow: "2px 2px 0 var(--ink)", transform: idx % 2 === 0 ? "rotate(-1.5deg)" : "rotate(1deg)", transformOrigin: "center" }}>
@@ -2590,7 +2644,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
                                 d'absence et l'horaire à la fiche du jour, qui
                                 s'ouvre d'une tape. */}
                             {!isMobile && absInBloc.map((abs, aIdx) => (
-                              <span key={aIdx} style={{ fontSize: 8, fontWeight: 800, background: "var(--rose)", color: "var(--ink)", border: "1px solid var(--ink)", borderRadius: 3, padding: "0 3px" }}>{abs.type.replace('Demi-', '½ ')}</span>
+                              <span key={aIdx} style={{ fontSize: 8, fontWeight: 800, background: abs.type === GLISSEMENT ? getEventColor(GLISSEMENT) : "var(--rose)", color: "var(--ink)", border: "1px solid var(--ink)", borderRadius: 3, padding: "0 3px" }}>{etiquetteBadge(abs.type)}</span>
                             ))}
                             {!isMobile && <span style={{ fontSize: isSingleBloc ? 10 : 9, fontWeight: 600, opacity: 0.65 }}>{bloc.debut}–{bloc.fin}</span>}
                           </div>
@@ -2662,15 +2716,16 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
                   const evenementsDuJour = activeEvenements.filter(e => e.date_debut <= dateKey && e.date_fin >= dateKey);
                   
                   const absencesDay = evenementsDuJour.filter(e => ABSENCE_TYPES.includes(e.type));
-                  const eventsGrille = evenementsDuJour.filter(e => !ABSENCE_TYPES.includes(e.type) && e.date_debut === e.date_fin && e.heure_debut && e.heure_fin);
-                  const eventsBottom = evenementsDuJour.filter(e => !ABSENCE_TYPES.includes(e.type) && (e.date_debut !== e.date_fin || (!e.heure_debut && !e.heure_fin)));
+                  // Un glissement ne s'affiche pas à part : il déplace déjà le bloc de présence.
+                  const eventsGrille = evenementsDuJour.filter(e => !ABSENCE_TYPES.includes(e.type) && e.type !== GLISSEMENT && e.date_debut === e.date_fin && e.heure_debut && e.heure_fin);
+                  const eventsBottom = evenementsDuJour.filter(e => !ABSENCE_TYPES.includes(e.type) && e.type !== GLISSEMENT && (e.date_debut !== e.date_fin || (!e.heure_debut && !e.heure_fin)));
 
                   let presencesDuJour: any[] = [];
                   let attendusDuJour = 0;
 
                   if (!nomFerie) {
                     activeEquipe.forEach(m => {
-                      const h = getHoraireForDay(m, dateKey, nomJour, typeSemaine);
+                      const h = getHoraireForDay(m, dateKey, nomJour, typeSemaine, evenementsDuJour);
                       if (h && h.debut && h.fin) {
                         attendusDuJour++;
                         let segments = [{ debut: h.debut, fin: h.fin }];
@@ -3417,6 +3472,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
                     { key: 'Animation', color: "var(--orange)" },
                     { key: 'Soirée Jeux', color: "var(--purple)" },
                     { key: 'Heures Exceptionnelles', label: 'H. Excep.', color: "var(--vert)" },
+                    { key: GLISSEMENT, label: '↔️ Glissement', color: getEventColor(GLISSEMENT) },
                     { key: FERMETURE, label: '🔒 Fermeture', color: "#a3a3a3" },
                   ] as const).map(t => (
                     <button key={t.key} type="button" onClick={() => setMainType(t.key as any)}
@@ -3463,11 +3519,11 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
               {/* Heures */}
               <div style={{ display: "flex", gap: 10, opacity: isTimeDisabled ? 0.3 : 1, pointerEvents: isTimeDisabled ? "none" : "auto" }}>
                 <div style={{ flex: 1 }}>
-                  <span style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.07em", color: "rgba(0,0,0,0.4)", display: "block", marginBottom: 6 }}>De (optionnel)</span>
+                  <span style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.07em", color: "rgba(0,0,0,0.4)", display: "block", marginBottom: 6 }}>{mainTypeUI === GLISSEMENT ? 'Nouveaux horaires : de' : 'De (optionnel)'}</span>
                   <input type="time" value={nouvelEvent.heure_debut || ''} onChange={e => setNouvelEvent({...nouvelEvent, heure_debut: e.target.value})} className="pop-input" style={{ width: "100%", fontSize: 13 }} />
                 </div>
                 <div style={{ flex: 1 }}>
-                  <span style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.07em", color: "rgba(0,0,0,0.4)", display: "block", marginBottom: 6 }}>À (optionnel)</span>
+                  <span style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.07em", color: "rgba(0,0,0,0.4)", display: "block", marginBottom: 6 }}>{mainTypeUI === GLISSEMENT ? 'à' : 'À (optionnel)'}</span>
                   <input type="time" value={nouvelEvent.heure_fin || ''} onChange={e => setNouvelEvent({...nouvelEvent, heure_fin: e.target.value})} className="pop-input" style={{ width: "100%", fontSize: 13 }} />
                 </div>
               </div>
@@ -3518,6 +3574,30 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
                   })}
                 </div>
               </div>}
+
+              {/* Glissement : horaires habituels → nouveaux, et l'écart qui ira au décompte */}
+              {mainTypeUI === GLISSEMENT && (
+                <div className="pop-card" style={{ padding: "10px 12px", background: "var(--cream2)", display: "flex", flexDirection: "column", gap: 6 }}>
+                  <span style={{ fontSize: 11, color: "rgba(0,0,0,0.6)" }}>
+                    Les horaires ci-dessus remplacent ceux de la personne {nouvelEvent.date_fin && nouvelEvent.date_fin !== nouvelEvent.date_debut ? 'chaque jour de la période' : 'ce jour-là'} (pause habituelle gardée). Un écart de durée compte en heures supp. ou en heures en moins.
+                  </span>
+                  {nouvelEvent.date_debut && activeEquipe.filter(m => nouvelEvent.membres.includes(m.id)).map(m => {
+                    const d = new Date(nouvelEvent.date_debut + 'T12:00:00');
+                    const avant = getHoraireForDay(m, nouvelEvent.date_debut, format(d, 'EEEE', { locale: fr }).toLowerCase(), getISOWeek(d) % 2 !== 0 ? 'semaineA' : 'semaineB');
+                    const ok = nouvelEvent.heure_debut && nouvelEvent.heure_fin;
+                    const ecart = ok && avant ? (timeToMins(nouvelEvent.heure_fin!, true) - timeToMins(nouvelEvent.heure_debut!)) - (timeToMins(avant.fin, true) - timeToMins(avant.debut)) : null;
+                    return (
+                      <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 12, fontWeight: 700 }}>
+                        <span style={{ minWidth: 70 }}>{m.nom.trim().split(/\s+/)[0]}</span>
+                        <span style={{ opacity: 0.55, textDecoration: ok ? "line-through" : "none" }}>{avant ? `${avant.debut}–${avant.fin}` : 'ne travaille pas'}</span>
+                        {ok && <><span style={{ opacity: 0.4 }}>→</span><span>{nouvelEvent.heure_debut}–{nouvelEvent.heure_fin}</span></>}
+                        {ecart !== null && <span className="pop-sticker" style={{ fontSize: 9, background: ecart === 0 ? "var(--vert)" : ecart > 0 ? "var(--yellow)" : "var(--rose)" }}>{libelleEcart(ecart)}</span>}
+                        {ok && !avant && <span className="pop-sticker" style={{ fontSize: 9, background: "var(--yellow)" }}>heures en plus</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
 
               {/* Horaires exceptionnels */}
               {((mainTypeUI === 'Soirée Jeux' || isDemiUI) && nouvelEvent.membres.length > 0) && (
@@ -4163,7 +4243,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
         let presencesHov: any[] = [];
         if (!nomFerieHov) {
           activeEquipe.forEach(m => {
-            const h = getHoraireForDay(m, hoveredDay, nomJourHov, typeSemaineHov);
+            const h = getHoraireForDay(m, hoveredDay, nomJourHov, typeSemaineHov, evsHov);
             if (h && h.debut && h.fin) {
               let segs = [{ debut: h.debut, fin: h.fin }];
               evsHov.filter(e => ABSENCE_TYPES.includes(e.type) && (!e.membres || e.membres.length === 0 || e.membres.includes(m.id))).forEach(ev => {
@@ -4250,7 +4330,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
         let presencesSel: any[] = [];
         if (!nomFerieSel) {
           activeEquipe.forEach(m => {
-            const h = getHoraireForDay(m, selectedDay, nomJourSel, typeSemaineSel);
+            const h = getHoraireForDay(m, selectedDay, nomJourSel, typeSemaineSel, evsDuJour);
             if (h && h.debut && h.fin) {
               let segs = [{ debut: h.debut, fin: h.fin }];
               evsDuJour.filter(e => ABSENCE_TYPES.includes(e.type) && (!e.membres || e.membres.length === 0 || e.membres.includes(m.id))).forEach(ev => {
@@ -4301,7 +4381,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
                     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                       {blocsSelJour.map((bloc: any, idx: number) => {
                         const bgColor = getBlocColor(bloc.membresInfos, activeEquipe);
-                        const absInBloc = evsDuJour.filter(e => ABSENCE_TYPES.includes(e.type) && e.membres.some((mId: string) => bloc.membresInfos.find((m: any) => m.id === mId)));
+                        const absInBloc = evsDuJour.filter(e => (ABSENCE_TYPES.includes(e.type) || e.type === GLISSEMENT) && e.membres.some((mId: string) => bloc.membresInfos.find((m: any) => m.id === mId)));
                         const rot = idx % 2 === 0 ? -1.5 : 1;
                         return (
                           <div key={idx} style={{ background: bgColor, border: "2.5px solid var(--ink)", borderRadius: 10, padding: "12px 16px", display: "flex", flexDirection: "column", gap: 6, boxShadow: "3px 3px 0 var(--ink)", transform: `rotate(${rot}deg)`, transformOrigin: "center" }}>
@@ -4318,7 +4398,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
                             {absInBloc.length > 0 && (
                               <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
                                 {absInBloc.map((abs: any, aIdx: number) => (
-                                  <span key={aIdx} style={{ fontSize: 10, fontWeight: 800, background: "var(--rose)", color: "var(--ink)", border: "1.5px solid var(--ink)", borderRadius: 4, padding: "1px 6px" }}>{abs.type.replace('Demi-', '½ ')}</span>
+                                  <span key={aIdx} style={{ fontSize: 10, fontWeight: 800, background: abs.type === GLISSEMENT ? getEventColor(GLISSEMENT) : "var(--rose)", color: "var(--ink)", border: "1.5px solid var(--ink)", borderRadius: 4, padding: "1px 6px" }}>{etiquetteBadge(abs.type)}</span>
                                 ))}
                               </div>
                             )}
@@ -4356,6 +4436,15 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
                             <span style={{ fontWeight: 900, fontSize: 14, lineHeight: 1.2 }}>{getEventIcon(ev.type)} {ev.type}</span>
                             {ev.titre && ev.titre !== ev.type && <span style={{ fontSize: 12, fontWeight: 700, opacity: 0.75 }}>{ev.titre}</span>}
                             {ev.heure_debut && <span style={{ fontSize: 11, fontWeight: 600, opacity: 0.65 }}>{ev.heure_debut} – {ev.heure_fin}</span>}
+                            {ev.type === GLISSEMENT && membresEv.map(m => {
+                              const avant = getHoraireForDay(m, selectedDay, nomJourSel, typeSemaineSel);
+                              return (
+                                <span key={`gl-${m.id}`} style={{ fontSize: 11, fontWeight: 700, opacity: 0.75 }}>
+                                  {m.nom.trim().split(/\s+/)[0]} : {avant ? `au lieu de ${avant.debut} – ${avant.fin}` : 'ne travaille pas d’habitude ce jour-là'}
+                                  {avant && ev.heure_debut && ev.heure_fin ? ` (${libelleEcart(timeToMins(ev.heure_fin, true) - timeToMins(ev.heure_debut) - (timeToMins(avant.fin, true) - timeToMins(avant.debut)))})` : ''}
+                                </span>
+                              );
+                            })}
                           </div>
                         );
                       })}
@@ -4512,7 +4601,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#111;margin:0;pa
                   Créneau du <b>{format(jour, 'EEEE d MMMM', { locale: fr })}</b>, {confirmHS.slot.debut}–{confirmHS.slot.fin} :
                 </div>
                 {confirmHS.details.map(({ membre, plages }) => {
-                  const h = getHoraireForDay(membre, confirmHS.slot.dateKey, nomJour, typeSemaine);
+                  const h = getHoraireForDay(membre, confirmHS.slot.dateKey, nomJour, typeSemaine, evenements);
                   return (
                     <div key={membre.id} style={{ padding: "8px 12px", borderRadius: 8, border: "2px solid var(--ink)", background: "var(--cream)" }}>
                       <b>{membre.nom}</b> {h ? <>travaille de {h.debut} à {h.fin} ce jour-là</> : <>ne travaille pas ce jour-là</>}.
