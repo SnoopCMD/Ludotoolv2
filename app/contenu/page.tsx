@@ -350,9 +350,6 @@ function ContenuPageInner() {
                     )}
 
                     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
-                      <button onClick={() => ajouterLigne(cat.id)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 14, fontWeight: 700, color: 'rgba(0,0,0,0.45)', background: 'transparent', border: '2px dashed rgba(0,0,0,0.2)', borderRadius: 8, padding: '8px 16px', cursor: 'pointer', width: 'max-content', margin: '0 auto 4px' }}>
-                        ➕ Ajouter une fiche {cat.nom}
-                      </button>
 
                       {lignes.length === 0 ? (
                         <p style={{ textAlign: 'center', color: 'rgba(0,0,0,0.35)', padding: '20px 0', fontSize: 15 }}>Aucune fiche.</p>
