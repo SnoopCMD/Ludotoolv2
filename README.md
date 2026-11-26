@@ -46,6 +46,7 @@ Variables d'environnement (fichier `.dev.vars`, voir `.dev.vars.example`) :
 | --- | --- |
 | `TWITCH_CLIENT_ID` | Authentification IGDB (fiches de jeux vidéo) |
 | `TWITCH_CLIENT_SECRET` | Idem |
+| `ANTHROPIC_API_KEY` | Import de comptes rendus du Bureau (analyse par Claude) |
 
 En production, ce sont des secrets Cloudflare (`wrangler secret put …`).
 
@@ -325,6 +326,35 @@ standard du PDF n'acceptent que le Latin-1, les émojis y sont donc retirés.
 La recherche se fait côté client, sur les notes, les personnes des sections, le
 titre, les présents et les points et missions rattachés, sans tenir compte des
 accents ni de la casse.
+
+**En réunion, chaque point est une section du compte rendu.** L'analyse des
+comptes rendus existants a montré que tout s'écrivait dans le champ des notes
+de chaque point (`reunion_fiches.decision`), avec l'intervenant dans le titre
+(« RH par Ariane ») ; les notes de séance restaient vides. Désormais : une grande
+zone de notes par point, enregistrée au fil de la frappe ; « Présenté par »
+(`reunion_fiches.intervenant`, migration 0033 : id `equipe` ou nom libre) ; les
+notes libres de séance deviennent « Notes hors ordre du jour », facultatives.
+Les notes s'écrivent au clavier avec des conventions que `lignesRiches` /
+`TexteRiche` affichent en listes et sous-titres, à l'écran comme dans le PDF :
+« - » puce, « 1. » liste numérotée, ligne courte terminée par « : » sous-titre,
+« => » flèche. « 🎯 Ligne → mission » ouvre une mission préremplie depuis une
+ligne des notes, avec les membres nommés (`personnesDansLigne`, par prénom) et
+la date écrite (`dateDansLigne` : « 27 novembre », « 27/11 », sans année la
+prochaine occurrence).
+
+**Import de comptes rendus** (« 📥 Importer un compte rendu », onglet Comptes
+rendus) : un .docx est lu dans le navigateur (`lib/docxTexte.ts`, archive zip
+décompressée sans dépendance, titres en « # », listes en « - », tableaux en
+« | ») et envoyé en texte ; un PDF part tel quel. `/api/reunion/import/analyse`
+le confie à Claude (`claude-opus-5-5`, sortie JSON structurée, repli automatique
+sur un autre modèle en cas de refus) avec la liste de l'équipe et les conventions
+ci-dessus : titre, date, présents, points (titre sans « par … », intervenant,
+notes), missions, et une remarque sur ce qui a été réécrit. Rien n'est enregistré
+avant que l'aperçu soit vérifié ; `/api/reunion/import` crée alors une séance
+terminée, ses points (abordés à la date de la réunion) et ses missions. Le texte
+est envoyé à l'API d'Anthropic. Il faut le secret Cloudflare
+`ANTHROPIC_API_KEY` (`npx wrangler secret put ANTHROPIC_API_KEY`, ou
+`.dev.vars` en local) ; sans lui, l'analyse répond 503 avec un message clair.
 
 Les routes `/api/reunion/*` n'écrivent que les colonnes listées dans
 `lib/reunion.ts`, contrairement aux routes génériques plus anciennes qui
