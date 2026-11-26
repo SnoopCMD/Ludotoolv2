@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, Suspense, Fragment } from "react";
 import { useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { useIsMobile } from "../../lib/useIsMobile";
@@ -10,7 +10,7 @@ import {
   chargerCodesSyracuse, contenusPour, correspondance, eanDuCode, lireImpressionDouble, ecrireImpressionDouble,
   validerEtapeImpression, type JeuChoisi, type LigneCatalogue,
 } from "../../lib/impression";
-import { MECANIQUES, TEMPS_DE_JEU_OPTIONS, joueursDepuisMyLudo, tempsDepuisMyLudo } from "../../lib/etiquetteJeu";
+import { MECANIQUES, TEMPS_DE_JEU_OPTIONS, COOP_VERSUS_OPTIONS, joueursDepuisMyLudo, tempsDepuisMyLudo } from "../../lib/etiquetteJeu";
 
 // react-pdf uniquement côté navigateur : jamais dans le bundle serveur du worker
 const BoutonImpression = dynamic(() => import("../../components/BoutonImpression"), { ssr: false });
@@ -63,6 +63,100 @@ const S = {
   } as React.CSSProperties,
 };
 
+/** Champs de l'étiquette qui manquent encore (le nom compris). */
+const estIncomplete = (e: Etiquette) =>
+  !e.nom || !e.mecanique || !e.nb_de_joueurs || !e.coop_versus || !e.temps_de_jeu || e.etoiles === "";
+
+/** Nombres de joueurs les plus courants, à choisir d'un clic (la saisie libre reste possible). */
+const JOUEURS_COURANTS = ["1-4", "2-4", "2-5", "2-6", "3-6", "2-8", "2", "1-6"];
+
+const choix = (actif: boolean, fond = "var(--yellow)"): React.CSSProperties => ({
+  border: "2px solid var(--ink)", borderRadius: 8, padding: "5px 10px", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
+  background: actif ? fond : "var(--white)", boxShadow: actif ? "2px 2px 0 var(--ink)" : "none", lineHeight: 1.2,
+});
+const groupeManquant = (vide: boolean): React.CSSProperties =>
+  vide ? { outline: "2px dashed var(--rouge)", outlineOffset: 3, borderRadius: 8 } : {};
+
+/**
+ * Menu de remplissage rapide, déplié sous la ligne d'un jeu : chaque champ de
+ * l'étiquette se choisit d'un bouton (comme dans la fiche de l'atelier). Un
+ * champ encore vide est entouré de rouge.
+ */
+function PanneauRemplissage({ eti, maxStars, hex, onChoisir, onMyLudo, mlEnCours, onFermer }: {
+  eti: Etiquette; maxStars: number; hex: string;
+  onChoisir: (champ: keyof Etiquette, valeur: string | number) => void;
+  onMyLudo: () => void; mlEnCours: boolean; onFermer: () => void;
+}) {
+  const libelle: React.CSSProperties = { fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", color: "rgba(0,0,0,0.5)", marginBottom: 6, display: "block" };
+  const ligne: React.CSSProperties = { display: "flex", gap: 6, flexWrap: "wrap", width: "fit-content", maxWidth: "100%" };
+  return (
+    <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 14, background: "var(--cream)", borderTop: `3px solid ${hex}`, borderBottom: "2px solid var(--ink)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <span className="bc" style={{ fontSize: 16 }}>✎ {eti.nom || "Jeu sans nom"}</span>
+        {estIncomplete(eti)
+          ? <span style={{ fontSize: 12, fontWeight: 800, color: "var(--rouge)" }}>à compléter</span>
+          : <span style={{ fontSize: 12, fontWeight: 800, color: "#3f7d0e" }}>✓ étiquette complète</span>}
+        <span style={{ flex: 1 }} />
+        <button onClick={onMyLudo} disabled={mlEnCours || (!eti.ean && !eti.nom)} style={{ ...choix(false), opacity: mlEnCours ? 0.5 : 1 }}
+          title="Compléter joueurs et temps depuis MyLudo">{mlEnCours ? "MyLudo…" : "Joueurs et temps depuis MyLudo"}</button>
+        <button onClick={onFermer} style={{ ...choix(false), background: "var(--ink)", color: "var(--white)" }}>Fermer ▲</button>
+      </div>
+
+      <div>
+        <span style={libelle}>Mécanique</span>
+        <div style={{ ...ligne, ...groupeManquant(!eti.mecanique) }}>
+          {MECANIQUES.map(m => (
+            <button key={m} onClick={() => onChoisir("mecanique", eti.mecanique === m ? "" : m)} style={{ ...choix(eti.mecanique === m), padding: "3px 8px", fontSize: 12 }}>{m}</button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
+        <div>
+          <span style={libelle}>Joueurs</span>
+          <div style={{ ...ligne, alignItems: "center", ...groupeManquant(!eti.nb_de_joueurs) }}>
+            {JOUEURS_COURANTS.map(j => (
+              <button key={j} onClick={() => onChoisir("nb_de_joueurs", eti.nb_de_joueurs === j ? "" : j)} style={choix(eti.nb_de_joueurs === j)}>{j}</button>
+            ))}
+            <input type="text" placeholder="autre" defaultValue={JOUEURS_COURANTS.includes(eti.nb_de_joueurs) ? "" : eti.nb_de_joueurs}
+              key={eti.nb_de_joueurs}
+              onBlur={e => { const v = e.target.value.trim(); if (v && v !== eti.nb_de_joueurs) onChoisir("nb_de_joueurs", v); }}
+              onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+              style={{ ...S.inp, width: 70, padding: "4px 8px", fontSize: 13, fontWeight: 700, textAlign: "center" }} />
+          </div>
+        </div>
+        <div>
+          <span style={libelle}>Type de partie</span>
+          <div style={{ ...ligne, ...groupeManquant(!eti.coop_versus) }}>
+            {COOP_VERSUS_OPTIONS.map(o => (
+              <button key={o.id} onClick={() => onChoisir("coop_versus", eti.coop_versus === o.id ? "" : o.id)} style={choix(eti.coop_versus === o.id)}>{o.label}</button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
+        <div>
+          <span style={libelle}>Temps de jeu (min)</span>
+          <div style={{ ...ligne, ...groupeManquant(!eti.temps_de_jeu) }}>
+            {TEMPS_DE_JEU_OPTIONS.map(t => (
+              <button key={t} onClick={() => onChoisir("temps_de_jeu", eti.temps_de_jeu === t ? "" : t)} style={choix(eti.temps_de_jeu === t)}>{t}</button>
+            ))}
+          </div>
+        </div>
+        <div>
+          <span style={libelle}>Difficulté</span>
+          <div style={{ ...ligne, ...groupeManquant(eti.etoiles === "") }}>
+            {Array.from({ length: maxStars }, (_, i) => i + 1).map(n => (
+              <button key={n} onClick={() => onChoisir("etoiles", eti.etoiles === n ? "" : n)} style={{ ...choix(eti.etoiles === n), fontSize: 15, letterSpacing: 2 }}>{"★".repeat(n)}</button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function EtiquettesPage() {
   return (
     <Suspense>
@@ -90,6 +184,8 @@ function EtiquettesPageInner() {
   const [codesSyracuse, setCodesSyracuse] = useState<Record<string, string[]>>({});
   const [impressionDouble, setImpressionDouble] = useState(false);
   const [mlLoading, setMlLoading] = useState<Set<string | number>>(new Set());
+  // Ligne dont le menu de remplissage rapide est déplié.
+  const [ligneOuverte, setLigneOuverte] = useState<string | number | null>(null);
 
   useEffect(() => {
     setIsClient(true);
@@ -175,6 +271,25 @@ function EtiquettesPageInner() {
         return eti;
       })
     }));
+  };
+
+  /** Choix depuis le menu rapide : la ligne est mise à jour et enregistrée au catalogue. */
+  const remplir = (couleurId: string, id: string | number, champ: keyof Etiquette, valeur: string | number) => {
+    const eti = etiquettes[couleurId].find(e => e.id === id);
+    if (!eti) return;
+    const updated = { ...eti, [champ]: valeur } as Etiquette;
+    setEtiquettes(prev => ({ ...prev, [couleurId]: prev[couleurId].map(e => e.id === id ? updated : e) }));
+    sauvegarderLigneEnBase(updated, couleurId);
+  };
+
+  /** Va à la ligne d'un jeu (section ouverte, filtre effacé) et déplie son menu de remplissage. */
+  const allerAuJeu = (couleurId: string, id: string | number) => {
+    setFiltre("");
+    setSectionsOuvertes(prev => ({ ...prev, [couleurId]: true }));
+    setLigneOuverte(id);
+    setTimeout(() => {
+      document.querySelector(`tr[data-eti="${CSS.escape(String(id))}"]`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 150);
   };
 
   const modifierQuantite = (couleurId: string, id: string | number, delta: number) => {
@@ -342,6 +457,30 @@ function EtiquettesPageInner() {
             <p style={{ textAlign: "center", color: "rgba(0,0,0,0.45)", padding: "16px 0", fontSize: 15, fontWeight: 700 }}>Aucune étiquette ne correspond à « {filtre.trim()} ».</p>
           )}
 
+          {/* Étiquettes incomplètes : un clic mène au jeu et ouvre son menu de remplissage */}
+          {(() => {
+            const aCompleter = CATEGORIES.flatMap(cat => etiquettes[cat.id].filter(e => (e.nom || e.ean) && estIncomplete(e)).map(e => ({ cat, e })));
+            if (!aCompleter.length) return null;
+            return (
+              <div style={{ background: "var(--white)", border: "2.5px solid var(--ink)", borderRadius: 10, boxShadow: "4px 4px 0 var(--ink)", overflow: "hidden" }}>
+                <div style={{ background: "#c084fc", borderBottom: "2.5px solid var(--ink)", padding: "10px 16px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  <span className="bc" style={{ fontSize: 18, textTransform: "uppercase" }}>Étiquettes à compléter</span>
+                  <span style={{ background: "var(--white)", border: "2px solid var(--ink)", borderRadius: 20, padding: "1px 10px", fontSize: 12, fontWeight: 800 }}>{aCompleter.length} jeu{aCompleter.length > 1 ? "x" : ""}</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, opacity: 0.7 }}>Un clic ouvre le jeu et son menu de remplissage</span>
+                </div>
+                <div style={{ padding: 12, display: "flex", flexWrap: "wrap", gap: 8, maxHeight: 180, overflowY: "auto" }}>
+                  {aCompleter.map(({ cat, e }) => (
+                    <button key={`${cat.id}-${e.id}`} onClick={() => allerAuJeu(cat.id, e.id)}
+                      style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#fff0f0", border: "2px solid var(--ink)", borderRadius: 8, padding: "6px 10px", boxShadow: "2px 2px 0 var(--ink)", cursor: "pointer", fontWeight: 700, fontSize: 14, fontFamily: "inherit" }}>
+                      <span style={{ width: 10, height: 10, borderRadius: "50%", background: cat.hex, border: "1.5px solid var(--ink)", flexShrink: 0 }} />
+                      {e.nom || e.ean} <span style={{ opacity: 0.45 }}>✎</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+
           {CATEGORIES.map((cat) => {
             const lignes = lignesFiltrees(cat.id);
             const filtreActif = !!filtre.trim();
@@ -452,7 +591,7 @@ function EtiquettesPageInner() {
                                 padding: "10px 12px", textAlign: i === 0 || i >= 4 ? "center" : "left",
                                 fontSize: 14, letterSpacing: "0.05em", color: "var(--ink)",
                                 whiteSpace: "nowrap",
-                                width: [64, 128, 180, 140, 90, 110, 90, 80, 84][i],
+                                width: [64, 128, 180, 140, 90, 110, 90, 80, 110][i],
                               }}>{h}</th>
                             ))}
                           </tr>
@@ -475,9 +614,11 @@ function EtiquettesPageInner() {
                                 ? (isIncomplet ? "3px solid var(--rouge)" : "3px solid var(--vert)")
                                 : "3px solid transparent";
 
+                              const ouverte = ligneOuverte === eti.id;
                               return (
+                                <Fragment key={eti.id}>
                                 <tr
-                                  key={eti.id}
+                                  data-eti={String(eti.id)}
                                   data-letter={startLetter}
                                   data-category={cat.id}
                                   style={{
@@ -581,6 +722,16 @@ function EtiquettesPageInner() {
                                   <td style={{ padding: "6px 8px" }}>
                                     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
                                       <button
+                                        onClick={() => setLigneOuverte(ouverte ? null : eti.id)}
+                                        title={ouverte ? "Replier le menu de remplissage" : "Remplir l'étiquette avec le menu rapide"}
+                                        style={{
+                                          background: ouverte ? "var(--ink)" : isIncomplet ? "var(--yellow)" : "var(--white)",
+                                          color: ouverte ? "var(--white)" : "var(--ink)",
+                                          border: "2px solid var(--ink)", borderRadius: 6, cursor: "pointer",
+                                          fontSize: 12, fontWeight: 800, padding: "4px 7px", lineHeight: 1, fontFamily: "inherit",
+                                        }}
+                                      >{ouverte ? "▲" : "✎"}</button>
+                                      <button
                                         onClick={() => completerDepuisMyLudo(cat.id, eti)}
                                         disabled={mlLoading.has(eti.id) || (!eti.ean && !eti.nom)}
                                         title="Compléter joueurs et temps depuis MyLudo"
@@ -605,6 +756,17 @@ function EtiquettesPageInner() {
                                     </div>
                                   </td>
                                 </tr>
+                                {ouverte && (
+                                  <tr>
+                                    <td colSpan={9} style={{ padding: 0 }}>
+                                      <PanneauRemplissage eti={eti} maxStars={cat.maxStars} hex={cat.hex}
+                                        onChoisir={(champ, v) => remplir(cat.id, eti.id, champ, v)}
+                                        onMyLudo={() => completerDepuisMyLudo(cat.id, eti)} mlEnCours={mlLoading.has(eti.id)}
+                                        onFermer={() => setLigneOuverte(null)} />
+                                    </td>
+                                  </tr>
+                                )}
+                                </Fragment>
                               );
                             })
                           )}
