@@ -413,6 +413,13 @@ function ModalJeu({
   const [eanSaisi, setEanSaisi] = useState("");
   const [eanEnCours, setEanEnCours] = useState(false);
   const [eanInfo, setEanInfo] = useState<{ texte: string; ton: "ok" | "alerte" } | null>(null);
+  // Support : physique (boîte avec code-barres) ou démat (sans EAN). Pas de
+  // colonne dédiée : un jeu sans EAN est un jeu dématérialisé.
+  const [physique, setPhysique] = useState(isNew || !!jeu?.ean);
+  const choisirSupport = (p: boolean) => {
+    setPhysique(p);
+    if (!p) { setEanSaisi(""); setEanInfo(null); setForm(f => ({ ...f, ean: null })); }
+  };
 
   // Formulaire
   const [form, setForm] = useState<Partial<JvJeu>>(
@@ -624,7 +631,7 @@ function ModalJeu({
       nb_joueurs: form.nb_joueurs ?? null,
       statut: form.statut ?? "disponible",
       igdb_id: form.igdb_id ?? null,
-      ean: normaliserEan(form.ean) || null,
+      ean: physique ? normaliserEan(form.ean) || null : null,
       cote_syracuse: form.cote_syracuse ?? null,
     };
     let savedJeu: JvJeu;
@@ -708,6 +715,8 @@ function ModalJeu({
         {step === 1 && (
           <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
             <div style={{ display: 'flex', gap: 8, padding: '16px 20px 0', flexShrink: 0, alignItems: 'center' }}>
+              <SwitchSupport physique={physique} onChange={choisirSupport} />
+              {physique ? <>
               <div style={{ position: 'relative', flex: 1 }}>
                 <input
                   type="text" inputMode="numeric"
@@ -721,6 +730,9 @@ function ModalJeu({
                 )}
               </div>
               <BoutonScan titre="Scanner le code-barres du jeu" onScan={code => chercherEan(code)} />
+              </> : (
+                <span style={{ flex: 1, fontSize: 13, fontWeight: 700, color: 'rgba(0,0,0,0.5)' }}>Jeu dématérialisé : pas de code-barres, cherche-le par son titre.</span>
+              )}
             </div>
             {eanInfo && (
               <p style={{ margin: '6px 20px 0', fontSize: 12, fontWeight: 700, color: eanInfo.ton === 'alerte' ? '#c2410c' : 'rgba(0,0,0,0.5)' }}>
@@ -936,11 +948,16 @@ function ModalJeu({
               </div>
 
               <div>
-                <label style={Slabel}>EAN</label>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <input type="text" inputMode="numeric" value={form.ean ?? ""} onChange={e => set("ean", e.target.value || null)}
-                    placeholder="Code-barres de la boîte" className="pop-input" style={{ flex: 1 }} />
-                  <BoutonScan titre="Scanner le code-barres du jeu" onScan={code => set("ean", normaliserEan(code))} />
+                <label style={Slabel}>Support</label>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <SwitchSupport physique={physique} onChange={choisirSupport} />
+                  {physique ? <>
+                    <input type="text" inputMode="numeric" value={form.ean ?? ""} onChange={e => set("ean", e.target.value || null)}
+                      placeholder="EAN : code-barres de la boîte" className="pop-input" style={{ flex: 1, minWidth: 160 }} />
+                    <BoutonScan titre="Scanner le code-barres du jeu" onScan={code => set("ean", normaliserEan(code))} />
+                  </> : (
+                    <span style={{ fontSize: 13, fontWeight: 700, color: 'rgba(0,0,0,0.5)' }}>Dématérialisé : pas d’EAN.</span>
+                  )}
                 </div>
               </div>
 
@@ -5642,6 +5659,20 @@ export default function JvPage() {
           onDeleted={handleNoteDeleted}
         />
       )}
+    </div>
+  );
+}
+
+/** Interrupteur du support d'un jeu : physique (avec EAN) ou dématérialisé (sans). */
+function SwitchSupport({ physique, onChange }: { physique: boolean; onChange: (physique: boolean) => void }) {
+  const bouton = (actif: boolean): React.CSSProperties => ({
+    border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 800, padding: '7px 12px',
+    background: actif ? 'var(--ink)' : 'var(--white)', color: actif ? 'var(--white)' : 'rgba(0,0,0,0.55)', whiteSpace: 'nowrap',
+  });
+  return (
+    <div role="radiogroup" aria-label="Support du jeu" style={{ display: 'inline-flex', border: '2px solid var(--ink)', borderRadius: 8, overflow: 'hidden', boxShadow: '2px 2px 0 var(--ink)', flexShrink: 0 }}>
+      <button type="button" role="radio" aria-checked={physique} onClick={() => onChange(true)} style={bouton(physique)} title="Jeu en boîte : avec code-barres EAN">📦 Physique</button>
+      <button type="button" role="radio" aria-checked={!physique} onClick={() => onChange(false)} style={{ ...bouton(!physique), borderLeft: '2px solid var(--ink)' }} title="Jeu dématérialisé : sans EAN">☁️ Démat</button>
     </div>
   );
 }
