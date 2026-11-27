@@ -67,8 +67,16 @@ const S = {
 };
 
 /** Réponse de /api/myludo (les champs utiles à l'étiquette). */
+/** Un jeu proposé par la recherche MyLudo. */
+type CandidatMyLudo = { id: string; code: string; title: string; edition: number | null; image: string | null; url: string };
+
 type ResultatMyLudo = {
   notFound?: boolean; error?: string; title?: string; url?: string | null;
+  id?: string; image?: string | null; edition?: number | null;
+  /** Comment le jeu a été retrouvé : par son code-barres, son nom, ou choisi dans la liste. */
+  trouve_par?: "code-barres" | "nom" | "choix" | null;
+  /** Les résultats de la recherche par nom (pour choisir un autre jeu). */
+  candidats?: CandidatMyLudo[];
   age?: string | null; age_min?: unknown; players_min?: number | string | null; players_max?: number | string | null;
   duration?: unknown; duree_max?: number | null;
   /** Nos mécaniques reconnues parmi les étiquettes MyLudo, la plus probable d'abord. */
@@ -76,7 +84,21 @@ type ResultatMyLudo = {
   type_partie?: { valeur: "Coop" | "Versus" | "Solo"; sur: boolean } | null;
 };
 /** État MyLudo d'une ligne : recherche en cours, ou sa réponse (null si MyLudo ne répond pas). */
-type EtatMyLudo = { enCours: true } | { enCours: false; data: ResultatMyLudo | null };
+type EtatMyLudo =
+  | { enCours: true; candidats?: CandidatMyLudo[] }
+  | { enCours: false; data: ResultatMyLudo | null; candidats: CandidatMyLudo[]; fiable: boolean; remplis: (keyof Etiquette)[] };
+
+/** Mots significatifs d'un titre (minuscules, sans accents ni ponctuation). */
+const motsTitre = (t: string) => t.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+  .replace(/[^a-z0-9]+/g, " ").split(" ").filter(m => m.length >= 3 && !["the", "les", "des", "une", "aux", "and"].includes(m));
+
+/** Le titre MyLudo ressemble-t-il au nom du jeu ? (au moins la moitié de ses mots s'y retrouvent) */
+function titreCorrespond(nom: string, titre: string | undefined) {
+  if (!titre) return false;
+  const a = motsTitre(nom), b = new Set(motsTitre(titre));
+  if (!a.length || !b.size) return nom.trim().toLowerCase() === titre.trim().toLowerCase();
+  return a.filter(m => b.has(m)).length >= Math.ceil(a.length / 2);
+}
 
 const NOMS_COULEURS: Record<string, string> = { vert: "vert", rose: "rose", bleu: "bleu", rouge: "rouge", jaune: "jaune" };
 
@@ -125,14 +147,22 @@ function Suggestion({ texte, onUtiliser }: { texte: string; onUtiliser: () => vo
  * l'étiquette se choisit d'un bouton (comme dans la fiche de l'atelier). Un
  * champ encore vide est entouré de rouge.
  */
-function PanneauRemplissage({ eti, couleur, maxStars, hex, ml, onChoisir, onMyLudo, onFermer }: {
+function PanneauRemplissage({ eti, couleur, maxStars, hex, ml, onChoisir, onMyLudo, onChoisirJeu, onChercherNom, onFermer }: {
   eti: Etiquette; couleur: string; maxStars: number; hex: string; ml: EtatMyLudo | undefined;
   onChoisir: (champ: keyof Etiquette, valeur: string | number) => void;
-  onMyLudo: () => void; onFermer: () => void;
+  onMyLudo: () => void; onChoisirJeu: (c: CandidatMyLudo) => void; onChercherNom: (nom: string) => void; onFermer: () => void;
 }) {
   const enCours = ml?.enCours === true;
   const data = ml && !ml.enCours ? ml.data : null;
-  const prop = propositionsMyLudo(data);
+  const fiable = !!ml && !ml.enCours && ml.fiable;
+  const candidats = ml?.candidats ?? [];
+  const autres = candidats.filter(c => c.id !== data?.id);
+  const [voirAutres, setVoirAutres] = useState(false);
+  const [autreNom, setAutreNom] = useState("");
+  // Les autres résultats s'ouvrent d'eux-mêmes quand le jeu trouvé est douteux ou introuvable.
+  const autresOuverts = voirAutres || (!enCours && !!data && (!fiable || !!data.notFound));
+  // Un jeu douteux n'a rien rempli : ses valeurs ne sont pas proposées non plus.
+  const prop = fiable ? propositionsMyLudo(data) : null;
   // Valeur de MyLudo pour un champ, quand elle diffère de la saisie.
   const suggestion = (champ: "nb_de_joueurs" | "temps_de_jeu" | "mecanique" | "coop_versus") =>
     prop && prop[champ] && prop[champ] !== eti[champ] ? prop[champ] : null;
@@ -152,22 +182,63 @@ function PanneauRemplissage({ eti, couleur, maxStars, hex, ml, onChoisir, onMyLu
         <button onClick={onFermer} style={{ ...choix(false), background: "var(--ink)", color: "var(--white)" }}>Fermer ▲</button>
       </div>
 
-      {/* Résultat de MyLudo */}
-      <div style={{ fontSize: 13, fontWeight: 700, padding: "6px 10px", borderRadius: 8, border: "2px solid var(--ink)", background: enCours ? "var(--white)" : data && !data.notFound && !data.error ? "#e0f2fe" : "#fff5f5", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-        {enCours ? <span>Recherche sur MyLudo…</span>
-          : !data || data.error ? <span>MyLudo ne répond pas, réessaie dans un moment.</span>
-          : data.notFound ? <>
-              <span>Jeu introuvable sur MyLudo : à remplir à la main.</span>
-              <a href={urlRechercheMyLudo(eti.nom)} target="_blank" rel="noopener noreferrer" style={{ color: "var(--ink)" }}>🔎 Chercher sur MyLudo ↗</a>
-            </>
-          : <>
-              <span>Trouvé sur MyLudo : {data.title ?? eti.nom}{data.age ? ` · ${data.age}` : ""}. Les champs vides sont remplis, les autres valeurs sont proposées.</span>
-              {data.url && <a href={data.url} target="_blank" rel="noopener noreferrer" style={{ color: "var(--ink)" }}>Voir la fiche ↗</a>}
-              {prop?.couleur && prop.couleur !== couleur && (
-                <span style={{ color: "#b45309" }}>⚠ D’après l’âge, MyLudo le classerait en {NOMS_COULEURS[prop.couleur] ?? prop.couleur}.</span>
-              )}
-              {!prop?.mecanique && <span style={{ opacity: 0.7 }}>Aucune mécanique reconnue : à choisir.</span>}
-            </>}
+      {/* Résultat de MyLudo : le jeu retenu, comment il a été trouvé, et d'autres jeux si ce n'est pas le bon */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {enCours ? (
+          <div style={{ fontSize: 13, fontWeight: 700, padding: "8px 12px", borderRadius: 8, border: "2px solid var(--ink)", background: "var(--white)" }}>Recherche sur MyLudo…</div>
+        ) : !data || data.error ? (
+          <div style={{ fontSize: 13, fontWeight: 700, padding: "8px 12px", borderRadius: 8, border: "2px solid var(--ink)", background: "#fff5f5" }}>MyLudo ne répond pas, réessaie dans un moment.</div>
+        ) : data.notFound ? (
+          <div style={{ fontSize: 13, fontWeight: 700, padding: "8px 12px", borderRadius: 8, border: "2px solid var(--rouge)", background: "#fff5f5" }}>
+            MyLudo ne trouve pas « {eti.nom || eti.ean} »{autres.length ? " : choisis un des jeux ci-dessous ou cherche un autre nom." : " : cherche un autre nom ou remplis à la main."}
+          </div>
+        ) : (
+          <div style={{ display: "flex", gap: 12, alignItems: "center", background: fiable ? "#e0f2fe" : "#fff7ed", border: `2px solid ${fiable ? "var(--ink)" : "#ea580c"}`, borderRadius: 10, padding: 10, flexWrap: "wrap" }}>
+            <div style={{ width: 48, height: 48, flexShrink: 0, borderRadius: 6, border: "1.5px solid var(--ink)", overflow: "hidden", background: "var(--white)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              {data.image ? <img src={data.image} alt="" style={{ width: "100%", height: "100%", objectFit: "contain" }} /> : "🎲"}
+            </div>
+            <div style={{ flex: "1 1 260px", minWidth: 0 }}>
+              <div style={{ fontWeight: 800, fontSize: 14 }}>{data.title}{data.edition ? <span style={{ fontWeight: 600, opacity: 0.55 }}> · {data.edition}</span> : null}{data.age ? <span style={{ fontWeight: 600, opacity: 0.55 }}> · {data.age}</span> : null}</div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4, alignItems: "center", fontSize: 12, fontWeight: 700 }}>
+                {data.trouve_par === "code-barres" ? <span style={{ background: "var(--vert)", border: "1.5px solid var(--ink)", borderRadius: 10, padding: "1px 8px" }}>✓ Trouvé par le code-barres</span>
+                  : data.trouve_par === "choix" ? <span style={{ background: "var(--bleu)", border: "1.5px solid var(--ink)", borderRadius: 10, padding: "1px 8px" }}>Jeu choisi</span>
+                  : fiable ? <span style={{ background: "var(--orange)", border: "1.5px solid var(--ink)", borderRadius: 10, padding: "1px 8px" }}>Trouvé par le nom : vérifie que c’est le bon jeu</span>
+                  : <span style={{ background: "#ea580c", color: "var(--white)", border: "1.5px solid var(--ink)", borderRadius: 10, padding: "1px 8px" }}>⚠ Le titre ne correspond pas à « {eti.nom} » : rien n’a été rempli</span>}
+                {fiable && <span style={{ opacity: 0.7 }}>{ml && !ml.enCours && ml.remplis.length ? "Champs vides remplis, les autres valeurs sont proposées." : "Les valeurs qui diffèrent sont proposées sous les champs."}</span>}
+                {prop?.couleur && prop.couleur !== couleur && <span style={{ color: "#b45309" }}>⚠ D’après l’âge, MyLudo le classerait en {NOMS_COULEURS[prop.couleur] ?? prop.couleur}.</span>}
+                {fiable && !prop?.mecanique && <span style={{ opacity: 0.7 }}>Aucune mécanique reconnue : à choisir.</span>}
+              </div>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
+              {data.url && <a href={data.url} target="_blank" rel="noopener noreferrer" style={{ ...choix(false), textDecoration: "none", color: "var(--ink)" }}>Voir sur MyLudo ↗</a>}
+              <button onClick={() => setVoirAutres(!autresOuverts)} style={choix(autresOuverts, "var(--cream2)")}>{autresOuverts ? "Masquer" : "Pas le bon jeu ?"}</button>
+            </div>
+          </div>
+        )}
+
+        {!enCours && data && (autresOuverts || data.notFound || data.error) && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: 10, border: "2px dashed var(--ink)", borderRadius: 10, background: "var(--white)" }}>
+            {autres.length > 0 && <span style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", opacity: 0.5 }}>Autres jeux trouvés sur MyLudo</span>}
+            {autres.map(c => (
+              <button key={c.id} onClick={() => { setVoirAutres(false); onChoisirJeu(c); }}
+                style={{ display: "flex", alignItems: "center", gap: 10, padding: "5px 10px", background: "var(--white)", border: "2px solid var(--ink)", borderRadius: 8, cursor: "pointer", fontFamily: "inherit", textAlign: "left" }}>
+                <span style={{ width: 30, height: 30, flexShrink: 0, borderRadius: 4, overflow: "hidden", background: "var(--cream2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  {c.image ? <img src={c.image} alt="" style={{ width: "100%", height: "100%", objectFit: "contain" }} /> : "🎲"}
+                </span>
+                <span style={{ flex: 1, minWidth: 0, fontWeight: 700, fontSize: 13 }}>{c.title}{c.edition ? <span style={{ fontWeight: 600, opacity: 0.5 }}> · {c.edition}</span> : null}</span>
+                <span style={{ fontSize: 12, fontWeight: 800 }}>Choisir</span>
+              </button>
+            ))}
+            {!autres.length && <span style={{ fontSize: 12, fontWeight: 700, opacity: 0.55 }}>MyLudo ne propose pas d’autre jeu pour ce nom.</span>}
+            <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginTop: 2 }}>
+              <input type="text" value={autreNom} onChange={e => setAutreNom(e.target.value)} placeholder="Chercher un autre nom sur MyLudo…"
+                onKeyDown={e => { if (e.key === "Enter" && autreNom.trim()) { setVoirAutres(false); onChercherNom(autreNom.trim()); } }}
+                style={{ ...S.inp, flex: "1 1 220px", width: "auto", padding: "5px 10px", fontSize: 13 }} />
+              <button onClick={() => { if (autreNom.trim()) { setVoirAutres(false); onChercherNom(autreNom.trim()); } }} disabled={!autreNom.trim()} style={{ ...choix(false), opacity: autreNom.trim() ? 1 : 0.4 }}>Chercher</button>
+              <a href={urlRechercheMyLudo(autreNom.trim() || eti.nom)} target="_blank" rel="noopener noreferrer" title="Recherche Google limitée à myludo.fr" style={{ ...choix(false), textDecoration: "none", color: "var(--ink)" }}>🔎 Sur le site ↗</a>
+            </div>
+          </div>
+        )}
       </div>
 
       <div>
@@ -447,33 +518,44 @@ function EtiquettesPageInner() {
    * partie, et les étoiles quand la règle d'âge donne la couleur de la ligne.
    * Les valeurs qui diffèrent d'une saisie existante sont seulement proposées.
    */
-  const lancerMyLudo = async (couleurId: string, eti: Etiquette) => {
+  const lancerMyLudo = async (couleurId: string, eti: Etiquette, autre?: { choix?: CandidatMyLudo; nom?: string }) => {
     setLigneOuverte(eti.id);
     const cle = String(eti.id);
-    if (myLudo[cle]?.enCours || (!eti.ean && !eti.nom)) return;
-    setMyLudo(prev => ({ ...prev, [cle]: { enCours: true } }));
-    const params = new URLSearchParams();
-    if (eti.ean) params.set("ean", eti.ean);
-    if (eti.nom) params.set("nom", eti.nom);
+    const avant = myLudo[cle];
+    if (avant?.enCours || (!eti.ean && !eti.nom && !autre)) return;
+    setMyLudo(prev => ({ ...prev, [cle]: { enCours: true, candidats: avant?.candidats } }));
+    // Un jeu choisi dans la liste, un autre nom tapé, ou la recherche du jeu (code-barres puis nom).
+    const params = autre?.choix ? new URLSearchParams({ id: autre.choix.id, code: autre.choix.code })
+      : autre?.nom ? new URLSearchParams({ nom: autre.nom })
+      : new URLSearchParams(Object.entries({ ean: eti.ean, nom: eti.nom }).filter(([, v]) => v));
     const data = await fetch(`/api/myludo?${params}`).then(r => r.json() as Promise<ResultatMyLudo>).catch(() => null);
-    setMyLudo(prev => ({ ...prev, [cle]: { enCours: false, data } }));
-    const prop = propositionsMyLudo(data);
-    if (!prop) return;
-    setEtiquettes(prev => ({
-      ...prev, [couleurId]: prev[couleurId].map(e => {
-        if (e.id !== eti.id) return e;
-        const updated: Etiquette = {
-          ...e,
-          nb_de_joueurs: e.nb_de_joueurs || prop.nb_de_joueurs,
-          temps_de_jeu: e.temps_de_jeu || prop.temps_de_jeu,
-          mecanique: e.mecanique || prop.mecanique,
-          coop_versus: e.coop_versus || (prop.coop_versus as Etiquette["coop_versus"]),
-          etoiles: e.etoiles !== "" ? e.etoiles : (prop.etoiles && prop.couleur === couleurId ? prop.etoiles : ""),
-        };
-        sauvegarderLigneEnBase(updated, couleurId);
-        return updated;
-      })
-    }));
+    const candidats = data?.candidats?.length ? data.candidats : (avant?.candidats ?? []);
+    // Fiable : trouvé par le code-barres, choisi à la main, ou titre proche du nom cherché.
+    const fiable = !!data && !data.notFound && !data.error && (data.trouve_par === "code-barres" || !!autre?.choix
+      || titreCorrespond(autre?.nom ?? eti.nom, data.title));
+    const prop = fiable ? propositionsMyLudo(data) : null;
+    // Les champs remplis par un précédent jeu MyLudo (peut-être le mauvais) se remplacent comme des vides.
+    const dejaRemplis = avant && !avant.enCours ? avant.remplis : [];
+    const remplis: (keyof Etiquette)[] = [];
+    const ligne = etiquettes[couleurId].find(e => e.id === eti.id) ?? eti;
+    if (prop) {
+      const valeurs: Partial<Etiquette> = {
+        nb_de_joueurs: prop.nb_de_joueurs, temps_de_jeu: prop.temps_de_jeu, mecanique: prop.mecanique,
+        coop_versus: prop.coop_versus as Etiquette["coop_versus"],
+        ...(prop.etoiles && prop.couleur === couleurId ? { etoiles: prop.etoiles } : {}),
+      };
+      const changements: Partial<Etiquette> = {};
+      for (const [c, v] of Object.entries(valeurs) as [keyof Etiquette, Etiquette[keyof Etiquette]][]) {
+        if (v !== "" && v !== undefined && (ligne[c] === "" || dejaRemplis.includes(c))) {
+          (changements as Record<string, unknown>)[c] = v; remplis.push(c);
+        }
+      }
+      if (remplis.length) {
+        setEtiquettes(prev => ({ ...prev, [couleurId]: prev[couleurId].map(e => e.id === eti.id ? { ...e, ...changements } : e) }));
+        sauvegarderLigneEnBase({ ...ligne, ...changements }, couleurId);
+      }
+    }
+    setMyLudo(prev => ({ ...prev, [cle]: { enCours: false, data, candidats, fiable, remplis } }));
   };
 
   const genererPDF = async () => {
@@ -845,6 +927,8 @@ function EtiquettesPageInner() {
                                       <PanneauRemplissage eti={eti} couleur={cat.id} maxStars={cat.maxStars} hex={cat.hex} ml={myLudo[String(eti.id)]}
                                         onChoisir={(champ, v) => remplir(cat.id, eti.id, champ, v)}
                                         onMyLudo={() => lancerMyLudo(cat.id, eti)}
+                                        onChoisirJeu={c => lancerMyLudo(cat.id, eti, { choix: c })}
+                                        onChercherNom={nom => lancerMyLudo(cat.id, eti, { nom })}
                                         onFermer={() => setLigneOuverte(null)} />
                                     </td>
                                   </tr>
