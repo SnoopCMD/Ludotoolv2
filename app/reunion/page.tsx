@@ -29,6 +29,8 @@ type Fiche = {
   evenement_id: string | null;
   seance_id: string | null;
   decision: string | null;
+  /** Qui présente le point : id `equipe`, ou nom d'une personne extérieure. */
+  intervenant?: string | null;
   cree_par: string | null;
   cree_le: string;
   fait_le: string | null;
@@ -256,6 +258,71 @@ function Surligne({ texte, q }: { texte: string; q: string }) {
   }
   morceaux.push(texte.slice(depuis));
   return <>{morceaux}</>;
+}
+
+// ─── Texte mis en forme ───────────────────────────────────────────────────────
+
+/**
+ * Les notes de réunion s'écrivent au clavier, sans éditeur riche : on y lit
+ * les conventions que l'équipe utilise déjà — tirets et puces, listes
+ * numérotées, sous-titres terminés par « : » (« Usagers : », « => Matériel : »),
+ * flèches « => » — pour les afficher (et les exporter) comme de vraies listes.
+ */
+type LigneRiche =
+  | { t: "titre"; texte: string }
+  | { t: "puce"; texte: string; niveau: number }
+  | { t: "num"; texte: string; n: string }
+  | { t: "fleche"; texte: string }
+  | { t: "p"; texte: string }
+  | { t: "vide" };
+
+function lignesRiches(texte: string): LigneRiche[] {
+  return texte.replace(/\r/g, "").split("\n").map((brute): LigneRiche => {
+    const l = brute.trim();
+    if (!l) return { t: "vide" };
+    const puce = brute.match(/^(\s*)[-•*–·]\s+(.*)$/);
+    if (puce) return { t: "puce", texte: puce[2].trim(), niveau: puce[1].length >= 2 ? 1 : 0 };
+    const num = l.match(/^(\d{1,2})[.)]\s+(.*)$/);
+    if (num) return { t: "num", texte: num[2], n: num[1] };
+    const fleche = l.match(/^=>\s*(.*)$/);
+    const corps = fleche ? fleche[1].trim() : l;
+    // Un sous-titre : court, terminé par « : », sans phrase après.
+    if (/:\s*$/.test(corps) && corps.length <= 70) return { t: "titre", texte: corps.replace(/\s*:\s*$/, "") };
+    if (fleche) return { t: "fleche", texte: corps };
+    return { t: "p", texte: l };
+  });
+}
+
+/** Affiche un texte de notes avec ses listes et sous-titres ; la recherche reste surlignée. */
+function TexteRiche({ texte, q = "", style }: { texte: string; q?: string; style?: React.CSSProperties }) {
+  const lignes = lignesRiches(texte);
+  const blocs: React.ReactNode[] = [];
+  let i = 0, k = 0;
+  while (i < lignes.length) {
+    const l = lignes[i];
+    if (l.t === "puce" || l.t === "num") {
+      // Une liste continue tant que les lignes sont du même genre.
+      const genre = l.t;
+      const items: LigneRiche[] = [];
+      while (i < lignes.length && lignes[i].t === genre) items.push(lignes[i++]);
+      const Liste = genre === "num" ? "ol" : "ul";
+      blocs.push(
+        <Liste key={k++} start={genre === "num" ? Number((items[0] as { n: string }).n) || 1 : undefined}
+          style={{ margin: "2px 0", paddingLeft: 22, display: "flex", flexDirection: "column", gap: 2, listStyleType: genre === "num" ? "decimal" : "disc" }}>
+          {items.map((it, j) => (
+            <li key={j} style={{ display: "list-item", marginLeft: it.t === "puce" && it.niveau ? 16 : 0, listStyleType: it.t === "puce" && it.niveau ? "circle" : undefined }}><Surligne texte={(it as { texte: string }).texte} q={q} /></li>
+          ))}
+        </Liste>
+      );
+      continue;
+    }
+    if (l.t === "titre") blocs.push(<div key={k++} style={{ fontWeight: 900, marginTop: k > 1 ? 6 : 0, fontSize: "0.95em" }}><Surligne texte={l.texte} q={q} /></div>);
+    else if (l.t === "fleche") blocs.push(<div key={k++} style={{ display: "flex", gap: 6 }}><span style={{ fontWeight: 900 }}>➜</span><span><Surligne texte={l.texte} q={q} /></span></div>);
+    else if (l.t === "p") blocs.push(<div key={k++}><Surligne texte={l.texte} q={q} /></div>);
+    else if (l.t === "vide" && blocs.length && lignes[i + 1] && lignes[i + 1].t !== "vide") blocs.push(<div key={k++} style={{ height: 6 }} />);
+    i++;
+  }
+  return <div style={{ lineHeight: 1.5, overflowWrap: "anywhere", ...style }}>{blocs}</div>;
 }
 
 // ─── Appels API ───────────────────────────────────────────────────────────────
@@ -784,6 +851,49 @@ function ResumePersonnes({ s, equipe, q = "" }: { s: SectionCR; equipe: Membre[]
   );
 }
 
+/** « Présenté par » d'un point : avatar pour un membre, 🎤 pour une personne extérieure. */
+function Intervenant({ valeur, equipe }: { valeur: string; equipe: Membre[] }) {
+  const m = equipe.find(x => x.id === valeur);
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "1px 9px 1px 3px", borderRadius: 20, background: "var(--yellow)", border: "1.5px solid var(--ink)", fontWeight: 800, fontSize: 12 }}>
+      {m ? <Avatar m={m} taille={16} /> : <span style={{ paddingLeft: 4 }}>🎤</span>}
+      présenté par {m ? m.nom : valeur}{!m && <span style={{ fontWeight: 500, opacity: 0.6 }}>(invité)</span>}
+    </span>
+  );
+}
+
+/** Choix de l'intervenant : un membre de l'équipe ou un nom libre (Ariane, une partenaire…). */
+function ChoixIntervenant({ valeur, equipe, onChange }: { valeur: string | null; equipe: Membre[]; onChange: (v: string | null) => void }) {
+  const [libre, setLibre] = useState("");
+  const exterieur = valeur && !equipe.some(m => m.id === valeur) ? valeur : null;
+  const puce = (actif: boolean): React.CSSProperties => ({
+    display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 9px", borderRadius: 20, cursor: "pointer",
+    fontFamily: "inherit", fontSize: 12, fontWeight: actif ? 800 : 500,
+    background: actif ? "var(--yellow)" : "var(--white)", border: actif ? "2px solid var(--ink)" : "2px solid rgba(0,0,0,0.15)",
+  });
+  const valider = () => {
+    const nom = libre.trim();
+    if (!nom) return;
+    const m = equipe.find(x => normaliser(x.nom) === normaliser(nom));
+    onChange(m ? m.id : nom);
+    setLibre("");
+  };
+  return (
+    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+      {equipe.map(m => (
+        <button key={m.id} type="button" style={puce(valeur === m.id)} onClick={() => onChange(valeur === m.id ? null : m.id)}>
+          <Avatar m={m} taille={18} />{m.nom}
+        </button>
+      ))}
+      {exterieur && (
+        <button type="button" style={puce(true)} onClick={() => onChange(null)} title="Retirer">🎤 {exterieur} ✕</button>
+      )}
+      <input value={libre} onChange={e => setLibre(e.target.value)} onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); valider(); } }}
+        onBlur={valider} placeholder="Ou une personne extérieure…" style={{ ...inp, width: 190, padding: "4px 10px", fontSize: 12 }} />
+    </div>
+  );
+}
+
 /** Lecture du compte rendu : une carte par section, paragraphes dedans, recherche surlignée. */
 function LectureCR({ blocs, equipe, q }: { blocs: BlocCR[]; equipe: Membre[]; q: string }) {
   const visibles = blocs.filter(sectionRemplie);
@@ -800,7 +910,7 @@ function LectureCR({ blocs, equipe, q }: { blocs: BlocCR[]; equipe: Membre[]; q:
           <div style={{ padding: "8px 10px", display: "flex", flexDirection: "column", gap: 6 }}>
             {(s.interlocuteur || s.concernes.length > 0 || s.invites.length > 0 || s.services.length > 0) && <ResumePersonnes s={s} equipe={equipe} q={q} />}
             {s.paragraphes.filter(p => p.trim()).map((p, k) => (
-              <p key={k} style={{ margin: 0, fontSize: 14, whiteSpace: "pre-wrap", lineHeight: 1.55 }}><Surligne texte={p} q={q} /></p>
+              <TexteRiche key={k} texte={p} q={q} style={{ fontSize: 14 }} />
             ))}
           </div>
         </div>
@@ -881,6 +991,7 @@ function ModalFiche({ initial, equipe, evenements, onFermer, onEnregistre, onSup
       genre: f.genre, titre: f.titre.trim(), description: f.description ?? "", statut: f.statut,
       priorite: f.priorite, deadline: f.deadline ?? null, assignes: f.assignes ?? [],
       evenement_id: f.evenement_id ?? null, seance_id: f.seance_id ?? null, decision: f.decision ?? "",
+      intervenant: estPoint ? (f.intervenant ?? null) : null,
     };
     const res = f.id
       ? await envoyer<Fiche>(`/api/reunion/fiches/${f.id}`, "PUT", corps)
@@ -943,6 +1054,12 @@ function ModalFiche({ initial, equipe, evenements, onFermer, onEnregistre, onSup
           </select>
         </div>
       </div>
+      {estPoint && (
+        <div>
+          <label style={etiquette}>Présenté par (en réunion)</label>
+          <ChoixIntervenant valeur={f.intervenant ?? null} equipe={equipe} onChange={v => maj({ intervenant: v })} />
+        </div>
+      )}
       <div>
         <label style={etiquette}>{estPoint ? "Porté par" : "Assignée à"}</label>
         <ChoixMembres equipe={equipe} valeur={f.assignes ?? []} onChange={v => maj({ assignes: v })} />
@@ -1365,10 +1482,49 @@ function ModalLancement({ equipe, points, suggestions, moi, onFermer, onLancer }
   );
 }
 
+// ─── Ligne de notes → mission ─────────────────────────────────────────────────
+
+const MOIS_FR = ["janvier", "fevrier", "mars", "avril", "mai", "juin", "juillet", "aout", "septembre", "octobre", "novembre", "decembre"];
+
+/** Membres de l'équipe nommés dans une ligne (« Léa demande à l'ALF » → Léa), par prénom. */
+function personnesDansLigne(ligne: string, equipe: Membre[]) {
+  const mots = new Set(normaliser(ligne).split(/[^a-z0-9]+/).filter(Boolean));
+  return equipe.filter(m => mots.has(normaliser(m.nom.trim().split(/\s+/)[0]))).map(m => m.id);
+}
+
+/**
+ * Date écrite dans une ligne : « 27 novembre », « vendredi 27/11 », « 13/11/2026 ».
+ * Sans année, la prochaine occurrence (à une semaine près : une date tout juste
+ * passée reste dans l'année en cours).
+ */
+function dateDansLigne(ligne: string): string | null {
+  const t = normaliser(ligne);
+  let j: number, m: number, a: number | null = null;
+  const num = t.match(/\b(\d{1,2})[/.-](\d{1,2})(?:[/.-](\d{2,4}))?\b/);
+  const lettres = t.match(new RegExp(`\\b(\\d{1,2})(?:er)?\\s+(${MOIS_FR.join("|")})(?:\\s+(\\d{4}))?`));
+  if (lettres) { j = +lettres[1]; m = MOIS_FR.indexOf(lettres[2]) + 1; a = lettres[3] ? +lettres[3] : null; }
+  else if (num) { j = +num[1]; m = +num[2]; a = num[3] ? (num[3].length === 2 ? 2000 + +num[3] : +num[3]) : null; }
+  else return null;
+  if (m < 1 || m > 12 || j < 1 || j > 31) return null;
+  if (a === null) {
+    const now = new Date();
+    a = now.getFullYear();
+    if (new Date(a, m - 1, j) < addDays(now, -7)) a++;
+  }
+  const d = new Date(a, m - 1, j);
+  return d.getMonth() === m - 1 ? format(d, "yyyy-MM-dd") : null;
+}
+
+/** Lignes d'un texte de notes qui peuvent devenir une mission (pas les sous-titres ni les vides). */
+const lignesActionnables = (texte: string) =>
+  lignesRiches(texte).flatMap(l => l.t === "puce" || l.t === "num" || l.t === "fleche" || l.t === "p" ? [l.texte] : []);
+
 // ─── Point traité en séance ───────────────────────────────────────────────────
 
-function PointEnSeance({ p, equipe, seanceId, ouvertParDefaut = false, onMaj, onOuvrir }: {
+function PointEnSeance({ p, equipe, seanceId, ouvertParDefaut = false, onMaj, onOuvrir, onNouvelleMission }: {
   p: Fiche; equipe: Membre[]; seanceId: string; ouvertParDefaut?: boolean; onMaj: (f: Fiche) => void; onOuvrir: () => void;
+  /** Ouvre la fiche d'une nouvelle mission, préremplie depuis une ligne des notes. */
+  onNouvelleMission: (f: Partial<Fiche>) => void;
 }) {
   // Replié par défaut : l'ordre du jour tient sur un écran, on déplie le point qu'on traite.
   const [ouvert, setOuvert] = useState(ouvertParDefaut);
@@ -1377,12 +1533,35 @@ function PointEnSeance({ p, equipe, seanceId, ouvertParDefaut = false, onMaj, on
   const [assignes, setAssignes] = useState<string[]>(p.assignes);
   const [deadline, setDeadline] = useState(p.deadline ?? "");
   const [prio, setPrio] = useState(p.priorite);
+  const [outil, setOutil] = useState<null | "intervenant" | "apercu" | "missions">(null);
   const traite = p.statut === "fait" || p.genre === "mission";
 
   const sauver = async (champs: Partial<Fiche>) => {
     const res = await envoyer<Fiche>(`/api/reunion/fiches/${p.id}`, "PUT", champs);
     if (res) onMaj(res);
   };
+
+  // Les notes d'un point peuvent être longues : enregistrées au fil de la frappe, pas seulement en quittant le champ.
+  const sauverRef = useRef(sauver);
+  useEffect(() => { sauverRef.current = sauver; });
+  useEffect(() => {
+    if (decision === (p.decision ?? "")) return;
+    const t = setTimeout(() => sauverRef.current({ decision }), 1500);
+    return () => clearTimeout(t);
+  }, [decision, p.decision]);
+
+  const versMissionDepuis = (ligne: string) => onNouvelleMission({
+    genre: "mission", statut: "a_faire", priorite: 1, titre: ligne.replace(/[.;]\s*$/, ""),
+    assignes: personnesDansLigne(ligne, equipe), deadline: dateDansLigne(ligne),
+    description: `Issue du point « ${p.titre} »`, seance_id: seanceId, evenement_id: p.evenement_id,
+  });
+  const lignes = lignesActionnables(decision);
+  const outilBtn = (o: NonNullable<typeof outil>, label: string) => (
+    <button type="button" onClick={() => setOutil(x => x === o ? null : o)} style={{
+      fontFamily: "inherit", cursor: "pointer", fontSize: 12, fontWeight: 800, padding: "3px 9px", borderRadius: 8,
+      border: "2px solid var(--ink)", background: outil === o ? "var(--yellow)" : "var(--white)",
+    }}>{label}</button>
+  );
 
   return (
     <div className="pop-card" style={{ padding: ouvert ? 12 : "8px 12px", display: "flex", flexDirection: "column", gap: 8, background: traite ? "var(--cream2)" : "var(--white)", flexShrink: 0 }}>
@@ -1394,8 +1573,9 @@ function PointEnSeance({ p, equipe, seanceId, ouvertParDefaut = false, onMaj, on
             <span style={{ display: "block", fontWeight: 800, fontSize: ouvert ? 16 : 15, overflowWrap: "anywhere" }}>
               {p.genre === "mission" ? "🎯 " : traite ? "✓ " : ""}{p.titre}
             </span>
-            {!ouvert && (p.priorite !== 1 && !traite || p.decision?.trim()) && (
+            {!ouvert && (p.priorite !== 1 && !traite || p.decision?.trim() || p.intervenant) && (
               <span style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginTop: 3, fontSize: 11 }}>
+                {p.intervenant && <Intervenant valeur={p.intervenant} equipe={equipe} />}
                 {p.priorite !== 1 && !traite && <Pastille texte={priorite(p.priorite).label} fond={priorite(p.priorite).couleur} />}
                 {p.decision?.trim() && <span style={{ opacity: 0.6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>📝 {p.decision.trim().split("\n")[0]}</span>}
               </span>
@@ -1414,9 +1594,48 @@ function PointEnSeance({ p, equipe, seanceId, ouvertParDefaut = false, onMaj, on
 
       {!traite && <ChoixPriorite compact valeur={p.priorite} onChange={v => sauver({ priorite: v })} />}
 
-      <textarea value={decision} onChange={e => setDecision(e.target.value)}
-        onBlur={() => { if (decision !== (p.decision ?? "")) sauver({ decision }); }}
-        placeholder="Décision, remarques…" rows={2} style={{ ...inp, resize: "vertical", fontSize: 13 }} />
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+        {p.intervenant && outil !== "intervenant" && <Intervenant valeur={p.intervenant} equipe={equipe} />}
+        {outilBtn("intervenant", p.intervenant ? "🎤 Changer" : "🎤 Présenté par")}
+        {decision.trim() && outilBtn("apercu", "👁 Aperçu")}
+        {lignes.length > 0 && outilBtn("missions", `🎯 Ligne → mission`)}
+      </div>
+      {outil === "intervenant" && (
+        <ChoixIntervenant valeur={p.intervenant ?? null} equipe={equipe} onChange={v => { sauver({ intervenant: v }); setOutil(null); }} />
+      )}
+
+      {/* Les notes du point sont le compte rendu : une grande zone, mise en forme à la lecture
+          (« - » puces, « 1. » listes, « Titre : » sous-titres, « => » flèches). */}
+      <TexteAuto value={decision} onChange={setDecision}
+        placeholder={"Notes du point : ce qui s'est dit, ce qui est décidé…\n- une puce par idée\nSous-titre :\n=> à retenir"}
+        style={{ fontSize: 13, minHeight: 96 }} />
+      {decision !== (p.decision ?? "") && <span style={{ fontSize: 11, opacity: 0.5, marginTop: -4 }}>Enregistrement…</span>}
+
+      {outil === "apercu" && decision.trim() && (
+        <div style={{ padding: "8px 10px", borderRadius: 8, border: "2px dashed rgba(0,0,0,0.2)", fontSize: 13, background: "var(--cream)" }}>
+          <TexteRiche texte={decision} />
+        </div>
+      )}
+      {outil === "missions" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, padding: 8, borderRadius: 8, border: "2px dashed var(--ink)", background: "var(--cream)" }}>
+          <span style={{ fontSize: 11, opacity: 0.6 }}>Clique une ligne pour en faire une mission (personnes et date repérées dans la ligne, à vérifier).</span>
+          {lignes.map((l, i) => {
+            const qui = personnesDansLigne(l, equipe);
+            const quand = dateDansLigne(l);
+            return (
+              <button key={i} type="button" onClick={() => versMissionDepuis(l)} style={{
+                display: "flex", gap: 8, alignItems: "center", textAlign: "left", fontFamily: "inherit", fontSize: 12, cursor: "pointer",
+                padding: "5px 8px", borderRadius: 6, border: "1.5px solid rgba(0,0,0,0.15)", background: "var(--white)",
+              }}>
+                <span style={{ fontWeight: 900 }}>🎯</span>
+                <span style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>{l}</span>
+                {qui.map(id => <Avatar key={id} m={equipe.find(m => m.id === id)} taille={18} />)}
+                {quand && <Pastille texte={`📅 ${dateCourte(quand)}`} fond="var(--white)" />}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {!traite && !versMission && (
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -1474,6 +1693,7 @@ function VueSeance({ seance, equipe, fiches, evenements, connecte, onSeance, onF
   const [envoye, setEnvoye] = useState(() => ecrireCR(lireCR(seance.compte_rendu)));
   const [envoi, setEnvoi] = useState(false);
   const [saisie, setSaisie] = useState("");
+  const [voirNotes, setVoirNotes] = useState(false);
   // « Tout déplier / replier » : la clé change, les points repartent dans cet état.
   const [depli, setDepli] = useState({ ouvert: false, n: 0 });
   const etat = envoi ? "envoi" : cr === envoye ? "ok" : "attente";
@@ -1544,27 +1764,29 @@ function VueSeance({ seance, equipe, fiches, evenements, connecte, onSeance, onF
           )}
           {aTraiter.length === 0 && <Vide>Tous les points ont été abordés 🎉</Vide>}
           {aTraiter.map(p => (
-            <PointEnSeance key={`${p.id}-${depli.n}`} p={p} equipe={equipe} seanceId={seance.id} ouvertParDefaut={depli.ouvert} onMaj={onFiche} onOuvrir={() => onOuvrirFiche(p)} />
+            <PointEnSeance key={`${p.id}-${depli.n}`} p={p} equipe={equipe} seanceId={seance.id} ouvertParDefaut={depli.ouvert} onMaj={onFiche} onOuvrir={() => onOuvrirFiche(p)} onNouvelleMission={onOuvrirFiche} />
           ))}
           {traites.length > 0 && (
             <>
               <div style={{ fontSize: 12, fontWeight: 800, textTransform: "uppercase", opacity: 0.5, marginTop: 6 }}>Traités pendant cette réunion · {traites.length}</div>
               {traites.map(p => (
-                <PointEnSeance key={`${p.id}-${depli.n}`} p={p} equipe={equipe} seanceId={seance.id} ouvertParDefaut={depli.ouvert} onMaj={onFiche} onOuvrir={() => onOuvrirFiche(p)} />
+                <PointEnSeance key={`${p.id}-${depli.n}`} p={p} equipe={equipe} seanceId={seance.id} ouvertParDefaut={depli.ouvert} onMaj={onFiche} onOuvrir={() => onOuvrirFiche(p)} onNouvelleMission={onOuvrirFiche} />
               ))}
             </>
           )}
         </Section>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 20, minWidth: 0 }}>
-          <Section titre="Compte rendu" droite={
+          <Section titre="Notes hors ordre du jour" droite={
             <span style={{ fontSize: 12, opacity: 0.6, whiteSpace: "nowrap" }}>
               {etat === "ok" ? "Enregistré ✓" : etat === "envoi" ? "Enregistrement…" : "Modifié"}
             </span>}>
             <div style={{ fontSize: 12, opacity: 0.6, marginTop: -4 }}>
-              Les points abordés, décisions et missions créées s’ajoutent d’eux-mêmes au compte rendu : ici, les notes libres.
+              Le compte rendu, ce sont les notes de chaque point (à gauche) : ici, seulement ce qui ne rentre dans aucun point.
             </div>
-            <EditeurCR blocs={blocs} equipe={equipe} onChange={setBlocs} />
+            {voirNotes || blocs.some(sectionRemplie)
+              ? <EditeurCR blocs={blocs} equipe={equipe} onChange={setBlocs} />
+              : <button className="pop-btn pop-btn-outline" style={{ alignSelf: "flex-start", fontSize: 13 }} onClick={() => setVoirNotes(true)}>+ Ajouter des notes libres</button>}
           </Section>
 
           <Section titre={`Missions à prioriser · ${missions.length}`} droite={connecte &&
@@ -1638,6 +1860,18 @@ async function exporterCompteRenduPdf(s: Seance, fiches: Fiche[], equipe: Membre
     }
     y += o.apres ?? 0;
   };
+  /** Notes mises en forme : sous-titres en gras, listes en retrait (comme à l'écran). */
+  const ecrireRiche = (texte: string, retrait: number, taille = 10.5, gris = false) => {
+    for (const l of lignesRiches(texte)) {
+      if (l.t === "vide") { y += 1.2; continue; }
+      if (l.t === "titre") ecrire(l.texte, { gras: true, retrait, taille, gris, apres: 0.3 });
+      else if (l.t === "puce") ecrire(`•  ${l.texte}`, { retrait: retrait + 3 + l.niveau * 4, taille, gris });
+      else if (l.t === "num") ecrire(`${l.n}.  ${l.texte}`, { retrait: retrait + 3, taille, gris });
+      else if (l.t === "fleche") ecrire(`->  ${l.texte}`, { retrait: retrait + 1, taille, gris });
+      else ecrire(l.texte, { retrait, taille, gris });
+    }
+    y += 0.5;
+  };
   const titreBloc = (t: string) => {
     place(14);
     y += 3;
@@ -1659,8 +1893,12 @@ async function exporterCompteRenduPdf(s: Seance, fiches: Fiche[], equipe: Membre
     titreBloc("Points abordés");
     for (const p of points) {
       ecrire(p.titre, { gras: true, apres: 0.5 });
-      if (p.description?.trim()) ecrire(p.description, { gris: true, retrait: 5, taille: 9.5, apres: 0.5 });
-      if (p.decision?.trim()) ecrire(`Décision : ${p.decision}`, { retrait: 5, apres: 0.5 });
+      if (p.intervenant) {
+        const ext = !equipe.some(m => m.id === p.intervenant);
+        ecrire(`Présenté par ${nomDe(p.intervenant)}${ext ? " (invité)" : ""}`, { gris: true, retrait: 5, taille: 9.5 });
+      }
+      if (p.description?.trim()) ecrireRiche(p.description, 5, 9.5, true);
+      if (p.decision?.trim()) ecrireRiche(p.decision, 5);
       y += 1.5;
     }
   }
@@ -1676,7 +1914,7 @@ async function exporterCompteRenduPdf(s: Seance, fiches: Fiche[], equipe: Membre
       ].filter(Boolean).join(" · ");
       ecrire(m.titre, { gras: true, apres: 0.5 });
       ecrire(infos, { gris: true, retrait: 5, taille: 9.5, apres: 0.5 });
-      if (m.decision?.trim()) ecrire(m.decision, { retrait: 5, apres: 0.5 });
+      if (m.decision?.trim()) ecrireRiche(m.decision, 5);
       y += 1.5;
     }
   }
@@ -1692,7 +1930,7 @@ async function exporterCompteRenduPdf(s: Seance, fiches: Fiche[], equipe: Membre
       }
       const concernes = [...sec.services.map(libelleService), ...sec.concernes.map(nomDe), ...sec.invites.map(n => `${n} (invité)`)];
       if (concernes.length) ecrire(`Concernés : ${concernes.join(", ")}`, { gris: true, taille: 9.5 });
-      for (const p of sec.paragraphes.filter(x => x.trim())) ecrire(p, { apres: 1.5 });
+      for (const p of sec.paragraphes.filter(x => x.trim())) { ecrireRiche(p, 0); y += 1; }
       y += 2;
     }
   }
@@ -1819,11 +2057,12 @@ function CarteCompteRendu({ s, equipe, fiches, q, onMaj, onSupprime, onOuvrirFic
                     {edition && <button onClick={() => onOuvrirFiche(p)} title="Modifier ce point (titre, détail, décision…)"
                       style={{ border: "none", background: "none", cursor: "pointer", fontSize: 14, flexShrink: 0 }}>✏️</button>}
                   </span>
+                  {p.intervenant && <div style={{ paddingLeft: 14 }}><Intervenant valeur={p.intervenant} equipe={equipe} /></div>}
                   {p.description?.trim() && (
-                    <div style={{ paddingLeft: 14, fontSize: 13, opacity: 0.6, whiteSpace: "pre-wrap", lineHeight: 1.5, overflowWrap: "anywhere" }}><Surligne texte={p.description} q={q} /></div>
+                    <TexteRiche texte={p.description} q={q} style={{ paddingLeft: 14, fontSize: 13, opacity: 0.6 }} />
                   )}
                   {p.decision?.trim() && (
-                    <div style={{ marginLeft: 14, paddingLeft: 10, borderLeft: "3px solid var(--turquoise)", whiteSpace: "pre-wrap", lineHeight: 1.5, overflowWrap: "anywhere" }}><Surligne texte={p.decision} q={q} /></div>
+                    <TexteRiche texte={p.decision} q={q} style={{ marginLeft: 14, paddingLeft: 10, borderLeft: "3px solid var(--turquoise)" }} />
                   )}
                 </div>
               ))}
@@ -1845,7 +2084,7 @@ function CarteCompteRendu({ s, equipe, fiches, q, onMaj, onSupprime, onOuvrirFic
                   <span>{m.statut === "fait" ? "✅" : "🎯"} <b><Surligne texte={m.titre} q={q} /></b></span>
                   {m.assignes.length > 0 && <span style={{ opacity: 0.7 }}>→ <Surligne texte={m.assignes.map(nomDe).join(", ")} q={q} /></span>}
                   {m.deadline && <span style={{ opacity: 0.7 }}>· avant le {dateCourte(m.deadline)}</span>}
-                  {m.decision?.trim() && <span style={{ opacity: 0.7, width: "100%", paddingLeft: 20, fontSize: 13, whiteSpace: "pre-wrap", lineHeight: 1.5, overflowWrap: "anywhere" }}><Surligne texte={m.decision} q={q} /></span>}
+                  {m.decision?.trim() && <TexteRiche texte={m.decision} q={q} style={{ opacity: 0.7, width: "100%", paddingLeft: 20, fontSize: 13 }} />}
                 </div>
               ))}
             </div>
@@ -1974,6 +2213,223 @@ function LignePasse({ it, equipe, connecte, onOuvrirEv, onRetour }: {
   );
 }
 
+// ─── Import d'un compte rendu ─────────────────────────────────────────────────
+
+/** Ce que renvoie l'analyse (noms tels qu'écrits dans le document). */
+type AnalyseCR = {
+  titre: string; date: string; participants: string[];
+  points: { titre: string; intervenant: string; notes: string }[];
+  missions: { titre: string; description: string; personnes: string[]; echeance: string }[];
+  notes_libres: string; remarques: string;
+};
+
+/** Brouillon modifiable avant l'import : les noms reconnus deviennent des membres de l'équipe. */
+type BrouillonCR = {
+  titre: string; date: string; participants: string[]; inconnus: string[];
+  points: { titre: string; intervenant: string | null; notes: string }[];
+  missions: { titre: string; description: string; assignes: string[]; deadline: string }[];
+  notes_libres: string; remarques: string;
+};
+
+/** Un nom du document → l'id d'un membre (nom complet ou prénom, sans accents ni casse). */
+function membreParNom(nom: string, equipe: Membre[]) {
+  const n = normaliser(nom.trim());
+  if (!n) return undefined;
+  return equipe.find(m => normaliser(m.nom) === n)
+    ?? equipe.find(m => normaliser(m.nom.split(/\s+/)[0]) === n.split(/\s+/)[0]);
+}
+
+function versBrouillon(a: AnalyseCR, equipe: Membre[]): BrouillonCR {
+  const participants: string[] = [], inconnus: string[] = [];
+  for (const nom of a.participants) {
+    const m = membreParNom(nom, equipe);
+    if (m) { if (!participants.includes(m.id)) participants.push(m.id); } else inconnus.push(nom);
+  }
+  return {
+    titre: a.titre, date: /^\d{4}-\d{2}-\d{2}$/.test(a.date) ? a.date : "", participants, inconnus,
+    points: a.points.map(p => ({ titre: p.titre, notes: p.notes, intervenant: p.intervenant.trim() ? (membreParNom(p.intervenant, equipe)?.id ?? p.intervenant.trim()) : null })),
+    missions: a.missions.map(m => {
+      const assignes = m.personnes.map(n => membreParNom(n, equipe)?.id).filter((x): x is string => !!x);
+      const autres = m.personnes.filter(n => !membreParNom(n, equipe));
+      return {
+        titre: m.titre, assignes, deadline: /^\d{4}-\d{2}-\d{2}$/.test(m.echeance) ? m.echeance : "",
+        description: [m.description, autres.length ? `Pour : ${autres.join(", ")}` : ""].filter(Boolean).join("\n"),
+      };
+    }),
+    notes_libres: a.notes_libres, remarques: a.remarques,
+  };
+}
+
+const enBase64 = (f: File) => new Promise<string>((ok, ko) => {
+  const r = new FileReader();
+  r.onload = () => ok(String(r.result).replace(/^data:[^,]*,/, ""));
+  r.onerror = () => ko(new Error("Lecture du fichier impossible."));
+  r.readAsDataURL(f);
+});
+
+function ModalImportCR({ equipe, onFermer, onImporte }: { equipe: Membre[]; onFermer: () => void; onImporte: () => void }) {
+  const [etape, setEtape] = useState<"choix" | "analyse" | "apercu" | "envoi">("choix");
+  const [erreur, setErreur] = useState<string | null>(null);
+  const [nomFichier, setNomFichier] = useState("");
+  const [b, setB] = useState<BrouillonCR | null>(null);
+  const [apercus, setApercus] = useState<Set<number>>(new Set());
+  const maj = (c: Partial<BrouillonCR>) => setB(x => x ? { ...x, ...c } : x);
+
+  const analyser = async (fichier: File) => {
+    setErreur(null); setNomFichier(fichier.name);
+    const ext = fichier.name.toLowerCase().split(".").pop();
+    if (ext !== "docx" && ext !== "pdf") { setErreur("Choisis un document Word (.docx) ou un PDF."); return; }
+    if (fichier.size > 25 * 1024 * 1024) { setErreur("Fichier trop lourd (25 Mo au plus)."); return; }
+    setEtape("analyse");
+    try {
+      const corps = ext === "pdf"
+        ? { pdf: await enBase64(fichier), nom: fichier.name }
+        : { texte: await (await import("../../lib/docxTexte")).texteDocx(fichier), nom: fichier.name };
+      if ("texte" in corps && !corps.texte?.trim()) throw new Error("Ce document Word ne contient pas de texte.");
+      const r = await fetch("/api/reunion/import/analyse", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corps) });
+      const data = await r.json().catch(() => ({})) as AnalyseCR & { error?: string };
+      if (!r.ok) throw new Error(data.error ?? "L'analyse a échoué.");
+      setB(versBrouillon(data, equipe));
+      setEtape("apercu");
+    } catch (e) {
+      setErreur(e instanceof Error ? e.message : "L'analyse a échoué.");
+      setEtape("choix");
+    }
+  };
+
+  const importer = async () => {
+    if (!b?.date) return;
+    setEtape("envoi");
+    const notes = b.notes_libres.trim();
+    const res = await envoyer<{ seance: Seance }>("/api/reunion/import", "POST", {
+      titre: b.titre, date: b.date, participants: b.participants,
+      compte_rendu: notes ? ecrireCR([{ ...sectionVide(), paragraphes: [notes] }]) : "[]",
+      points: b.points.map(p => ({ titre: p.titre, intervenant: p.intervenant, notes: p.notes })),
+      missions: b.missions.map(m => ({ titre: m.titre, description: m.description, assignes: m.assignes, deadline: m.deadline || null })),
+    });
+    if (res) onImporte(); else setEtape("apercu");
+  };
+
+  const carte: React.CSSProperties = { border: "2px solid var(--ink)", borderRadius: 10, background: "var(--white)", padding: 10, display: "flex", flexDirection: "column", gap: 8 };
+  const supprimerBtn: React.CSSProperties = { border: "none", background: "none", cursor: "pointer", fontSize: 14, color: "#b91c1c", fontWeight: 900, flexShrink: 0 };
+
+  return (
+    <Modal titre="📥 Importer un compte rendu" onFermer={onFermer} large>
+      {(etape === "choix" || etape === "analyse") && (
+        <>
+          <div style={{ fontSize: 14 }}>
+            Un compte rendu existant (Word ou PDF) est lu puis remis au format du Bureau par Claude : la réunion, ses points avec qui les a présentés, leurs notes mises en forme, et les missions décidées. Tu vérifies et corriges tout avant l’import.
+          </div>
+          <label style={{
+            display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: "26px 16px", cursor: etape === "analyse" ? "wait" : "pointer",
+            border: "2.5px dashed var(--ink)", borderRadius: 12, background: "var(--cream)", textAlign: "center",
+          }}>
+            {etape === "analyse" ? (
+              <>
+                <span className="pulse" style={{ fontSize: 26 }}>🧠</span>
+                <b>Analyse de « {nomFichier} »…</b>
+                <span style={{ fontSize: 12, opacity: 0.6 }}>Compter 30 secondes à 2 minutes selon la longueur.</span>
+              </>
+            ) : (
+              <>
+                <span style={{ fontSize: 26 }}>📄</span>
+                <b>Choisir un fichier .docx ou .pdf</b>
+                <span style={{ fontSize: 12, opacity: 0.6 }}>Le document est envoyé à l’API d’Anthropic pour l’analyse.</span>
+                <input type="file" accept=".docx,.pdf,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                  style={{ display: "none" }} onChange={e => { const f = e.target.files?.[0]; e.target.value = ""; if (f) analyser(f); }} />
+              </>
+            )}
+          </label>
+          {erreur && <div style={{ padding: "8px 12px", borderRadius: 8, background: "var(--rose)", border: "2px solid var(--ink)", fontSize: 13, fontWeight: 700 }}>{erreur}</div>}
+        </>
+      )}
+
+      {b && (etape === "apercu" || etape === "envoi") && (
+        <>
+          {b.remarques.trim() && (
+            <div style={{ padding: "8px 12px", borderRadius: 8, background: "var(--yellow)", border: "2px solid var(--ink)", fontSize: 13 }}>
+              <b>Note de l’analyse :</b> {b.remarques}
+            </div>
+          )}
+          <div className="pop-grid-2" style={{ gap: 12 }}>
+            <div><label style={etiquette}>Titre</label><input value={b.titre} onChange={e => maj({ titre: e.target.value })} style={inp} /></div>
+            <div>
+              <label style={etiquette}>Date de la réunion</label>
+              <input type="date" value={b.date} onChange={e => maj({ date: e.target.value })} style={{ ...inp, borderColor: b.date ? "var(--ink)" : "#b91c1c" }} />
+            </div>
+          </div>
+          <div>
+            <label style={etiquette}>Présents</label>
+            <ChoixMembres equipe={equipe} valeur={b.participants} onChange={v => maj({ participants: v })} />
+            {b.inconnus.length > 0 && <div style={{ fontSize: 12, opacity: 0.6, marginTop: 4 }}>Aussi présents (hors équipe) : {b.inconnus.join(", ")}</div>}
+          </div>
+
+          <Section titre={`Points · ${b.points.length}`}>
+            {b.points.map((p, i) => {
+              const setP = (c: Partial<typeof p>) => maj({ points: b.points.map((x, j) => j === i ? { ...x, ...c } : x) });
+              return (
+                <div key={i} style={carte}>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <input value={p.titre} onChange={e => setP({ titre: e.target.value })} style={{ ...inp, fontWeight: 800 }} />
+                    <button type="button" onClick={() => setApercus(a => { const n = new Set(a); if (n.has(i)) n.delete(i); else n.add(i); return n; })}
+                      className="pop-btn pop-btn-outline" style={{ padding: "3px 9px", fontSize: 12, flexShrink: 0 }}>{apercus.has(i) ? "✏️ Texte" : "👁 Aperçu"}</button>
+                    <button type="button" title="Retirer ce point" style={supprimerBtn}
+                      onClick={() => maj({ points: b.points.filter((_, j) => j !== i) })}>✕</button>
+                  </div>
+                  <div>
+                    <label style={etiquette}>Présenté par</label>
+                    <ChoixIntervenant valeur={p.intervenant} equipe={equipe} onChange={v => setP({ intervenant: v })} />
+                  </div>
+                  {apercus.has(i)
+                    ? <div style={{ padding: "6px 10px", borderRadius: 8, background: "var(--cream)", fontSize: 13 }}><TexteRiche texte={p.notes} /></div>
+                    : <TexteAuto value={p.notes} onChange={v => setP({ notes: v })} style={{ fontSize: 13 }} />}
+                </div>
+              );
+            })}
+            <button className="pop-btn pop-btn-outline" style={{ alignSelf: "flex-start", fontSize: 13 }}
+              onClick={() => maj({ points: [...b.points, { titre: "", intervenant: null, notes: "" }] })}>+ Point</button>
+          </Section>
+
+          <Section titre={`Missions · ${b.missions.length}`}>
+            {b.missions.length === 0 && <Vide>Aucune mission repérée.</Vide>}
+            {b.missions.map((m, i) => {
+              const setM = (c: Partial<typeof m>) => maj({ missions: b.missions.map((x, j) => j === i ? { ...x, ...c } : x) });
+              return (
+                <div key={i} style={carte}>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <span>🎯</span>
+                    <input value={m.titre} onChange={e => setM({ titre: e.target.value })} style={{ ...inp, fontWeight: 700 }} />
+                    <input type="date" value={m.deadline} onChange={e => setM({ deadline: e.target.value })} style={{ ...inp, width: 150, flexShrink: 0 }} />
+                    <button type="button" title="Retirer cette mission" style={supprimerBtn}
+                      onClick={() => maj({ missions: b.missions.filter((_, j) => j !== i) })}>✕</button>
+                  </div>
+                  <ChoixMembres equipe={equipe} valeur={m.assignes} onChange={v => setM({ assignes: v })} />
+                  {m.description && <div style={{ fontSize: 12, opacity: 0.65, whiteSpace: "pre-wrap" }}>{m.description}</div>}
+                </div>
+              );
+            })}
+          </Section>
+
+          {b.notes_libres.trim() && (
+            <div>
+              <label style={etiquette}>Notes hors ordre du jour</label>
+              <TexteAuto value={b.notes_libres} onChange={v => maj({ notes_libres: v })} style={{ fontSize: 13 }} />
+            </div>
+          )}
+
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap", alignItems: "center" }}>
+            {!b.date && <span style={{ fontSize: 12, color: "#b91c1c", fontWeight: 700, marginRight: "auto" }}>Indique la date de la réunion.</span>}
+            <button className="pop-btn pop-btn-outline" onClick={() => { setB(null); setEtape("choix"); }}>Autre fichier</button>
+            <button className="pop-btn pop-btn-dark" onClick={importer} disabled={!b.date || etape === "envoi"}>
+              {etape === "envoi" ? "…" : `Importer (${b.points.length} point${b.points.length > 1 ? "s" : ""}, ${b.missions.length} mission${b.missions.length > 1 ? "s" : ""})`}
+            </button>
+          </div>
+        </>
+      )}
+    </Modal>
+  );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 type Onglet = "taches" | "evenements" | "comptes-rendus";
@@ -2005,6 +2461,7 @@ export default function ReunionPage() {
   const [ficheEditee, setFicheEditee] = useState<Partial<Fiche> | null>(null);
   const [evOuvert, setEvOuvert] = useState<Partial<EvPrep> | null>(null);
   const [lancement, setLancement] = useState(false);
+  const [importCR, setImportCR] = useState(false);
   const [retourOuvert, setRetourOuvert] = useState<CibleRetour | null>(null);
 
   useEffect(() => {
@@ -2359,6 +2816,9 @@ export default function ReunionPage() {
 
             {onglet === "comptes-rendus" && (
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {connecte && (
+                  <button className="pop-btn pop-btn-outline" style={{ alignSelf: "flex-start" }} onClick={() => setImportCR(true)}>📥 Importer un compte rendu (Word, PDF)</button>
+                )}
                 {comptesRendus.length > 0 && (
                   <div style={{ position: "relative" }}>
                     <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", opacity: 0.5, pointerEvents: "none" }}>🔍</span>
@@ -2385,6 +2845,14 @@ export default function ReunionPage() {
           </>
         )}
       </div>
+
+      {importCR && (
+        <ModalImportCR equipe={equipe} onFermer={() => setImportCR(false)} onImporte={() => {
+          setImportCR(false);
+          lireListe<Fiche>("/api/reunion/fiches").then(setFiches);
+          lireListe<Seance>("/api/reunion/seances").then(setSeances);
+        }} />
+      )}
 
       {lancement && (
         <ModalLancement equipe={equipe} moi={moi} suggestions={suggestions}

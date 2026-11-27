@@ -17,6 +17,7 @@
     "sync:wasm": "node -e \"require('fs').copyFileSync('node_modules/zxing-wasm/dist/reader/zxing_reader.wasm','public/zxing_reader.wasm')\""
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.14.0",
     "@react-pdf/renderer": "^4.3.2",
     "barcode-detector": "^3.2.2",
     "cheerio": "^1.2.0",

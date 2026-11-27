@@ -22,7 +22,7 @@ type Table = {
 
 export const FICHES: Table = {
   nom: 'reunion_fiches',
-  colonnes: ['genre', 'titre', 'description', 'statut', 'priorite', 'deadline', 'assignes', 'evenement_id', 'seance_id', 'decision', 'fait_le', 'valide_par'],
+  colonnes: ['genre', 'titre', 'description', 'statut', 'priorite', 'deadline', 'assignes', 'evenement_id', 'seance_id', 'decision', 'fait_le', 'valide_par', 'intervenant'],
   json: ['assignes', 'valide_par'],
 };
 
