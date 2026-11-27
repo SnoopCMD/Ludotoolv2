@@ -8,7 +8,7 @@ import { ETAPES_A_ZERO, ETAPES_ATELIER, COLONNES_ETAPES, etapeCourante } from ".
 import EnteteImpression, { CaseImpressionDouble } from "../../components/EnteteImpression";
 import {
   chargerCodesSyracuse, correspondance, eanDuCode, etiquettesPour, lireImpressionDouble, ecrireImpressionDouble,
-  validerEtapeImpression, type JeuChoisi, type LigneCatalogue,
+  validerEtapeImpression, supprimerFicheCatalogue, type JeuChoisi, type LigneCatalogue,
 } from "../../lib/impression";
 
 // react-pdf uniquement côté navigateur : jamais dans le bundle serveur du worker
@@ -211,7 +211,13 @@ function ContenuPageInner() {
     allerALaFiche(couleurId, id);
   };
 
-  const supprimerLigne = (couleurId: string, id: string | number) => {
+  /** Supprime la ligne et sa fiche au catalogue (sinon elle revient au rechargement). */
+  const supprimerLigne = async (couleurId: string, id: string | number) => {
+    const ligne = contenus[couleurId].find(x => x.id === id);
+    if (!ligne) return;
+    // Une ligne chargée a pour id son EAN d'origine ; une ligne ajoutée ici, un nombre.
+    const eans = [typeof id === "string" && !id.startsWith("nouveau-") ? id : "", ligne.ean];
+    if (!(await supprimerFicheCatalogue(ligne.nom, eans))) return;
     setContenus(prev => ({ ...prev, [couleurId]: prev[couleurId].filter(c => c.id !== id) }));
   };
 

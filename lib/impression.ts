@@ -148,3 +148,25 @@ export function lireImpressionDouble(): boolean {
 export function ecrireImpressionDouble(v: boolean) {
   try { localStorage.setItem(CLE_DOUBLE, v ? "1" : "0"); } catch { /* navigation privée : on oublie */ }
 }
+
+/**
+ * Supprime la fiche d'un jeu du catalogue (étiquette et contenu vont ensemble :
+ * c'est la même ligne). `eans` : le code de la ligne tel que chargé et tel que
+ * saisi. Demande confirmation, en signalant les exemplaires de l'inventaire qui
+ * portent ce code. Renvoie faux si l'on annule ou si la suppression échoue.
+ */
+export async function supprimerFicheCatalogue(nom: string, eans: string[]): Promise<boolean> {
+  const codes = [...new Set(eans.map(e => e.trim()).filter(Boolean))];
+  if (!codes.length) return true; // ligne jamais enregistrée
+  const exemplaires = (await Promise.all(codes.map(c =>
+    fetch(`/api/jeux?ean=${encodeURIComponent(c)}&fields=id`).then(r => r.json() as Promise<unknown>).catch(() => []))))
+    .reduce<number>((n, l) => n + (Array.isArray(l) ? l.length : 0), 0);
+  const message = `Supprimer la fiche « ${nom || codes[0]} » (${codes.join(", ")}) du catalogue ?\n\n`
+    + "Son étiquette et son contenu disparaissent tous les deux."
+    + (exemplaires ? `\n\n⚠ ${exemplaires} exemplaire${exemplaires > 1 ? "s" : ""} de l'inventaire porte${exemplaires > 1 ? "nt" : ""} ce code : il${exemplaires > 1 ? "s" : ""} n'aura${exemplaires > 1 ? "ont" : ""} plus d'étiquette ni de contenu.` : "");
+  if (!window.confirm(message)) return false;
+  const res = await Promise.all(codes.map(c =>
+    fetch(`/api/catalogue/${encodeURIComponent(c)}`, { method: "DELETE" }).then(r => r.ok).catch(() => false)));
+  if (res.some(ok => !ok)) { window.alert("La suppression a échoué, réessaie."); return false; }
+  return true;
+}

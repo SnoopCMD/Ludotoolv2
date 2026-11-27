@@ -28,6 +28,8 @@ type JvJeu = {
   igdb_id: number | null;
   ean: string | null;
   cote_syracuse: string | null;
+  /** 1 : jeu dématérialisé (sans boîte ni EAN), 0 : physique. Migration 0034. */
+  demat?: number | null;
   created_at: string;
 };
 
@@ -413,9 +415,8 @@ function ModalJeu({
   const [eanSaisi, setEanSaisi] = useState("");
   const [eanEnCours, setEanEnCours] = useState(false);
   const [eanInfo, setEanInfo] = useState<{ texte: string; ton: "ok" | "alerte" } | null>(null);
-  // Support : physique (boîte avec code-barres) ou démat (sans EAN). Pas de
-  // colonne dédiée : un jeu sans EAN est un jeu dématérialisé.
-  const [physique, setPhysique] = useState(isNew || !!jeu?.ean);
+  // Support : physique (boîte avec code-barres) ou démat (colonne demat, sans EAN).
+  const [physique, setPhysique] = useState(!Number(jeu?.demat));
   const choisirSupport = (p: boolean) => {
     setPhysique(p);
     if (!p) { setEanSaisi(""); setEanInfo(null); setForm(f => ({ ...f, ean: null })); }
@@ -453,6 +454,7 @@ function ModalJeu({
       genre: jeu.genre, annee: jeu.annee, editeur: jeu.editeur, description: jeu.description,
       image_url: jeu.image_url, pegi: jeu.pegi, nb_joueurs: jeu.nb_joueurs,
       statut: "disponible" as const, igdb_id: jeu.igdb_id, ean: null, cote_syracuse: null,
+      demat: Number(jeu.demat) ? 1 : 0,
     };
     const res = await fetch('/api/jv-jeux', {
       method: 'POST',
@@ -633,6 +635,7 @@ function ModalJeu({
       igdb_id: form.igdb_id ?? null,
       ean: physique ? normaliserEan(form.ean) || null : null,
       cote_syracuse: form.cote_syracuse ?? null,
+      demat: physique ? 0 : 1,
     };
     let savedJeu: JvJeu;
     if (isNew) {
@@ -956,7 +959,7 @@ function ModalJeu({
                       placeholder="EAN : code-barres de la boîte" className="pop-input" style={{ flex: 1, minWidth: 160 }} />
                     <BoutonScan titre="Scanner le code-barres du jeu" onScan={code => set("ean", normaliserEan(code))} />
                   </> : (
-                    <span style={{ fontSize: 13, fontWeight: 700, color: 'rgba(0,0,0,0.5)' }}>Dématérialisé : pas d’EAN.</span>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: 'rgba(0,0,0,0.5)' }}>Dématérialisé : pas d’EAN, badge « Démat » au catalogue.</span>
                   )}
                 </div>
               </div>
@@ -2745,6 +2748,9 @@ function TabCatalogue({
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
                 <span style={{ fontWeight: 700, fontSize: 15 }}>{jeu.titre}</span>
                 <span style={{ background: CONSOLE_BG[jeu.console], border: '2px solid var(--ink)', borderRadius: 6, padding: '2px 8px', fontSize: 12, fontWeight: 700, boxShadow: '2px 2px 0 var(--ink)', whiteSpace: 'nowrap' }}>{jeu.console}</span>
+                {!!Number(jeu.demat) && (
+                  <span title="Jeu dématérialisé (sans boîte)" style={{ background: '#e0f2fe', border: '2px solid var(--ink)', borderRadius: 6, padding: '2px 8px', fontSize: 12, fontWeight: 800, boxShadow: '2px 2px 0 var(--ink)', whiteSpace: 'nowrap' }}>☁️ Démat</span>
+                )}
                 {genresDe(jeu.genre).map(g => (
                   <span key={g} style={{ background: 'var(--cream2)', border: '1.5px solid rgba(0,0,0,0.15)', borderRadius: 20, padding: '1px 8px', fontSize: 11, fontWeight: 600 }}>{g}</span>
                 ))}

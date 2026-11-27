@@ -8,7 +8,7 @@ import { ETAPES_A_ZERO } from "../../lib/etapesAtelier";
 import EnteteImpression, { CaseImpressionDouble } from "../../components/EnteteImpression";
 import {
   chargerCodesSyracuse, contenusPour, correspondance, eanDuCode, lireImpressionDouble, ecrireImpressionDouble,
-  validerEtapeImpression, type JeuChoisi, type LigneCatalogue,
+  validerEtapeImpression, supprimerFicheCatalogue, type JeuChoisi, type LigneCatalogue,
 } from "../../lib/impression";
 import {
   MECANIQUES, TEMPS_DE_JEU_OPTIONS, COOP_VERSUS_OPTIONS, joueursDepuisMyLudo, tempsDepuisMyLudo,
@@ -401,7 +401,13 @@ function EtiquettesPageInner() {
   };
 
 
-  const supprimerLigne = (couleurId: string, id: string | number) => {
+  /** Supprime la ligne et sa fiche au catalogue (sinon elle revient au rechargement). */
+  const supprimerLigne = async (couleurId: string, id: string | number) => {
+    const ligne = etiquettes[couleurId].find(x => x.id === id);
+    if (!ligne) return;
+    // Une ligne chargée a pour id son EAN d'origine ; une ligne ajoutée ici, un nombre.
+    const eans = [typeof id === "string" && !id.startsWith("nouveau-") ? id : "", ligne.ean];
+    if (!(await supprimerFicheCatalogue(ligne.nom, eans))) return;
     setEtiquettes(prev => ({ ...prev, [couleurId]: prev[couleurId].filter(eti => eti.id !== id) }));
   };
 
