@@ -10,7 +10,10 @@ import {
   chargerCodesSyracuse, contenusPour, correspondance, eanDuCode, lireImpressionDouble, ecrireImpressionDouble,
   validerEtapeImpression, type JeuChoisi, type LigneCatalogue,
 } from "../../lib/impression";
-import { MECANIQUES, TEMPS_DE_JEU_OPTIONS, COOP_VERSUS_OPTIONS, joueursDepuisMyLudo, tempsDepuisMyLudo } from "../../lib/etiquetteJeu";
+import {
+  MECANIQUES, TEMPS_DE_JEU_OPTIONS, COOP_VERSUS_OPTIONS, joueursDepuisMyLudo, tempsDepuisMyLudo,
+  couleurEtEtoilesDepuisAge, ageMinDepuisMyLudo, urlRechercheMyLudo,
+} from "../../lib/etiquetteJeu";
 
 // react-pdf uniquement côté navigateur : jamais dans le bundle serveur du worker
 const BoutonImpression = dynamic(() => import("../../components/BoutonImpression"), { ssr: false });
@@ -63,6 +66,36 @@ const S = {
   } as React.CSSProperties,
 };
 
+/** Réponse de /api/myludo (les champs utiles à l'étiquette). */
+type ResultatMyLudo = {
+  notFound?: boolean; error?: string; title?: string; url?: string | null;
+  age?: string | null; age_min?: unknown; players_min?: number | string | null; players_max?: number | string | null;
+  duration?: unknown; duree_max?: number | null;
+  /** Nos mécaniques reconnues parmi les étiquettes MyLudo, la plus probable d'abord. */
+  mecaniques?: string[];
+  type_partie?: { valeur: "Coop" | "Versus" | "Solo"; sur: boolean } | null;
+};
+/** État MyLudo d'une ligne : recherche en cours, ou sa réponse (null si MyLudo ne répond pas). */
+type EtatMyLudo = { enCours: true } | { enCours: false; data: ResultatMyLudo | null };
+
+const NOMS_COULEURS: Record<string, string> = { vert: "vert", rose: "rose", bleu: "bleu", rouge: "rouge", jaune: "jaune" };
+
+/** Ce que MyLudo propose pour l'étiquette (comme la fiche de l'atelier), et la couleur que lui donnerait la règle d'âge. */
+function propositionsMyLudo(data: ResultatMyLudo | null | undefined) {
+  if (!data || data.notFound || data.error) return null;
+  const c = couleurEtEtoilesDepuisAge(ageMinDepuisMyLudo(data), Number(data.duree_max) || null,
+    { min: Number(data.players_min) || null, max: Number(data.players_max) || null });
+  return {
+    nb_de_joueurs: joueursDepuisMyLudo(Number(data.players_min) || null, Number(data.players_max) || null),
+    temps_de_jeu: tempsDepuisMyLudo(data),
+    mecanique: data.mecaniques?.[0] ?? "",
+    mecaniques: data.mecaniques ?? [],
+    coop_versus: data.type_partie?.valeur ?? "",
+    couleur: c?.couleur ?? "",
+    etoiles: c ? c.etoiles : null,
+  };
+}
+
 /** Champs de l'étiquette qui manquent encore (le nom compris). */
 const estIncomplete = (e: Etiquette) =>
   !e.nom || !e.mecanique || !e.nb_de_joueurs || !e.coop_versus || !e.temps_de_jeu || e.etoiles === "";
@@ -77,16 +110,33 @@ const choix = (actif: boolean, fond = "var(--yellow)"): React.CSSProperties => (
 const groupeManquant = (vide: boolean): React.CSSProperties =>
   vide ? { outline: "2px dashed var(--rouge)", outlineOffset: 3, borderRadius: 8 } : {};
 
+/** Valeur proposée par MyLudo sous un champ, à prendre d'un clic. */
+function Suggestion({ texte, onUtiliser }: { texte: string; onUtiliser: () => void }) {
+  return (
+    <button onClick={onUtiliser} title="Utiliser la valeur de MyLudo"
+      style={{ marginTop: 6, display: "inline-flex", alignItems: "center", gap: 6, fontFamily: "inherit", fontSize: 12, fontWeight: 700, cursor: "pointer", border: "1.5px dashed var(--ink)", borderRadius: 12, padding: "2px 10px", background: "#e0f2fe" }}>
+      MyLudo : {texte} <span style={{ textDecoration: "underline" }}>utiliser</span>
+    </button>
+  );
+}
+
 /**
  * Menu de remplissage rapide, déplié sous la ligne d'un jeu : chaque champ de
  * l'étiquette se choisit d'un bouton (comme dans la fiche de l'atelier). Un
  * champ encore vide est entouré de rouge.
  */
-function PanneauRemplissage({ eti, maxStars, hex, onChoisir, onMyLudo, mlEnCours, onFermer }: {
-  eti: Etiquette; maxStars: number; hex: string;
+function PanneauRemplissage({ eti, couleur, maxStars, hex, ml, onChoisir, onMyLudo, onFermer }: {
+  eti: Etiquette; couleur: string; maxStars: number; hex: string; ml: EtatMyLudo | undefined;
   onChoisir: (champ: keyof Etiquette, valeur: string | number) => void;
-  onMyLudo: () => void; mlEnCours: boolean; onFermer: () => void;
+  onMyLudo: () => void; onFermer: () => void;
 }) {
+  const enCours = ml?.enCours === true;
+  const data = ml && !ml.enCours ? ml.data : null;
+  const prop = propositionsMyLudo(data);
+  // Valeur de MyLudo pour un champ, quand elle diffère de la saisie.
+  const suggestion = (champ: "nb_de_joueurs" | "temps_de_jeu" | "mecanique" | "coop_versus") =>
+    prop && prop[champ] && prop[champ] !== eti[champ] ? prop[champ] : null;
+  const etoilesMl = prop?.etoiles && prop.couleur === couleur && prop.etoiles !== eti.etoiles ? prop.etoiles : null;
   const libelle: React.CSSProperties = { fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", color: "rgba(0,0,0,0.5)", marginBottom: 6, display: "block" };
   const ligne: React.CSSProperties = { display: "flex", gap: 6, flexWrap: "wrap", width: "fit-content", maxWidth: "100%" };
   return (
@@ -97,18 +147,44 @@ function PanneauRemplissage({ eti, maxStars, hex, onChoisir, onMyLudo, mlEnCours
           ? <span style={{ fontSize: 12, fontWeight: 800, color: "var(--rouge)" }}>à compléter</span>
           : <span style={{ fontSize: 12, fontWeight: 800, color: "#3f7d0e" }}>✓ étiquette complète</span>}
         <span style={{ flex: 1 }} />
-        <button onClick={onMyLudo} disabled={mlEnCours || (!eti.ean && !eti.nom)} style={{ ...choix(false), opacity: mlEnCours ? 0.5 : 1 }}
-          title="Compléter joueurs et temps depuis MyLudo">{mlEnCours ? "MyLudo…" : "Joueurs et temps depuis MyLudo"}</button>
+        <button onClick={onMyLudo} disabled={enCours || (!eti.ean && !eti.nom)} style={{ ...choix(false), opacity: enCours ? 0.5 : 1 }}
+          title="Relancer la recherche MyLudo">↻ MyLudo</button>
         <button onClick={onFermer} style={{ ...choix(false), background: "var(--ink)", color: "var(--white)" }}>Fermer ▲</button>
+      </div>
+
+      {/* Résultat de MyLudo */}
+      <div style={{ fontSize: 13, fontWeight: 700, padding: "6px 10px", borderRadius: 8, border: "2px solid var(--ink)", background: enCours ? "var(--white)" : data && !data.notFound && !data.error ? "#e0f2fe" : "#fff5f5", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        {enCours ? <span>Recherche sur MyLudo…</span>
+          : !data || data.error ? <span>MyLudo ne répond pas, réessaie dans un moment.</span>
+          : data.notFound ? <>
+              <span>Jeu introuvable sur MyLudo : à remplir à la main.</span>
+              <a href={urlRechercheMyLudo(eti.nom)} target="_blank" rel="noopener noreferrer" style={{ color: "var(--ink)" }}>🔎 Chercher sur MyLudo ↗</a>
+            </>
+          : <>
+              <span>Trouvé sur MyLudo : {data.title ?? eti.nom}{data.age ? ` · ${data.age}` : ""}. Les champs vides sont remplis, les autres valeurs sont proposées.</span>
+              {data.url && <a href={data.url} target="_blank" rel="noopener noreferrer" style={{ color: "var(--ink)" }}>Voir la fiche ↗</a>}
+              {prop?.couleur && prop.couleur !== couleur && (
+                <span style={{ color: "#b45309" }}>⚠ D’après l’âge, MyLudo le classerait en {NOMS_COULEURS[prop.couleur] ?? prop.couleur}.</span>
+              )}
+              {!prop?.mecanique && <span style={{ opacity: 0.7 }}>Aucune mécanique reconnue : à choisir.</span>}
+            </>}
       </div>
 
       <div>
         <span style={libelle}>Mécanique</span>
         <div style={{ ...ligne, ...groupeManquant(!eti.mecanique) }}>
-          {MECANIQUES.map(m => (
-            <button key={m} onClick={() => onChoisir("mecanique", eti.mecanique === m ? "" : m)} style={{ ...choix(eti.mecanique === m), padding: "3px 8px", fontSize: 12 }}>{m}</button>
-          ))}
+          {MECANIQUES.map(m => {
+            const reperee = prop?.mecaniques.includes(m);
+            return (
+              <button key={m} onClick={() => onChoisir("mecanique", eti.mecanique === m ? "" : m)} title={reperee ? "Mécanique repérée sur MyLudo" : undefined}
+                style={{ ...choix(eti.mecanique === m), padding: "3px 8px", fontSize: 12, ...(reperee && eti.mecanique !== m ? { background: "#e0f2fe", borderStyle: "dashed" } : {}) }}>
+                {reperee ? "◆ " : ""}{m}
+              </button>
+            );
+          })}
         </div>
+        {suggestion("mecanique") && <Suggestion texte={suggestion("mecanique")!} onUtiliser={() => onChoisir("mecanique", suggestion("mecanique")!)} />}
+        {(prop?.mecaniques.length ?? 0) > 0 && <div style={{ marginTop: 4, fontSize: 11, fontWeight: 700, opacity: 0.6 }}>◆ mécaniques repérées sur MyLudo</div>}
       </div>
 
       <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
@@ -124,6 +200,7 @@ function PanneauRemplissage({ eti, maxStars, hex, onChoisir, onMyLudo, mlEnCours
               onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
               style={{ ...S.inp, width: 70, padding: "4px 8px", fontSize: 13, fontWeight: 700, textAlign: "center" }} />
           </div>
+          {suggestion("nb_de_joueurs") && <Suggestion texte={suggestion("nb_de_joueurs")!} onUtiliser={() => onChoisir("nb_de_joueurs", suggestion("nb_de_joueurs")!)} />}
         </div>
         <div>
           <span style={libelle}>Type de partie</span>
@@ -132,6 +209,7 @@ function PanneauRemplissage({ eti, maxStars, hex, onChoisir, onMyLudo, mlEnCours
               <button key={o.id} onClick={() => onChoisir("coop_versus", eti.coop_versus === o.id ? "" : o.id)} style={choix(eti.coop_versus === o.id)}>{o.label}</button>
             ))}
           </div>
+          {suggestion("coop_versus") && <Suggestion texte={`${suggestion("coop_versus")}${data?.type_partie && !data.type_partie.sur ? " (déduit)" : ""}`} onUtiliser={() => onChoisir("coop_versus", suggestion("coop_versus")!)} />}
         </div>
       </div>
 
@@ -143,6 +221,7 @@ function PanneauRemplissage({ eti, maxStars, hex, onChoisir, onMyLudo, mlEnCours
               <button key={t} onClick={() => onChoisir("temps_de_jeu", eti.temps_de_jeu === t ? "" : t)} style={choix(eti.temps_de_jeu === t)}>{t}</button>
             ))}
           </div>
+          {suggestion("temps_de_jeu") && <Suggestion texte={`${suggestion("temps_de_jeu")} min`} onUtiliser={() => onChoisir("temps_de_jeu", suggestion("temps_de_jeu")!)} />}
         </div>
         <div>
           <span style={libelle}>Difficulté</span>
@@ -151,6 +230,7 @@ function PanneauRemplissage({ eti, maxStars, hex, onChoisir, onMyLudo, mlEnCours
               <button key={n} onClick={() => onChoisir("etoiles", eti.etoiles === n ? "" : n)} style={{ ...choix(eti.etoiles === n), fontSize: 15, letterSpacing: 2 }}>{"★".repeat(n)}</button>
             ))}
           </div>
+          {etoilesMl && <Suggestion texte={`${"★".repeat(etoilesMl)} (${data?.age ?? "âge"}${Number(data?.duree_max) ? `, ${data?.duree_max} min` : ""})`} onUtiliser={() => onChoisir("etoiles", etoilesMl)} />}
         </div>
       </div>
     </div>
@@ -183,7 +263,8 @@ function EtiquettesPageInner() {
   const [catalogue, setCatalogue] = useState<Map<string, LigneCatalogue>>(new Map());
   const [codesSyracuse, setCodesSyracuse] = useState<Record<string, string[]>>({});
   const [impressionDouble, setImpressionDouble] = useState(false);
-  const [mlLoading, setMlLoading] = useState<Set<string | number>>(new Set());
+  // Recherche MyLudo de chaque ligne (en cours, ou sa réponse), affichée dans son menu de remplissage.
+  const [myLudo, setMyLudo] = useState<Record<string, EtatMyLudo>>({});
   // Ligne dont le menu de remplissage rapide est déplié.
   const [ligneOuverte, setLigneOuverte] = useState<string | number | null>(null);
 
@@ -282,11 +363,12 @@ function EtiquettesPageInner() {
     sauvegarderLigneEnBase(updated, couleurId);
   };
 
-  /** Va à la ligne d'un jeu (section ouverte, filtre effacé) et déplie son menu de remplissage. */
+  /** Va à la ligne d'un jeu (section ouverte, filtre effacé) et lance son remplissage MyLudo. */
   const allerAuJeu = (couleurId: string, id: string | number) => {
     setFiltre("");
     setSectionsOuvertes(prev => ({ ...prev, [couleurId]: true }));
-    setLigneOuverte(id);
+    const eti = etiquettes[couleurId].find(e => e.id === id);
+    if (eti) lancerMyLudo(couleurId, eti); else setLigneOuverte(id);
     setTimeout(() => {
       document.querySelector(`tr[data-eti="${CSS.escape(String(id))}"]`)?.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 150);
@@ -353,36 +435,39 @@ function EtiquettesPageInner() {
     }));
   };
 
-  // Complète les joueurs / le temps depuis MyLudo (source d'appoint)
-  const completerDepuisMyLudo = async (couleurId: string, eti: Etiquette) => {
-    if (mlLoading.has(eti.id)) return;
-    if (!eti.ean && !eti.nom) return;
-    setMlLoading(prev => new Set(prev).add(eti.id));
-    try {
-      const params = new URLSearchParams();
-      if (eti.ean) params.set("ean", eti.ean);
-      if (eti.nom) params.set("nom", eti.nom);
-      const data = await fetch(`/api/myludo?${params}`).then(r => r.json() as Promise<any>).catch(() => null);
-      if (!data || data.notFound || data.error) return;
-
-      const joueurs = joueursDepuisMyLudo(data.players_min, data.players_max);
-      const temps = tempsDepuisMyLudo(data);
-
-      setEtiquettes(prev => ({
-        ...prev, [couleurId]: prev[couleurId].map(e => {
-          if (e.id !== eti.id) return e;
-          const updated: Etiquette = {
-            ...e,
-            nb_de_joueurs: joueurs || e.nb_de_joueurs,
-            temps_de_jeu: temps || e.temps_de_jeu,
-          };
-          sauvegarderLigneEnBase(updated, couleurId);
-          return updated;
-        })
-      }));
-    } finally {
-      setMlLoading(prev => { const n = new Set(prev); n.delete(eti.id); return n; });
-    }
+  /**
+   * Remplissage MyLudo d'une ligne : déplie son menu, cherche le jeu (code-barres
+   * puis nom) et remplit les champs vides — joueurs, temps, mécanique, type de
+   * partie, et les étoiles quand la règle d'âge donne la couleur de la ligne.
+   * Les valeurs qui diffèrent d'une saisie existante sont seulement proposées.
+   */
+  const lancerMyLudo = async (couleurId: string, eti: Etiquette) => {
+    setLigneOuverte(eti.id);
+    const cle = String(eti.id);
+    if (myLudo[cle]?.enCours || (!eti.ean && !eti.nom)) return;
+    setMyLudo(prev => ({ ...prev, [cle]: { enCours: true } }));
+    const params = new URLSearchParams();
+    if (eti.ean) params.set("ean", eti.ean);
+    if (eti.nom) params.set("nom", eti.nom);
+    const data = await fetch(`/api/myludo?${params}`).then(r => r.json() as Promise<ResultatMyLudo>).catch(() => null);
+    setMyLudo(prev => ({ ...prev, [cle]: { enCours: false, data } }));
+    const prop = propositionsMyLudo(data);
+    if (!prop) return;
+    setEtiquettes(prev => ({
+      ...prev, [couleurId]: prev[couleurId].map(e => {
+        if (e.id !== eti.id) return e;
+        const updated: Etiquette = {
+          ...e,
+          nb_de_joueurs: e.nb_de_joueurs || prop.nb_de_joueurs,
+          temps_de_jeu: e.temps_de_jeu || prop.temps_de_jeu,
+          mecanique: e.mecanique || prop.mecanique,
+          coop_versus: e.coop_versus || (prop.coop_versus as Etiquette["coop_versus"]),
+          etoiles: e.etoiles !== "" ? e.etoiles : (prop.etoiles && prop.couleur === couleurId ? prop.etoiles : ""),
+        };
+        sauvegarderLigneEnBase(updated, couleurId);
+        return updated;
+      })
+    }));
   };
 
   const genererPDF = async () => {
@@ -466,7 +551,7 @@ function EtiquettesPageInner() {
                 <div style={{ background: "#c084fc", borderBottom: "2.5px solid var(--ink)", padding: "10px 16px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                   <span className="bc" style={{ fontSize: 18, textTransform: "uppercase" }}>Étiquettes à compléter</span>
                   <span style={{ background: "var(--white)", border: "2px solid var(--ink)", borderRadius: 20, padding: "1px 10px", fontSize: 12, fontWeight: 800 }}>{aCompleter.length} jeu{aCompleter.length > 1 ? "x" : ""}</span>
-                  <span style={{ fontSize: 12, fontWeight: 700, opacity: 0.7 }}>Un clic ouvre le jeu et son menu de remplissage</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, opacity: 0.7 }}>Un clic ouvre le jeu et lance son remplissage MyLudo</span>
                 </div>
                 <div style={{ padding: 12, display: "flex", flexWrap: "wrap", gap: 8, maxHeight: 180, overflowY: "auto" }}>
                   {aCompleter.map(({ cat, e }) => (
@@ -722,26 +807,18 @@ function EtiquettesPageInner() {
                                   <td style={{ padding: "6px 8px" }}>
                                     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
                                       <button
-                                        onClick={() => setLigneOuverte(ouverte ? null : eti.id)}
-                                        title={ouverte ? "Replier le menu de remplissage" : "Remplir l'étiquette avec le menu rapide"}
+                                        onClick={() => ouverte ? setLigneOuverte(null) : lancerMyLudo(cat.id, eti)}
+                                        disabled={!ouverte && !eti.ean && !eti.nom}
+                                        title={ouverte ? "Replier le menu de remplissage" : "Remplir depuis MyLudo (ouvre le menu de remplissage)"}
                                         style={{
-                                          background: ouverte ? "var(--ink)" : isIncomplet ? "var(--yellow)" : "var(--white)",
+                                          background: ouverte ? "var(--ink)" : isIncomplet ? "var(--yellow)" : "var(--cream2)",
                                           color: ouverte ? "var(--white)" : "var(--ink)",
-                                          border: "2px solid var(--ink)", borderRadius: 6, cursor: "pointer",
-                                          fontSize: 12, fontWeight: 800, padding: "4px 7px", lineHeight: 1, fontFamily: "inherit",
+                                          border: "2px solid var(--ink)", borderRadius: 6,
+                                          cursor: (!ouverte && !eti.ean && !eti.nom) ? "not-allowed" : "pointer",
+                                          opacity: (!ouverte && !eti.ean && !eti.nom) ? 0.4 : 1,
+                                          fontSize: 11, fontWeight: 800, padding: "4px 7px", lineHeight: 1, fontFamily: "inherit", whiteSpace: "nowrap",
                                         }}
-                                      >{ouverte ? "▲" : "✎"}</button>
-                                      <button
-                                        onClick={() => completerDepuisMyLudo(cat.id, eti)}
-                                        disabled={mlLoading.has(eti.id) || (!eti.ean && !eti.nom)}
-                                        title="Compléter joueurs et temps depuis MyLudo"
-                                        style={{
-                                          background: "var(--cream2)", border: "2px solid var(--ink)", borderRadius: 6,
-                                          cursor: (mlLoading.has(eti.id) || (!eti.ean && !eti.nom)) ? "not-allowed" : "pointer",
-                                          fontSize: 11, fontWeight: 800, padding: "4px 6px", lineHeight: 1,
-                                          opacity: (!eti.ean && !eti.nom) ? 0.4 : 1, fontFamily: "inherit",
-                                        }}
-                                      >{mlLoading.has(eti.id) ? "…" : "ML"}</button>
+                                      >{ouverte ? "▲" : myLudo[String(eti.id)]?.enCours ? "…" : "ML ✎"}</button>
                                       <button
                                         onClick={() => supprimerLigne(cat.id, eti.id)}
                                         title="Supprimer la ligne"
@@ -759,9 +836,9 @@ function EtiquettesPageInner() {
                                 {ouverte && (
                                   <tr>
                                     <td colSpan={9} style={{ padding: 0 }}>
-                                      <PanneauRemplissage eti={eti} maxStars={cat.maxStars} hex={cat.hex}
+                                      <PanneauRemplissage eti={eti} couleur={cat.id} maxStars={cat.maxStars} hex={cat.hex} ml={myLudo[String(eti.id)]}
                                         onChoisir={(champ, v) => remplir(cat.id, eti.id, champ, v)}
-                                        onMyLudo={() => completerDepuisMyLudo(cat.id, eti)} mlEnCours={mlLoading.has(eti.id)}
+                                        onMyLudo={() => lancerMyLudo(cat.id, eti)}
                                         onFermer={() => setLigneOuverte(null)} />
                                     </td>
                                   </tr>
