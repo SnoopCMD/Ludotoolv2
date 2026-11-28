@@ -1807,8 +1807,8 @@ export default function InventairePage() {
         {(() => {
           const inter = INTERCALAIRES.find(i => i.id === couleurFiltre) ?? INTERCALAIRES[0];
           return (
-        <section style={{ display: "flex", flexDirection: "column", minWidth: 0, order: isMobile ? 2 : 0, height: isMobile ? undefined : HAUTEUR_PANNEAUX, minHeight: isMobile ? undefined : 560 }}>
-          <div className="inv-onglets">
+        <section style={{ display: "flex", flexDirection: isMobile ? "column" : "row", minWidth: 0, order: isMobile ? 2 : 0, height: isMobile ? undefined : HAUTEUR_PANNEAUX, minHeight: isMobile ? undefined : 560 }}>
+          <div className="inv-onglets" data-sens={isMobile ? "h" : "v"}>
             {INTERCALAIRES.map((o, i) => {
               const actif = o.id === couleurFiltre;
               const n = comptesIntercalaires[o.id ?? "tous"] ?? 0;
@@ -1822,7 +1822,7 @@ export default function InventairePage() {
               );
             })}
           </div>
-          <div className="inv-classeur" style={{ background: inter.fond, color: inter.texte, borderTopLeftRadius: couleurFiltre === null ? 0 : 12, flex: isMobile ? undefined : 1, minHeight: 0 }}>
+          <div className="inv-classeur" style={{ background: inter.fond, color: inter.texte, borderTopLeftRadius: couleurFiltre === null ? 0 : 12, flex: isMobile ? undefined : 1, minHeight: 0, minWidth: 0 }}>
             <div className="inv-points" />
               <div key={`ouvert-${inter.id ?? "tous"}`} className={sensGlisse === "droite" ? "inv-glisse-droite" : "inv-glisse-gauche"}
                 style={{ position: "relative", height: "100%", display: "flex", flexDirection: "column", minWidth: isMobile ? 0 : 560 }}>

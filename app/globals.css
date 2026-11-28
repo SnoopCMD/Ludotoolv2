@@ -517,6 +517,23 @@ body::before {
   .inv-onglet { padding: 7px 4px 6px; margin-right: -3px; gap: 3px; }
   .inv-onglet[data-actif="true"] { padding-top: 10px; padding-bottom: 8px; }
 }
+/* Version verticale (bureau) : les onglets dépassent du bord gauche du
+   classeur, empilés de haut en bas, le texte se lit de bas en haut. */
+.inv-onglets[data-sens="v"] { flex-direction: column; align-items: flex-end; padding-top: 0; }
+.inv-onglets[data-sens="v"] .inv-onglet {
+  writing-mode: vertical-rl; transform: rotate(180deg);
+  padding: 22px 9px 22px 8px; margin: 0 0 -6px 0;
+}
+.inv-onglets[data-sens="v"] .inv-onglet::before {
+  border: 2.5px solid var(--ink); border-left: none;
+  border-radius: 0 9px 9px 0;
+  transform: perspective(30px) rotateY(5deg); transform-origin: left;
+}
+.inv-onglets[data-sens="v"] .inv-onglet .bc { font-size: 15px !important; }
+.inv-onglets[data-sens="v"] .inv-onglet:hover { transform: rotate(180deg) translateY(2px); }
+.inv-onglets[data-sens="v"] .inv-onglet[data-actif="true"] {
+  padding: 26px 13px 26px 10px; margin-right: -2.5px; transform: rotate(180deg);
+}
 .inv-classeur {
   position: relative; overflow: hidden; z-index: 2;
   border: 2.5px solid var(--ink); border-radius: 12px;
