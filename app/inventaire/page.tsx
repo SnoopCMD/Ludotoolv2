@@ -115,9 +115,13 @@ const COULEURS = [
 
 // Les intercalaires de l'inventaire : « Tous » en noir, puis une par couleur.
 const INTERCALAIRES: { id: string | null; label: string; fond: string; texte: string }[] = [
-  { id: null, label: "Tous", fond: "var(--ink)", texte: "var(--white)" },
+  { id: null, label: "Tous", fond: "#2dd4bf", texte: "var(--ink)" },
   ...COULEURS.map(c => ({ id: c.id, label: c.label, fond: c.hex, texte: c.id === "vert" || c.id === "jaune" ? "var(--ink)" : "var(--white)" })),
 ];
+
+// Les intercalaires et la colonne de droite occupent la hauteur de l'écran
+// sous l'en-tête ; chaque liste défile ensuite à l'intérieur.
+const HAUTEUR_PANNEAUX = "calc(100dvh - var(--nav-h) - 150px)";
 
 const initiale = (nom: string) => {
   const c = (nom || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().charAt(0).toUpperCase();
@@ -1465,7 +1469,7 @@ export default function InventairePage() {
     return (
       <div className="inv-rangee inv-ligne" style={{
         border: "2.5px solid var(--ink)", borderLeft: `10px solid ${couleurObj ? couleurObj.hex : "var(--cream2)"}`,
-        borderRadius: 10, background: "var(--white)", boxShadow: "3px 3px 0 var(--ink)", overflow: "hidden",
+        borderRadius: 10, background: "var(--white)", boxShadow: "3px 3px 0 var(--ink)", overflow: "hidden", flexShrink: 0, color: "var(--ink)",
         animationDelay: idx < 24 ? `${idx * 22}ms` : "0ms",
       }}>
         <div onClick={() => ouvrirFicheJeu(jeu)}
@@ -1797,142 +1801,142 @@ export default function InventairePage() {
         gap: isMobile ? 18 : 24,
       }}>
 
-        {/* ── Intercalaires (3/4 de la page) ── */}
-        <section style={{ display: "flex", flexDirection: "column", minWidth: 0, order: isMobile ? 2 : 0 }}>
+        {/* ── Intercalaires (3/4 de la page) ──
+            Bandes verticales côte à côte : l'intercalaire ouvert s'élargit,
+            les autres restent des tranches avec leur nom à la verticale.
+            Sur téléphone, les tranches deviennent une rangée de pastilles. */}
+        <section style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: isMobile ? 8 : 8, minWidth: 0, order: isMobile ? 2 : 0, height: isMobile ? undefined : HAUTEUR_PANNEAUX, minHeight: isMobile ? undefined : 560 }}>
+          {isMobile && (
+            <div style={{ display: "flex", gap: 4 }}>
+              {INTERCALAIRES.map(inter => {
+                const actif = inter.id === couleurFiltre;
+                const n = comptesIntercalaires[inter.id ?? "tous"] ?? 0;
+                return (
+                  <button key={inter.id ?? "tous"} onClick={() => ouvrirIntercalaire(inter.id)} className="inv-tranche-mobile" data-actif={actif}
+                    style={{ background: inter.fond, color: inter.texte }}>
+                    <span className="bc" style={{ fontSize: 12, letterSpacing: "0.04em", textTransform: "uppercase", lineHeight: 1 }}>{inter.label}</span>
+                    <span className="inv-compte">{n}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
-          {/* Onglets + choix de l'affichage */}
-          <div style={{ display: "flex", alignItems: "flex-end", gap: isMobile ? 3 : 6, paddingLeft: 0 }}>
-            {INTERCALAIRES.map(inter => {
-              const actif = inter.id === couleurFiltre;
-              const n = comptesIntercalaires[inter.id ?? "tous"] ?? 0;
-              return (
-                <button key={inter.id ?? "tous"} onClick={() => ouvrirIntercalaire(inter.id)}
-                  className="inv-onglet" data-actif={actif}
-                  title={`${inter.label} — ${n} jeu${n !== 1 ? "x" : ""}`}
-                  style={{
-                    background: inter.fond, color: inter.texte,
-                    padding: isMobile
-                      ? (actif ? "10px 4px 12px" : "7px 4px 10px")
-                      : (actif ? "12px 18px 14px" : "8px 14px 12px"),
-                    flex: isMobile ? "1 1 0" : undefined, minWidth: 0,
-                    justifyContent: "center", flexDirection: isMobile ? "column" : "row", gap: isMobile ? 2 : 8,
-                  }}>
-                  <span className="bc" style={{ fontSize: isMobile ? 12 : (actif ? 19 : 16), letterSpacing: "0.04em", textTransform: "uppercase", lineHeight: 1, transition: "font-size 0.25s" }}>{inter.label}</span>
-                  <span style={{
-                    fontSize: isMobile ? 10 : 11, fontWeight: 800, lineHeight: 1,
-                    background: inter.id === null ? "var(--white)" : "var(--ink)",
-                    color: inter.id === null ? "var(--ink)" : "var(--white)",
-                    borderRadius: 20, padding: isMobile ? "2px 5px" : "3px 7px",
-                  }}>{n}</span>
-                </button>
-              );
-            })}
-            {!isMobile && (
-              <div style={{ marginLeft: "auto", marginBottom: 10, display: "flex", border: "2px solid var(--ink)", borderRadius: 8, overflow: "hidden", boxShadow: "2px 2px 0 var(--ink)", background: "var(--white)" }}>
-                {([["liste", "☰ Liste"], ["mosaique", "▦ Mosaïque"]] as const).map(([mode, label]) => {
-                  const dispo = mode === "liste";
-                  return (
-                    <button key={mode} disabled={!dispo} onClick={() => setAffichage(mode)}
-                      title={dispo ? undefined : "Bientôt disponible"}
-                      style={{
-                        padding: "6px 12px", border: "none", fontFamily: "inherit", fontWeight: 800, fontSize: 12,
-                        cursor: dispo ? "pointer" : "not-allowed",
-                        background: affichage === mode ? "var(--ink)" : "transparent",
-                        color: affichage === mode ? "var(--white)" : dispo ? "var(--ink)" : "rgba(0,0,0,0.3)",
-                        borderLeft: mode === "mosaique" ? "2px solid var(--ink)" : "none",
-                      }}>{label}</button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          {(() => {
-            const inter = INTERCALAIRES.find(i => i.id === couleurFiltre) ?? INTERCALAIRES[0];
-            const filtresActifs = !!(filtreJoueurs || filtreMeca || filtreTemps || filtreEtoiles || filtreType || recherche);
-            const avecLettres = !recherche && jeuxGroupes.length > 12;
+          {INTERCALAIRES.map(inter => {
+            const actif = inter.id === couleurFiltre;
+            const n = comptesIntercalaires[inter.id ?? "tous"] ?? 0;
+            if (isMobile && !actif) return null;
             return (
-              <div className="inv-corps" style={{ borderTopLeftRadius: couleurFiltre === null ? 0 : 12 }}>
-                {/* Bandeau de l'intercalaire : prend la couleur de l'onglet ouvert */}
-                <div className="inv-bandeau" style={{ background: inter.fond, color: inter.texte, padding: isMobile ? "12px 12px" : "14px 18px", display: "flex", flexDirection: "column", gap: 10, borderBottom: "2.5px solid var(--ink)" }}>
-                  <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
-                    <span className="bc" style={{ fontSize: isMobile ? 24 : 30, lineHeight: 1, letterSpacing: "0.02em" }}>
-                      {inter.id === null ? "Tous les jeux" : `Jeux ${inter.label.toLowerCase()}s`}
-                    </span>
-                    <span style={{ fontWeight: 800, fontSize: 13, opacity: 0.75 }}>
-                      {jeuxGroupes.length} titre{jeuxGroupes.length !== 1 ? "s" : ""}
-                      {recherche && <> pour « {recherche} »</>}
-                    </span>
-                  </div>
-                  {/* Six contrôles : alignés sur desktop, en grille de deux sur téléphone. */}
-                  <div style={isMobile
-                    ? { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", alignItems: "center", gap: 8 }
-                    : { display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
-                    <button onClick={() => setTri(tri === "A-Z" ? "Z-A" : "A-Z")} className="pop-btn" style={{ padding: "6px 14px", fontSize: 13, justifyContent: "center", background: "var(--white)", color: "var(--ink)" }}>
-                      Nom {tri === "A-Z" ? "A→Z" : "Z→A"}
-                    </button>
-                    <input type="number" min="1" max="99" placeholder="👥 Joueurs" value={filtreJoueurs} onChange={e => setFiltreJoueurs(e.target.value)} style={{ ...inp, padding: "7px 12px", width: isMobile ? "100%" : 110, color: "var(--ink)" }} />
-                    <select value={filtreType} onChange={e => setFiltreType(e.target.value)} style={{ ...inp, padding: "7px 12px", width: isMobile ? "100%" : "auto", cursor: "pointer", color: "var(--ink)" }}>
-                      <option value="">⚔️ Type</option><option value="Coop">🤝 Coop</option><option value="Versus">⚔️ Versus</option><option value="Solo">👤 Solo</option>
-                    </select>
-                    <select value={filtreMeca} onChange={e => setFiltreMeca(e.target.value)} style={{ ...inp, padding: "7px 12px", width: isMobile ? "100%" : "auto", cursor: "pointer", color: "var(--ink)" }}>
-                      <option value="">⚙️ Méca.</option>
-                      {mecasDispos.map(m => <option key={m as string} value={m as string}>{m}</option>)}
-                    </select>
-                    <select value={filtreTemps} onChange={e => setFiltreTemps(e.target.value)} style={{ ...inp, padding: "7px 12px", width: isMobile ? "100%" : "auto", cursor: "pointer", color: "var(--ink)" }}>
-                      <option value="">⏳ Durée</option><option value="Rapide">Rapide (&lt;30m)</option><option value="Moyen">Moyen (30-60m)</option><option value="Long">Long (&gt;60m)</option>
-                    </select>
-                    <select value={filtreEtoiles} onChange={e => setFiltreEtoiles(e.target.value)} style={{ ...inp, padding: "7px 12px", width: isMobile ? "100%" : "auto", cursor: "pointer", color: "var(--ink)" }}>
-                      <option value="">⭐ Étoiles</option><option value="1">1 Étoile</option><option value="2">2 Étoiles</option><option value="3">3 Étoiles</option>
-                    </select>
-                    {filtresActifs && (
-                      <button onClick={() => { setRecherche(""); setFiltreMeca(""); setFiltreJoueurs(""); setFiltreEtoiles(""); setFiltreTemps(""); setFiltreType(""); }}
-                        className="pop-btn" style={{ padding: "6px 10px", fontSize: 12, background: "var(--rouge)", color: "var(--white)", justifyContent: "center" }}>✕ Effacer les filtres</button>
-                    )}
-                  </div>
-                </div>
+              <div key={inter.id ?? "tous"} className="inv-bande" data-actif={actif}
+                onClick={actif ? undefined : () => ouvrirIntercalaire(inter.id)}
+                title={actif ? undefined : `Ouvrir « ${inter.label} » — ${n} jeu${n !== 1 ? "x" : ""}`}
+                style={{ background: inter.fond, color: inter.texte, ...(isMobile ? { flex: "none" } : {}) }}>
+                <div className="inv-points" />
 
-                {/* Contenu : remonté à chaque changement d'intercalaire pour rejouer le glissement */}
-                <div key={couleurFiltre ?? "tous"} className={sensGlisse === "droite" ? "inv-glisse-droite" : "inv-glisse-gauche"}
-                  style={{ padding: isMobile ? "12px 10px" : "16px 18px", display: "flex", flexDirection: "column", gap: 10, minHeight: 300 }}>
-                  {isLoading ? (
-                    <p className="bc" style={{ fontSize: 22, color: "rgba(0,0,0,0.3)", letterSpacing: "0.04em", textAlign: "center", padding: "80px 0" }}>Chargement de l'inventaire…</p>
-                  ) : jeuxGroupes.length === 0 ? (
-                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "60px 0", color: "rgba(0,0,0,0.3)" }}>
-                      <span style={{ fontSize: 40, marginBottom: 12 }}>🤔</span>
-                      <p style={{ fontWeight: 700, fontSize: 16 }}>Aucun jeu ne correspond dans cet intercalaire.</p>
+                {!actif ? (
+                  /* Tranche repliée */
+                  <div style={{ position: "relative", height: "100%", display: "flex", flexDirection: "column", alignItems: "center", padding: "14px 0", gap: 12 }}>
+                    <span className="inv-compte">{n}</span>
+                    <span className="bc inv-tranche-titre">{inter.label}</span>
+                  </div>
+                ) : (
+                  /* Intercalaire ouvert */
+                  <div key={`ouvert-${inter.id ?? "tous"}`} className={sensGlisse === "droite" ? "inv-glisse-droite" : "inv-glisse-gauche"}
+                    style={{ position: "relative", height: "100%", display: "flex", flexDirection: "column", minWidth: isMobile ? 0 : 560 }}>
+                    {/* En-tête : titre, affichage, filtres */}
+                    <div style={{ padding: isMobile ? "14px 12px 10px" : "18px 20px 12px", display: "flex", flexDirection: "column", gap: 12, flexShrink: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                        <span className="bc" style={{ fontSize: isMobile ? 26 : 34, lineHeight: 1, letterSpacing: "0.02em" }}>
+                          {inter.id === null ? "Tous les jeux" : `Jeux ${inter.label.toLowerCase()}s`}
+                        </span>
+                        <span style={{ fontSize: 12, fontWeight: 800, background: "var(--ink)", color: "var(--white)", borderRadius: 20, padding: "3px 10px" }}>
+                          {jeuxGroupes.length} titre{jeuxGroupes.length !== 1 ? "s" : ""}{recherche && <> · « {recherche} »</>}
+                        </span>
+                        {!isMobile && (
+                          <div style={{ marginLeft: "auto", display: "flex", border: "2px solid var(--ink)", borderRadius: 8, overflow: "hidden", boxShadow: "2px 2px 0 var(--ink)", background: "var(--white)" }}>
+                            {([["liste", "☰ Liste"], ["mosaique", "▦ Mosaïque"]] as const).map(([mode, label]) => {
+                              const dispo = mode === "liste";
+                              return (
+                                <button key={mode} disabled={!dispo} onClick={() => setAffichage(mode)}
+                                  title={dispo ? undefined : "Bientôt disponible"}
+                                  style={{
+                                    padding: "6px 12px", border: "none", fontFamily: "inherit", fontWeight: 800, fontSize: 12,
+                                    cursor: dispo ? "pointer" : "not-allowed",
+                                    background: affichage === mode ? "var(--ink)" : "transparent",
+                                    color: affichage === mode ? "var(--white)" : dispo ? "var(--ink)" : "rgba(0,0,0,0.3)",
+                                    borderLeft: mode === "mosaique" ? "2px solid var(--ink)" : "none",
+                                  }}>{label}</button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                      <div style={isMobile
+                        ? { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", alignItems: "center", gap: 8 }
+                        : { display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+                        <button onClick={() => setTri(tri === "A-Z" ? "Z-A" : "A-Z")} className="pop-btn" style={{ padding: "6px 14px", fontSize: 13, justifyContent: "center", background: "var(--white)", color: "var(--ink)" }}>
+                          Nom {tri === "A-Z" ? "A→Z" : "Z→A"}
+                        </button>
+                        <input type="number" min="1" max="99" placeholder="👥 Joueurs" value={filtreJoueurs} onChange={e => setFiltreJoueurs(e.target.value)} style={{ ...inp, padding: "7px 12px", width: isMobile ? "100%" : 110, color: "var(--ink)" }} />
+                        <select value={filtreType} onChange={e => setFiltreType(e.target.value)} style={{ ...inp, padding: "7px 12px", width: isMobile ? "100%" : "auto", cursor: "pointer", color: "var(--ink)" }}>
+                          <option value="">⚔️ Type</option><option value="Coop">🤝 Coop</option><option value="Versus">⚔️ Versus</option><option value="Solo">👤 Solo</option>
+                        </select>
+                        <select value={filtreMeca} onChange={e => setFiltreMeca(e.target.value)} style={{ ...inp, padding: "7px 12px", width: isMobile ? "100%" : "auto", cursor: "pointer", color: "var(--ink)" }}>
+                          <option value="">⚙️ Méca.</option>
+                          {mecasDispos.map(m => <option key={m as string} value={m as string}>{m}</option>)}
+                        </select>
+                        <select value={filtreTemps} onChange={e => setFiltreTemps(e.target.value)} style={{ ...inp, padding: "7px 12px", width: isMobile ? "100%" : "auto", cursor: "pointer", color: "var(--ink)" }}>
+                          <option value="">⏳ Durée</option><option value="Rapide">Rapide (&lt;30m)</option><option value="Moyen">Moyen (30-60m)</option><option value="Long">Long (&gt;60m)</option>
+                        </select>
+                        <select value={filtreEtoiles} onChange={e => setFiltreEtoiles(e.target.value)} style={{ ...inp, padding: "7px 12px", width: isMobile ? "100%" : "auto", cursor: "pointer", color: "var(--ink)" }}>
+                          <option value="">⭐ Étoiles</option><option value="1">1 Étoile</option><option value="2">2 Étoiles</option><option value="3">3 Étoiles</option>
+                        </select>
+                        {!!(filtreJoueurs || filtreMeca || filtreTemps || filtreEtoiles || filtreType || recherche) && (
+                          <button onClick={() => { setRecherche(""); setFiltreMeca(""); setFiltreJoueurs(""); setFiltreEtoiles(""); setFiltreTemps(""); setFiltreType(""); }}
+                            className="pop-btn" style={{ padding: "6px 10px", fontSize: 12, background: "var(--rouge)", color: "var(--white)", justifyContent: "center" }}>✕ Effacer les filtres</button>
+                        )}
+                      </div>
                     </div>
-                  ) : (
-                    jeuxGroupes.map((groupe, idx) => {
-                      const jeu = groupe[0];
-                      const lettre = initiale(jeu.nom);
-                      const nouvelleLettre = avecLettres && (idx === 0 || initiale(jeuxGroupes[idx - 1][0].nom) !== lettre);
-                      return (
-                        <div key={jeu.ean} style={{ display: "contents" }}>
-                          {nouvelleLettre && (
-                            <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: idx === 0 ? 0 : 8 }}>
-                              <span className="bc" style={{
-                                fontSize: 18, lineHeight: 1, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center",
-                                background: inter.fond, color: inter.texte, border: "2px solid var(--ink)", borderRadius: 8, boxShadow: "2px 2px 0 var(--ink)",
-                              }}>{lettre}</span>
-                              <div style={{ flex: 1, height: 2, background: "var(--ink)", opacity: 0.1, borderRadius: 1 }} />
-                            </div>
-                          )}
-                          {renderLigneJeu(groupe, idx)}
+
+                    {/* Liste : défile dans l'intercalaire */}
+                    <div className="inv-bloc-corps" style={{ flex: 1, overflowY: isMobile ? "visible" : "auto", padding: isMobile ? "4px 10px 14px" : "6px 20px 20px", display: "flex", flexDirection: "column", gap: 10, minHeight: isMobile ? 300 : 0 }}>
+                      {isLoading ? (
+                        <p className="bc" style={{ fontSize: 22, opacity: 0.5, letterSpacing: "0.04em", textAlign: "center", padding: "80px 0" }}>Chargement de l'inventaire…</p>
+                      ) : jeuxGroupes.length === 0 ? (
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "60px 0", opacity: 0.6 }}>
+                          <span style={{ fontSize: 40, marginBottom: 12 }}>🤔</span>
+                          <p style={{ fontWeight: 700, fontSize: 16 }}>Aucun jeu ne correspond dans cet intercalaire.</p>
                         </div>
-                      );
-                    })
-                  )}
-                </div>
+                      ) : (
+                        jeuxGroupes.map((groupe, idx) => {
+                          const jeu = groupe[0];
+                          const lettre = initiale(jeu.nom);
+                          const nouvelleLettre = !recherche && jeuxGroupes.length > 12 && (idx === 0 || initiale(jeuxGroupes[idx - 1][0].nom) !== lettre);
+                          return (
+                            <div key={jeu.ean} style={{ display: "contents" }}>
+                              {nouvelleLettre && (
+                                <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: idx === 0 ? 0 : 8, flexShrink: 0 }}>
+                                  <span className="bc" style={{ fontSize: 18, lineHeight: 1, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--white)", color: "var(--ink)", border: "2px solid var(--ink)", borderRadius: 8, boxShadow: "2px 2px 0 var(--ink)" }}>{lettre}</span>
+                                  <div style={{ flex: 1, height: 2.5, background: "var(--ink)", opacity: 0.25, borderRadius: 2 }} />
+                                </div>
+                              )}
+                              {renderLigneJeu(groupe, idx)}
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             );
-          })()}
+          })}
         </section>
 
         {/* ── Blocs de droite : Nouveautés, Sélection, Atelier ── */}
         <aside style={isMobile
           ? { display: "flex", gap: 12, overflowX: "auto", scrollSnapType: "x mandatory", margin: "0 calc(-1 * var(--page-pad-x))", padding: "4px var(--page-pad-x) 10px", order: 1 }
-          : { position: "sticky", top: "calc(var(--nav-h) + 92px)", display: "flex", flexDirection: "column", gap: 16, height: "calc(100dvh - var(--nav-h) - 116px)", minHeight: 560 }}>
+          : { display: "flex", flexDirection: "column", gap: 16, height: HAUTEUR_PANNEAUX, minHeight: 560 }}>
           {blocNouveautes}
           {blocSelection}
           {blocAtelier}
