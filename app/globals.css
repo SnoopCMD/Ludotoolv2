@@ -481,3 +481,48 @@ body::before {
 .chat-media-case:hover .chat-etoile, .chat-etoile:focus-visible { opacity: 1; }
 @media (hover: none) { .chat-etoile { opacity: 1; } }
 .chat-section-titre { font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.07em; color: rgba(0, 0, 0, 0.45); margin: 2px 2px 6px; }
+
+/* ══════════════════════════════════════════════════════════════════
+   INVENTAIRE — intercalaires
+   Onglets façon classeur : celui de l'intercalaire ouvert sort du rang
+   et se soude au corps ; le contenu glisse dans le sens du changement.
+   ══════════════════════════════════════════════════════════════════ */
+@keyframes inv-glisse-droite { from { opacity: 0; transform: translateX(48px); } to { opacity: 1; transform: none; } }
+@keyframes inv-glisse-gauche { from { opacity: 0; transform: translateX(-48px); } to { opacity: 1; transform: none; } }
+@keyframes inv-ligne { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+.inv-onglet {
+  position: relative;
+  display: flex; align-items: center; gap: 8px;
+  border: 2.5px solid var(--ink); border-bottom: none;
+  border-radius: 12px 12px 0 0;
+  font-family: inherit; cursor: pointer;
+  transform: translateY(8px);
+  transition: transform 0.28s cubic-bezier(.2,.9,.25,1.2), padding 0.28s ease, filter 0.2s;
+  filter: saturate(0.75) brightness(0.97);
+}
+.inv-onglet:hover { transform: translateY(3px); filter: none; }
+.inv-onglet[data-actif="true"] { transform: translateY(2.5px); filter: none; z-index: 3; }
+
+.inv-corps {
+  position: relative; z-index: 2;
+  border: 2.5px solid var(--ink); border-radius: 0 12px 12px 12px;
+  box-shadow: 5px 5px 0 var(--ink);
+  background: var(--white); overflow: hidden;
+  transition: border-radius 0.2s;
+}
+.inv-bandeau { transition: background-color 0.35s ease, color 0.35s ease; }
+
+.inv-glisse-droite { animation: inv-glisse-droite 0.38s cubic-bezier(.2,.8,.2,1) both; }
+.inv-glisse-gauche { animation: inv-glisse-gauche 0.38s cubic-bezier(.2,.8,.2,1) both; }
+.inv-ligne { animation: inv-ligne 0.34s cubic-bezier(.2,.8,.2,1) both; }
+
+.inv-rangee { transition: transform 0.14s, box-shadow 0.14s, background 0.14s; }
+.inv-rangee:hover { transform: translate(-2px, -2px); box-shadow: 5px 5px 0 var(--ink) !important; }
+
+.inv-bloc-corps { scrollbar-width: thin; }
+
+@media (prefers-reduced-motion: reduce) {
+  .inv-glisse-droite, .inv-glisse-gauche, .inv-ligne { animation: none; }
+  .inv-onglet, .inv-rangee { transition: none; }
+}

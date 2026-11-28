@@ -113,6 +113,17 @@ const COULEURS = [
   { id: 'jaune', bg: 'bg-[#ffa600]', text: 'text-black', border: 'border-[#ffa600]', shadow: 'shadow-[#ffa600]/50', label: 'Jaune', hex: '#fb923c' }
 ];
 
+// Les intercalaires de l'inventaire : « Tous » en noir, puis une par couleur.
+const INTERCALAIRES: { id: string | null; label: string; fond: string; texte: string }[] = [
+  { id: null, label: "Tous", fond: "var(--ink)", texte: "var(--white)" },
+  ...COULEURS.map(c => ({ id: c.id, label: c.label, fond: c.hex, texte: c.id === "vert" || c.id === "jaune" ? "var(--ink)" : "var(--white)" })),
+];
+
+const initiale = (nom: string) => {
+  const c = (nom || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().charAt(0).toUpperCase();
+  return /[A-Z]/.test(c) ? c : "#";
+};
+
 // Liste officielle des mécaniques : celle de l'étiquette (lib/etiquetteJeu.ts).
 const MECANIQUES_OFFICIELLES = [...MECANIQUES].sort();
 
@@ -323,6 +334,8 @@ export default function InventairePage() {
   
   const [recherche, setRecherche] = useState("");
   const [couleurFiltre, setCouleurFiltre] = useState<string | null>(null);
+  const [sensGlisse, setSensGlisse] = useState<"droite" | "gauche">("droite");
+  const [affichage, setAffichage] = useState<"liste" | "mosaique">("liste");
   const [tri, setTri] = useState("A-Z");
   const [filtreMeca, setFiltreMeca] = useState("");
   const [filtreJoueurs, setFiltreJoueurs] = useState(""); 
@@ -714,28 +727,44 @@ export default function InventairePage() {
 
   const mecasDispos = useMemo(() => [...new Set(jeux.map(j => j.mecanique).filter(Boolean))].sort(), [jeux]);
 
-  const jeuxFiltres = useMemo(() => {
-    let filtrés = jeux;
-    if (couleurFiltre) filtrés = filtrés.filter(j => j.couleur === couleurFiltre);
+  // Tous les filtres sauf la couleur : la couleur, c'est l'intercalaire ouvert.
+  // Les compteurs des onglets se calculent sur cette liste, pour voir d'un
+  // coup d'œil dans quel intercalaire se trouvent les résultats d'une recherche.
+  const jeuxFiltresHorsCouleur = useMemo(() => {
+    let filtrés = [...jeux];
     if (filtreMeca) filtrés = filtrés.filter(j => j.mecanique === filtreMeca);
     if (filtreJoueurs) filtrés = filtrés.filter(j => verifierJoueurs(j.nb_de_joueurs, filtreJoueurs));
     if (filtreEtoiles) filtrés = filtrés.filter(j => String(j.etoiles) === String(filtreEtoiles));
     if (filtreTemps) filtrés = filtrés.filter(j => getDuree(j.temps_de_jeu).label === filtreTemps);
     if (filtreType) filtrés = filtrés.filter(j => j.coop_versus === filtreType);
-    
+
     if (recherche) {
       const term = recherche.toLowerCase();
-      filtrés = filtrés.filter(j => 
-        j.nom.toLowerCase().includes(term) || 
-        j.ean.includes(term) || 
+      filtrés = filtrés.filter(j =>
+        j.nom.toLowerCase().includes(term) ||
+        j.ean.includes(term) ||
         (j.code_syracuse && j.code_syracuse.toLowerCase().includes(term))
       );
     }
-    
+
     if (tri === "A-Z") filtrés.sort((a,b) => a.nom.localeCompare(b.nom));
     else if (tri === "Z-A") filtrés.sort((a,b) => b.nom.localeCompare(a.nom));
     return filtrés;
-  }, [jeux, recherche, couleurFiltre, tri, filtreMeca, filtreJoueurs, filtreEtoiles, filtreTemps, filtreType]);
+  }, [jeux, recherche, tri, filtreMeca, filtreJoueurs, filtreEtoiles, filtreTemps, filtreType]);
+
+  const jeuxFiltres = useMemo(
+    () => couleurFiltre ? jeuxFiltresHorsCouleur.filter(j => j.couleur === couleurFiltre) : jeuxFiltresHorsCouleur,
+    [jeuxFiltresHorsCouleur, couleurFiltre],
+  );
+
+  const comptesIntercalaires = useMemo(() => {
+    const titres: Record<string, Set<string>> = { tous: new Set() };
+    for (const j of jeuxFiltresHorsCouleur) {
+      titres.tous.add(j.ean);
+      if (j.couleur) (titres[j.couleur] ??= new Set()).add(j.ean);
+    }
+    return Object.fromEntries(Object.entries(titres).map(([k, v]) => [k, v.size])) as Record<string, number>;
+  }, [jeuxFiltresHorsCouleur]);
 
   const jeuxGroupes = useMemo(() => {
     const map = new Map<string, JeuType[]>();
@@ -746,6 +775,13 @@ export default function InventairePage() {
     return Array.from(map.values());
   }, [jeuxFiltres]);
 
+  const ouvrirIntercalaire = (id: string | null) => {
+    if (id === couleurFiltre) return;
+    const ordre = INTERCALAIRES.map(i => i.id);
+    setSensGlisse(ordre.indexOf(id) > ordre.indexOf(couleurFiltre) ? "droite" : "gauche");
+    setCouleurFiltre(id);
+  };
+
   const toggleGroupe = (ean: string) => {
     setGroupesDeplies(prev => ({ ...prev, [ean]: !prev[ean] }));
   };
@@ -755,7 +791,6 @@ export default function InventairePage() {
     setFiltreJoueurs(""); setFiltreEtoiles(""); setFiltreTemps(""); setFiltreType(""); setTri("A-Z");
   };
 
-  const isListView = recherche !== "" || couleurFiltre !== null || filtreMeca !== "" || filtreJoueurs !== "" || filtreEtoiles !== "" || filtreTemps !== "" || filtreType !== "" || tri !== "A-Z";
 
   const jeuxEnStock = useMemo(() => jeux.filter(j => j.statut === 'En stock'), [jeux]);
   const atelierEnPrepa = useMemo(() => jeux.filter(j => j.statut === 'En préparation'), [jeux]);
@@ -1416,6 +1451,250 @@ export default function InventairePage() {
     fontFamily: "inherit", width: "100%", boxSizing: "border-box",
   };
 
+  // --- Ligne de la liste (intercalaires) ---
+  const renderLigneJeu = (groupe: JeuType[], idx: number) => {
+    const jeu = groupe[0];
+    const couleurObj = COULEURS.find(c => c.id === jeu.couleur);
+    const estDeplie = groupesDeplies[jeu.ean];
+    const hasCopies = groupe.length > 1;
+    const hasNotes = groupe.some(j => j.notes && (j.notes as any[]).length > 0);
+    const nbStock = groupe.filter(g => g.statut === 'En stock').length;
+    const nbPrepa = groupe.filter(g => g.statut === 'En préparation').length;
+    const statutFond = (s: string) => s === 'En stock' ? "var(--vert)" : s === 'En préparation' ? "var(--orange)" : "var(--cream2)";
+
+    return (
+      <div className="inv-rangee inv-ligne" style={{
+        border: "2.5px solid var(--ink)", borderLeft: `10px solid ${couleurObj ? couleurObj.hex : "var(--cream2)"}`,
+        borderRadius: 10, background: "var(--white)", boxShadow: "3px 3px 0 var(--ink)", overflow: "hidden",
+        animationDelay: idx < 24 ? `${idx * 22}ms` : "0ms",
+      }}>
+        <div onClick={() => ouvrirFicheJeu(jeu)}
+          style={{ display: "flex", alignItems: "center", gap: isMobile ? 10 : 14, padding: isMobile ? "10px 10px" : "10px 14px", cursor: "pointer", flexWrap: isMobile ? "wrap" : "nowrap" }}>
+
+          {/* Vignette */}
+          <div style={{ width: isMobile ? 46 : 56, height: isMobile ? 46 : 56, borderRadius: 8, overflow: "hidden", flexShrink: 0, border: "2px solid var(--ink)", background: couleurObj ? couleurObj.hex : "var(--cream2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            {catalogueImages[jeu.ean]
+              ? <img src={catalogueImages[jeu.ean]} alt={jeu.nom} style={{ width: "100%", height: "100%", objectFit: "cover" }} loading="lazy" />
+              : <span className="bc" style={{ fontSize: 22, color: couleurObj && (couleurObj.id === 'vert' || couleurObj.id === 'jaune') ? "var(--ink)" : "var(--white)", opacity: 0.85 }}>{initiale(jeu.nom)}</span>}
+          </div>
+
+          {/* Info principale */}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+              <span style={{ fontWeight: 800, fontSize: isMobile ? 15 : 16, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{jeu.nom}</span>
+              {hasCopies && <span style={{ fontSize: 11, fontWeight: 800, background: "var(--ink)", color: "var(--white)", borderRadius: 20, padding: "1px 7px", flexShrink: 0 }}>{groupe.length} ex.</span>}
+              {hasNotes && <span style={{ width: 9, height: 9, borderRadius: "50%", background: "var(--yellow)", border: "1.5px solid var(--ink)", flexShrink: 0 }} title="Commentaires"></span>}
+              {jeu.etape_nouveaute && nbStock > 0 && <span style={{ fontSize: 10, fontWeight: 800, background: "var(--yellow)", border: "1.5px solid var(--ink)", borderRadius: 20, padding: "1px 7px", flexShrink: 0 }}>🌟 Nouveauté</span>}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginTop: 5 }}>
+              {jeu.mecanique && <span className="pop-tag" style={{ background: "var(--cream2)" }}>{jeu.mecanique}</span>}
+              {jeu.coop_versus && <span className="pop-tag" style={{ background: "var(--bleu)", color: "var(--white)" }}>{jeu.coop_versus === 'Coop' ? '🤝 Coop' : jeu.coop_versus === 'Solo' ? '👤 Solo' : '⚔️ Versus'}</span>}
+              {jeu.nb_de_joueurs && <span className="pop-tag" style={{ background: "var(--cream2)" }}>👥 {jeu.nb_de_joueurs}</span>}
+              {jeu.etoiles && <span className="pop-tag" style={{ background: "var(--yellow)" }}>⭐ {jeu.etoiles}</span>}
+              <DureeGauge duree={jeu.temps_de_jeu} />
+            </div>
+          </div>
+
+          {/* EAN + statut : deuxième ligne pleine largeur sur téléphone */}
+          <div style={isMobile
+            ? { display: "flex", flexBasis: "100%", alignItems: "center", justifyContent: "space-between", gap: 8, order: 3 }
+            : { display: "flex", alignItems: "center", gap: 14, flexShrink: 0 }}>
+            <span style={{ fontFamily: "monospace", fontSize: 12, color: "rgba(0,0,0,0.35)" }}>{jeu.ean}</span>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-end", minWidth: isMobile ? 0 : 96 }}>
+              {!hasCopies ? (
+                <>
+                  <span style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", background: statutFond(jeu.statut), color: "var(--ink)", border: "1.5px solid var(--ink)", borderRadius: 20, padding: "2px 8px", boxShadow: "1px 1px 0 var(--ink)", whiteSpace: "nowrap" }}>{jeu.statut}</span>
+                  {jeu.statut === 'En préparation' && (
+                    <div style={{ width: 60, background: "var(--cream2)", borderRadius: 4, height: 5, overflow: "hidden", border: "1px solid var(--ink)" }}>
+                      <div style={{ height: "100%", background: "var(--orange)", borderRadius: 4, width: `${getProgression(jeu)}%` }}></div>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11, fontWeight: 800, alignItems: "flex-end" }}>
+                  {nbStock > 0 && <span style={{ color: "#16a34a" }}>{nbStock} en stock</span>}
+                  {nbPrepa > 0 && <span style={{ color: "var(--orange)" }}>{nbPrepa} en prépa</span>}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+            {hasCopies && (
+              <button onClick={e => { e.stopPropagation(); toggleGroupe(jeu.ean); }} title={estDeplie ? "Replier les exemplaires" : "Voir les exemplaires"}
+                style={{ padding: "5px 10px", borderRadius: 6, border: "2px solid var(--ink)", background: "var(--cream2)", fontWeight: 800, fontSize: 13, cursor: "pointer", boxShadow: "1px 1px 0 var(--ink)", transition: "transform 0.25s", transform: estDeplie ? "rotate(180deg)" : "none" }}>
+                ▼
+              </button>
+            )}
+            <Link href={`/catalogage?ean=${jeu.ean}`} onClick={e => e.stopPropagation()} title="Catalogage"
+              style={{ padding: "5px 10px", borderRadius: 6, border: "2px solid var(--ink)", background: "var(--cream2)", fontWeight: 800, fontSize: 13, cursor: "pointer", textDecoration: "none", color: "var(--ink)", boxShadow: "1px 1px 0 var(--ink)" }}>
+              📋
+            </Link>
+          </div>
+        </div>
+
+        {hasCopies && estDeplie && (
+          <div style={{ background: "var(--cream2)", borderTop: "2px solid var(--ink)", padding: 12, display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 8, animation: "fadeInUp 0.25s both" }}>
+            {groupe.map((copy, i) => (
+              <div key={copy.id} onClick={() => ouvrirFicheJeu(copy)}
+                style={{ background: "var(--white)", border: "2px solid var(--ink)", borderRadius: 8, padding: "10px 12px", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", boxShadow: "2px 2px 0 var(--ink)" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                  <span style={{ fontWeight: 800, fontSize: 13 }}>Ex. {i + 1}</span>
+                  {copy.code_syracuse && <span style={{ fontSize: 10, fontFamily: "monospace", color: "rgba(0,0,0,0.4)" }}>{copy.code_syracuse}</span>}
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
+                  <span style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase", background: statutFond(copy.statut), border: "1.5px solid var(--ink)", borderRadius: 20, padding: "1px 7px" }}>{copy.statut}</span>
+                  {copy.statut === 'En préparation' && (
+                    <div style={{ width: 40, background: "var(--cream2)", borderRadius: 4, height: 4, overflow: "hidden", border: "1px solid var(--ink)" }}>
+                      <div style={{ height: "100%", background: "var(--orange)", width: `${getProgression(copy)}%` }}></div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // --- Blocs de droite ---
+  const styleBloc = (accent: string): React.CSSProperties => ({
+    display: "flex", flexDirection: "column", overflow: "hidden", borderTop: `6px solid ${accent}`,
+    ...(isMobile ? { flex: "0 0 84%", height: 250, scrollSnapAlign: "start" } : { flex: "1 1 0", minHeight: 0 }),
+  });
+  const enteteBloc: React.CSSProperties = { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "12px 14px 10px", borderBottom: "2px solid var(--cream2)", flexShrink: 0 };
+  const corpsBloc: React.CSSProperties = { flex: 1, overflowY: "auto", padding: "10px 12px", display: "flex", flexDirection: "column", gap: 6 };
+  const petitBtn: React.CSSProperties = { padding: "4px 10px", fontSize: 12, background: "var(--white)", boxShadow: "2px 2px 0 var(--ink)" };
+  const pastille = (hex?: string) => <div style={{ width: 10, height: 10, borderRadius: "50%", background: hex || "var(--cream2)", border: "1.5px solid var(--ink)", flexShrink: 0 }} />;
+  const ligneBloc = (jeu: JeuType, sousTitre?: React.ReactNode) => {
+    const cObj = COULEURS.find(c => c.id === jeu.couleur);
+    return (
+      <div key={jeu.id} onClick={() => ouvrirFicheJeu(jeu)} className="inv-rangee"
+        style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", borderRadius: 8, cursor: "pointer", border: "2px solid var(--ink)", borderLeft: `6px solid ${cObj ? cObj.hex : "var(--cream2)"}`, background: "var(--white)", boxShadow: "2px 2px 0 var(--ink)", flexShrink: 0 }}>
+        <div style={{ display: "flex", flexDirection: "column", minWidth: 0, flex: 1 }}>
+          <span style={{ fontWeight: 700, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{jeu.nom}</span>
+          {sousTitre}
+        </div>
+      </div>
+    );
+  };
+  const sousSection = (titre: string, n: number, max: number, fondBadge: string, liste: JeuType[]) => (
+    <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2 }}>
+        <span className="bc" style={{ fontSize: 12, letterSpacing: "0.06em", textTransform: "uppercase" }}>{titre}</span>
+        <span style={{ fontSize: 10, fontWeight: 800, background: fondBadge, border: "1.5px solid var(--ink)", borderRadius: 20, padding: "1px 7px" }}>{n}/{max}</span>
+        <div style={{ flex: 1, height: 6, background: "var(--cream2)", borderRadius: 3, overflow: "hidden", border: "1px solid rgba(0,0,0,0.15)" }}>
+          <div style={{ height: "100%", width: `${Math.min(100, (n / max) * 100)}%`, background: fondBadge, transition: "width 0.4s" }} />
+        </div>
+      </div>
+      {liste.map(j => ligneBloc(j))}
+      {n < max && (
+        <div style={{ padding: "6px 10px", borderRadius: 8, border: "2px dashed rgba(0,0,0,0.18)", fontSize: 12, fontWeight: 700, color: "rgba(0,0,0,0.35)", fontStyle: "italic", flexShrink: 0 }}>
+          {max - n} place{max - n > 1 ? "s" : ""} disponible{max - n > 1 ? "s" : ""}
+        </div>
+      )}
+    </div>
+  );
+
+  const blocNouveautes = (
+    <div className="pop-card" style={styleBloc("var(--yellow)")}>
+      <div style={enteteBloc}>
+        <span className="bc" style={{ fontSize: isMobile ? 18 : 20, letterSpacing: "0.02em", whiteSpace: "nowrap" }}>🌟 Nouveautés</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          {dateProchaineRotation && (
+            <span title="Prochaine rotation" style={{ whiteSpace: "nowrap", fontSize: 11, fontWeight: 800, background: "var(--rose)", color: "var(--white)", border: "1.5px solid var(--ink)", borderRadius: 20, padding: "2px 8px" }}>⏳ {dateProchaineRotation}</span>
+          )}
+          <Link href="/nouveautes" className="pop-btn" style={petitBtn}>Gérer</Link>
+        </div>
+      </div>
+      <div className="inv-bloc-corps" style={{ ...corpsBloc, gap: 12 }}>
+        {nouveautesEnSalle.length === 0
+          ? <p style={{ color: "rgba(0,0,0,0.35)", fontWeight: 700, fontSize: 13, textAlign: "center", padding: "16px 0" }}>Aucune nouveauté en salle.</p>
+          : <>
+              {sousSection("Salle Jeux", nouveautesSalleJeux.length, 12, "var(--yellow)", nouveautesSalleJeux)}
+              {sousSection("Premiers Jeux", nouveautesPremiersJeux.length, 10, "var(--vert)", nouveautesPremiersJeux)}
+            </>}
+      </div>
+    </div>
+  );
+
+  const blocSelection = (
+    <div className="pop-card" style={styleBloc("var(--rose)")}>
+      <div style={enteteBloc}>
+        <span className="bc" style={{ fontSize: isMobile ? 18 : 20, letterSpacing: "0.02em", whiteSpace: "nowrap" }}>💖 Sélection</span>
+        <div style={{ display: "flex", gap: 6 }}>
+          {selections.length > 0 && <button onClick={() => setIsAgrandirOpen(true)} className="pop-btn" style={petitBtn}>Agrandir</button>}
+          <button onClick={ouvrirCreationSelection} className="pop-btn pop-btn-dark" style={{ padding: "4px 10px", fontSize: 12 }}>+</button>
+        </div>
+      </div>
+      <div className="inv-bloc-corps" style={{ ...corpsBloc, gap: 8 }}>
+        {selections.length === 0 ? (
+          <div style={{ display: "flex", flex: 1, alignItems: "center", justifyContent: "center", border: "2px dashed var(--cream2)", borderRadius: 10, padding: 16, textAlign: "center", color: "rgba(0,0,0,0.35)", fontWeight: 600, fontSize: 13 }}>
+            Créez des sélections thématiques
+          </div>
+        ) : selections.map(sel => (
+          <div key={sel.id} onClick={() => ouvrirModificationSelection(sel)} className="inv-rangee"
+            style={{ border: "2px solid var(--ink)", borderRadius: 10, background: "var(--white)", boxShadow: "2px 2px 0 var(--ink)", padding: "8px 10px", cursor: "pointer", display: "flex", flexDirection: "column", gap: 6, flexShrink: 0 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+              <div style={{ minWidth: 0 }}>
+                <p style={{ fontWeight: 800, fontSize: 13, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sel.titre}</p>
+                <span style={{ fontSize: 10, fontWeight: 700, color: "rgba(0,0,0,0.4)", textTransform: "uppercase" }}>
+                  {sel.is_permanent ? "Permanente" : `Jusqu'au ${sel.date_fin ? new Date(sel.date_fin).toLocaleDateString('fr-FR') : '?'}`}
+                </span>
+              </div>
+              <span style={{ fontSize: 11, fontWeight: 800, background: "var(--rose)", color: "var(--white)", border: "1.5px solid var(--ink)", borderRadius: 20, padding: "1px 8px", flexShrink: 0 }}>{sel.jeux?.length || 0}</span>
+            </div>
+            {/* Pastilles des jeux de la sélection : un aperçu sans prendre de hauteur */}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+              {sel.jeux?.slice(0, 6).map(j => (
+                <span key={j.id} onClick={e => { e.stopPropagation(); ouvrirFicheJeu(j); }}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 4, maxWidth: "100%", padding: "2px 7px", background: "var(--cream2)", borderRadius: 20, fontSize: 11, fontWeight: 700 }}>
+                  {pastille(COULEURS.find(c => c.id === j.couleur)?.hex)}
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 120 }}>{j.nom}</span>
+                </span>
+              ))}
+              {(sel.jeux?.length || 0) > 6 && <span style={{ fontSize: 10, color: "rgba(0,0,0,0.4)", fontWeight: 700, alignSelf: "center" }}>+{(sel.jeux?.length || 0) - 6}</span>}
+              {(!sel.jeux || sel.jeux.length === 0) && <span style={{ fontSize: 11, color: "rgba(0,0,0,0.35)", fontStyle: "italic" }}>Sélection vide</span>}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  const blocAtelier = (
+    <div className="pop-card" style={styleBloc("var(--orange)")}>
+      <div style={enteteBloc}>
+        <span className="bc" style={{ fontSize: isMobile ? 18 : 20, letterSpacing: "0.02em", whiteSpace: "nowrap" }}>🛠️ Atelier</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span title={`${atelierEnPrepa.length} en préparation · ${nbReparations} réparations · ${nbManquants} pièces manquantes`}
+            style={{ fontSize: 11, fontWeight: 800, background: "var(--orange)", border: "1.5px solid var(--ink)", borderRadius: 20, padding: "2px 8px" }}>{totalAtelier}</span>
+          <Link href="/atelier" className="pop-btn" style={petitBtn}>Voir tout</Link>
+        </div>
+      </div>
+      <div className="inv-bloc-corps" style={corpsBloc}>
+        {(nbReparations > 0 || nbManquants > 0) && (
+          <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+            <span style={{ flex: 1, textAlign: "center", fontSize: 11, fontWeight: 800, background: "var(--cream2)", borderRadius: 8, padding: "5px 4px" }}>🔧 {nbReparations} répar.</span>
+            <span style={{ flex: 1, textAlign: "center", fontSize: 11, fontWeight: 800, background: "var(--cream2)", borderRadius: 8, padding: "5px 4px" }}>🧩 {nbManquants} manquant{nbManquants > 1 ? "s" : ""}</span>
+          </div>
+        )}
+        {atelierEnPrepa.length === 0 && <p style={{ color: "rgba(0,0,0,0.35)", fontWeight: 700, fontSize: 13 }}>Aucun jeu en préparation.</p>}
+        {atelierEnPrepa.map(jeu => ligneBloc(jeu,
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 3 }}>
+            <div style={{ flex: 1, background: "var(--cream2)", borderRadius: 4, height: 5, overflow: "hidden", border: "1px solid rgba(0,0,0,0.2)" }}>
+              <div style={{ height: "100%", background: "var(--orange)", width: `${getProgression(jeu)}%` }} />
+            </div>
+            <span style={{ fontSize: 10, fontWeight: 800, color: "rgba(0,0,0,0.45)" }}>{getProgression(jeu)}%</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+
   return (
     <div style={{ minHeight: "100dvh", background: "var(--cream)", display: "flex", flexDirection: "column", paddingTop: "var(--nav-h)" }}>
       <NavBar current="inventaire" />
@@ -1511,403 +1790,153 @@ export default function InventairePage() {
         </div>
       </header>
 
-      <main style={{ padding: "var(--page-pad-y) var(--page-pad-x)", display: "flex", flexDirection: "column", gap: isMobile ? 16 : 24, flex: 1, position: "relative", zIndex: 1 }}>
+      <main style={{
+        padding: "var(--page-pad-y) var(--page-pad-x)", flex: 1, position: "relative", zIndex: 1,
+        display: "grid", alignItems: "start",
+        gridTemplateColumns: isMobile ? "minmax(0, 1fr)" : "minmax(0, 3fr) minmax(260px, 1fr)",
+        gap: isMobile ? 18 : 24,
+      }}>
 
-        {isLoading ? (
-          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "80px 0" }}>
-            <p className="bc" style={{ fontSize: 22, color: "rgba(0,0,0,0.3)", letterSpacing: "0.04em" }}>Chargement de l'inventaire…</p>
-          </div>
-        ) : !isListView ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+        {/* ── Intercalaires (3/4 de la page) ── */}
+        <section style={{ display: "flex", flexDirection: "column", minWidth: 0, order: isMobile ? 2 : 0 }}>
 
-            {/* ── KPI Couleurs ── */}
-            {/* Cinq pastilles de couleur : trois par ligne sur téléphone,
-                soit deux rangées, plutôt qu'une bande de 70px de large. */}
-            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(3, 1fr)" : "repeat(5, 1fr)", gap: isMobile ? 8 : 14 }}>
-              {COULEURS.map(c => {
-                const count = jeuxEnStock.filter(j => j.couleur === c.id).length;
-                return (
-                  <div key={c.id} onClick={() => setCouleurFiltre(c.id)}
-                    style={{
-                      background: c.hex, border: "2.5px solid var(--ink)",
-                      borderRadius: 10, boxShadow: "4px 4px 0 var(--ink)",
-                      padding: isMobile ? "12px 6px" : "20px 12px", display: "flex", flexDirection: "column",
-                      alignItems: "center", justifyContent: "center", cursor: "pointer",
-                      transition: "transform 0.12s, box-shadow 0.12s",
-                    }}
-                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = "translate(-2px,-2px)"; (e.currentTarget as HTMLElement).style.boxShadow = "6px 6px 0 var(--ink)"; }}
-                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = ""; (e.currentTarget as HTMLElement).style.boxShadow = "4px 4px 0 var(--ink)"; }}
-                  >
-                    <span className="bc" style={{ fontSize: isMobile ? 30 : 48, lineHeight: 1, color: c.id === 'vert' || c.id === 'jaune' ? "var(--ink)" : "var(--white)" }}>{count}</span>
-                    <span style={{ fontSize: isMobile ? 9 : 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", color: c.id === 'vert' || c.id === 'jaune' ? "var(--ink)" : "var(--white)", marginTop: 4, opacity: 0.8 }}>{c.label}</span>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* ── 3 colonnes ── */}
-            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "minmax(0, 1fr)" : "repeat(3, 1fr)", gap: isMobile ? 14 : 20 }}>
-
-              {/* Nouveautés */}
-              <div className="pop-card" style={{ display: "flex", flexDirection: "column", borderTop: "4px solid var(--yellow)", maxHeight: isMobile ? 340 : 520, overflow: "hidden" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 20px 12px", borderBottom: "2px solid var(--cream2)", flexShrink: 0 }}>
-                  <span className="bc" style={{ fontSize: 20, letterSpacing: "0.02em" }}>Nouveautés</span>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    {dateProchaineRotation && (
-                      <span style={{ fontSize: 11, fontWeight: 800, background: "var(--rose)", color: "var(--white)", border: "1.5px solid var(--ink)", borderRadius: 20, padding: "2px 8px", boxShadow: "1px 1px 0 var(--ink)" }}>⏳ {dateProchaineRotation}</span>
-                    )}
-                    <Link href="/nouveautes" className="pop-btn" style={{ padding: "5px 12px", fontSize: 12, background: "var(--white)", boxShadow: "2px 2px 0 var(--ink)" }}>Gérer</Link>
-                  </div>
-                </div>
-
-                <div style={{ flex: 1, overflowY: "auto", padding: "14px 16px", display: "flex", flexDirection: "column", gap: 16 }}>
-                  {nouveautesEnSalle.length === 0 ? (
-                    <p style={{ color: "rgba(0,0,0,0.35)", fontWeight: 700, fontSize: 14, textAlign: "center", padding: "20px 0" }}>Aucune nouveauté en salle.</p>
-                  ) : (
-                    <>
-                      {/* Salle Jeux */}
-                      <div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                          <span className="bc" style={{ fontSize: 13, letterSpacing: "0.05em", textTransform: "uppercase" }}>Salle Jeux</span>
-                          <span style={{ fontSize: 11, fontWeight: 800, background: "var(--cream2)", border: "1.5px solid var(--ink)", borderRadius: 20, padding: "1px 7px" }}>{nouveautesSalleJeux.length}/12</span>
-                        </div>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                          {Array.from({ length: 12 }).map((_, i) => {
-                            const jeu = nouveautesSalleJeux[i];
-                            if (jeu) {
-                              const cObj = COULEURS.find(c => c.id === jeu.couleur);
-                              return (
-                                <div key={jeu.id} onClick={() => ouvrirFicheJeu(jeu)}
-                                  style={{
-                                    display: "flex", alignItems: "center", gap: 10,
-                                    padding: "8px 12px", borderRadius: 8, cursor: "pointer",
-                                    border: `2px solid ${cObj ? cObj.hex : "var(--cream2)"}`,
-                                    background: "var(--white)", boxShadow: "2px 2px 0 var(--ink)",
-                                  }}
-                                >
-                                  <div style={{ width: 10, height: 10, borderRadius: "50%", background: cObj ? cObj.hex : "var(--cream2)", border: "1.5px solid var(--ink)", flexShrink: 0 }}></div>
-                                  <span style={{ fontWeight: 700, fontSize: 13, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{jeu.nom}</span>
-                                </div>
-                              );
-                            }
-                            return (
-                              <div key={`empty-salle-${i}`} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderRadius: 8, border: "2px dashed var(--cream2)", opacity: 0.5 }}>
-                                <div style={{ width: 10, height: 10, borderRadius: "50%", background: "var(--cream2)", border: "1.5px solid var(--ink)", flexShrink: 0 }}></div>
-                                <span style={{ fontWeight: 700, fontSize: 13, color: "rgba(0,0,0,0.3)", fontStyle: "italic" }}>Place disponible</span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      {/* Premiers Jeux */}
-                      <div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                          <span className="bc" style={{ fontSize: 13, letterSpacing: "0.05em", textTransform: "uppercase" }}>Premiers Jeux</span>
-                          <span style={{ fontSize: 11, fontWeight: 800, background: "var(--vert)", border: "1.5px solid var(--ink)", borderRadius: 20, padding: "1px 7px" }}>{nouveautesPremiersJeux.length}/10</span>
-                        </div>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                          {Array.from({ length: 10 }).map((_, i) => {
-                            const jeu = nouveautesPremiersJeux[i];
-                            if (jeu) {
-                              const cObj = COULEURS.find(c => c.id === jeu.couleur);
-                              return (
-                                <div key={jeu.id} onClick={() => ouvrirFicheJeu(jeu)}
-                                  style={{
-                                    display: "flex", alignItems: "center", gap: 10,
-                                    padding: "8px 12px", borderRadius: 8, cursor: "pointer",
-                                    border: `2px solid ${cObj ? cObj.hex : "var(--vert)"}`,
-                                    background: "var(--white)", boxShadow: "2px 2px 0 var(--ink)",
-                                  }}
-                                >
-                                  <div style={{ width: 10, height: 10, borderRadius: "50%", background: cObj ? cObj.hex : "var(--vert)", border: "1.5px solid var(--ink)", flexShrink: 0 }}></div>
-                                  <span style={{ fontWeight: 700, fontSize: 13, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{jeu.nom}</span>
-                                </div>
-                              );
-                            }
-                            return (
-                              <div key={`empty-prem-${i}`} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderRadius: 8, border: "2px dashed var(--vert)", opacity: 0.5 }}>
-                                <div style={{ width: 10, height: 10, borderRadius: "50%", background: "var(--vert)", border: "1.5px solid var(--ink)", flexShrink: 0 }}></div>
-                                <span style={{ fontWeight: 700, fontSize: 13, color: "rgba(0,0,0,0.3)", fontStyle: "italic" }}>Place disponible</span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-
-              {/* Sélection */}
-              <div className="pop-card" style={{ display: "flex", flexDirection: "column", borderTop: "4px solid var(--rose)", maxHeight: isMobile ? 340 : 520, overflow: "hidden" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 20px 12px", borderBottom: "2px solid var(--cream2)", flexShrink: 0 }}>
-                  <span className="bc" style={{ fontSize: 20, letterSpacing: "0.02em" }}>Sélection</span>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    {selections.length > 0 && (
-                      <button onClick={() => setIsAgrandirOpen(true)} className="pop-btn" style={{ padding: "5px 12px", fontSize: 12, background: "var(--white)", boxShadow: "2px 2px 0 var(--ink)" }}>Agrandir</button>
-                    )}
-                    <button onClick={ouvrirCreationSelection} className="pop-btn pop-btn-dark" style={{ padding: "5px 12px", fontSize: 12 }}>+</button>
-                  </div>
-                </div>
-                <div style={{ flex: 1, overflowY: "auto", padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
-                  {selections.length === 0 ? (
-                    <div style={{ display: "flex", flex: 1, alignItems: "center", justifyContent: "center", border: "2px dashed var(--cream2)", borderRadius: 10, padding: 24, textAlign: "center", color: "rgba(0,0,0,0.35)", fontWeight: 600, fontSize: 14 }}>
-                      Créez des sélections thématiques
-                    </div>
-                  ) : (
-                    selections.map(sel => (
-                      <div key={sel.id} onClick={() => ouvrirModificationSelection(sel)}
-                        style={{
-                          border: "2px solid var(--ink)", borderRadius: 10,
-                          background: "var(--white)", boxShadow: "3px 3px 0 var(--ink)",
-                          padding: "12px 14px", cursor: "pointer",
-                          display: "flex", flexDirection: "column", gap: 8,
-                        }}
-                      >
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                          <div style={{ minWidth: 0 }}>
-                            <p style={{ fontWeight: 800, fontSize: 14, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sel.titre}</p>
-                            <span style={{ fontSize: 10, fontWeight: 700, color: "rgba(0,0,0,0.4)", textTransform: "uppercase" }}>
-                              {sel.is_permanent ? "Permanente" : `Jusqu'au ${sel.date_fin ? new Date(sel.date_fin).toLocaleDateString('fr-FR') : '?'}`}
-                            </span>
-                          </div>
-                          <span style={{ fontSize: 11, fontWeight: 800, background: "var(--rose)", color: "var(--white)", border: "1.5px solid var(--ink)", borderRadius: 20, padding: "1px 8px", flexShrink: 0 }}>{sel.jeux?.length || 0}</span>
-                        </div>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                          {sel.jeux?.slice(0, 4).map(j => {
-                            const c = COULEURS.find(col => col.id === j.couleur);
-                            return (
-                              <div key={j.id} onClick={e => { e.stopPropagation(); ouvrirFicheJeu(j); }}
-                                style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 8px", background: "var(--cream2)", borderRadius: 6 }}>
-                                <div style={{ width: 8, height: 8, borderRadius: "50%", background: c ? c.hex : "var(--cream2)", border: "1px solid var(--ink)", flexShrink: 0 }}></div>
-                                <span style={{ fontSize: 11, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{j.nom}</span>
-                              </div>
-                            );
-                          })}
-                          {(sel.jeux?.length || 0) > 4 && <span style={{ fontSize: 10, color: "rgba(0,0,0,0.4)", fontWeight: 700, paddingLeft: 8 }}>+{(sel.jeux?.length || 0) - 4} autres</span>}
-                          {(!sel.jeux || sel.jeux.length === 0) && <span style={{ fontSize: 11, color: "rgba(0,0,0,0.35)", fontStyle: "italic" }}>Sélection vide</span>}
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-
-              {/* Atelier */}
-              <div className="pop-card" style={{ display: "flex", flexDirection: "column", borderTop: "4px solid var(--orange)", maxHeight: isMobile ? 340 : 520, overflow: "hidden" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 20px 12px", borderBottom: "2px solid var(--cream2)", flexShrink: 0 }}>
-                  <span className="bc" style={{ fontSize: 20, letterSpacing: "0.02em" }}>Atelier</span>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ fontSize: 11, fontWeight: 800, background: "var(--orange)", color: "var(--ink)", border: "1.5px solid var(--ink)", borderRadius: 20, padding: "2px 10px", boxShadow: "1px 1px 0 var(--ink)" }}>Total: {totalAtelier}</span>
-                    <Link href="/atelier" className="pop-btn" style={{ padding: "5px 12px", fontSize: 12, background: "var(--white)", boxShadow: "2px 2px 0 var(--ink)" }}>Voir tout</Link>
-                  </div>
-                </div>
-                <div style={{ flex: 1, overflowY: "auto", padding: "14px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
-                  {atelierEnPrepa.length === 0 && <p style={{ color: "rgba(0,0,0,0.35)", fontWeight: 700, fontSize: 14 }}>Aucun jeu en préparation.</p>}
-                  {atelierEnPrepa.map(jeu => {
-                    const cObj = COULEURS.find(c => c.id === jeu.couleur);
-                    return (
-                      <div key={jeu.id} onClick={() => ouvrirFicheJeu(jeu)}
-                        style={{
-                          display: "flex", alignItems: "center", gap: 10,
-                          padding: "10px 14px", borderRadius: 8, cursor: "pointer",
-                          border: `2px solid ${cObj ? cObj.hex : "var(--ink)"}`,
-                          background: "var(--white)", boxShadow: "2px 2px 0 var(--ink)",
-                        }}
-                      >
-                        <div style={{ width: 12, height: 12, borderRadius: "50%", background: cObj ? cObj.hex : "var(--cream2)", border: "1.5px solid var(--ink)", flexShrink: 0 }}></div>
-                        <div style={{ display: "flex", flexDirection: "column", overflow: "hidden", flex: 1 }}>
-                          <span style={{ fontWeight: 700, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{jeu.nom}</span>
-                          <span style={{ fontSize: 10, fontWeight: 800, color: "var(--orange)", textTransform: "uppercase", letterSpacing: "0.05em" }}>En prépa</span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          </div>
-
-        ) : (
-          /* ── LIST VIEW ── */
-          <div className="pop-card" style={{ overflow: "hidden", display: "flex", flexDirection: "column", borderTop: couleurFiltre ? `4px solid ${COULEURS.find(c => c.id === couleurFiltre)?.hex || "var(--ink)"}` : "4px solid var(--ink)" }}>
-
-            {/* Barre filtres */}
-            <div style={{ background: "var(--cream2)", borderBottom: "2.5px solid var(--ink)", padding: "12px 18px", display: "flex", flexDirection: "column", gap: 10 }}>
-              {couleurFiltre && (
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: "rgba(0,0,0,0.55)" }}>Filtré :</span>
-                    <span style={{
-                      fontSize: 12, fontWeight: 800, textTransform: "uppercase",
-                      background: COULEURS.find(c => c.id === couleurFiltre)?.hex || "var(--cream2)",
-                      color: couleurFiltre === 'vert' || couleurFiltre === 'jaune' ? "var(--ink)" : "var(--white)",
-                      border: "1.5px solid var(--ink)", borderRadius: 20, padding: "2px 10px", boxShadow: "1px 1px 0 var(--ink)",
-                    }}>{couleurFiltre}</span>
-                  </div>
-                  <button onClick={() => setCouleurFiltre(null)} className="pop-btn" style={{ padding: "5px 12px", fontSize: 12 }}>✕ Retirer</button>
-                </div>
-              )}
-              {/* Six contrôles : alignés sur desktop, en grille de deux sur
-                  téléphone. Empilés un par ligne, ils repousseraient la
-                  liste sous deux écrans de haut. */}
-              <div style={isMobile
-                ? { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", alignItems: "center", gap: 8 }
-                : { display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
-                <button onClick={() => setTri(tri === "A-Z" ? "Z-A" : "A-Z")} className="pop-btn" style={{ padding: "6px 14px", fontSize: 13, justifyContent: "center" }}>
-                  Nom {tri === "A-Z" ? "↓" : "↑"}
+          {/* Onglets + choix de l'affichage */}
+          <div style={{ display: "flex", alignItems: "flex-end", gap: isMobile ? 3 : 6, paddingLeft: 0 }}>
+            {INTERCALAIRES.map(inter => {
+              const actif = inter.id === couleurFiltre;
+              const n = comptesIntercalaires[inter.id ?? "tous"] ?? 0;
+              return (
+                <button key={inter.id ?? "tous"} onClick={() => ouvrirIntercalaire(inter.id)}
+                  className="inv-onglet" data-actif={actif}
+                  title={`${inter.label} — ${n} jeu${n !== 1 ? "x" : ""}`}
+                  style={{
+                    background: inter.fond, color: inter.texte,
+                    padding: isMobile
+                      ? (actif ? "10px 4px 12px" : "7px 4px 10px")
+                      : (actif ? "12px 18px 14px" : "8px 14px 12px"),
+                    flex: isMobile ? "1 1 0" : undefined, minWidth: 0,
+                    justifyContent: "center", flexDirection: isMobile ? "column" : "row", gap: isMobile ? 2 : 8,
+                  }}>
+                  <span className="bc" style={{ fontSize: isMobile ? 12 : (actif ? 19 : 16), letterSpacing: "0.04em", textTransform: "uppercase", lineHeight: 1, transition: "font-size 0.25s" }}>{inter.label}</span>
+                  <span style={{
+                    fontSize: isMobile ? 10 : 11, fontWeight: 800, lineHeight: 1,
+                    background: inter.id === null ? "var(--white)" : "var(--ink)",
+                    color: inter.id === null ? "var(--ink)" : "var(--white)",
+                    borderRadius: 20, padding: isMobile ? "2px 5px" : "3px 7px",
+                  }}>{n}</span>
                 </button>
-                <input type="number" min="1" max="99" placeholder="👥 Joueurs" value={filtreJoueurs} onChange={e => setFiltreJoueurs(e.target.value)} style={{ ...inp, width: isMobile ? "100%" : 110 }} />
-                <select value={filtreType} onChange={e => setFiltreType(e.target.value)} style={{ ...inp, width: isMobile ? "100%" : "auto", cursor: "pointer" }}>
-                  <option value="">⚔️ Type</option><option value="Coop">🤝 Coop</option><option value="Versus">⚔️ Versus</option><option value="Solo">👤 Solo</option>
-                </select>
-                <select value={filtreMeca} onChange={e => setFiltreMeca(e.target.value)} style={{ ...inp, width: isMobile ? "100%" : "auto", cursor: "pointer" }}>
-                  <option value="">⚙️ Méca.</option>
-                  {mecasDispos.map(m => <option key={m as string} value={m as string}>{m}</option>)}
-                </select>
-                <select value={filtreTemps} onChange={e => setFiltreTemps(e.target.value)} style={{ ...inp, width: isMobile ? "100%" : "auto", cursor: "pointer" }}>
-                  <option value="">⏳ Durée</option><option value="Rapide">Rapide (&lt;30m)</option><option value="Moyen">Moyen (30-60m)</option><option value="Long">Long (&gt;60m)</option>
-                </select>
-                <select value={filtreEtoiles} onChange={e => setFiltreEtoiles(e.target.value)} style={{ ...inp, width: isMobile ? "100%" : "auto", cursor: "pointer" }}>
-                  <option value="">⭐ Étoiles</option><option value="1">1 Étoile</option><option value="2">2 Étoiles</option><option value="3">3 Étoiles</option>
-                </select>
-                {(filtreJoueurs || filtreMeca || filtreTemps || filtreEtoiles || filtreType) && (
-                  <button onClick={clearAllFilters} className="pop-btn" style={{ padding: "6px 10px", fontSize: 12, background: "var(--rouge)", color: "var(--white)", justifyContent: "center" }}>✕ Reset</button>
-                )}
-                <span style={{ marginLeft: isMobile ? 0 : "auto", gridColumn: isMobile ? "1 / -1" : undefined, fontWeight: 700, fontSize: 13, color: "rgba(0,0,0,0.45)" }}>{jeuxGroupes.length} résultat{jeuxGroupes.length !== 1 ? "s" : ""}</span>
-              </div>
-            </div>
-
-            {/* Rows */}
-            <div style={{ flex: 1, overflowY: "auto", padding: "14px 14px" }}>
-              {jeuxGroupes.length === 0 ? (
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "60px 0", color: "rgba(0,0,0,0.3)" }}>
-                  <span style={{ fontSize: 40, marginBottom: 12 }}>🤔</span>
-                  <p style={{ fontWeight: 700, fontSize: 16 }}>Aucun jeu ne correspond à vos filtres.</p>
-                </div>
-              ) : (
-                jeuxGroupes.map(groupe => {
-                  const jeu = groupe[0];
-                  const couleurObj = COULEURS.find(c => c.id === jeu.couleur);
-                  const estDeplie = groupesDeplies[jeu.ean];
-                  const hasCopies = groupe.length > 1;
-                  const hasNotes = groupe.some(j => j.notes && (j.notes as any[]).length > 0);
-
+              );
+            })}
+            {!isMobile && (
+              <div style={{ marginLeft: "auto", marginBottom: 10, display: "flex", border: "2px solid var(--ink)", borderRadius: 8, overflow: "hidden", boxShadow: "2px 2px 0 var(--ink)", background: "var(--white)" }}>
+                {([["liste", "☰ Liste"], ["mosaique", "▦ Mosaïque"]] as const).map(([mode, label]) => {
+                  const dispo = mode === "liste";
                   return (
-                    <div key={jeu.ean} style={{ marginBottom: 10, border: "2.5px solid var(--ink)", borderRadius: 10, background: "var(--white)", boxShadow: "3px 3px 0 var(--ink)", overflow: "hidden" }}>
-                      <div
-                        onClick={() => ouvrirFicheJeu(jeu)}
-                        style={{ display: "flex", alignItems: "center", gap: 12, padding: isMobile ? "10px 12px" : "12px 16px", cursor: "pointer", flexWrap: isMobile ? "wrap" : "nowrap" }}
-                        onMouseEnter={e => (e.currentTarget.style.background = "var(--cream2)")}
-                        onMouseLeave={e => (e.currentTarget.style.background = "var(--white)")}
-                      >
-                        {/* Vignette */}
-                        <div style={{ width: 40, height: 40, borderRadius: 8, overflow: "hidden", flexShrink: 0, border: "2px solid var(--ink)", background: couleurObj ? couleurObj.hex : "var(--cream2)" }}>
-                          {catalogueImages[jeu.ean]
-                            ? <img src={catalogueImages[jeu.ean]} alt={jeu.nom} style={{ width: "100%", height: "100%", objectFit: "cover" }} loading="lazy" />
-                            : null
-                          }
-                        </div>
-
-                        {/* Info principale */}
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                            <div style={{ width: 10, height: 10, borderRadius: "50%", background: couleurObj ? couleurObj.hex : "var(--cream2)", border: "1.5px solid var(--ink)", flexShrink: 0 }}></div>
-                            <span style={{ fontWeight: 800, fontSize: 15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{jeu.nom}</span>
-                            {hasCopies && <span style={{ fontSize: 11, fontWeight: 800, background: "var(--cream2)", border: "1.5px solid var(--ink)", borderRadius: 20, padding: "1px 7px" }}>{groupe.length} EX</span>}
-                            {hasNotes && <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--yellow)", border: "1px solid var(--ink)", flexShrink: 0 }} title="Commentaires"></span>}
-                          </div>
-                          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
-                            {jeu.mecanique && <span className="pop-tag" style={{ background: "var(--cream2)" }}>{jeu.mecanique}</span>}
-                            {jeu.coop_versus && <span className="pop-tag" style={{ background: "var(--bleu)", color: "var(--white)" }}>{jeu.coop_versus === 'Coop' ? '🤝 Coop' : jeu.coop_versus === 'Solo' ? '👤 Solo' : '⚔️ Versus'}</span>}
-                            {jeu.nb_de_joueurs && <span className="pop-tag" style={{ background: "var(--cream2)" }}>👥 {jeu.nb_de_joueurs}</span>}
-                            {jeu.etoiles && <span className="pop-tag" style={{ background: "var(--yellow)" }}>⭐ {jeu.etoiles}</span>}
-                            <DureeGauge duree={jeu.temps_de_jeu} />
-                          </div>
-                        </div>
-
-                        {/* EAN + statut. Sur téléphone ils descendent ensemble
-                            sur une deuxième ligne pleine largeur ; sur desktop
-                            `display: contents` efface ce conteneur et les deux
-                            restent des enfants directs de la ligne. */}
-                        <div style={isMobile
-                          ? { display: "flex", flexBasis: "100%", alignItems: "center", justifyContent: "space-between", gap: 8, order: 3 }
-                          : { display: "contents" }}>
-                        {/* EAN */}
-                        <span style={{ fontFamily: "monospace", fontSize: 12, color: "rgba(0,0,0,0.35)", flexShrink: 0 }}>{jeu.ean}</span>
-
-                        {/* Statut */}
-                        <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-end", flexShrink: 0 }}>
-                          {!hasCopies ? (
-                            <>
-                              <span style={{
-                                fontSize: 11, fontWeight: 800, textTransform: "uppercase",
-                                background: jeu.statut === 'En stock' ? "var(--vert)" : jeu.statut === 'En préparation' ? "var(--orange)" : "var(--cream2)",
-                                color: "var(--ink)", border: "1.5px solid var(--ink)",
-                                borderRadius: 20, padding: "2px 8px", boxShadow: "1px 1px 0 var(--ink)",
-                              }}>{jeu.statut}</span>
-                              {jeu.statut === 'En préparation' && (
-                                <div style={{ width: 60, background: "var(--cream2)", borderRadius: 4, height: 5, overflow: "hidden", border: "1px solid var(--ink)" }}>
-                                  <div style={{ height: "100%", background: "var(--orange)", borderRadius: 4, width: `${getProgression(jeu)}%` }}></div>
-                                </div>
-                              )}
-                              {jeu.statut === 'En stock' && jeu.etape_nouveaute && (
-                                <span style={{ fontSize: 10, fontWeight: 800, color: "var(--ink)" }}>🌟 Nouveauté</span>
-                              )}
-                            </>
-                          ) : (
-                            <div style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11, fontWeight: 800 }}>
-                              {groupe.filter(g => g.statut === 'En stock').length > 0 && <span style={{ color: "#16a34a" }}>{groupe.filter(g => g.statut === 'En stock').length} en stock</span>}
-                              {groupe.filter(g => g.statut === 'En préparation').length > 0 && <span style={{ color: "var(--orange)" }}>{groupe.filter(g => g.statut === 'En préparation').length} en prépa</span>}
-                            </div>
-                          )}
-                        </div>
-                        </div>
-
-                        {/* Actions */}
-                        <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-                          {hasCopies && (
-                            <button onClick={e => { e.stopPropagation(); toggleGroupe(jeu.ean); }}
-                              style={{ padding: "5px 10px", borderRadius: 6, border: "2px solid var(--ink)", background: "var(--cream2)", fontWeight: 800, fontSize: 13, cursor: "pointer", boxShadow: "1px 1px 0 var(--ink)" }}>
-                              {estDeplie ? "▲" : "▼"}
-                            </button>
-                          )}
-                          <Link href={`/catalogage?ean=${jeu.ean}`} onClick={e => e.stopPropagation()}
-                            style={{ padding: "5px 10px", borderRadius: 6, border: "2px solid var(--ink)", background: "var(--cream2)", fontWeight: 800, fontSize: 13, cursor: "pointer", textDecoration: "none", color: "var(--ink)", boxShadow: "1px 1px 0 var(--ink)" }}>
-                            📋
-                          </Link>
-                        </div>
-                      </div>
-
-                      {hasCopies && estDeplie && (
-                        <div style={{ background: "var(--cream2)", borderTop: "2px solid var(--ink)", padding: 12, display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 8 }}>
-                          {groupe.map((copy, idx) => (
-                            <div key={copy.id} onClick={() => ouvrirFicheJeu(copy)}
-                              style={{ background: "var(--white)", border: "2px solid var(--ink)", borderRadius: 8, padding: "10px 12px", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", boxShadow: "2px 2px 0 var(--ink)" }}>
-                              <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                                <span style={{ fontWeight: 800, fontSize: 13 }}>Ex. {idx + 1}</span>
-                                {copy.code_syracuse && <span style={{ fontSize: 10, fontFamily: "monospace", color: "rgba(0,0,0,0.4)" }}>{copy.code_syracuse}</span>}
-                              </div>
-                              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
-                                <span style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase", background: copy.statut === 'En stock' ? "var(--vert)" : "var(--orange)", border: "1.5px solid var(--ink)", borderRadius: 20, padding: "1px 7px" }}>{copy.statut}</span>
-                                {copy.statut === 'En préparation' && (
-                                  <div style={{ width: 40, background: "var(--cream2)", borderRadius: 4, height: 4, overflow: "hidden", border: "1px solid var(--ink)" }}>
-                                    <div style={{ height: "100%", background: "var(--orange)", width: `${getProgression(copy)}%` }}></div>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                    <button key={mode} disabled={!dispo} onClick={() => setAffichage(mode)}
+                      title={dispo ? undefined : "Bientôt disponible"}
+                      style={{
+                        padding: "6px 12px", border: "none", fontFamily: "inherit", fontWeight: 800, fontSize: 12,
+                        cursor: dispo ? "pointer" : "not-allowed",
+                        background: affichage === mode ? "var(--ink)" : "transparent",
+                        color: affichage === mode ? "var(--white)" : dispo ? "var(--ink)" : "rgba(0,0,0,0.3)",
+                        borderLeft: mode === "mosaique" ? "2px solid var(--ink)" : "none",
+                      }}>{label}</button>
                   );
-                })
-              )}
-            </div>
+                })}
+              </div>
+            )}
           </div>
-        )}
+
+          {(() => {
+            const inter = INTERCALAIRES.find(i => i.id === couleurFiltre) ?? INTERCALAIRES[0];
+            const filtresActifs = !!(filtreJoueurs || filtreMeca || filtreTemps || filtreEtoiles || filtreType || recherche);
+            const avecLettres = !recherche && jeuxGroupes.length > 12;
+            return (
+              <div className="inv-corps" style={{ borderTopLeftRadius: couleurFiltre === null ? 0 : 12 }}>
+                {/* Bandeau de l'intercalaire : prend la couleur de l'onglet ouvert */}
+                <div className="inv-bandeau" style={{ background: inter.fond, color: inter.texte, padding: isMobile ? "12px 12px" : "14px 18px", display: "flex", flexDirection: "column", gap: 10, borderBottom: "2.5px solid var(--ink)" }}>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+                    <span className="bc" style={{ fontSize: isMobile ? 24 : 30, lineHeight: 1, letterSpacing: "0.02em" }}>
+                      {inter.id === null ? "Tous les jeux" : `Jeux ${inter.label.toLowerCase()}s`}
+                    </span>
+                    <span style={{ fontWeight: 800, fontSize: 13, opacity: 0.75 }}>
+                      {jeuxGroupes.length} titre{jeuxGroupes.length !== 1 ? "s" : ""}
+                      {recherche && <> pour « {recherche} »</>}
+                    </span>
+                  </div>
+                  {/* Six contrôles : alignés sur desktop, en grille de deux sur téléphone. */}
+                  <div style={isMobile
+                    ? { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", alignItems: "center", gap: 8 }
+                    : { display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+                    <button onClick={() => setTri(tri === "A-Z" ? "Z-A" : "A-Z")} className="pop-btn" style={{ padding: "6px 14px", fontSize: 13, justifyContent: "center", background: "var(--white)", color: "var(--ink)" }}>
+                      Nom {tri === "A-Z" ? "A→Z" : "Z→A"}
+                    </button>
+                    <input type="number" min="1" max="99" placeholder="👥 Joueurs" value={filtreJoueurs} onChange={e => setFiltreJoueurs(e.target.value)} style={{ ...inp, padding: "7px 12px", width: isMobile ? "100%" : 110, color: "var(--ink)" }} />
+                    <select value={filtreType} onChange={e => setFiltreType(e.target.value)} style={{ ...inp, padding: "7px 12px", width: isMobile ? "100%" : "auto", cursor: "pointer", color: "var(--ink)" }}>
+                      <option value="">⚔️ Type</option><option value="Coop">🤝 Coop</option><option value="Versus">⚔️ Versus</option><option value="Solo">👤 Solo</option>
+                    </select>
+                    <select value={filtreMeca} onChange={e => setFiltreMeca(e.target.value)} style={{ ...inp, padding: "7px 12px", width: isMobile ? "100%" : "auto", cursor: "pointer", color: "var(--ink)" }}>
+                      <option value="">⚙️ Méca.</option>
+                      {mecasDispos.map(m => <option key={m as string} value={m as string}>{m}</option>)}
+                    </select>
+                    <select value={filtreTemps} onChange={e => setFiltreTemps(e.target.value)} style={{ ...inp, padding: "7px 12px", width: isMobile ? "100%" : "auto", cursor: "pointer", color: "var(--ink)" }}>
+                      <option value="">⏳ Durée</option><option value="Rapide">Rapide (&lt;30m)</option><option value="Moyen">Moyen (30-60m)</option><option value="Long">Long (&gt;60m)</option>
+                    </select>
+                    <select value={filtreEtoiles} onChange={e => setFiltreEtoiles(e.target.value)} style={{ ...inp, padding: "7px 12px", width: isMobile ? "100%" : "auto", cursor: "pointer", color: "var(--ink)" }}>
+                      <option value="">⭐ Étoiles</option><option value="1">1 Étoile</option><option value="2">2 Étoiles</option><option value="3">3 Étoiles</option>
+                    </select>
+                    {filtresActifs && (
+                      <button onClick={() => { setRecherche(""); setFiltreMeca(""); setFiltreJoueurs(""); setFiltreEtoiles(""); setFiltreTemps(""); setFiltreType(""); }}
+                        className="pop-btn" style={{ padding: "6px 10px", fontSize: 12, background: "var(--rouge)", color: "var(--white)", justifyContent: "center" }}>✕ Effacer les filtres</button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Contenu : remonté à chaque changement d'intercalaire pour rejouer le glissement */}
+                <div key={couleurFiltre ?? "tous"} className={sensGlisse === "droite" ? "inv-glisse-droite" : "inv-glisse-gauche"}
+                  style={{ padding: isMobile ? "12px 10px" : "16px 18px", display: "flex", flexDirection: "column", gap: 10, minHeight: 300 }}>
+                  {isLoading ? (
+                    <p className="bc" style={{ fontSize: 22, color: "rgba(0,0,0,0.3)", letterSpacing: "0.04em", textAlign: "center", padding: "80px 0" }}>Chargement de l'inventaire…</p>
+                  ) : jeuxGroupes.length === 0 ? (
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "60px 0", color: "rgba(0,0,0,0.3)" }}>
+                      <span style={{ fontSize: 40, marginBottom: 12 }}>🤔</span>
+                      <p style={{ fontWeight: 700, fontSize: 16 }}>Aucun jeu ne correspond dans cet intercalaire.</p>
+                    </div>
+                  ) : (
+                    jeuxGroupes.map((groupe, idx) => {
+                      const jeu = groupe[0];
+                      const lettre = initiale(jeu.nom);
+                      const nouvelleLettre = avecLettres && (idx === 0 || initiale(jeuxGroupes[idx - 1][0].nom) !== lettre);
+                      return (
+                        <div key={jeu.ean} style={{ display: "contents" }}>
+                          {nouvelleLettre && (
+                            <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: idx === 0 ? 0 : 8 }}>
+                              <span className="bc" style={{
+                                fontSize: 18, lineHeight: 1, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center",
+                                background: inter.fond, color: inter.texte, border: "2px solid var(--ink)", borderRadius: 8, boxShadow: "2px 2px 0 var(--ink)",
+                              }}>{lettre}</span>
+                              <div style={{ flex: 1, height: 2, background: "var(--ink)", opacity: 0.1, borderRadius: 1 }} />
+                            </div>
+                          )}
+                          {renderLigneJeu(groupe, idx)}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+        </section>
+
+        {/* ── Blocs de droite : Nouveautés, Sélection, Atelier ── */}
+        <aside style={isMobile
+          ? { display: "flex", gap: 12, overflowX: "auto", scrollSnapType: "x mandatory", margin: "0 calc(-1 * var(--page-pad-x))", padding: "4px var(--page-pad-x) 10px", order: 1 }
+          : { position: "sticky", top: "calc(var(--nav-h) + 92px)", display: "flex", flexDirection: "column", gap: 16, height: "calc(100dvh - var(--nav-h) - 116px)", minHeight: 560 }}>
+          {blocNouveautes}
+          {blocSelection}
+          {blocAtelier}
+        </aside>
       </main>
 
       {/* --- MODAL COLORFIX --- */}
